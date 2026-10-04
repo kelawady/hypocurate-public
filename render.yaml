@@ -1,0 +1,60 @@
+# Render Blueprint (PRD Section 6, "Hosting"). This file only describes the
+# services; nothing exists on Render until the owner connects it as a Blueprint.
+# Checked against render.com/docs/blueprint-spec on 2026-10-04.
+#
+# Plans: the cheapest paid plans (owner decision, 2026-10-04).
+# autoDeployTrigger checksPass: Render deploys a commit on main only after its
+# GitHub checks pass, and never when a check fails or no check is found.
+# Region: all three in one region, so the services reach the database over
+# Render's private network. It cannot be changed after creation.
+services:
+  - type: web
+    name: hypocurate-web
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    branch: main
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: HYPOCURATE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hypocurate-db
+          property: connectionString
+      - key: HYPOCURATE_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+
+  # The worker does not serve pages, so it gets no login secrets.
+  - type: worker
+    name: hypocurate-worker
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    branch: main
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python -m hypocurate.worker
+    envVars:
+      - key: HYPOCURATE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hypocurate-db
+          property: connectionString
+
+databases:
+  - name: hypocurate-db
+    region: oregon
+    plan: 0.1c-256mb
+    postgresMajorVersion: "17"
+    databaseName: hypocurate
+    user: hypocurate
+    # No connections from outside Render's private network.
+    ipAllowList: []

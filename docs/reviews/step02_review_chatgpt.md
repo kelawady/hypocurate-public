@@ -1,0 +1,25 @@
+I would not sign off step 2 yet. There is one deployment blocker and several smaller security issues.
+1. High — Render builds the test image, not the clean runtime image.
+   The Dockerfile ends with FROM runtime AS test, followed by COPY . . and CMD ["pytest", "-q"]. Compose explicitly selects runtime; Render does not. Docker builds the final stage by default. Consequently, the Render image contains tests, review documents and duplicate answers. The web service starts pytest instead of the server; the worker’s command override starts the worker, but with those files still present. See [Dockerfile in packet (line 1440)](local-path) and Docker’s default-stage behavior.
+   Fix: make the final stage inherit from the clean runtime stage—not the test stage. Have CI build and inspect the default image, then smoke-test its default command. I ran the existing runtime-content assertions: they pass despite this defect.
+2. Medium — The global lockout gives anyone a cheap way to prevent legitimate logins.
+   Five incorrect submissions every five minutes can repeatedly lock everyone out. Existing signed-in users remain unaffected, but anyone needing to sign in loses access.
+   For this project, I prefer a generated long shared password plus bounded throttling of failed attempts, with correct credentials still accepted. Use a password-manager-generated password of at least 24 random characters. Simply sleeping in each request is insufficient: parallel requests defeat it and consume server capacity. Test concurrent failures and successful login during throttling. The current limiter’s separate check/update operations also allow concurrent attempts through before the threshold takes effect. OWASP explicitly warns about lockout-based denial of service. Authentication guidance
+3. Medium — The authentication exemption matches more routes than intended.
+   path.startswith(("/login", "/health", "/static/")) also exempts /login-admin, /health-private and /health/export. Those routes do not exist today, so this is a latent bypass rather than currently exposed data.
+   Fix: match /login and /health exactly; retain the /static/ prefix. Add protected dummy routes with those misleading prefixes to the authentication tests. See [authentication middleware (line 533)](local-path).
+4. Medium — Password changes do not invalidate existing sessions.
+   The cookie contains only signed_in=True. Changing the shared password leaves previously issued cookies valid while the signing secret remains unchanged. Logout clears the browser cookie; it cannot revoke a copied cookie.
+   Minimum fix for this sprint: document and test rotating SESSION_SECRET whenever the shared password is rotated to revoke access. Add expiry and copied-cookie replay tests so the limitation is explicit. No need to introduce a session database merely for this skeleton.
+5. Medium — Local configuration exposes more than the summary suggests.
+   Compose’s shared env_file gives the worker the login password and session secret too. Also, 8000:8000 exposes the development HTTP service on all host interfaces, potentially transmitting the password and cookie without TLS.
+   Fix: pass each service only its required variables and bind local web access to 127.0.0.1. The Render worker configuration already separates secrets correctly. .dockerignore excludes .env, but not .env.production or backups; broaden that exclusion while retaining .env.example. I found no actual production secret in the supplied material.
+6. Medium — Several security tests verify appearances rather than behavior.
+   Beyond the image-test failure above:
+   - The cookie secrecy test searches for the literal password. A password stored in the base64-encoded session would pass. Decode the payload and assert its permitted fields.
+   - The API-documentation test checks anonymous redirects only. It would pass if documentation became accessible after login.
+   - Workflow tests search for command strings. They would still pass if the test step acquired continue-on-error: true or the job were skipped.
+The deployment gate is correctly configured for ordinary automatic deployments, but its guarantee is overstated. The current workflow propagates test failures, and Render’s checksPass blocks commits with failed checks or no checks. However, Render accepts skipped and neutral conclusions, and manual deployment is a separate path. The packet does not demonstrate the live Render configuration. Render deployment rules
+The production cookie settings—Secure, HttpOnly, SameSite=Lax—are appropriate. The shown cookie contains no password, and configuration errors avoid printing secret values.
+No meaningful scope creep found. Early Render setup and deferred dev-container work are documented decisions. Fix the default-image problem and the small authentication/configuration issues before deploying.
+I verified 31 fully embedded files and ran targeted checks. I did not independently run the full 151-test suite, inspect the live GitHub settings or deploy to Render.

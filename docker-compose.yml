@@ -1,0 +1,67 @@
+# Local work: database, web service, worker; the suite with `docker compose run --rm test`.
+# Values come from .env (see .env.example), never from this file. Compose reads
+# .env only to fill in the ${...} below; each service gets only the variables it
+# needs (second-model review of step 2, finding 5).
+x-database-url: &database-url postgresql://hypocurate:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/hypocurate
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+  image: hypocurate:runtime
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment:
+      POSTGRES_USER: hypocurate
+      POSTGRES_DB: hypocurate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hypocurate -d hypocurate"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  web:
+    <<: *app
+    environment:
+      HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
+      DATABASE_URL: *database-url
+      HYPOCURATE_PASSWORD: ${HYPOCURATE_PASSWORD:?set HYPOCURATE_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+    # Plain HTTP locally: reachable from this machine only.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "hypocurate.worker"]
+    environment:
+      HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
+      DATABASE_URL: *database-url
+
+  # The secrets are passed only so that the suite can check that none of their
+  # values appears in any file (tests/test_skeleton.py).
+  test:
+    <<: *app
+    build:
+      context: .
+      target: test
+    image: hypocurate:test
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: *database-url
+      HYPOCURATE_PASSWORD: ${HYPOCURATE_PASSWORD:?set HYPOCURATE_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+volumes:
+  pgdata:

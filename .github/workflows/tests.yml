@@ -1,0 +1,87 @@
+# The regression suite on every push and pull request (PRD 13.1), and checks of
+# the image Render builds. Render deploys main automatically only after this
+# passes (render.yaml, autoDeployTrigger: checksPass).
+# Nothing here may be skipped or allowed to fail: Render counts skipped and
+# neutral checks as passed (tests/test_skeleton.py enforces this file's shape).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Throwaway secrets for this run only
+        run: |
+          {
+            echo "HYPOCURATE_ENV=development"
+            echo "HYPOCURATE_PASSWORD=$(openssl rand -hex 24)"
+            echo "SESSION_SECRET=$(openssl rand -hex 32)"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+          } > .env
+          # Planted: must never reach an image (.dockerignore).
+          echo "PLANTED=planted-env-backup-4410" > .env.production.bak
+
+      - name: Build the default image exactly as Render does
+        run: docker build --file ./Dockerfile --tag hypocurate:default .
+
+      - name: Build the test image
+        run: docker compose --profile test build test
+
+      - name: Check the default image holds no tests, docs or answers
+        run: |
+          test "$(docker inspect --format '{{.Config.User}}' hypocurate:default)" = app
+          docker inspect --format '{{json .Config.Cmd}}' hypocurate:default | grep -q 'uvicorn hypocurate.web.main:app'
+          docker create --name default-export hypocurate:default
+          docker cp default-export:/app ./default-image-app
+          docker rm default-export
+          docker run --rm -v "$PWD/default-image-app:/image:ro" hypocurate:test \
+            python scripts/check_runtime_image.py /image
+
+      - name: Check no environment file reached an image
+        run: |
+          for image in hypocurate:default hypocurate:test; do
+            found="$(docker run --rm --entrypoint sh "$image" -c 'cd /app && ls -A | grep "^\.env" || true')"
+            test -z "$found" -o "$found" = ".env.example" || { echo "$image: $found"; exit 1; }
+          done
+
+      - name: Run the suite in the test image
+        run: docker compose run --rm test
+
+      - name: Smoke-test the default image's default command
+        run: |
+          docker compose up -d db
+          network="$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q db)")"
+          set -a; . ./.env; set +a
+          docker run -d --name default-web --network "$network" -p 127.0.0.1:8001:8000 \
+            -e HYPOCURATE_ENV=production \
+            -e HYPOCURATE_PASSWORD="$(openssl rand -hex 16)" \
+            -e SESSION_SECRET \
+            -e DATABASE_URL="postgresql://hypocurate:${POSTGRES_PASSWORD}@db:5432/hypocurate" \
+            hypocurate:default
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8001/health && break; sleep 2; done
+          echo
+          curl -fsS http://127.0.0.1:8001/health | grep -q '"database":"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8001/)" = 303
+          docker rm -f default-web
+
+      - name: Start web, worker and database with Compose; check /health
+        run: |
+          docker compose up -d web worker
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/health && break; sleep 2; done
+          echo
+          curl -fsS http://127.0.0.1:8000/health | grep -q '"database":"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/)" = 303
+          docker compose ps worker --format '{{.State}}' | grep -q running
+
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color

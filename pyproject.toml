@@ -7,13 +7,25 @@ name = "hypocurate"
 version = "0.1.0"
 description = "Tests a scientific hypothesis in words against registered data sources."
 requires-python = ">=3.12"
+# Direct dependencies. The exact versions installed, with hashes, are in
+# requirements.lock and requirements-dev.lock (pip-compile --generate-hashes).
 dependencies = [
     "pandas>=2.2",
     "openpyxl>=3.1",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx2>=2.13", "pyyaml>=6"]
+
+[project.scripts]
+hypocurate = "hypocurate.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["hypocurate*"]
