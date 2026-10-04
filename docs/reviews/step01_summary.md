@@ -1,6 +1,6 @@
 # Build step 1 — summary for review
 
-Date: 2026-10-04. Branch: `step-01-sources`. PRD Section 15, step 1: "Sources frozen. Store copies of the MPEA dataset and the Texas A&M dataset with their fingerprints. Build the controlled duplicate extract."
+Date: 2026-10-04. Branch: `step-01-sources`. **Status: signed off by the owner, 2026-10-04.** PRD Section 15, step 1: "Sources frozen. Store copies of the MPEA dataset and the Texas A&M dataset with their fingerprints. Build the controlled duplicate extract."
 
 The suite is the gate; this summary is for the second-model review (PRD 13.2). It describes the state **after** the fixes for the first review and the re-check. Both are listed below.
 
@@ -21,7 +21,7 @@ The suite is the gate; this summary is for the second-model review (PRD 13.2). I
 | `scripts/fetch_sources.py` | Manual tool: downloads every frozen file again from its pinned origin (and, with `--zenodo`, the Zenodo archive) and compares it with the manifest. Never overwrites. Not part of the suite, so the suite does not need the network. |
 | `.gitattributes` | Marks `data/**` and `tests/fixtures/**` as `-text`, so git never converts line endings and a checkout on another machine keeps the fingerprinted bytes. |
 | `pyproject.toml`, `README.md` | Package metadata (pandas, openpyxl; pytest for dev) and how to run the suite. |
-| `docs/reviews/checklist.md` | The reviewer's checklist (PRD 13.2). **Draft, awaiting owner approval.** |
+| `docs/reviews/checklist.md` | The reviewer's checklist (PRD 13.2). Approved by the owner as a working draft; may be amended after its first use in step 2. |
 
 Not built, as instructed: Docker, database, web, CI workflow, agents.
 
@@ -169,6 +169,6 @@ The 77 eligible MPEA records contain no exact duplicates of each other. The file
 2. **Step 6: permitted test types (owner decision pending).** The reference plan must state its permitted test types explicitly before eligibility is implemented. Its 77 MPEA records include one compression test (MPEA row 139, doi 10.1016/j.jallcom.2014.12.157, CoCrFeMnNi, 350 µm, 230 MPa). Membership in that result set must not itself define the rule. The reference plan is **not** changed now. Extract rows 15–16 give the expected handling both ways.
 3. **Step 6: a non-MPEA survivor.** The behavioural tests for duplicate handling need a pair in which a source other than MPEA survives. In every pair of the current extract the MPEA record survives.
 4. **Step 5 requirement:** the access layer gives pipeline code an explicit list of approved input files. `tests/` and `docs/reviews/` must be outside it (finding 1).
-5. `docs/reviews/checklist.md` awaits owner approval.
+5. `docs/reviews/checklist.md` was approved as a working draft on 2026-10-04 and may be amended after its first use in step 2.
 6. The suite does not yet run on GitHub (step 2).
 7. Dependency versions are minimums, not a lock file. Revisit when the Docker image is built in step 2.

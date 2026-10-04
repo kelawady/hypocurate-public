@@ -1,6 +1,6 @@
 # Second-model review checklist
 
-**Status: draft, awaiting owner approval.** Drafted 2026-10-04 from PRD Section 13.2 and the rules in `CLAUDE.md`. Once approved, this is the fixed checklist given to the reviewer at every review.
+**Status: approved by the owner as a working draft, 2026-10-04.** Drafted from PRD Section 13.2 and the rules in `CLAUDE.md`. This is the fixed checklist given to the reviewer at every review. It may be amended after its first use in step 2; any amendment needs the owner's approval.
 
 ## When a review is required (PRD 13.2)
 - At the end of each build step in PRD Section 15.
