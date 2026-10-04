@@ -79,15 +79,14 @@
   "controlled_duplicates": {
     "name": "Controlled duplicate extract",
     "kind_of_data": "constructed test data; never pooled into a real analysis or a reference run",
-    "built_by": "scripts/build_controlled_duplicates.py",
     "built_from": "data/sources/mpea/MPEA_dataset.csv",
     "built": "2026-10-04",
     "files": [
       {
         "path": "data/controlled_duplicates/extract.csv",
         "role": "extract",
-        "sha256": "6aa33a6276c7fb77fad21fac34c684949b58b4e50ae3d55d8df1e4e533637926",
-        "bytes": 2993
+        "sha256": "8e11979a373c74f2bf6d8f39c8c0316164bcc3ac1361a7e325ccb0a36294afee",
+        "bytes": 3875
       }
     ]
   }

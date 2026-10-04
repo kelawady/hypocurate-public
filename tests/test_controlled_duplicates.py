@@ -10,11 +10,21 @@ from hypocurate.sources.manifest import REPO_ROOT, load_manifest, sha256_file
 
 MPEA_CSV = REPO_ROOT / "data/sources/mpea/MPEA_dataset.csv"
 EXTRACT = REPO_ROOT / "data/controlled_duplicates/extract.csv"
-TRUTH = REPO_ROOT / "tests/fixtures/controlled_duplicates_truth.csv"
+FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
+TRUTH = FIXTURES / "truth.csv"
 # Pinned here, outside data/, so the answer file cannot change without changing a test.
-TRUTH_SHA256 = "b5742da9c5118f52c78d62325b02164033a422e0e5a602212363abf40a3692a6"
+TRUTH_SHA256 = "fa70d4fbfed3ad8899b8f2240f45f53fe34e1be5537f268ca7cc55deb0ce5809"
+# The frozen source files: fingerprint-pinned, and not written by us, so they
+# cannot hold our answers. Everything else under data/ is scanned.
+FROZEN_SOURCE_FILES = {
+    "data/sources/mpea/MPEA_dataset.csv",
+    "data/sources/mpea/LICENSE",
+    "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx",
+    "data/sources/tamu_fcc/inputs.csv",
+    "data/sources/tamu_fcc/LICENSE",
+}
 
-_spec = importlib.util.spec_from_file_location("builder", REPO_ROOT / "scripts/build_controlled_duplicates.py")
+_spec = importlib.util.spec_from_file_location("builder", FIXTURES / "build.py")
 builder = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(builder)
 
@@ -61,15 +71,77 @@ def test_truth_fingerprint():
 
 # --- the answer file is out of the pipeline's reach --------------------------------
 
-def test_answer_file_is_not_under_data_or_the_package():
-    assert not list((REPO_ROOT / "data").rglob("*truth*"))
-    assert not list((REPO_ROOT / "hypocurate").rglob("*truth*"))
+def test_answer_material_is_not_under_data_or_the_package():
+    for root in ("data", "hypocurate"):
+        assert not list((REPO_ROOT / root).rglob("*truth*"))
+        assert not list((REPO_ROOT / root).rglob("build*.py"))
 
 
-def test_no_package_code_or_data_refers_to_the_answer_file():
-    for path in list((REPO_ROOT / "hypocurate").rglob("*.py")) + list((REPO_ROOT / "data").rglob("*")):
-        if path.is_file() and path.suffix in {".py", ".json", ".csv", ".md"}:
-            assert "controlled_duplicates_truth" not in path.read_text(encoding="utf-8"), path
+def _sentences(text):
+    return [s.strip() for s in re.split(r"(?<=\.)\s+", text) if len(s.strip()) > 30]
+
+
+def _row_specific_markers():
+    """Answer material tied to particular extract rows."""
+    markers = {"extract_row", "mpea_row", "survivor_in_primary", "truth.csv", "fixtures/controlled_duplicates"}
+    for t in TRUTH_ROWS:
+        markers |= {t["case"], t["explanation"], t["survivor_in_primary"]}
+        markers |= set(_sentences(t["explanation"]))
+    return markers
+
+
+def _generic_outcome_markers():
+    """Outcome vocabulary: forbidden under data/, allowed in the package (step 6 uses it)."""
+    markers = {"exact_duplicate", "possible_duplicate", "not_duplicate",
+               "counted once", "both enter", "both counted separately"}
+    markers |= {c for c in builder.TRUTH_COLUMNS if "_" in c}
+    for t in TRUTH_ROWS:
+        markers |= {t["prd_5_3_class"], t["survivor_reason"], t["survivor_rule"]}
+        markers |= {t[c] for c in ("primary_analysis", "sensitivity_analysis") if " " in t[c]}
+    return markers
+
+
+def _scanned_files(root):
+    for path in sorted((REPO_ROOT / root).rglob("*")):
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if path.is_file() and rel not in FROZEN_SOURCE_FILES and "__pycache__" not in path.parts:
+            yield rel, path.read_text(encoding="utf-8").lower()
+
+
+def test_no_expected_outcomes_under_data():
+    markers = {m.lower() for m in _row_specific_markers() | _generic_outcome_markers()}
+    scanned = 0
+    for rel, text in _scanned_files("data"):
+        scanned += 1
+        found = sorted(m for m in markers if m in text)
+        assert not found, f"{rel} contains expected-outcome material: {found}"
+    assert scanned >= 3  # manifest, extract, README
+
+
+def test_no_row_answers_under_package():
+    markers = {m.lower() for m in _row_specific_markers()}
+    scanned = 0
+    for rel, text in _scanned_files("hypocurate"):
+        scanned += 1
+        found = sorted(m for m in markers if m in text)
+        assert not found, f"{rel} contains row-specific answer material: {found}"
+    assert scanned >= 3
+
+
+def _strings(obj):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from _strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _strings(v)
+    elif isinstance(obj, str):
+        yield obj
+
+
+def test_manifest_points_to_nothing_holding_answers():
+    for s in _strings(load_manifest()):
+        assert "tests/" not in s and "scripts/" not in s and "fixtures" not in s, s
 
 
 def test_extract_carries_no_answer_columns():
@@ -79,8 +151,8 @@ def test_extract_carries_no_answer_columns():
 # --- content matches the stated construction ---------------------------------------
 
 def test_one_answer_per_extract_row():
-    assert len(EXTRACT_ROWS) == len(TRUTH_ROWS) == 12
-    assert [int(t["extract_row"]) for t in TRUTH_ROWS] == list(range(1, 13))
+    assert len(EXTRACT_ROWS) == len(TRUTH_ROWS) == 16
+    assert [int(t["extract_row"]) for t in TRUTH_ROWS] == list(range(1, 17))
 
 
 def test_every_case_is_present_twice():
@@ -91,6 +163,8 @@ def test_every_case_is_present_twice():
         "not_duplicate_value_differs": 2,
         "not_duplicate_other_paper": 2,
         "not_duplicate_other_temperature": 2,
+        "missing_test_condition": 2,
+        "not_duplicate_other_test_type": 2,
     }
 
 
@@ -160,6 +234,28 @@ def test_changed_values_are_as_stated():
             assert float(row[temp]) == -196.0
 
 
+def test_missing_test_condition_rows_keep_their_paper():
+    """Distinct from the missing-paper case: the paper is known, the test temperature is not."""
+    temp = COL["PROPERTY: Test temperature ($^\\circ$C)"]
+    rows = [t for t in TRUTH_ROWS if t["case"] == "missing_test_condition"]
+    assert len(rows) == 2
+    for t in rows:
+        src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
+        assert row[temp] == "" and src[temp] != ""
+        assert row[COL["REFERENCE: doi"]] == src[COL["REFERENCE: doi"]] != ""
+        assert t["prd_5_3_class"] == "Difference explained by missing metadata: scope cannot be confirmed"
+
+
+def test_other_test_type_rows_are_compression_copies_of_tension_records():
+    tt = COL["PROPERTY: Type of test"]
+    rows = [t for t in TRUTH_ROWS if t["case"] == "not_duplicate_other_test_type"]
+    assert len(rows) == 2
+    for t in rows:
+        src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
+        assert (src[tt], row[tt]) == ("T", "C")
+        assert t["duplicate_status"] == "not_duplicate"  # known different, not a possible duplicate
+
+
 # --- the expected answers follow PRD 5.3 ------------------------------------------
 
 EXPECTED = {
@@ -169,7 +265,16 @@ EXPECTED = {
     "not_duplicate_value_differs": ("not_duplicate", "both enter", "none"),
     "not_duplicate_other_paper": ("not_duplicate", "both enter", "none"),
     "not_duplicate_other_temperature": ("not_duplicate", "not eligible under a room-temperature plan", "none"),
+    "missing_test_condition": ("possible_duplicate", "not eligible: scope not confirmed", "included"),
+    "not_duplicate_other_test_type": (
+        "not_duplicate", "both enter under the reference plan (it sets no test-type rule)", "none"),
 }
+
+SURVIVOR_RULE = (
+    "1) prefer the record that carries the original paper reference (DOI); "
+    "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
+    "3) within one source, the lowest row number"
+)
 
 
 @pytest.mark.parametrize("t", TRUTH_ROWS, ids=lambda t: f"row{t['extract_row']}-{t['case']}")
@@ -186,3 +291,23 @@ def test_unknown_paper_is_flagged_as_possible_duplicate_kept_not_removed():
     for t in rows:
         assert t["prd_5_3_class"] == "Possible duplicate that cannot be resolved"
         assert "Flagged as a possible duplicate, kept, not removed." in t["explanation"]
+
+
+# --- which record survives in the primary analysis (owner's rule, 2026-10-04) ------
+
+@pytest.mark.parametrize("t", TRUTH_ROWS, ids=lambda t: f"row{t['extract_row']}-{t['case']}")
+def test_survivor_is_stated(t):
+    assert t["survivor_rule"] == SURVIVOR_RULE
+    if t["duplicate_status"] in ("exact_duplicate", "possible_duplicate"):
+        # Every pair in the extract: the MPEA record survives.
+        assert t["survivor_in_primary"] == f"MPEA row {t['mpea_row']}"
+        src = MPEA_ROWS[int(t["mpea_row"])]
+        row = EXTRACT_ROWS[int(t["extract_row"]) - 1]
+        doi = COL["REFERENCE: doi"]
+        if row[doi] == "":
+            assert t["survivor_reason"].startswith("rule 1:")  # only the MPEA record carries the paper
+        else:
+            assert row[doi] == src[doi]
+            assert t["survivor_reason"].startswith("rule 2:")  # both carry it; MPEA is first in order
+    else:
+        assert t["survivor_in_primary"] == "no pair: both kept"

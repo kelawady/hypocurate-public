@@ -5,6 +5,20 @@ import pytest
 from hypocurate.sources.manifest import REPO_ROOT, file_entries, load_manifest, sha256_file, verify
 
 MANIFEST = load_manifest()
+MANIFEST_PATH = REPO_ROOT / "data/manifest.json"
+# Pinned here, outside data/, so the data and the manifest cannot be changed
+# together without changing a test (second-model review of step 1, finding 2).
+MANIFEST_SHA256 = "fa25ebee6a7c95d4d05dfe7eec2d388001fe37cd975e027d688b2de70b11f5b8"
+# Every file the manifest must cover. Fixed here so that dropping an entry from
+# the manifest cannot silently remove its fingerprint check.
+REQUIRED_FILES = {
+    "data/sources/mpea/MPEA_dataset.csv",
+    "data/sources/mpea/LICENSE",
+    "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx",
+    "data/sources/tamu_fcc/inputs.csv",
+    "data/sources/tamu_fcc/LICENSE",
+    "data/controlled_duplicates/extract.csv",
+}
 MPEA_CSV = REPO_ROOT / "data/sources/mpea/MPEA_dataset.csv"
 TAMU_XLSX = REPO_ROOT / "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx"
 TAMU_CSV = REPO_ROOT / "data/sources/tamu_fcc/inputs.csv"
@@ -12,6 +26,19 @@ ELEMENTS = ["Al", "Co", "Cr", "Cu", "Fe", "Mn", "Ni", "V"]
 
 
 # --- fingerprints -------------------------------------------------------------
+
+def test_manifest_itself_is_unchanged():
+    assert sha256_file(MANIFEST_PATH) == MANIFEST_SHA256
+
+
+def test_manifest_covers_exactly_the_required_files():
+    assert {e.path for e in file_entries(MANIFEST)} == REQUIRED_FILES
+
+
+@pytest.mark.parametrize("path", sorted(REQUIRED_FILES))
+def test_required_file_is_present(path):
+    assert (REPO_ROOT / path).is_file()
+
 
 @pytest.mark.parametrize("entry", file_entries(MANIFEST), ids=lambda e: e.path)
 def test_frozen_file_matches_its_fingerprint(entry):
