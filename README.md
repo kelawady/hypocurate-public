@@ -14,7 +14,7 @@ Build step 2 of 12 (PRD Section 15): the skeleton. One Docker image for the web 
 cp .env.example .env     # then fill in every value; .env is never committed
 ```
 
-`HYPOCURATE_PASSWORD` is the login password (at least 12 characters). `SESSION_SECRET` signs the session cookie (at least 32 characters): `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. `POSTGRES_PASSWORD` is for the local database container only. `DATABASE_URL` is needed only to run the suite outside Docker: `postgresql://hypocurate:<POSTGRES_PASSWORD>@localhost:5432/hypocurate`.
+`HYPOCURATE_PASSWORD` is the login password: at least 24 characters in production (the site refuses to start otherwise), 12 locally. Generate it, e.g. with a password manager or `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` (32 random characters). `SESSION_SECRET` signs the session cookie (at least 32 characters): `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. `POSTGRES_PASSWORD` is for the local database container only. `DATABASE_URL` is needed only to run the suite outside Docker: `postgresql://hypocurate:<POSTGRES_PASSWORD>@localhost:5432/hypocurate`.
 
 ## Start the system locally
 
@@ -22,13 +22,20 @@ cp .env.example .env     # then fill in every value; .env is never committed
 docker compose up --build         # database, web (http://localhost:8000) and worker
 ```
 
-`/health` needs no login; every other page asks for the shared password.
+`/health` needs no login; every other page asks for the shared password. Compose publishes the web service on 127.0.0.1 only, because locally it is plain HTTP. Each service gets only the variables it needs; the worker never sees the login password or the session secret.
 
 In this Codespace, Docker has a leftover firewall rule that blocks traffic between containers. After every Codespace restart, run once:
 
 ```
 sudo iptables-legacy -I DOCKER-USER -j ACCEPT
 ```
+
+## Sessions and the login
+
+- A session is a signed cookie holding only `{"signed_in": true}`. It lasts 12 hours. There is no server-side session record.
+- **To revoke access, rotate `SESSION_SECRET` together with the password.** Changing the password alone does not end existing sessions. On Render: set a new `HYPOCURATE_PASSWORD` and a new `SESSION_SECRET` on the web service, then redeploy. Every existing session ends.
+- Logout clears the cookie in that browser only. A copied cookie keeps working until it expires or the secret is rotated. This is a known limitation of cookie-only sessions, stated in `tests/test_login.py`.
+- Failed logins are throttled: after 5 wrong passwords within 15 minutes, further wrong attempts are refused at once (429) until the window passes. The correct password is always accepted, so nobody can lock the owner out. The throttle bounds load; it does not slow guessing. The protection against guessing is the long, random password.
 
 ## Run the test suite
 
