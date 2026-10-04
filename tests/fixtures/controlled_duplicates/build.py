@@ -10,8 +10,11 @@ Outputs:
   tests/fixtures/controlled_duplicates/truth.csv   the expected answer per row
 
 This builder and its case table hold the answers, so they live under tests/,
-outside data/ and outside the hypocurate package: no part of the pipeline (and
-so no agent) can read them. Nothing under data/ points here.
+outside data/ and outside the hypocurate package, and nothing under data/ points
+here. That placement is a convention, not a guarantee: until the access layer
+(step 5) restricts pipeline code to an approved list of input files, code with
+repository access could still open these files, or the review documents in
+docs/reviews/, which also contain the answers. Both must stay outside that list.
 
 The build is deterministic: running it again on the frozen MPEA file gives the
 same bytes, and a test checks that.
@@ -47,18 +50,32 @@ NOT_REMOVED = "no"
 
 # Owner's decision (2026-10-04): which record of a duplicate pair enters the
 # primary analysis. Refines PRD 5.3 "the record from the original paper, or the
-# first source in a fixed order if the origin is unknown".
+# first source in a fixed order if the origin is unknown". Whether a record comes
+# directly from the original paper is detected by the original paper's DOI on it.
 SURVIVOR_RULE = (
-    "1) prefer the record that carries the original paper reference (DOI); "
+    "1) prefer the record that comes directly from the original paper (detected by the original paper's DOI on the record); "
     "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
     "3) within one source, the lowest row number"
 )
-BOTH_CARRY_PAPER = "rule 2: both records carry the paper reference; MPEA comes first in the fixed source order"
-ONLY_MPEA_CARRIES_PAPER = "rule 1: only the MPEA record carries the paper reference"
+BOTH_CARRY_PAPER = (
+    "rule 2: both records carry the original paper's DOI, so neither is detected as the one that comes "
+    "directly from it; MPEA comes first in the fixed source order"
+)
+ONLY_MPEA_CARRIES_PAPER = (
+    "rule 1: only the MPEA record carries the original paper's DOI, so it is detected as the one that "
+    "comes directly from the original paper"
+)
 NO_PAIR = "no pair: both kept"
+SAME_AS_REFERENCE_PLAN = "same as under the reference plan"
+TENSION_ONLY_EXCLUDED = (
+    "excluded by the test-type rule: outside the plan's scope "
+    "(PRD 5.3 'Incompatible measurements')"
+)
 NOT_SAME_MEASUREMENT = "not the same measurement"
 
-# Each case: the PRD 5.3 class it exercises and the expected handling.
+# Each case: the PRD 5.3 class it exercises and the expected handling, stated
+# for the reference plan (which sets no test-type rule). `tension_only` is the
+# expected handling under a plan that admits tension tests only.
 # `pair` says how the survivor is chosen: None when the two records are not the
 # same measurement.
 CASES = {
@@ -120,7 +137,8 @@ CASES = {
     ),
     "not_duplicate_other_test_type": dict(
         duplicate_status="not_duplicate",
-        prd_class="Incompatible measurements: outside the plan's scope",
+        prd_class="Within scope under the reference plan: distinct measurements, not duplicates",
+        tension_only=TENSION_ONLY_EXCLUDED,
         primary_analysis="both enter under the reference plan (it sets no test-type rule)",
         sensitivity_analysis="none",
         pair=None,
@@ -166,6 +184,7 @@ TRUTH_COLUMNS = [
     "removed_from_store",
     "primary_analysis",
     "sensitivity_analysis",
+    "handling_under_tension_only_plan",  # the reference plan sets no test-type rule
     "survivor_in_primary",  # which record of a duplicate pair enters the primary analysis
     "survivor_reason",
     "survivor_rule",
@@ -221,6 +240,7 @@ def build(mpea_path: Path = MPEA_PATH) -> tuple[str, str]:
             NOT_REMOVED,
             c["primary_analysis"],
             c["sensitivity_analysis"],
+            c.get("tension_only", SAME_AS_REFERENCE_PLAN),
             survivor,
             reason,
             SURVIVOR_RULE,

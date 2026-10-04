@@ -2,7 +2,7 @@
 
 Date: 2026-10-04. Branch: `step-01-sources`. PRD Section 15, step 1: "Sources frozen. Store copies of the MPEA dataset and the Texas A&M dataset with their fingerprints. Build the controlled duplicate extract."
 
-The suite is the gate; this summary is for the second-model review (PRD 13.2). It describes the state **after** the fixes for the first review. Those fixes are listed in "Review findings and fixes" below.
+The suite is the gate; this summary is for the second-model review (PRD 13.2). It describes the state **after** the fixes for the first review and the re-check. Both are listed below.
 
 ## What was built
 
@@ -41,16 +41,16 @@ Each row is one listed MPEA row, copied unchanged or with listed columns changed
 | 9–10 | same alloy, grain size, value; other paper | DOI → constructed `10.5555/hypocurate-test-000n` | not a duplicate; both enter | no pair |
 | 11–12 | same except test temperature | 25 → −196 °C | not a duplicate; out of scope for a room-temperature plan | no pair |
 | 13–14 | **missing test condition** | test temperature blanked (paper known) | scope cannot be confirmed; possible duplicate; not in primary; included in sensitivity | MPEA record (rule 2; this record is not eligible anyway) |
-| 15–16 | **other test type** | tension → compression | not a duplicate (known different, not a possible duplicate); both enter under the reference plan | no pair |
+| 15–16 | **other test type** | tension → compression | not a duplicate (known different, not a possible duplicate). Under the reference plan (no test-type rule): within scope, distinct measurements, both enter. Under a tension-only plan: excluded by the test-type rule | no pair |
 
 **Survivor rule (owner's decision, 2026-10-04, refining PRD 5.3):**
-1. Prefer the record that carries the original paper reference (DOI).
+1. Prefer the record that comes directly from the original paper. This is detected by the original paper's DOI on the record.
 2. If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract.
 3. Within one source, take the lowest row number.
 
 ## Review findings and fixes (first review, ChatGPT, 2026-10-04)
 
-The owner accepted all four findings. The review text is to be saved as `docs/reviews/step01_review_chatgpt.md`. **That file is not yet committed: the text has not been received.**
+The owner accepted all four findings. The review text is in `docs/reviews/step01_review_chatgpt.md`.
 
 1. **Answers exposed under `data/`.** The extract README listed the expected classification per row, and the manifest pointed to the builder, which holds the answers.
    - **Fix:**
@@ -63,7 +63,8 @@ The owner accepted all four findings. The review text is to be saved as `docs/re
      - `test_no_row_answers_under_package` scans `hypocurate/` for row-specific material only (owner's change: the generic vocabulary is legitimate pipeline language from step 6);
      - `test_manifest_points_to_nothing_holding_answers` checks the manifest.
    - These replace the filename test.
-   - **Requirement recorded for step 5:** the access layer must give pipeline code an **explicit list of approved input files** (`data/sources/**` and the extract), so that answer material under `tests/` is unreachable by construction, not by convention.
+   - **What this does and does not establish:** keeping answer material under `tests/` is a **convention, checked by content tests, not an access guarantee**. Until the access layer is built, pipeline code with repository access could still open files under `tests/`. It could also open the review documents in `docs/reviews/`, which contain the answers too (this summary and the packets among them).
+   - **Requirement recorded for step 5:** the access layer must give pipeline code an **explicit list of approved input files** (`data/sources/**` and the extract). `tests/` and `docs/reviews/` must be outside that list.
 2. **Freeze tests could lose coverage.**
    - **Fix:**
      - `REQUIRED_FILES` (6 paths) is fixed in the test, and the manifest's file set must equal it;
@@ -88,7 +89,30 @@ The owner accepted all four findings. The review text is to be saved as `docs/re
 | generic vocabulary added to a package file | passes, as intended |
 | `MPEA row 1315` added to a package file | `test_no_row_answers_under_package` fails |
 
-## Tests (91, all passing)
+## Re-check (ChatGPT, 2026-10-04) and corrections
+
+The re-check text is in `docs/reviews/step01_recheck_chatgpt.md`. Its verdict on each finding:
+
+| Finding | Re-check status |
+|---|---|
+| 1 | partly closed |
+| 2 | closed |
+| 3 | partly closed |
+| 4 | closed for this review, with owner approval still pending |
+
+The reviewer named one blocker: a contradictory fixture label. Correcting it, the reviewer said, leaves no remaining step-1 blocker.
+
+Corrections:
+1. **Rows 15–16 contradiction.** The answer file labelled them "Incompatible measurements: outside the plan's scope" while stating that both enter under the reference plan.
+   - Under the reference plan they are now labelled "Within scope under the reference plan: distinct measurements, not duplicates".
+   - A new answer-file column, `handling_under_tension_only_plan`, gives the expected handling under a tension-only plan: excluded by the test-type rule. For every other row it reads "same as under the reference plan".
+   - Two new tests check that no row is labelled out of scope while entering the analysis, and that the tension-only handling differs only for rows 15–16.
+   - The reference plan is not changed.
+2. **Answer isolation wording.** This summary, the fixtures README and the builder no longer describe isolation as guaranteed by directory placement. It is a convention until the step 5 access layer enforces an approved list of input files, and the review documents must be outside that list too (finding 1 above).
+3. **Survivor rule wording.** Rule 1 now reads "the record that comes directly from the original paper", detected by the original paper's DOI on the record. This is in the answer file, the fixtures README and this summary.
+4. **Two open items** were added for step 6 (items 2 and 3 below).
+
+## Tests (93, all passing)
 
 `tests/test_frozen_sources.py` (24):
 - the manifest's own fingerprint is pinned;
@@ -102,7 +126,7 @@ The owner accepted all four findings. The review text is to be saved as `docs/re
 - **Texas A&M: 94 samples, 82 compositions**, exactly 1 without yield strength (BBA09), and grain size present for all;
 - the CSV view equals the spreadsheet on composition, grain size, YS, HV, their SDs and processing.
 
-`tests/test_controlled_duplicates.py` (67):
+`tests/test_controlled_duplicates.py` (69):
 - rebuilding gives a byte-identical extract and answer file;
 - the extract's fingerprint is in the manifest, and the answer file's fingerprint is pinned in the test;
 - no answer material is under `data/` or the package (location and content), and the manifest points to nothing holding answers;
@@ -116,7 +140,9 @@ The owner accepted all four findings. The review text is to be saved as `docs/re
 - constructed DOIs do not occur in MPEA;
 - changed values are as stated;
 - missing-condition rows keep their paper;
-- test-type rows are compression copies of tension records;
+- test-type rows are compression copies of tension records, within scope under the reference plan, and excluded under a tension-only plan;
+- no row is labelled out of scope while entering the analysis;
+- the tension-only handling differs only for the compression rows;
 - the expected handling per case follows PRD 5.3;
 - the survivor is stated per the owner's rule for every row.
 
@@ -124,7 +150,7 @@ The owner accepted all four findings. The review text is to be saved as `docs/re
 ```
 $ .venv/bin/pytest -q
 ...........................................................................................
-91 passed in 1.31s
+93 passed in 0.66s
 ```
 Environment: Codespace, Python 3.14.2, pandas 3.0.6, openpyxl 3.1.5, pytest 9.1.1, in `.venv` (gitignored).
 
@@ -140,14 +166,9 @@ The 77 eligible MPEA records contain no exact duplicates of each other. The file
 
 ## Open items
 1. **Pooled p-value.** PRD 5.7/10 and CLAUDE.md state pooled p ≈ 8e-7. Recomputation gives 7.4e-7 (statsmodels 0.15.0), while k and its SE match. To be settled before the step 7 reference test (owner agreed).
-2. **Open question for the owner: compression test in the reference set.** The 77 MPEA records eligible under the reference plan include one compression test (MPEA row 139, doi 10.1016/j.jallcom.2014.12.157, CoCrFeMnNi, 350 µm, 230 MPa). So the reference plan sets no test-type rule. The reference plan is **not** changed. Extract rows 15–16 are stated relative to it.
-3. **Step 5 requirement:** the access layer gives pipeline code an explicit list of approved input files (see finding 1).
-4. `docs/reviews/checklist.md` awaits owner approval.
-5. `docs/reviews/step01_review_chatgpt.md` awaits the review text.
+2. **Step 6: permitted test types (owner decision pending).** The reference plan must state its permitted test types explicitly before eligibility is implemented. Its 77 MPEA records include one compression test (MPEA row 139, doi 10.1016/j.jallcom.2014.12.157, CoCrFeMnNi, 350 µm, 230 MPa). Membership in that result set must not itself define the rule. The reference plan is **not** changed now. Extract rows 15–16 give the expected handling both ways.
+3. **Step 6: a non-MPEA survivor.** The behavioural tests for duplicate handling need a pair in which a source other than MPEA survives. In every pair of the current extract the MPEA record survives.
+4. **Step 5 requirement:** the access layer gives pipeline code an explicit list of approved input files. `tests/` and `docs/reviews/` must be outside it (finding 1).
+5. `docs/reviews/checklist.md` awaits owner approval.
 6. The suite does not yet run on GitHub (step 2).
 7. Dependency versions are minimums, not a lock file. Revisit when the Docker image is built in step 2.
-
-## Questions for the reviewer
-- Do the fixes close the four findings?
-- Is the split between the data-content test (all outcome vocabulary) and the package test (row-specific material only) sound?
-- Is keeping both the raw spreadsheet and the authors' derived CSV a risk for step 4, given that the CSV also carries computed descriptors?

@@ -39,7 +39,7 @@ Answer each with yes, no or not applicable to this change. Give a reason for eve
   - nested fields;
   - text handed between stages.
 - [ ] The tests cover a role's **complete** input: prompt, every tool response and handed-over text. Do they include the planted-value test for the Planner and the Critic?
-- [ ] Pipeline code reads input files only from an explicit list of approved files. Is answer material under `tests/` unreachable by construction?
+- [ ] Pipeline code reads input files only from an explicit list of approved files. Are `tests/` and `docs/reviews/`, which hold expected answers, outside that list? Directory placement alone is a convention, not enforcement.
 - [ ] The Curator is not told the direction of the claim.
 - [ ] The Critic gets the kind of each flag, never the numbers.
 
@@ -60,7 +60,7 @@ Answer each with yes, no or not applicable to this change. Give a reason for eve
 - [ ] Eligibility is decided by code under the locked rules. Do the defaults match the PRD 5.3 table?
 - [ ] Duplicates require all of these: the same original paper, alloy, grain size, value and test conditions. Is matching alloy and grain size alone kept from counting?
 - [ ] The survivor of a duplicate pair follows the owner's rule:
-  1. paper reference;
+  1. the record that comes directly from the original paper (detected by its DOI);
   2. then the fixed source order MPEA, Texas A&M, controlled extract;
   3. then the lowest row.
 - [ ] Conflicting records are preserved, not automatically pooled.

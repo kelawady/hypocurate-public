@@ -13,7 +13,7 @@ EXTRACT = REPO_ROOT / "data/controlled_duplicates/extract.csv"
 FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
 TRUTH = FIXTURES / "truth.csv"
 # Pinned here, outside data/, so the answer file cannot change without changing a test.
-TRUTH_SHA256 = "fa70d4fbfed3ad8899b8f2240f45f53fe34e1be5537f268ca7cc55deb0ce5809"
+TRUTH_SHA256 = "e64b1035f0e1a69198ad690dedec73c8fdc1331b08148f8a19f8701c93861f2e"
 # The frozen source files: fingerprint-pinned, and not written by us, so they
 # cannot hold our answers. Everything else under data/ is scanned.
 FROZEN_SOURCE_FILES = {
@@ -69,7 +69,9 @@ def test_truth_fingerprint():
     assert sha256_file(TRUTH) == TRUTH_SHA256
 
 
-# --- the answer file is out of the pipeline's reach --------------------------------
+# --- no answer material under data/ or the package -----------------------------------
+# A convention checked by content, not an access guarantee: enforcement is the
+# approved-input-file list of the access layer (step 5).
 
 def test_answer_material_is_not_under_data_or_the_package():
     for root in ("data", "hypocurate"):
@@ -254,6 +256,25 @@ def test_other_test_type_rows_are_compression_copies_of_tension_records():
         src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
         assert (src[tt], row[tt]) == ("T", "C")
         assert t["duplicate_status"] == "not_duplicate"  # known different, not a possible duplicate
+        # The reference plan sets no test-type rule: within scope, and both enter.
+        assert t["prd_5_3_class"] == "Within scope under the reference plan: distinct measurements, not duplicates"
+        assert t["primary_analysis"] == "both enter under the reference plan (it sets no test-type rule)"
+        # Under a tension-only plan the compression record is out of scope.
+        assert t["handling_under_tension_only_plan"] == (
+            "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')")
+
+
+def test_no_row_is_labelled_out_of_scope_while_entering_the_analysis():
+    """A row's PRD 5.3 class and its primary handling must describe the same plan."""
+    for t in TRUTH_ROWS:
+        if t["prd_5_3_class"].startswith("Incompatible measurements"):
+            assert t["primary_analysis"].startswith("not eligible"), t["extract_row"]
+
+
+def test_tension_only_handling_differs_only_for_compression_rows():
+    for t in TRUTH_ROWS:
+        if t["case"] != "not_duplicate_other_test_type":
+            assert t["handling_under_tension_only_plan"] == "same as under the reference plan"
 
 
 # --- the expected answers follow PRD 5.3 ------------------------------------------
@@ -271,7 +292,7 @@ EXPECTED = {
 }
 
 SURVIVOR_RULE = (
-    "1) prefer the record that carries the original paper reference (DOI); "
+    "1) prefer the record that comes directly from the original paper (detected by the original paper's DOI on the record); "
     "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
     "3) within one source, the lowest row number"
 )
@@ -305,7 +326,7 @@ def test_survivor_is_stated(t):
         row = EXTRACT_ROWS[int(t["extract_row"]) - 1]
         doi = COL["REFERENCE: doi"]
         if row[doi] == "":
-            assert t["survivor_reason"].startswith("rule 1:")  # only the MPEA record carries the paper
+            assert t["survivor_reason"].startswith("rule 1:")  # only the MPEA record carries the paper's DOI
         else:
             assert row[doi] == src[doi]
             assert t["survivor_reason"].startswith("rule 2:")  # both carry it; MPEA is first in order
