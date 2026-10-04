@@ -54,9 +54,12 @@ def test_env_example_holds_names_only():
     assert SECRET_NAMES | {"HYPOCURATE_ENV"} == names
 
 
-def test_env_is_ignored_by_git_and_docker():
-    assert ".env" in read(".gitignore").splitlines()
-    assert ".env" in read(".dockerignore").splitlines()
+def test_every_env_file_is_ignored_by_git_and_docker():
+    """Review finding 5: .env.production, backups and the like too; only the template passes."""
+    for ignore in (".gitignore", ".dockerignore"):
+        lines = [l.strip() for l in read(ignore).splitlines()]
+        assert ".env*" in lines and "!.env.example" in lines, ignore
+        assert lines.index(".env*") < lines.index("!.env.example"), ignore
 
 
 def text_files():
@@ -137,9 +140,44 @@ def test_test_tools_are_not_in_the_runtime_lock():
 
 # --- Docker image ------------------------------------------------------------------
 
+def dockerfile_stages(text=None):
+    """The stages in order, as (name, parent, body)."""
+    out = []
+    for part in re.split(r"^FROM ", text or read("Dockerfile"), flags=re.M)[1:]:
+        parent, name = re.match(r"(\S+) AS (\w+)", part.splitlines()[0]).groups()
+        out.append((name, parent, part))
+    return out
+
+
 def stages():
-    parts = re.split(r"^FROM ", read("Dockerfile"), flags=re.M)[1:]
-    return {re.search(r" AS (\w+)", p.splitlines()[0]).group(1): p for p in parts}
+    return {name: body for name, _, body in dockerfile_stages()}
+
+
+def default_image(text=None):
+    """What a plain `docker build .` (Render) produces: the LAST stage and every stage
+    it is built FROM, with all the sources they COPY in, in build order."""
+    found = dockerfile_stages(text)
+    by_name = {name: (parent, body) for name, parent, body in found}
+    chain, sources, name = [], [], found[-1][0]
+    while name in by_name:
+        parent, body = by_name[name]
+        chain.append(name)
+        stage_sources = []
+        for args in re.findall(r"^COPY (.+)$", body, re.M):
+            stage_sources += [a for a in args.split() if not a.startswith("--")][:-1]
+        sources = stage_sources + sources
+        name = parent
+    return chain, sources
+
+
+def default_image_problems(text=None):
+    chain, sources = default_image(text)
+    problems = []
+    if chain[0] != "runtime":
+        problems.append(f"the default (last) stage is {chain[0]!r}, not 'runtime'")
+    if sources != ["requirements.lock", "hypocurate/", "data/"]:
+        problems.append(f"the default image copies {sources}")
+    return problems
 
 
 def test_base_images_are_pinned_by_digest():
@@ -148,9 +186,35 @@ def test_base_images_are_pinned_by_digest():
     assert re.search(r"image: postgres:17@sha256:[0-9a-f]{64}", read("docker-compose.yml"))
 
 
-def test_runtime_image_holds_only_package_data_and_lock():
-    copies = re.findall(r"^COPY (\S+)", stages()["runtime"], re.M)
-    assert copies == ["requirements.lock", "hypocurate/", "data/"]
+def test_default_image_is_the_clean_runtime_stage():
+    """Review finding 1: Render builds the last stage. It must be the runtime stage, and
+    neither it nor any stage it is built from may copy tests/, docs/ or the whole repository."""
+    assert default_image_problems() == []
+    assert default_image()[0] == ["runtime", "base"]
+
+
+def test_default_image_check_catches_the_old_layout():
+    """The step 2 Dockerfile as first reviewed (test stage last) fails the check above."""
+    old = """FROM python:3.14-slim AS runtime
+COPY requirements.lock ./
+COPY hypocurate/ hypocurate/
+COPY data/ data/
+CMD ["sh", "-c", "exec uvicorn hypocurate.web.main:app"]
+FROM runtime AS test
+COPY requirements-dev.lock ./
+COPY . .
+CMD ["pytest", "-q"]
+"""
+    problems = default_image_problems(old)
+    assert any("not 'runtime'" in p for p in problems)
+    assert any("'.'" in p for p in problems)
+
+
+def test_default_image_serves_the_web_by_default():
+    final_name, _, final_body = dockerfile_stages()[-1]
+    cmds = re.findall(r"^CMD (.+)$", final_body, re.M)
+    assert final_name == "runtime" and len(cmds) == 1
+    assert "uvicorn hypocurate.web.main:app" in cmds[0]
 
 
 def test_installs_require_hashes():
@@ -165,23 +229,50 @@ def test_image_runs_as_non_root():
 
 
 def test_web_runs_one_process():
-    """The login limit is kept in memory, so it holds only with one web process."""
+    """The login throttle is kept in memory, so it holds only with one web process."""
     assert "--workers 1" in stages()["runtime"]
 
 
-# --- Docker Compose -----------------------------------------------------------------
+# --- Docker Compose (review finding 5) ------------------------------------------------
+
+COMPOSE_ENV = {
+    "db": {"POSTGRES_USER", "POSTGRES_DB", "POSTGRES_PASSWORD"},
+    "web": {"HYPOCURATE_ENV", "DATABASE_URL", "HYPOCURATE_PASSWORD", "SESSION_SECRET"},
+    "worker": {"HYPOCURATE_ENV", "DATABASE_URL"},
+    "test": {"DATABASE_URL", "HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD"},
+}
+
+
+def compose():
+    return yaml.safe_load(read("docker-compose.yml"))["services"]
+
 
 def test_compose_has_web_worker_database_and_test():
-    services = yaml.safe_load(read("docker-compose.yml"))["services"]
-    assert {"db", "web", "worker", "test"} <= set(services)
+    services = compose()
+    assert set(services) == set(COMPOSE_ENV)
     assert services["worker"]["command"] == ["python", "-m", "hypocurate.worker"]
+    assert services["web"]["build"]["target"] == services["worker"]["build"]["target"] == "runtime"
     assert services["test"]["build"]["target"] == "test"
 
 
-def test_compose_takes_secrets_from_env_only():
-    compose = read("docker-compose.yml")
-    assert "${POSTGRES_PASSWORD:?" in compose
-    assert not re.search(r"(HYPOCURATE_PASSWORD|SESSION_SECRET)\s*:", compose)
+def test_compose_gives_each_service_only_its_variables():
+    for name, service in compose().items():
+        assert "env_file" not in service, name
+        assert set(service["environment"]) == COMPOSE_ENV[name], name
+
+
+def test_compose_takes_secret_values_from_env_only():
+    for name, service in compose().items():
+        env = service["environment"]
+        for key in {"HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD"} & set(env):
+            assert env[key].startswith("${" + key + ":?"), (name, key)
+        if "DATABASE_URL" in env:
+            assert "${POSTGRES_PASSWORD:?" in env["DATABASE_URL"], name
+
+
+def test_compose_ports_are_bound_to_localhost():
+    ports = [p for s in compose().values() for p in s.get("ports", [])]
+    assert ports and all(p.startswith("127.0.0.1:") for p in ports)
 
 
 # --- Render ---------------------------------------------------------------------------
@@ -234,22 +325,52 @@ def test_render_worker_gets_no_login_secrets():
     assert {v["key"] for v in worker["envVars"]} == {"HYPOCURATE_ENV", "DATABASE_URL"}
 
 
-# --- GitHub Actions -------------------------------------------------------------------
+# --- GitHub Actions (review finding 6) -------------------------------------------------
+# Render counts a skipped or neutral check as passed, so nothing may be skippable.
 
-def test_ci_runs_the_whole_suite_on_every_push_and_pull_request():
-    wf = yaml.safe_load(read(".github/workflows/tests.yml"))
-    triggers = wf[True]  # YAML 1.1 reads the key "on" as True
-    assert set(triggers) == {"push", "pull_request"}
-    assert triggers["push"] is None  # every branch, including main (Render waits for it)
-    steps = " ".join(s.get("run", "") for s in wf["jobs"]["tests"]["steps"])
-    assert "docker compose run --rm test" in steps
-    assert "/health" in steps
+REQUIRED_STEPS = {
+    "Build the default image exactly as Render does": "docker build --file ./Dockerfile --tag hypocurate:default .",
+    "Check the default image holds no tests, docs or answers": "python scripts/check_runtime_image.py /image",
+    "Check no environment file reached an image": "hypocurate:default hypocurate:test",
+    "Run the suite in the test image": "docker compose run --rm test",
+    "Smoke-test the default image's default command": "hypocurate:default",
+    "Start web, worker and database with Compose; check /health": "/health",
+}
+
+
+def workflow():
+    return yaml.safe_load(read(".github/workflows/tests.yml"))
+
+
+def test_ci_runs_on_every_push_and_pull_request_without_filters():
+    triggers = workflow()[True]  # YAML 1.1 reads the key "on" as True
+    assert triggers == {"push": None, "pull_request": None}
+
+
+def test_ci_has_every_required_step():
+    steps = {s.get("name"): s.get("run", "") for s in workflow()["jobs"]["tests"]["steps"]}
+    for name, command in REQUIRED_STEPS.items():
+        assert name in steps, name
+        assert command in steps[name], name
+
+
+def test_ci_nothing_can_be_skipped_or_allowed_to_fail():
+    wf = workflow()
+    assert "continue-on-error" not in read(".github/workflows/tests.yml")
+    assert list(wf["jobs"]) == ["tests"]
+    job = wf["jobs"]["tests"]
+    assert "if" not in job and "strategy" not in job
+    assert "defaults" not in wf and "defaults" not in job  # keep GitHub's `bash -eo pipefail`
+    for step in job["steps"]:
+        assert "shell" not in step, step.get("name")
+        if "if" in step:
+            assert (step["name"], step["if"]) == ("Logs", "always()")
 
 
 def test_suite_command_runs_everything():
     """The test image runs plain pytest: no marker, -k or path filter can drop tests."""
-    test_stage = stages()["test"]
-    assert re.search(r'^CMD \["pytest", "-q"\]$', test_stage, re.M)
+    assert re.search(r'^CMD \["pytest", "-q"\]$', stages()["test"], re.M)
+    assert "command" not in compose()["test"]  # `docker compose run --rm test` uses that CMD
 
 
 def test_ci_actions_are_pinned_to_a_commit():
