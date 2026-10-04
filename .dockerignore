@@ -1,6 +1,9 @@
 .git
 .venv
-.env
+# Every local environment file and backup (.env, .env.production, .env.bak, ...);
+# only the names-only template goes into the build context.
+.env*
+!.env.example
 .pytest_cache
 **/__pycache__
 *.egg-info

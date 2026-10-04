@@ -1,15 +1,14 @@
 # Local work: database, web service, worker; the suite with `docker compose run --rm test`.
-# Secrets come from .env (see .env.example), never from this file.
+# Values come from .env (see .env.example), never from this file. Compose reads
+# .env only to fill in the ${...} below; each service gets only the variables it
+# needs (second-model review of step 2, finding 5).
+x-database-url: &database-url postgresql://hypocurate:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/hypocurate
+
 x-app: &app
   build:
     context: .
     target: runtime
   image: hypocurate:runtime
-  env_file:
-    - path: .env
-      required: false
-  environment:
-    DATABASE_URL: postgresql://hypocurate:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/hypocurate
   depends_on:
     db:
       condition: service_healthy
@@ -33,13 +32,24 @@ services:
 
   web:
     <<: *app
+    environment:
+      HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
+      DATABASE_URL: *database-url
+      HYPOCURATE_PASSWORD: ${HYPOCURATE_PASSWORD:?set HYPOCURATE_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+    # Plain HTTP locally: reachable from this machine only.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   worker:
     <<: *app
     command: ["python", "-m", "hypocurate.worker"]
+    environment:
+      HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
+      DATABASE_URL: *database-url
 
+  # The secrets are passed only so that the suite can check that none of their
+  # values appears in any file (tests/test_skeleton.py).
   test:
     <<: *app
     build:
@@ -47,6 +57,11 @@ services:
       target: test
     image: hypocurate:test
     profiles: ["test"]
+    environment:
+      DATABASE_URL: *database-url
+      HYPOCURATE_PASSWORD: ${HYPOCURATE_PASSWORD:?set HYPOCURATE_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
 volumes:
   pgdata:
