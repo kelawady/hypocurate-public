@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Health · HypoCurate{% endblock %}
+{% block content %}
+<h1>Health</h1>
+<table>
+  <tr><th>Web service</th><td>{{ status.web }}</td></tr>
+  <tr><th>Database</th><td class="{{ 'ok' if status.database == 'ok' else 'error' }}">{{ status.database }}</td></tr>
+  <tr><th>Version</th><td><code>{{ status.version }}</code></td></tr>
+</table>
+{% endblock %}
