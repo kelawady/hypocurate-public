@@ -1,30 +1,31 @@
 # Build step 2 — summary for review
 
-Date: 2026-10-04. Branch: `step-02-skeleton`. **Status: built and green on GitHub; awaiting the second-model review and the owner's sign-off.** PRD Section 15, step 2: "Skeleton. Repository, Docker image, Docker Compose with web, worker and database, a health page, login, and the regression suite running automatically on GitHub."
+Date: 2026-10-04. Branch: `step-02-skeleton`. **Status: the six findings of the second-model review are fixed and green on GitHub; awaiting the re-check and the owner's sign-off.** PRD Section 15, step 2: "Skeleton. Repository, Docker image, Docker Compose with web, worker and database, a health page, login, and the regression suite running automatically on GitHub."
 
-The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`; this is the checklist's first use.
+The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md` (first used in this step). It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step02_review_chatgpt.md`.
 
 ## What was built
 
 | Path | What it is |
 |---|---|
 | `hypocurate/pipeline/`, `access/`, `db/`, `web/` (`__init__.py`) | PRD 6.1 layout. `pipeline` and `access` hold a docstring only. |
-| `hypocurate/config.py` | Settings from environment variables. `DATABASE_URL` is always required. The web service also requires `HYPOCURATE_PASSWORD` (≥ 12 characters) and `SESSION_SECRET` (≥ 32 characters), in every environment, not only production; the worker and command line do not get them. Error messages name the setting, never its value. The secrets are hidden from `repr`. |
-| `hypocurate/db/engine.py` | SQLAlchemy engine (psycopg 3) and `database_reachable` (`SELECT 1`, never raises). **No tables, no Alembic.** Login uses a signed cookie and health uses `SELECT 1`, so neither needs a table. |
-| `hypocurate/web/app.py`, `main.py`, `templates/`, `static/style.css` | The web service: `GET/POST /login`, `POST /logout`, `GET /health`, and a placeholder `/` page ("signed in"). Every path except `/login`, `/health` and `/static/` redirects to `/login` without a session, including FastAPI's `/docs`, `/redoc` and `/openapi.json`, which are switched off. The password is compared with `hmac.compare_digest`. The session is Starlette's `SessionMiddleware`: an itsdangerous-signed cookie `hypocurate_session`, 12-hour max age, `SameSite=Lax`, `HttpOnly`, and `Secure` in production. |
-| `hypocurate/web/login_limit.py` | Failed-login limit, in memory (owner's addition). After 5 failures within 15 minutes, every login is refused with 429 for 5 minutes, even with the right password. A success clears the count; a restart clears everything. The limit is global, not per IP, because behind Render's proxy the client address can be spoofed. The web service runs one process (`--workers 1`), so the count is shared. |
-| `/health` | Public. Reports `web`, `database` (`ok` / `unreachable`) and `version` (Render's `RENDER_GIT_COMMIT`, else `unknown`). JSON by default, or an HTML page for a browser. Returns 503 when the database does not answer. No data and no secrets. |
-| `hypocurate/worker.py` | Idle loop (owner's decision): it checks the database, logs "worker idle: no pipeline yet; database reachable", and sleeps 60 s. No queue, heartbeat or pipeline; those are step 9. |
+| `hypocurate/config.py` | Settings from environment variables. `DATABASE_URL` is always required. The web service also requires `HYPOCURATE_PASSWORD` and `SESSION_SECRET` (≥ 32 characters) in every environment. The password must be **≥ 24 characters in production** and ≥ 12 in development. The worker and command line do not get these two. Error messages name the setting, never its value. The secrets are hidden from `repr`. |
+| `hypocurate/db/engine.py` | SQLAlchemy engine (psycopg 3) and `database_reachable` (`SELECT 1`, never raises). **No tables, no Alembic.** |
+| `hypocurate/web/app.py`, `main.py`, `templates/`, `static/style.css` | The web service: `GET/POST /login`, `POST /logout`, `GET /health`, and a placeholder `/` page ("signed in").<br>• Public paths are **exactly** `/login` and `/health`, plus files under the `/static/` prefix. Everything else redirects to `/login` without a session.<br>• FastAPI's `/docs`, `/redoc` and `/openapi.json` are switched off (404 when signed in).<br>• The session is Starlette's `SessionMiddleware`: an itsdangerous-signed cookie `hypocurate_session` holding only `{"signed_in": true}`, 12-hour max age, `SameSite=Lax`, `HttpOnly`, and `Secure` in production. |
+| `hypocurate/web/login_throttle.py` | Bounded throttling of failed logins, in memory.<br>• **The correct password is always accepted.**<br>• Wrong passwords are counted; after 5 within 15 minutes, further wrong attempts are refused at once (429) and not counted, until the oldest counted failure leaves the window.<br>• The comparison, the check and the count happen under one lock.<br>• **What it does not do:** slow guessing. A correct guess is accepted even while throttled. The protection against guessing is the password: ≥ 24 random characters in production. The throttle bounds work and log noise.<br>• The web service runs one process (`--workers 1`), so the count is shared; a restart clears it. |
+| `/health` | Public. Reports `web`, `database` (`ok` / `unreachable`) and `version` (Render's `RENDER_GIT_COMMIT`, else `unknown`). JSON by default, or an HTML page for a browser. 503 when the database does not answer. No data and no secrets. |
+| `hypocurate/worker.py` | Idle loop (owner's decision): it checks the database, logs, and sleeps 60 s. No queue, heartbeat or pipeline; those are step 9. |
 | `hypocurate/cli.py` | `hypocurate version` and `hypocurate check-db` only. |
 | `pyproject.toml`, `requirements.lock`, `requirements-dev.lock` | Direct dependencies in `pyproject.toml`. Exact versions with SHA-256 hashes, generated by pip-tools 7.6.1. The images install with `--require-hashes`. This closes step 1 open item 7. |
-| `Dockerfile` | `python:3.14-slim`, pinned by digest. **`runtime` stage** (web and worker): it copies only `requirements.lock`, `hypocurate/` and `data/`. `tests/` and `docs/` (including `docs/reviews/`), which hold expected answers, are not in the deployed image; I checked this by listing `/app` in the built image. It runs as a non-root user `app`. **`test` stage**: runtime plus the dev lock and the whole repository context, minus `.dockerignore`; runs `pytest -q`. |
-| `.dockerignore` | `.git`, `.venv`, `.env`, caches, egg-info. |
-| `docker-compose.yml` | `db` (postgres:17, pinned by digest, health check, named volume, port bound to 127.0.0.1), `web` (port 8000), `worker`, and `test` (profile `test`, the test image). Secrets come from `.env`. `POSTGRES_PASSWORD` is required (`${POSTGRES_PASSWORD:?}`). |
+| `Dockerfile` | `python:3.14-slim`, pinned by digest. Three stages:<br>• `base`: runtime lock, non-root user `app`, `hypocurate/`, `data/`;<br>• `test`: base, plus the dev lock and the repository; runs `pytest -q`;<br>• **`runtime`, last**: base plus the uvicorn command.<br>A plain `docker build .`, which is what Render runs, gives the runtime image. It holds only `requirements.lock`, `hypocurate/` and `data/`. |
+| `scripts/check_runtime_image.py` | Checks a copy of an image's `/app`:<br>• the top level is exactly `hypocurate`, `data` and `requirements.lock`;<br>• the server and worker files are present;<br>• there is no `tests/`, `docs/`, `scripts/` or `fixtures/` directory;<br>• there is no answer file, builder, review document, `conftest.py` or `test_*.py`;<br>• no file contains answer material. It uses the step 1 tests' own marker functions (row-specific answers everywhere, the outcome vocabulary under `data/`).<br>It runs in the test image, because the markers come from `tests/`, which is never in the deployed image. |
+| `.dockerignore`, `.gitignore` | Both ignore `.env*` except `.env.example`, so `.env.production`, backups and similar files are excluded. |
+| `docker-compose.yml` | `db` (postgres:17 pinned by digest), `web`, `worker`, and `test` (profile `test`). No `env_file`: each service gets only its own variables through `${VAR:?}` interpolation from `.env`.<br>• db: `POSTGRES_*`;<br>• web: `HYPOCURATE_ENV`, `DATABASE_URL`, `HYPOCURATE_PASSWORD`, `SESSION_SECRET`;<br>• worker: `HYPOCURATE_ENV`, `DATABASE_URL`;<br>• test: `DATABASE_URL` and the three secrets, which only the leak-scan test reads.<br>Ports are published on 127.0.0.1 only. |
 | `.env.example` | Names only: `HYPOCURATE_ENV`, `HYPOCURATE_PASSWORD`, `SESSION_SECRET`, `POSTGRES_PASSWORD`, `DATABASE_URL`. |
-| `render.yaml` | Blueprint: web service, background worker, PostgreSQL 17, all in `oregon`.<br>• Plans are the cheapest paid (owner's decision): web `0.5c-512mb`, worker `0.5c-512mb`, database `0.1c-256mb`, which are Render's current names for the old starter and basic-256mb.<br>• `autoDeployTrigger: checksPass` on both services (owner's request).<br>• `DATABASE_URL` comes from the database's private-network `connectionString`.<br>• `SESSION_SECRET` has `generateValue: true`; `HYPOCURATE_PASSWORD` has `sync: false` and is entered by the owner in Render.<br>• The worker gets no login secrets.<br>• Database `ipAllowList: []` blocks all outside connections.<br>• Checked against render.com/docs/blueprint-spec and render.com/docs/deploys on 2026-10-04. Render does not allow `sync: false` in an environment group, so the variables are listed per service. |
-| `.github/workflows/tests.yml` | Check `tests`, on every push (all branches, including `main`, which Render's `checksPass` waits for) and every pull request.<br>• Writes throwaway random secrets to `.env`, builds the images, and runs `docker compose run --rm test`.<br>• Then starts web, worker and database, and checks that `/health` reports the database `ok`, that `/` redirects to login (303), and that the worker is running.<br>• `actions/checkout` is pinned by commit (v7.0.1). Permissions are `contents: read`. |
+| `render.yaml` | Blueprint: web service, background worker, PostgreSQL 17, all in `oregon`.<br>• Plans are the cheapest paid (owner's decision): web `0.5c-512mb`, worker `0.5c-512mb`, database `0.1c-256mb`.<br>• `autoDeployTrigger: checksPass` on both services.<br>• `DATABASE_URL` comes from the database's private-network `connectionString`.<br>• `SESSION_SECRET` has `generateValue: true`; `HYPOCURATE_PASSWORD` has `sync: false` and is entered by the owner in Render.<br>• The worker gets no login secrets.<br>• Database `ipAllowList: []` blocks all outside connections.<br>Checked against render.com/docs/blueprint-spec and render.com/docs/deploys on 2026-10-04. |
+| `.github/workflows/tests.yml` | Check `tests`, on every push (all branches, including `main`) and every pull request, with no path or branch filters. Steps:<br>1. writes throwaway random secrets, and plants `.env.production.bak`;<br>2. **builds the default image exactly as Render does** (`docker build --file ./Dockerfile .`, no target);<br>3. checks that it runs as `app` with the uvicorn command, copies out its `/app`, and runs `check_runtime_image.py` on it;<br>4. checks that no `.env*` file other than `.env.example` reached either image;<br>5. runs the suite in the test image;<br>6. **smoke-tests the default image's default command**: `/health` reports the database `ok`, and `/` gives 303;<br>7. starts the Compose stack: `/health` ok, `/` gives 303, the worker is running.<br>`actions/checkout` is pinned by commit (v7.0.1). Permissions are `contents: read`. |
 | `tests/conftest.py` | `database_url` fixture. When PostgreSQL is not reachable it **fails, it never skips**, with instructions. |
-| `README.md` | CI badge; secrets set-up; `docker compose up`; the Codespace firewall note; running the suite both ways; regenerating the locks; deployment. |
+| `README.md` | CI badge; secrets (with the 24-character rule); `docker compose up`; **Sessions and the login**: rotating `SESSION_SECRET` with the password to revoke access, the copied-cookie limitation, the throttle; the Codespace firewall note; running the suite; regenerating the locks; deployment. |
 
 Not built, as instructed: tables, migrations, the access layer, agents, pipeline code, screens other than login and health.
 
@@ -35,82 +36,126 @@ Python 3.14 was chosen after checking that the libraries of later steps publish 
 - statsmodels 0.15.0 and scipy 1.18.1 (both with cp314 wheels);
 - their native dependencies: numpy 2.5.3, tiktoken 0.14.0, tokenizers 0.23.2.
 
-They are not added to the lock now because nothing uses them yet. They will be added in steps 7–8. The Codespace also runs 3.14.2.
+They are not added to the lock now because nothing uses them yet. The Codespace also runs 3.14.2.
 
 ### Other choices made while building
-- The web service requires its secrets in development too, not only in production as the plan said. This is stricter, so a missing `.env` can never start an unprotected site.
+- The web service requires its secrets in development too, not only in production, so a missing `.env` can never start an unprotected site.
 - The test client is `httpx2`, which Starlette recommends in place of `httpx` (it gave a deprecation warning).
 - pyyaml is a dev dependency only, for reading `render.yaml`, Compose and the workflow in tests.
 
-## Tests (151, all passing; 58 new, the 93 from step 1 unchanged)
+### What the deploy gate does and does not cover
+- `autoDeployTrigger: checksPass` gates Render's **automatic** deploys only. A manual deploy from Render's dashboard (or its API) is a separate path that this setting does not block.
+- Render counts a check as passed if its conclusion is `success`, `neutral` **or `skipped`**. It does not deploy when a check fails or when no check is found for the commit. That is why the workflow test forbids `continue-on-error`, job or step conditions (except the final logs step), path or branch filters, and shell overrides.
+- The live Render configuration is not shown yet: Render is connected only after sign-off. Checking that the live services carry `checksPass` will be part of that walkthrough.
+
+## Review findings and fixes (first review, ChatGPT, 2026-10-04)
+
+The owner accepted all six findings.
+
+1. **High — Render would build the test image.** The Dockerfile ended with the test stage, so the default build ran `pytest` and contained `tests/`, the review documents and the answer file. The old image-content test read only the stage named `runtime`, so it passed.
+   - **Fix:** the `runtime` stage is now last, and `base`/`test`/`runtime` share a clean base. CI builds the default image as Render does, inspects it with `check_runtime_image.py`, and smoke-tests its default command.
+   - **Tests:**
+     - `test_default_image_is_the_clean_runtime_stage` resolves the **last** stage and every stage it is built from, with all their `COPY` sources;
+     - `test_default_image_check_catches_the_old_layout` feeds it the old layout;
+     - `test_default_image_serves_the_web_by_default`;
+     - `tests/test_check_runtime_image.py` (11): a clean copy passes; `tests/`, `docs/reviews/`, `truth.csv`, a builder, `scripts/`, `conftest.py`, a whole-repository copy, a row answer in the package, outcome vocabulary under `data/`, and a missing server file each fail.
+   - **Shown:**
+     - run against the old Dockerfile in a scratch copy, the two new Dockerfile tests fail; they pass on the new one;
+     - built from the old Dockerfile, the default image has the command `["pytest","-q"]`, and `check_runtime_image.py` reports 46 problems (exit 1);
+     - the new default image gives "runtime image OK".
+2. **Medium — the global lockout let anyone keep the owner out.**
+   - **Fix:** `login_limit.py` is replaced by `login_throttle.py` (above). The correct password is always accepted; the check and the count are atomic; the production password must be ≥ 24 characters.
+   - **Tests:**
+     - 64 threads of wrong attempts against the throttle give exactly 5 counted and 59 throttled;
+     - 50 concurrent wrong attempts through the web app give exactly 5 × 401 and 45 × 429, while a correct login among them succeeds;
+     - the correct password is accepted while throttled;
+     - a success does not reset the count;
+     - the throttle ends when the window passes;
+     - throttled attempts are not counted;
+     - production refuses 23 characters and accepts 24.
+   - The concurrency tests passed 20 runs out of 20 locally.
+3. **Medium — `startswith` exempted look-alike paths.**
+   - **Fix:** exact matches for `/login` and `/health`; `/static/` stays a prefix.
+   - **Test:** dummy protected routes `/loginx`, `/login-admin`, `/login/admin`, `/healthz`, `/health-private`, `/health/export`, `/staticx` and `/static` all redirect to `/login` when signed out, and reach their handler when signed in.
+4. **Medium — a password change does not end sessions.**
+   - **Fix:** the README says how to revoke access: rotate `SESSION_SECRET` together with the password. No session table.
+   - **Tests, each docstring stating the limitation:**
+     - a cookie is rejected after the secret and password are rotated, and the old password no longer works;
+     - changing only the password does **not** end a session;
+     - a session is accepted at 12 h − 1 min and rejected at 12 h + 1 s, with itsdangerous' clock patched;
+     - a copied cookie keeps working after the original client logs out.
+5. **Medium — local configuration exposed more than stated.**
+   - **Fix:** the per-service variables, the 127.0.0.1 port bindings and the broader `.env*` ignore described above.
+   - **Tests:**
+     - each service's environment key set is exactly as listed, with no `env_file`;
+     - secret values are `${VAR:?}` interpolations;
+     - every published port is on 127.0.0.1;
+     - both ignore files hold `.env*` before `!.env.example`;
+     - CI plants `.env.production.bak` and checks that it reaches neither image.
+   - Locally, `docker compose exec` shows the worker's variables as `DATABASE_URL HYPOCURATE_ENV` only.
+6. **Medium — tests checked appearances.** Fixes:
+   - the cookie payload is decoded and must equal `{"signed_in": true}`;
+   - a forged payload with the old signature is rejected;
+   - the API docs give 404 after login;
+   - the workflow is parsed, and the test fails on `continue-on-error`, any job or step `if` other than `always()` on the logs step, trigger filters, `defaults`/`shell` overrides, other jobs, or a missing required step (default build, image check, env-file check, suite, default-command smoke, Compose smoke);
+   - the deploy-gate wording is corrected (section above).
+
+### Tests removed or replaced in the fix round
+These tests checked the behaviour that finding 2 removed, or were replaced by stricter behavioural versions. None was weakened to make a change pass.
+- `tests/test_login_limit.py` (5 tests of the lockout) is removed with `login_limit.py` and replaced by `tests/test_login_throttle.py` (7).
+- `test_lockout_after_failures_refuses_even_the_right_password` asserted the behaviour the owner rejected. It is replaced by `test_correct_password_is_accepted_while_throttled`, which asserts the opposite, and by `test_wrong_attempts_beyond_the_bound_are_refused_quickly`.
+- Replaced by stricter versions:
+  - `test_password_is_not_in_the_cookie_or_pages` → `test_cookie_holds_only_the_signed_in_flag` (decoded) and `test_password_is_not_in_pages`;
+  - `test_no_api_docs_exposed` → `test_no_api_docs_before_or_after_login`;
+  - `test_runtime_image_holds_only_package_data_and_lock` → the three default-image tests;
+  - `test_env_is_ignored_by_git_and_docker` → `test_every_env_file_is_ignored_by_git_and_docker`;
+  - `test_compose_takes_secrets_from_env_only` → the per-service environment and interpolation tests;
+  - `test_ci_runs_the_whole_suite_on_every_push_and_pull_request` → the three parsed-workflow tests.
+- `test_web_refuses_short_secrets` is split into the production (24), development (12) and session-secret tests.
+
+## Tests (188, all passing; 95 for step 2, the 93 from step 1 unchanged)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data` is empty.
 
-`tests/test_login.py` (21):
-- without a session, `/` and any other path redirect to `/login`; the API docs are not exposed; `/login` and `/static` are public;
-- a wrong or empty password gives 401 and no session; the right one gives a session; logout ends it;
-- a tampered cookie, and a cookie signed with a different secret, are rejected;
-- in production the cookie is `Secure`, `HttpOnly` and `SameSite=Lax`;
-- the password appears in no cookie or page;
-- after 5 failures even the right password gets 429 and no session;
-- settings: the web service refuses to start without each secret (3 cases), or with short ones; error messages and `repr` never contain values; the worker needs no login secrets; an unknown `HYPOCURATE_ENV` is refused.
-
-`tests/test_login_limit.py` (5):
-- the approved defaults (5 / 15 min / 5 min);
-- locked after 5 failures and not before;
-- unlocked after the lockout;
-- failures outside the window do not count;
-- a success resets the count.
-
-`tests/test_health.py` (7, against real PostgreSQL):
-- `/health` works without login, with JSON and HTML, database `ok`;
-- an unreachable database gives 503 and `unreachable`, without crashing;
-- no secret and no database URL appear in the response;
-- the worker idles, checks the database and logs each cycle;
-- an unreachable database is logged without the URL's password;
-- `check-db` returns 0 or 1 as appropriate.
-
-`tests/test_skeleton.py` (25):
-- PRD 6.1 paths exist;
-- `.env.example` holds exactly the expected names, with no values;
-- `.env` is in `.gitignore` and `.dockerignore`;
-- no API key, token or database URL with a password appears in any text file;
-- **planted-value style:** the secret values in the suite's own environment (random ones in CI and Docker) appear in no file;
-- every lock line is pinned with hashes; direct dependencies are locked; the runtime and dev locks agree; test tools are not in the runtime lock;
-- base images are pinned by digest; the runtime image copies only the lock, `hypocurate/` and `data/`; both installs use `--require-hashes`; both stages run as non-root; the web service runs one process;
-- Compose has db, web, worker and test, and takes secrets from `.env` only;
-- `render.yaml`: web, worker and database; the approved plans; `checksPass` on every service with branch `main`; one region and a private database; no secret values; the worker gets no login secrets;
-- CI runs the whole suite on every push and pull request and checks `/health`; actions are pinned by commit; the test image runs plain `pytest -q` with no filter.
+| File | Tests | What |
+|---|---|---|
+| `tests/test_login.py` | 39 | Which paths need the login, including the look-alikes; password; decoded cookie, tampering, forged payload, foreign secret, production flags and max age; rotation, password-only change, expiry, copied cookie; throttling through the app, including concurrency; settings |
+| `tests/test_login_throttle.py` | 7 | The throttle on its own, including 64 concurrent threads |
+| `tests/test_health.py` | 7 | Health against real PostgreSQL, the database being down, no secrets; worker; CLI |
+| `tests/test_check_runtime_image.py` | 11 | The image content check |
+| `tests/test_skeleton.py` | 31 | Layout; env files; key and secret scans; locks; Dockerfile default image; Compose per-service variables and ports; render.yaml; parsed workflow |
 
 ### Suite results
 ```
 $ .venv/bin/pytest -q                    (Codespace, Python 3.14.2, with `docker compose up -d db`)
-151 passed in 1.68s
+188 passed in 3.26s
 $ docker compose run --rm test           (the test image)
-151 passed in 2.49s
-GitHub Actions, commit f937baa:          151 passed; health, login redirect and worker checks passed
-https://github.com/kelawady/hypocurate/actions/runs/37237773121   (conclusion: success)
+188 passed in 4.32s
+GitHub Actions, commit f99027c:          success; every step passed, including the default image
+                                         check ("runtime image OK") and the default-command smoke test
+https://github.com/kelawady/hypocurate/actions/runs/37239535436
 ```
 
-Local smoke test (`docker compose up`): `/health` → `{"web":"ok","database":"ok","version":"unknown"}`; `/` → 303 to `/login`; wrong password → 401; right password → 303 and then "Signed in"; worker log "no pipeline yet; database reachable".
+The same CI steps were run locally first:
+- the default image runs as `app` with the uvicorn command, and the check reports "runtime image OK";
+- `.env.production.bak` reached neither image;
+- the default image's `/health` → database `ok`, and `/` → 303;
+- in the Compose stack, web is on `127.0.0.1:8000`, `/health` is ok, and the worker has only `DATABASE_URL` and `HYPOCURATE_ENV`.
 
 ## Deviations from the PRD and the approved plan
-1. **Render is connected at the end of this step, not at step 11** (owner's decision, 2026-10-04), so that every later step is verified on the live site. Order: review and sign-off → branch green → merge `--no-ff` → `main` green → Render actions one at a time, with prices confirmed first, until `/health` and `/login` work on the Render address. The live check will be added to this summary.
-2. **Dev container (PRD 16) is deferred** (owner's decision). Proposed backlog item. Running the suite in the deployed image (`docker compose run --rm test`, and on GitHub) gives the match with Render meanwhile. The PRD itself is not edited.
-3. **Merge gate:** the repository is private on a free GitHub plan, so GitHub cannot require the check before a merge. By process, I confirm that the branch run is green and record its link before every merge (owner's decision). Render's `checksPass` keeps a failing `main` from deploying.
+1. **Render is connected at the end of this step, not at step 11** (owner's decision, 2026-10-04), so that every later step is verified on the live site. Order: re-check and sign-off → branch green → merge `--no-ff` → `main` green → Render actions one at a time, with prices confirmed first, until `/health` and `/login` work on the Render address. The live check will be added to this summary.
+2. **Dev container (PRD 16) is deferred** (owner's decision). Proposed backlog item; the PRD itself is not edited.
+3. **Merge gate:** the repository is private on a free GitHub plan, so GitHub cannot require the check before a merge. By process, I confirm that the branch run is green and record its link before every merge (owner's decision).
+4. **Fix-round plan change:** the plan said the step 1 marker functions would move to a shared module. Instead `check_runtime_image.py` imports them from `tests/test_controlled_duplicates.py` as they are, so the step 1 test file stays byte-identical.
 
 ## Codespace finding (not a project change)
-In this Codespace, Docker has a leftover `iptables-legacy` FORWARD chain with policy DROP, which blocks traffic between containers on Compose networks. With the owner's approval I ran `sudo iptables-legacy -I DOCKER-USER -j ACCEPT`. It is lost on restart; the README has the command. GitHub's runners and Render are not affected.
+In this Codespace, Docker has a leftover `iptables-legacy` FORWARD chain with policy DROP, which blocks traffic between containers. With the owner's approval I ran `sudo iptables-legacy -I DOCKER-USER -j ACCEPT`. It is lost on restart; the README has the command. GitHub's runners and Render are not affected.
 
 ## Open items
-1. **Region.** `render.yaml` uses `oregon` for all three resources; it cannot be changed after creation. Confirm, or choose another region, before connecting Render.
-2. **Prices.** Confirm Render's current prices for the three plans on render.com before the first paid action.
-3. **Login limit trade-off.** It is global, so anyone's failures can lock the owner out for 5 minutes. It is cleared on restart and does not survive a second web process; the image and test pin `--workers 1`.
-4. **Pipeline code can still read `tests/` and `docs/reviews/` in development.** The deployed image does not contain them, but the step 5 access layer must still enforce the approved file list (step 1 open item 4).
-5. Carried from step 1, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (before step 7); permitted test types and a non-MPEA survivor pair (step 6).
-6. `docs/reviews/checklist.md` is used for the first time in this review and may be amended afterwards, with owner approval.
-
-## Questions for the reviewer
-- Is a global (not per-IP) failed-login limit acceptable for a single shared password behind Render's proxy?
-- Is anything secret reachable from `/health`, the logs, the image or the committed files?
-- Are there untested paths in the login and session handling?
+1. **Region.** `render.yaml` uses `oregon` for all three resources; it cannot be changed after creation. Confirm before connecting Render.
+2. **Prices.** Confirm Render's current prices for the three plans before the first paid action.
+3. **Live deploy gate.** When Render is connected, check on the live services that the automatic deploy setting is "After CI Checks Pass", and agree not to deploy manually without a green run.
+4. **Session revocation is all-or-nothing** (rotate `SESSION_SECRET`). Revoking a single session needs a session table; it is not proposed for sprint 1.
+5. **Pipeline code can still read `tests/` and `docs/reviews/` in development.** The deployed image does not contain them and CI checks this, but the step 5 access layer must still enforce the approved file list (step 1 open item 4).
+6. Carried from step 1, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (before step 7); permitted test types and a non-MPEA survivor pair (step 6).
+7. `docs/reviews/checklist.md` was used for the first time in this review and may be amended afterwards, with owner approval.
