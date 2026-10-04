@@ -250,3 +250,8 @@ def test_suite_command_runs_everything():
     """The test image runs plain pytest: no marker, -k or path filter can drop tests."""
     test_stage = stages()["test"]
     assert re.search(r'^CMD \["pytest", "-q"\]$', test_stage, re.M)
+
+
+def test_ci_actions_are_pinned_to_a_commit():
+    uses = re.findall(r"uses: (\S+)", read(".github/workflows/tests.yml"))
+    assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses)
