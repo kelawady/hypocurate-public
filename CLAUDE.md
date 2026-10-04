@@ -18,6 +18,7 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 6. **Ask one question at a time**, in plain English, with options and a recommendation.
 7. **Deferred ideas go in the backlog** (PRD Section 18). Do not build them.
 8. Small commits with clear messages. Never commit to `main` anything that fails the suite.
+9. **Any change to `.github/workflows/` needs the owner's explicit review**, even if the workflow tests pass. A workflow test cannot stop its own job from being skipped (for example by a job-level condition), and Render counts a skipped check as passed.
 
 ## Rules the code must never break
 

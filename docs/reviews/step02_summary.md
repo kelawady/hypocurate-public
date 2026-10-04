@@ -1,6 +1,6 @@
 # Build step 2 — summary for review
 
-Date: 2026-10-04. Branch: `step-02-skeleton`. **Status: the six findings of the second-model review are fixed and green on GitHub; awaiting the re-check and the owner's sign-off.** PRD Section 15, step 2: "Skeleton. Repository, Docker image, Docker Compose with web, worker and database, a health page, login, and the regression suite running automatically on GitHub."
+Date: 2026-10-04. Branch: `step-02-skeleton`. **Status: signed off for initial deployment by the second-model re-check (2026-10-04), with two wording corrections made (below); merged to `main` on the owner's instruction.** PRD Section 15, step 2: "Skeleton. Repository, Docker image, Docker Compose with web, worker and database, a health page, login, and the regression suite running automatically on GitHub."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md` (first used in this step). It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step02_review_chatgpt.md`.
 
@@ -12,7 +12,7 @@ The suite is the gate. This summary is for the second-model review (PRD 13.2), w
 | `hypocurate/config.py` | Settings from environment variables. `DATABASE_URL` is always required. The web service also requires `HYPOCURATE_PASSWORD` and `SESSION_SECRET` (≥ 32 characters) in every environment. The password must be **≥ 24 characters in production** and ≥ 12 in development. The worker and command line do not get these two. Error messages name the setting, never its value. The secrets are hidden from `repr`. |
 | `hypocurate/db/engine.py` | SQLAlchemy engine (psycopg 3) and `database_reachable` (`SELECT 1`, never raises). **No tables, no Alembic.** |
 | `hypocurate/web/app.py`, `main.py`, `templates/`, `static/style.css` | The web service: `GET/POST /login`, `POST /logout`, `GET /health`, and a placeholder `/` page ("signed in").<br>• Public paths are **exactly** `/login` and `/health`, plus files under the `/static/` prefix. Everything else redirects to `/login` without a session.<br>• FastAPI's `/docs`, `/redoc` and `/openapi.json` are switched off (404 when signed in).<br>• The session is Starlette's `SessionMiddleware`: an itsdangerous-signed cookie `hypocurate_session` holding only `{"signed_in": true}`, 12-hour max age, `SameSite=Lax`, `HttpOnly`, and `Secure` in production. |
-| `hypocurate/web/login_throttle.py` | Bounded throttling of failed logins, in memory.<br>• **The correct password is always accepted.**<br>• Wrong passwords are counted; after 5 within 15 minutes, further wrong attempts are refused at once (429) and not counted, until the oldest counted failure leaves the window.<br>• The comparison, the check and the count happen under one lock.<br>• **What it does not do:** slow guessing. A correct guess is accepted even while throttled. The protection against guessing is the password: ≥ 24 random characters in production. The throttle bounds work and log noise.<br>• The web service runs one process (`--workers 1`), so the count is shared; a restart clears it. |
+| `hypocurate/web/login_throttle.py` | Counting of failed logins, in memory. What it does, and only this:<br>• every attempt is still checked against the password;<br>• a correct password is never refused by the count;<br>• after 5 wrong attempts within 15 minutes, further wrong attempts receive **429 instead of 401** (and are not counted), until the oldest counted failure leaves the window.<br>The comparison, the check and the count happen under one lock.<br>**Protection against guessing is the password:** a random password of at least 24 characters in production. The configuration enforces the length, not the randomness.<br>The web service runs one process (`--workers 1`), so the count is shared; a restart clears it. |
 | `/health` | Public. Reports `web`, `database` (`ok` / `unreachable`) and `version` (Render's `RENDER_GIT_COMMIT`, else `unknown`). JSON by default, or an HTML page for a browser. 503 when the database does not answer. No data and no secrets. |
 | `hypocurate/worker.py` | Idle loop (owner's decision): it checks the database, logs, and sleeps 60 s. No queue, heartbeat or pipeline; those are step 9. |
 | `hypocurate/cli.py` | `hypocurate version` and `hypocurate check-db` only. |
@@ -46,6 +46,7 @@ They are not added to the lock now because nothing uses them yet. The Codespace 
 ### What the deploy gate does and does not cover
 - `autoDeployTrigger: checksPass` gates Render's **automatic** deploys only. A manual deploy from Render's dashboard (or its API) is a separate path that this setting does not block.
 - Render counts a check as passed if its conclusion is `success`, `neutral` **or `skipped`**. It does not deploy when a check fails or when no check is found for the commit. That is why the workflow test forbids `continue-on-error`, job or step conditions (except the final logs step), path or branch filters, and shell overrides.
+- **A workflow test cannot stop its own job from being skipped.** If someone adds a job-level condition that is false, the guard never runs, and Render counts the skipped check as passed. The workflow tests are therefore not independent enforcement: **any change to `.github/workflows/` needs the owner's explicit review** (CLAUDE.md, "How we work", item 9; owner's decision, 2026-10-04).
 - The live Render configuration is not shown yet: Render is connected only after sign-off. Checking that the live services carry `checksPass` will be part of that walkthrough.
 
 ## Review findings and fixes (first review, ChatGPT, 2026-10-04)
@@ -64,7 +65,7 @@ The owner accepted all six findings.
      - built from the old Dockerfile, the default image has the command `["pytest","-q"]`, and `check_runtime_image.py` reports 46 problems (exit 1);
      - the new default image gives "runtime image OK".
 2. **Medium — the global lockout let anyone keep the owner out.**
-   - **Fix:** `login_limit.py` is replaced by `login_throttle.py` (above). The correct password is always accepted; the check and the count are atomic; the production password must be ≥ 24 characters.
+   - **Fix:** `login_limit.py` is replaced by `login_throttle.py` (above). A correct password is never refused by the count; after 5 wrong attempts, wrong attempts receive 429 instead of 401; the comparison and the count are atomic; the production password must be ≥ 24 characters (length enforced, not randomness).
    - **Tests:**
      - 64 threads of wrong attempts against the throttle give exactly 5 counted and 59 throttled;
      - 50 concurrent wrong attempts through the web app give exactly 5 × 401 and 45 × 429, while a correct login among them succeeds;
@@ -103,7 +104,7 @@ The owner accepted all six findings.
 ### Tests removed or replaced in the fix round
 These tests checked the behaviour that finding 2 removed, or were replaced by stricter behavioural versions. None was weakened to make a change pass.
 - `tests/test_login_limit.py` (5 tests of the lockout) is removed with `login_limit.py` and replaced by `tests/test_login_throttle.py` (7).
-- `test_lockout_after_failures_refuses_even_the_right_password` asserted the behaviour the owner rejected. It is replaced by `test_correct_password_is_accepted_while_throttled`, which asserts the opposite, and by `test_wrong_attempts_beyond_the_bound_are_refused_quickly`.
+- `test_lockout_after_failures_refuses_even_the_right_password` asserted the behaviour the owner rejected. It is replaced by `test_correct_password_is_accepted_while_throttled`, which asserts the opposite, and by `test_wrong_attempts_beyond_the_bound_receive_429`.
 - Replaced by stricter versions:
   - `test_password_is_not_in_the_cookie_or_pages` → `test_cookie_holds_only_the_signed_in_flag` (decoded) and `test_password_is_not_in_pages`;
   - `test_no_api_docs_exposed` → `test_no_api_docs_before_or_after_login`;
@@ -112,6 +113,30 @@ These tests checked the behaviour that finding 2 removed, or were replaced by st
   - `test_compose_takes_secrets_from_env_only` → the per-service environment and interpolation tests;
   - `test_ci_runs_the_whole_suite_on_every_push_and_pull_request` → the three parsed-workflow tests.
 - `test_web_refuses_short_secrets` is split into the production (24), development (12) and session-secret tests.
+
+## Re-check (ChatGPT, 2026-10-04) and corrections
+
+The re-check text is in `docs/reviews/step02_recheck_chatgpt.md`. Its verdict on each finding:
+
+| Finding | Re-check status |
+|---|---|
+| 1 | closed |
+| 2 | partly closed (wording) |
+| 3 | closed |
+| 4 | closed within the agreed design |
+| 5 | closed |
+| 6 | closed for the identified cases |
+
+Sign-off: proceed to initial deployment, with live checks of HTTPS, login, health and `checksPass` on both services. No new serious blocker.
+
+Corrections (owner's instructions):
+1. **Throttle wording.** The module docstring, the config comment, the README and this summary now say only what the count does:
+   - every attempt is still checked;
+   - after 5 wrong attempts in the window, further wrong attempts receive 429 instead of 401.
+   The earlier claims that it bounds load, log noise or guessing are removed. Protection against guessing is a random password of at least 24 characters; the configuration enforces the length, not the randomness. As the re-check notes, "never refused by the count" describes the counter's decision, not availability under overload. The test `test_wrong_attempts_beyond_the_bound_are_refused_quickly` was renamed `test_wrong_attempts_beyond_the_bound_receive_429`; its assertions are unchanged.
+2. **Workflow changes need the owner's review.** Added to CLAUDE.md, "How we work", item 9, and to the deploy-gate section above.
+
+No code behaviour changed in these corrections.
 
 ## Tests (188, all passing; 95 for step 2, the 93 from step 1 unchanged)
 
