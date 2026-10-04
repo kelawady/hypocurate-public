@@ -294,6 +294,8 @@ def test_render_plans_are_the_approved_ones():
     r = render()
     assert {s["type"]: s["plan"] for s in r["services"]} == {"web": "0.5c-512mb", "worker": "0.5c-512mb"}
     assert r["databases"][0]["plan"] == "0.1c-256mb"
+    # 1 GB disk (owner decision, 2026-10-04); Render's default would be 15 GB, which cannot be reduced.
+    assert r["databases"][0]["diskSizeGB"] == 1
 
 
 def test_render_deploys_only_after_checks_pass():
