@@ -1,18 +1,18 @@
-"""Bounded throttling of failed logins, kept in memory (no table).
+"""Counting of failed logins, kept in memory (no table).
 
 Second-model review of step 2, finding 2: a lockout lets anyone keep the owner
-out, so there is none. The correct password is always accepted. Wrong passwords
-are counted; once MAX_FAILURES have been counted within WINDOW_SECONDS, further
-wrong attempts are refused at once (and not counted) until the oldest counted
-failure leaves the window.
+out, so there is none. What this does, and only this: every attempt is still
+checked against the password. A correct password is never refused by this
+counter. After MAX_FAILURES wrong attempts within WINDOW_SECONDS, further wrong
+attempts receive 429 instead of 401 (and are not counted), until the oldest
+counted failure leaves the window.
 
 The comparison, the check and the count happen under one lock, so concurrent
-attempts cannot slip past the bound.
+attempts cannot pass the count.
 
-What this does and does not do: it bounds the work and the log noise caused by
-wrong attempts. It does not slow guessing, because a correct guess is accepted
-even while throttled. Protection against guessing is the password itself: in
-production at least 24 random characters (hypocurate/config.py).
+Protection against guessing is the password: a random password of at least 24
+characters in production. Configuration (hypocurate/config.py) enforces the
+length, not the randomness.
 
 The web service runs one process, so the count is shared; a restart clears it.
 """

@@ -217,7 +217,7 @@ def test_copied_cookie_still_works_after_logout():
 
 # --- throttling of failed logins (review finding 2) --------------------------------------
 
-def test_wrong_attempts_beyond_the_bound_are_refused_quickly():
+def test_wrong_attempts_beyond_the_bound_receive_429():
     c = client(throttle=LoginThrottle())
     codes = [sign_in(c, "wrong-password").status_code for _ in range(MAX_FAILURES + 3)]
     assert codes == [401] * MAX_FAILURES + [429] * 3

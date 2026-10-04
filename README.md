@@ -35,7 +35,8 @@ sudo iptables-legacy -I DOCKER-USER -j ACCEPT
 - A session is a signed cookie holding only `{"signed_in": true}`. It lasts 12 hours. There is no server-side session record.
 - **To revoke access, rotate `SESSION_SECRET` together with the password.** Changing the password alone does not end existing sessions. On Render: set a new `HYPOCURATE_PASSWORD` and a new `SESSION_SECRET` on the web service, then redeploy. Every existing session ends.
 - Logout clears the cookie in that browser only. A copied cookie keeps working until it expires or the secret is rotated. This is a known limitation of cookie-only sessions, stated in `tests/test_login.py`.
-- Failed logins are throttled: after 5 wrong passwords within 15 minutes, further wrong attempts are refused at once (429) until the window passes. The correct password is always accepted, so nobody can lock the owner out. The throttle bounds load; it does not slow guessing. The protection against guessing is the long, random password.
+- Failed logins are counted. Every attempt is still checked against the password, and the correct password is never refused by the count, so nobody can lock the owner out. After 5 wrong attempts within 15 minutes, further wrong attempts receive 429 instead of 401 until the window passes. That is all the count does.
+- The protection against guessing is a random password of at least 24 characters, generated as above. The configuration enforces the length, not the randomness.
 
 ## Run the test suite
 

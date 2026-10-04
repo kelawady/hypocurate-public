@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 PRODUCTION = "production"
 DEVELOPMENT = "development"
 MIN_PASSWORD_LENGTH = 12
-# Production: a generated password of at least 24 random characters is the
-# protection against guessing (the login throttle does not slow guessing).
+# Production: the protection against guessing is a random password of at least
+# 24 characters. This enforces the length only, not the randomness.
 MIN_PRODUCTION_PASSWORD_LENGTH = 24
 MIN_SESSION_SECRET_LENGTH = 32
 
