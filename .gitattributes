@@ -1,0 +1,3 @@
+# Frozen data: never convert line endings (fingerprints are of exact bytes).
+data/** -text
+tests/fixtures/** -text
