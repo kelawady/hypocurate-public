@@ -1,18 +1,69 @@
 # hypocurate
 
+[![tests](https://github.com/kelawady/hypocurate/actions/workflows/tests.yml/badge.svg)](https://github.com/kelawady/hypocurate/actions/workflows/tests.yml)
+
 HypoCurate takes a scientific hypothesis in words, searches registered data sources, and reports whether the data in the sources searched are sufficient, partly sufficient or insufficient to test it. The specification is [docs/PRD_sprint1.md](docs/PRD_sprint1.md); the rules for working on the code are in [CLAUDE.md](CLAUDE.md).
 
 ## Status
 
-Build step 1 of 12 (PRD Section 15): the two data sources are frozen with their fingerprints, and the controlled duplicate extract is built. Docker, the database, the website and the agents come in later steps.
+Build step 2 of 12 (PRD Section 15): the skeleton. One Docker image for the web service and the worker, Docker Compose for local work, a health page, the single shared login, the regression suite on GitHub at every push, locked dependencies, and `render.yaml`. The data model, the access layer, the pipeline and the screens come in later steps.
 
-## Run the test suite (in the Codespace)
+## Set up secrets (once)
+
+```
+cp .env.example .env     # then fill in every value; .env is never committed
+```
+
+`HYPOCURATE_PASSWORD` is the login password (at least 12 characters). `SESSION_SECRET` signs the session cookie (at least 32 characters): `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. `POSTGRES_PASSWORD` is for the local database container only. `DATABASE_URL` is needed only to run the suite outside Docker: `postgresql://hypocurate:<POSTGRES_PASSWORD>@localhost:5432/hypocurate`.
+
+## Start the system locally
+
+```
+docker compose up --build         # database, web (http://localhost:8000) and worker
+```
+
+`/health` needs no login; every other page asks for the shared password.
+
+In this Codespace, Docker has a leftover firewall rule that blocks traffic between containers. After every Codespace restart, run once:
+
+```
+sudo iptables-legacy -I DOCKER-USER -j ACCEPT
+```
+
+## Run the test suite
+
+The suite needs PostgreSQL; the database tests fail (they never skip) when it is not reachable.
+
+In the same image as the deployed services (this is what GitHub runs at every push):
+
+```
+docker compose run --rm test
+```
+
+Or in the Codespace's virtual environment:
 
 ```
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install --require-hashes -r requirements-dev.lock
+.venv/bin/pip install --no-deps -e .
+docker compose up -d db
+set -a; . ./.env; set +a
 .venv/bin/pytest
 ```
+
+## Dependencies
+
+Direct dependencies are listed in `pyproject.toml`. The exact versions, with hashes, are in `requirements.lock` (runtime) and `requirements-dev.lock` (runtime plus test tools). To change a dependency: edit `pyproject.toml`, then regenerate both locks with pip-tools:
+
+```
+.venv/bin/pip install pip-tools
+.venv/bin/pip-compile --strip-extras --generate-hashes --allow-unsafe -o requirements.lock pyproject.toml
+.venv/bin/pip-compile --strip-extras --generate-hashes --allow-unsafe --extra dev -o requirements-dev.lock pyproject.toml
+```
+
+## Deployment
+
+`render.yaml` describes the Render web service, worker and PostgreSQL database. Render deploys a commit on `main` only after its GitHub checks pass (`autoDeployTrigger: checksPass`).
 
 ## Data
 
