@@ -53,6 +53,9 @@ databases:
   - name: hypocurate-db
     region: oregon
     plan: 0.1c-256mb
+    # Owner decision, 2026-10-04: 1 GB (about $0.30/month). Without this Render
+    # gives a new database a 15 GB disk. A disk can be enlarged, never reduced.
+    diskSizeGB: 1
     postgresMajorVersion: "17"
     databaseName: hypocurate
     user: hypocurate
