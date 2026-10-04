@@ -1,12 +1,13 @@
 """The web service (PRD Section 6): login, health page, and a placeholder home page.
 
-Every page needs the shared login except /login, /health and /static. The
-session is a signed cookie (Starlette SessionMiddleware, itsdangerous); in
-production it is sent over HTTPS only.
+Every page needs the shared login except exactly /login and /health, and the
+files under /static/. The session is a signed cookie (Starlette
+SessionMiddleware, itsdangerous) holding only {"signed_in": true}; in
+production it is sent over HTTPS only. There is no server-side session record:
+rotating SESSION_SECRET ends every session (README, "Sessions").
 """
 from __future__ import annotations
 
-import hmac
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -18,12 +19,13 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from hypocurate.config import Settings, load_settings
 from hypocurate.db.engine import database_reachable, make_engine
-from hypocurate.web.login_limit import LoginLimit
+from hypocurate.web.login_throttle import Attempt, LoginThrottle
 
 HERE = Path(__file__).resolve().parent
 SESSION_COOKIE = "hypocurate_session"
 SESSION_MAX_AGE = 12 * 60 * 60
-PUBLIC_PREFIXES = ("/login", "/health", "/static/")
+PUBLIC_PATHS = frozenset({"/login", "/health"})  # exact matches only
+STATIC_PREFIX = "/static/"
 
 templates = Jinja2Templates(directory=HERE / "templates")
 
@@ -31,18 +33,19 @@ templates = Jinja2Templates(directory=HERE / "templates")
 def create_app(
     settings: Settings | None = None,
     engine: Engine | None = None,
-    login_limit: LoginLimit | None = None,
+    login_throttle: LoginThrottle | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     engine = engine or make_engine(settings.database_url)
-    limit = login_limit or LoginLimit()
+    throttle = login_throttle or LoginThrottle()
 
     app = FastAPI(title="HypoCurate", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):
         path = request.url.path
-        if not path.startswith(PUBLIC_PREFIXES) and not request.session.get("signed_in"):
+        public = path in PUBLIC_PATHS or path.startswith(STATIC_PREFIX)
+        if not public and not request.session.get("signed_in"):
             return RedirectResponse("/login", status_code=303)
         return await call_next(request)
 
@@ -67,18 +70,17 @@ def create_app(
 
     @app.post("/login")
     def login(request: Request, password: str = Form("")) -> Response:
-        if limit.seconds_locked() > 0:
+        result = throttle.attempt(password, settings.password)
+        if result is Attempt.OK:
+            request.session.clear()
+            request.session["signed_in"] = True
+            return RedirectResponse("/", status_code=303)
+        if result is Attempt.THROTTLED:
             return templates.TemplateResponse(
                 request, "login.html",
                 {"error": "Too many failed attempts. Try again in a few minutes."},
                 status_code=429,
             )
-        if hmac.compare_digest(password.encode(), settings.password.encode()):
-            limit.record_success()
-            request.session.clear()
-            request.session["signed_in"] = True
-            return RedirectResponse("/", status_code=303)
-        limit.record_failure()
         return templates.TemplateResponse(
             request, "login.html", {"error": "Wrong password."}, status_code=401
         )

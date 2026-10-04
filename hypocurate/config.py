@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 PRODUCTION = "production"
 DEVELOPMENT = "development"
 MIN_PASSWORD_LENGTH = 12
+# Production: a generated password of at least 24 random characters is the
+# protection against guessing (the login throttle does not slow guessing).
+MIN_PRODUCTION_PASSWORD_LENGTH = 24
 MIN_SESSION_SECRET_LENGTH = 32
 
 
@@ -54,8 +57,9 @@ def load_settings(environ: dict[str, str] | None = None, *, web: bool = True) ->
     problems = []
     if not settings.database_url:
         problems.append("DATABASE_URL is not set")
-    if web and len(settings.password) < MIN_PASSWORD_LENGTH:
-        problems.append(f"HYPOCURATE_PASSWORD must be at least {MIN_PASSWORD_LENGTH} characters")
+    min_password = MIN_PRODUCTION_PASSWORD_LENGTH if settings.production else MIN_PASSWORD_LENGTH
+    if web and len(settings.password) < min_password:
+        problems.append(f"HYPOCURATE_PASSWORD must be at least {min_password} characters in {env}")
     if web and len(settings.session_secret) < MIN_SESSION_SECRET_LENGTH:
         problems.append(f"SESSION_SECRET must be at least {MIN_SESSION_SECRET_LENGTH} characters")
     if problems:
