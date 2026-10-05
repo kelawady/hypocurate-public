@@ -145,6 +145,18 @@ def test_no_planted_value_in_the_gap_report_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
+def test_no_planted_value_in_the_commentators_input_without_a_freeze(engine):
+    """Owner, 2026-10-05: on a run that ended with no dataset frozen, the Commentator gets only the
+    gap-report input, the Analyst's gap report and the run's outcome."""
+    world = aw.build(engine, "final_without_freeze")
+    got = inputs_of(engine, world, "commentator", "final_without_freeze")
+    assert set(got) == allowed("commentator", "final_without_freeze")
+    assert aw.GAP_REPORT in json.dumps(got["gap_report"]) and got["outcome"]["outcome"] == "insufficient"
+    assert got["condition_summaries"]["overall"]["n_records"] == 8
+    assert leaks(got, aw.PLANTED.values()) == []
+    assert "extracted yield strength" not in json.dumps(got)  # the Curator's stage output stays out
+
+
 def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engine):
     """Owner's addition B: the address and version label hold the planted value; sources_meta
     is a fixed set of named plain fields."""
@@ -154,7 +166,8 @@ def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engi
     assert "example.org" not in json.dumps(meta) and "label" not in json.dumps(meta)
 
 
-@pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final"])
+@pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final",
+                                         "final_without_freeze"])
 def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
     """Owner's addition A: the original run of the narrower question and an earlier run of the
     same hypothesis hold OTHER in records, coefficient, stage outputs and commentary."""

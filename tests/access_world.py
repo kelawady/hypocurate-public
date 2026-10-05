@@ -12,6 +12,8 @@ OTHER: a different value in other runs: the original run of the narrower questio
 records, coefficient, stage outputs and commentary) and an earlier, failed run of the same
 hypothesis version (its records and stage outputs).
 
+GAP_REPORT: the text of the Analyst's gap report, on runs that end with no dataset frozen.
+
 DIRECTION: a token in the claim and in the plan's hypotheses and field list, for the
 Curator test (the Curator is not told the direction of the claim).
 """
@@ -36,6 +38,7 @@ MPEA_CSV = REPO / "data" / "sources" / "mpea" / "MPEA_dataset.csv"
 PLANTED = {"yield_strength": 48213.579, "ultimate_tensile_strength": 57104.263, "hardness": 36912.847}
 OTHER = 59324.681
 DIRECTION = "ZQXDIR rises as grain size falls"
+GAP_REPORT = "Insufficient in the sources searched: grain size is missing for most alloys (GAPTOKEN)."
 
 YS, UTS, HV = "PROPERTY: YS (MPa)", "PROPERTY: UTS (MPa)", "PROPERTY: HV"
 GS, TT, TYPE = "PROPERTY: grain size ($\\mu$m)", "PROPERTY: Test temperature ($^\\circ$C)", "PROPERTY: Type of test"
@@ -223,16 +226,20 @@ def build(engine, stage_name: str) -> AccessWorld:
         return world
     for rec in world.records:
         w.decide(rid, rec)
-    if stage_name == "closed_without_freeze" or stage_name == "final":
+    if stage_name in ("closed_without_freeze", "final_without_freeze"):
         sql(w, "INSERT INTO calibration_result (run_id, status, reason) VALUES (:r, 'unavailable', 'no_dataset_frozen')",
             r=rid)
-        if stage_name == "final":
+        # The Analyst's gap report (it never saw an outcome value, so it holds none).
+        stage(w, rid, "analyst", "analyst", GAP_REPORT)
+        if stage_name == "final_without_freeze":
             w.complete(rid, "insufficient")
         return world
-    if stage_name == "analysis":
+    if stage_name in ("analysis", "final"):
         primary = w.analysis_set(rid)
         for rec in world.records:
             w.add(primary, rec)
         w.freeze(rid, len(world.records))
+        if stage_name == "final":
+            w.complete(rid, "partly_sufficient")
         return world
     raise ValueError(stage_name)

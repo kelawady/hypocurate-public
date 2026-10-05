@@ -11,7 +11,9 @@ from sqlalchemy import Connection, text
 def actual_stage(conn: Connection, run_id: int, status: str) -> str:
     """The stage of run `run_id`, whose locked status is `status` (from `hc_write_lock`)."""
     if status == "completed":
-        return "final"
+        frozen = conn.execute(text("SELECT EXISTS (SELECT 1 FROM run_snapshot WHERE run_id = :r)"),
+                              dict(r=run_id)).scalar_one()
+        return "final" if frozen else "final_without_freeze"
     if status != "running":  # queued, failed
         return "none"
     row = conn.execute(text(

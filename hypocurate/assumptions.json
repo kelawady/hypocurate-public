@@ -2844,7 +2844,7 @@
     "key": "access_allow_lists",
     "name": "Allowed fields per role and stage",
     "state": "in_force",
-    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
     "value": {
       "text": "the table in hypocurate/access/allowlist.py (ALLOWED)",
       "unit": null
@@ -2853,10 +2853,11 @@
     "affects": "Everything an agent can receive (PRD 4), from step 8 on.",
     "reason": "PRD 4 lists what each role can see in general terms; the fields the PRD does not assign (the plan for the Critic, tag lists, coverage, handovers, cost, eligibility decisions, the domain for the Curator) were assigned in the step 5 plan.",
     "evidence": [
-      "PRD 4; step 5 plan approved by the owner, 2026-10-05, with additions A (single-run scope) and B (named source fields)."
+      "PRD 4; step 5 plan approved by the owner, 2026-10-05, with additions A (single-run scope) and B (named source fields).",
+      "Owner's change before the step 5 review, 2026-10-05: the Commentator on a run with no dataset frozen."
     ],
     "decided": {
-      "by": "step 5 (owner's approval of the plan)",
+      "by": "owner (Khalid El-Awady)",
       "date": "2026-10-05"
     },
     "expert_review": {
@@ -2889,20 +2890,30 @@
             "curation",
             "analysis",
             "closed_without_freeze",
-            "final"
+            "final",
+            "final_without_freeze"
           ]
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "On a completed run, the Commentator received the Analyst's post-freeze fields (including every stored record with its outcome values) whether or not a dataset was frozen, plus the gap-report summaries.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 first build; changed by the owner before the review."
+      }
+    ],
     "notes": [
       "Two fields are reference lists, not run data: the confirmed domain and the approved tag values (without the run that proposed them)."
     ],
     "tests": [
       "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
       "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
-      "tests/test_access_planted.py::test_nothing_from_another_run_reaches_any_role"
+      "tests/test_access_planted.py::test_nothing_from_another_run_reaches_any_role",
+      "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
+      "tests/test_access_planted.py::test_no_planted_value_in_the_commentators_input_without_a_freeze"
     ]
   },
   {
@@ -3050,7 +3061,9 @@
       "note": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "On a completed run with no dataset frozen, the Commentator receives the same input (entry 'access_allow_lists')."
+    ],
     "tests": [
       "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
       "tests/test_access_planted.py::test_no_planted_value_in_the_gap_report_input",
@@ -3169,7 +3182,7 @@
     "key": "access_stage_from_database",
     "name": "A role's stage is the run's, read from the database",
     "state": "in_force",
-    "statement": "Every access call reads the run's stage from the database inside its own transaction, after locking the run, and refuses when the role's declared stage differs. An access object built for one stage stops working when the run passes a checkpoint.",
+    "statement": "Every access call reads the run's stage from the database inside its own transaction, after locking the run, and refuses when the role's declared stage differs. An access object built for one stage stops working when the run passes a checkpoint. A completed run is at stage 'final' if a dataset was frozen, otherwise at 'final_without_freeze'.",
     "value": {
       "text": "read on every call",
       "unit": null
@@ -3205,7 +3218,8 @@
       "tests/test_access_layer.py::test_a_declared_stage_is_checked_against_the_database",
       "tests/test_access_layer.py::test_the_rules_lock_changes_what_each_role_may_see",
       "tests/test_access_layer.py::test_the_dataset_freeze_changes_what_each_role_may_see",
-      "tests/test_access_layer.py::test_completion_moves_access_to_the_commentator_only"
+      "tests/test_access_layer.py::test_completion_without_a_freeze_moves_access_to_the_commentator_only",
+      "tests/test_access_layer.py::test_completion_after_a_freeze_moves_access_to_the_commentator_only"
     ]
   },
   {

@@ -361,6 +361,18 @@ def condition_summaries(conn: Connection, ctx: Context) -> dict:
             "per_alloy": [{"alloy": key, **_summary(g)} for key, g in sorted(groups.items())]}
 
 
+def gap_report(conn: Connection, ctx: Context) -> list[dict]:
+    """The output of each Analyst stage of the run, and nothing else of those stages."""
+    return [{"stage": s.stage, "attempt": s.attempt, "status": s.status, "output": s.output} for s in _rows(
+        conn, "SELECT stage, attempt, status, output FROM stage_result WHERE run_id = :r AND role = 'analyst' "
+              "ORDER BY id", r=ctx.run_id)]
+
+
+def outcome(conn: Connection, ctx: Context) -> dict:
+    row = _rows(conn, "SELECT status, outcome, verdict, exploratory FROM run WHERE id = :r", r=ctx.run_id)[0]
+    return {"status": row.status, "outcome": row.outcome, "verdict": row.verdict, "exploratory": row.exploratory}
+
+
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "claim": claim, "domain": domain, "sources_meta": sources_meta, "tag_values": tag_values,
     "record_counts": record_counts, "plan_fields_to_extract": plan_fields_to_extract,
@@ -368,4 +380,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "plan": plan, "records_full": records_full, "decisions": decisions, "flags_full": flags_full,
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
+    "gap_report": gap_report, "outcome": outcome,
 }

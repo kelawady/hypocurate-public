@@ -28,8 +28,8 @@ ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 # none: queued or failed. before_lock: running, no plan. curation: plan locked, no dataset
 # frozen and no 'no dataset frozen' record. analysis: dataset frozen, running.
 # closed_without_freeze: curation ended with no dataset frozen (insufficient), running.
-# final: completed.
-STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final")
+# final: completed after a dataset freeze. final_without_freeze: completed with no dataset frozen.
+STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final", "final_without_freeze")
 
 FIELDS = MappingProxyType({
     "claim": "The claim in words: query number, version number, text, and whether it is a narrower question.",
@@ -62,6 +62,8 @@ FIELDS = MappingProxyType({
                            "number of records; count, minimum and maximum of grain size and of test "
                            "temperature; counts by test type and by phase. Never a row-level value, an "
                            "outcome value or a statistic derived from outcomes.",
+    "gap_report": "The Analyst's gap report: the output of each Analyst stage of the run.",
+    "outcome": "The run's status, outcome, verdict and exploratory label.",
 })
 
 _ANALYSIS = frozenset({"claim", "domain", "sources_meta", "plan", "records_full", "decisions", "flags_full",
@@ -85,7 +87,11 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
         "closed_without_freeze": _GAP_REPORT,
     }),
     "commentator": MappingProxyType({
-        "final": _ANALYSIS | {"stored_record_counts", "condition_summaries"},
+        "final": _ANALYSIS,
+        # Owner, 2026-10-05: with no dataset frozen, only what the Analyst received for the gap
+        # report, plus the Analyst's gap report and the run's outcome. No outcome values, no
+        # row-level records.
+        "final_without_freeze": _GAP_REPORT | {"gap_report", "outcome"},
     }),
 })
 
