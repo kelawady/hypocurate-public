@@ -126,11 +126,11 @@ def store_records(w: World, run: int, key="mpea") -> list[int]:
     for r in adapters.read(version).records:
         j = r.to_json()
         ids.append(val(w, "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, "
-                          "kind, alloy, harmonized, reported, paper_reference, paper_doi) "
-                          "VALUES (:r, :sv, :k, :ix, :kind, :a, :j_h, :j_rep, :pr, :pd) RETURNING id",
+                          "kind, alloy, harmonized, reported, paper_reference, paper_doi, extraction) "
+                          "VALUES (:r, :sv, :k, :ix, :kind, :a, :j_h, :j_rep, :pr, :pd, :j_x) RETURNING id",
                        r=run, sv=w.version[key], k=j["source_item_key"], ix=j["item_index"], kind=j["kind"],
                        a=j["alloy"], j_h=j["harmonized"], j_rep=j["reported"], pr=j["paper_reference"],
-                       pd=j["paper_doi"]))
+                       pd=j["paper_doi"], j_x=adapters.extraction(key)))
     return ids
 
 
@@ -143,8 +143,10 @@ def store_value_records(w: World, run: int, value: float, n=3, key="mpea") -> li
              "composition": {"value": {"Co": 50.0, "Ni": 50.0}, "unit": "at.%", "status": "converted"}}
         rep = {YS: {"column": YS, "text": f"{value}", "unit": "MPa"}}
         ids.append(val(w, "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, "
-                          "kind, alloy, harmonized, reported) VALUES (:r, :sv, :k, 0, 'measured', 'Co50Ni50', :j_h, :j_rep) "
-                          "RETURNING id", r=run, sv=w.version[key], k=f"other-{run}-{i}", j_h=h, j_rep=rep))
+                          "kind, alloy, harmonized, reported, extraction) "
+                          "VALUES (:r, :sv, :k, 0, 'measured', 'Co50Ni50', :j_h, :j_rep, :j_x) "
+                          "RETURNING id", r=run, sv=w.version[key], k=f"other-{run}-{i}", j_h=h, j_rep=rep,
+                       j_x=adapters.extraction(key)))
     return ids
 
 
@@ -213,7 +215,8 @@ def build(engine, stage_name: str) -> AccessWorld:
                                   "VALUES ('planner', 1, :i, 'model-a') RETURNING id",
                                i=f"remember {PLANTED['yield_strength']}")}
     sql(w, "INSERT INTO tag_value (kind, value, status, decided_at) "
-           "VALUES ('property', 'yield strength', 'approved', now())")
+           "VALUES ('property', 'yield strength', 'approved', now()) "
+           "ON CONFLICT (kind, value) DO NOTHING")  # seeded by migration 0002 (step 6)
     sql(w, "INSERT INTO tag_value (kind, value, status) VALUES ('property', :v, 'proposed')",
         v=f"strength {PLANTED['yield_strength']}")
     original = original_run(w)

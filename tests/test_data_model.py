@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from hypocurate.db.models import MAX_FILE_BYTES
-from model_builder import FP, World, files_digest, sha
+from model_builder import EXTRACTION, FP, World, files_digest, sha
 
 
 @pytest.fixture
@@ -553,11 +553,13 @@ def test_every_record_names_its_origin(w):
     """Owner decision, question 7: source version plus the row it came from, so the
     same source row can be matched across runs."""
     rid = w.locked()
-    w.rejected("INSERT INTO record (extraction_run_id, source_version_id, source_item_key, kind, harmonized, reported) "
-               "VALUES (:r, :sv, '', 'measured', '{}', '{}')", "ck_record_item_key_not_empty",
-               r=rid, sv=w.version["mpea"])
-    w.rejected("INSERT INTO record (extraction_run_id, source_version_id, kind, harmonized, reported) "
-               "VALUES (:r, :sv, 'measured', '{}', '{}')", "source_item_key", r=rid, sv=w.version["mpea"])
+    # Each insert states its extraction (step 6), so that it reaches the check it is about.
+    w.rejected("INSERT INTO record (extraction_run_id, source_version_id, source_item_key, kind, harmonized, reported, "
+               "extraction) VALUES (:r, :sv, '', 'measured', '{}', '{}', CAST(:x AS jsonb))", "ck_record_item_key_not_empty",
+               r=rid, sv=w.version["mpea"], x=EXTRACTION)
+    w.rejected("INSERT INTO record (extraction_run_id, source_version_id, kind, harmonized, reported, extraction) "
+               "VALUES (:r, :sv, 'measured', '{}', '{}', CAST(:x AS jsonb))", "source_item_key", r=rid, sv=w.version["mpea"],
+               x=EXTRACTION)
     w.record(rid, key="row-7")
     with pytest.raises(IntegrityError, match="uq_record_origin_per_run"):
         w.record(rid, key="row-7")

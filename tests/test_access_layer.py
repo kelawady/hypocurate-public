@@ -22,6 +22,7 @@ from hypocurate.access import vocabulary
 from hypocurate.access.allowlist import ALLOWED, FIELDS, ROLES, SOURCE_META_FIELDS, STAGES, allowed
 from hypocurate.access.fields import READERS
 from hypocurate.db.engine import make_engine
+from hypocurate.pipeline.profile import TAG_STARTING_LISTS
 from hypocurate.sources.record import HARMONIZED_FIELDS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -410,9 +411,15 @@ def test_the_plan_is_projected_by_its_named_parts(engine):
 
 
 def test_tag_values_are_the_approved_lists_only(engine):
+    """The approved values only: since step 6, the 19 starting values seeded by migration 0002
+    (the world's own approved value is one of them). The planted proposed value never appears."""
     world = aw.build(engine, "before_lock")
-    assert access(engine, world, "planner", "before_lock").get("tag_values") == [
-        {"kind": "property", "value": "yield strength"}]
+    got = access(engine, world, "planner", "before_lock").get("tag_values")
+    seeded = sorted(({"kind": k, "value": v} for k, values in TAG_STARTING_LISTS.items() for v in values),
+                    key=lambda t: (t["kind"], t["value"]))
+    assert got == seeded
+    assert {"kind": "property", "value": "yield strength"} in got
+    assert str(aw.PLANTED["yield_strength"]) not in json.dumps(got)
 
 
 def test_record_counts_are_counts_from_the_sealed_source(engine):
