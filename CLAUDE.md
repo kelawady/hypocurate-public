@@ -19,6 +19,7 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 7. **Deferred ideas go in the backlog** (PRD Section 18). Do not build them.
 8. Small commits with clear messages. Never commit to `main` anything that fails the suite.
 9. **Any change to `.github/workflows/` needs the owner's explicit review**, even if the workflow tests pass. A workflow test cannot stop its own job from being skipped (for example by a job-level condition), and Render counts a skipped check as passed.
+10. **A change to `render.yaml` takes effect at push, before the checks pass**, and redeploys the code already running (Render's Blueprint sync; seen on the step 3 merge, 2026-10-05). So any setting that depends on new code goes in a later merge than that code, and every `render.yaml` change needs the owner's explicit review, like workflow changes.
 
 ## Rules the code must never break
 
