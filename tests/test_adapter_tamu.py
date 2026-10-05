@@ -225,6 +225,21 @@ def test_planted_values_are_kept_and_marked():
     assert (h(8, "grain_size").status, h(8, "grain_size").value) == ("converted", 12.5)
 
 
+def test_a_composition_that_overflows_is_marked_and_the_other_rows_are_kept():
+    """Re-check item 5: Fe and Ni at 1e308 overflowed the sum and aborted the whole file."""
+    rows = [GOOD, _row(c6=1e308, c8=1e308), _row(c1="X03")]
+    result = tamu_fcc.read(sealed("tamu_fcc", {FILE: workbook(rows)}))
+    assert [r.source_item_key for r in result.records] == [f"{FILE}:row:{i}" for i in range(3)]
+    assert [r.reported["Alloy Name"].text for r in result.records] == ["X01", "X01", "X03"]
+    assert result.records[1].reported["Fe"].text == "1e+308"
+    bad = result.records[1].harmonized["composition"]
+    assert (bad.status, bad.reason) == ("not_convertible", "percentage above 100 for Fe, Ni")
+    assert result.records[1].alloy is None
+    assert result.records[1].harmonized["grain_size"].value == 23.0
+    assert result.records[0].harmonized["composition"].status == "converted"
+    assert result.records[2].harmonized["composition"].status == "converted"
+
+
 def test_another_layout_is_refused():
     with pytest.raises(AdapterError, match="no sheet"):
         tamu_fcc.read(sealed("tamu_fcc", {FILE: workbook([GOOD], sheet="Other")}))

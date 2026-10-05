@@ -44,3 +44,11 @@ def test_non_finite_percentages_are_refused():
     for bad in (math.inf, -math.inf, math.nan):
         composition, reason = percent_columns_to_atomic_percent({"Fe": 50.0, "Ni": bad})
         assert composition is None and "not a finite number for Ni" in reason
+
+
+def test_huge_finite_percentages_are_marked_not_raised():
+    """Re-check item 5: each value is finite, but their sum overflows."""
+    composition, reason = percent_columns_to_atomic_percent({"Fe": 1e308, "Ni": 1e308})
+    assert composition is None and reason == "percentage above 100 for Fe, Ni"
+    composition, reason = percent_columns_to_atomic_percent({"Fe": 100.5, "Ni": 0.0})
+    assert composition is None and reason == "percentage above 100 for Fe"

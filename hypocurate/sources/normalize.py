@@ -80,8 +80,8 @@ def formula_to_atomic_percent(formula: str) -> tuple[dict[str, float] | None, st
 def percent_columns_to_atomic_percent(columns: dict[str, float | None]
                                       ) -> tuple[dict[str, float] | None, str | None]:
     """Columns of atomic percentages, one per element → atomic percent per element.
-    Elements at 0 are absent from the alloy. A blank column, a negative value or a sum
-    other than 100 is reported, never rescaled."""
+    Elements at 0 are absent from the alloy. A blank column, a negative value, a value
+    above 100 or a sum other than 100 is reported, never rescaled."""
     for symbol in columns:
         if symbol not in ELEMENTS:
             return None, f"unknown element symbol {symbol!r}"
@@ -94,7 +94,15 @@ def percent_columns_to_atomic_percent(columns: dict[str, float | None]
     negative = [e for e, v in columns.items() if v < 0]
     if negative:
         return None, f"negative percentage for {', '.join(negative)}"
-    total = math.fsum(columns.values())
+    # Re-check item 5: finite but huge values overflowed the sum and aborted the file.
+    # A percentage above 100 is refused before summing; the overflow is caught as well.
+    above = [e for e, v in columns.items() if v > 100.0 + PERCENT_SUM_TOLERANCE]
+    if above:
+        return None, f"percentage above 100 for {', '.join(above)}"
+    try:
+        total = math.fsum(columns.values())
+    except OverflowError:
+        return None, "the percentages are too large to sum"
     if not math.isfinite(total) or abs(total - 100.0) > PERCENT_SUM_TOLERANCE:
         return None, f"percentages sum to {total:g}, not 100"
     return {e: float(v) for e, v in columns.items() if v > 0}, None
