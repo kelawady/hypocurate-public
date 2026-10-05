@@ -1,8 +1,8 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-05. Branch: `step-06-eligibility`. **Status: first build, for the second model's review (PRD 13.2).** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built, each with tests that failed on the code before it; for the re-check.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
-The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`; the review packet is `docs/reviews/step06_review_packet.md`.
+The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
 **Not built, as instructed:** any agent or model call, the statistics module (step 7), screens, registering sources on the live database. Plans are fixed inputs; there is no Planner. **Two migrations**, approved by the owner with their reasons (section "Migrations"). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies. No PRD document is changed; corrections are listed at the end.
 
@@ -41,9 +41,33 @@ The owner decided: **neither enters the primary set**; a new eighth set `conflic
 2. **The answer file's rows 15–16** now describe the reference plan with its test-type rule. In both rows:
    - `prd_5_3_class` "Within scope under the reference plan: distinct measurements, not duplicates" → "Incompatible measurements: outside the plan's scope (test-type rule: tension only)";
    - `primary_analysis` "both enter under the reference plan (it sets no test-type rule)" → "not eligible: excluded by the test-type rule (tension only)".
-   The pinned fingerprint is updated (`8ff53837…`), and the extract is unchanged. The rows' `explanation` cells still describe the step 1 plan; they were not part of this decision (see "Open items").
+   The pinned fingerprint is updated (`8ff53837…`), and the extract is unchanged. The rows' `explanation` cells were corrected after the review, in that round's one fingerprint update (section "Second-model review and fixes").
 3. **The constructed-data guard stays in code.** A database rule goes to the backlog: a note in register entry `constructed_test_runs`, and PRD correction 16.
 
+## Second-model review and fixes (ChatGPT, 2026-10-06)
+
+The owner accepted all six findings, decided that the primary set's handling of conflicts, exact duplicates, invalid values and unresolved-identity groups is a fixed rule (not a plan default), approved the fix plan, and asked for each fix to come with a test that fails on the code before it. **Every new test below failed on the code before its fix** (counts in the commit messages and the table), except those marked as regressions.
+
+| Finding | Fix | New tests (failed before the fix) |
+|---|---|---|
+| **Owner's decision** (review: "conflict policy is a default, not an invariant") | `eligibility.FLAG_RULE_CHOICES`: each flag kind's allowed rules. Exact duplicate: counted once. Conflict: neither (default) or the survivor's value once. Invalid value: never. Ambiguous group: never (counted separately only in `possible_duplicates_separate`). Possible duplicate: counted once (default) or both. `plan.validate` refuses anything else at the lock, and `eligibility.settings` refuses it again. Register `primary_set_invariants` lists the six things no plan can do, with a test for each, and is shown on the assumptions page. | `test_no_plan_can_put_these_records_in_the_primary_set` (5 cases); eight new cases in `test_invalid_plans_are_refused` (13 failed in all); `test_the_fixed_rules_hold_in_every_set_the_plan_names` and `test_the_plan_choices_that_remain` are regressions (passed before) |
+| 1. Checks skipped or stale | Checks run only when no chosen source is pending; storage refuses after Checks; the Checks result records its **binding** (a hash of the record collection by stable identity, and of its flags); Inclusion and the freeze refuse (`checks_not_done`, `checks_not_current`) unless it matches. | `test_skipping_checks_is_refused_at_inclusion_and_the_freeze`, `test_checks_wait_until_every_chosen_source_is_stored`, `test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze` (real conflicting rows 7–8; all 3 failed); `test_no_record_is_stored_after_checks` (added after the mutation checks) |
+| 2. Coarser alloy rule reuses primary flags | Checks computes, for each sensitivity set whose matching settings (same-alloy step, accepted value statuses, grouping) differ, its own duplicate, conflict and ambiguity flags, stored with its result as codes and ids. Inclusion reads them through a new field `set_flags`; each set applies its own flags, every other rule unchanged. | `test_the_coarser_same_alloy_rule_recomputes_the_duplicates` (the reviewer's example through the real pipeline; failed: 4 records where 2 are right); `test_every_other_set_keeps_the_primary_flags`; `test_the_one_change_rule_holds_with_recomputed_matching_flags` |
+| 3. Survivor depends on insertion order | The lock refuses a survivor order or a grouping that leaves out a chosen source (validation refuses empty lists); the final tie-breaker is (source, origin key, item index), never a database id; `record_conditions` carries that identity. | `test_the_survivor_does_not_depend_on_database_ids_or_insertion_order` (failed with an incomplete order); `test_the_lock_refuses_settings_that_leave_out_a_chosen_source` (4 failed) |
+| 4. Ambiguous groups hide a conflict | Checks adds a `values_disagree` flag for the conflicting pair inside an ambiguous group; Inclusion applies rule 7 in a fixed order (unresolved identity, conflict, counted once). | `test_an_ambiguous_group_keeps_its_conflict_in_every_set` (the reviewer's three-source example; checks the resulting sets; failed) |
+| 5. Fingerprint depends on database ids | Records are identified in the fingerprint's sets and rules by (source-version fingerprint, origin key, item index) and their content hash. | `test_the_fingerprint_does_not_depend_on_database_ids` (two runs of one version in one database, unrelated records in between; failed) |
+| 6. Extraction check accepts a missing method | 0003 changed in place (it has not run on the live database; the local development database is at 0001): every key a JSON string, the whole check coalesced to true or false. | `test_0003_refuses_a_missing_null_or_wrongly_typed_extraction_field` (13 cases: 6 failed; the others were already refused and stay as regressions) |
+| Wording | "Pairwise comparisons feed whole-group classification"; "every setting from the plan" narrowed to plan settings, with the **fixed policies in code** listed (`eligibility.py`; register `fixed_policies_in_code`); "±" labelled one standard error, not a confidence interval (CLAUDE.md, register, this summary); unknown source definitions should fail closed (noted for a later step). | — |
+| Answer file rows 15–16 | `explanation` describes the tension-only plan, in this round's one fingerprint update (`e6e859cd…`). | the test checks the new text |
+
+**What the fixes do not do:**
+- The constructed-data guard stays in code (owner, 2026-10-06).
+- A source refused by that guard stays pending, so Checks cannot run on that run until the source is marked failed. The run's orchestration (step 9) must do that (register `checks_bound_to_records`).
+- The plan names its hypothesis version by database id, so the freeze fingerprints of runs of different versions differ, by design.
+
+**Reference numbers after the fixes:** recomputed with the same scripts; **none changed**. Records, alloys, groups, residual df, k, standard errors and p-values are identical for every set. The freeze fingerprint's value changed, because it is now computed from stable identities (`93c44b22…`, was `3440e972…`); it is not a reference number.
+
+## What was built
 
 | Path | What it is |
 |---|---|
@@ -73,7 +97,7 @@ Already present and used as the settings they are: permitted test types (`scope.
 
 **The reference plan** (criterion 14.1a) is the default plan under the owner's decisions: scope MPEA class / room temperature / tension / FCC (single phase); exclusion grain size ≥ 0.1 µm; fixed minimums 30, 5, 10, 10; the eligibility rules of PRD 5.3 as decided; the eight sensitivity sets.
 
-**Settings come only from the locked plan** (owner, 2026-10-05). The decision code (`eligibility.py`, `flags.py`, `checks.py`, `inclusion.py`, `checkpoints.py`) imports nothing from the profile (import scan), and two behavioural tests show it:
+**Plan settings come only from the locked plan** (owner, 2026-10-05; narrowed after the review): some policies are fixed in code for every plan and are listed in `eligibility.py` and register entry `fixed_policies_in_code`. The decision code (`eligibility.py`, `flags.py`, `checks.py`, `inclusion.py`, `checkpoints.py`) imports nothing from the profile (import scan), and two behavioural tests show it:
 - for each setting, a plan whose value differs from the default changes the decision accordingly;
 - with every profile constant replaced, the decisions under the same plan do not change.
 
@@ -195,7 +219,7 @@ The reference run (reference plan, MPEA and Texas A&M, unmarked) through the fre
 
 **Recomputed test-side**, with the method of `docs/reference/worked_example.py`: OLS with alloy intercepts; cluster-robust standard errors by group with the small-sample correction; one-sided p against t with groups − 1 df; statsmodels 0.15.0, scipy 1.18.1, in a scratchpad environment, not the project's. The sets come from the pipeline's freeze, the yield strengths from the stored records. The scripts are in the packet.
 
-| Set | Records | Alloys | Groups | Resid. df | k (MPa·µm^½) | Uncertainty | p |
+| Set | Records | Alloys | Groups | Resid. df | k (MPa·µm^½) | ± one standard error (not a confidence interval) | p |
 |---|---|---|---|---|---|---|---|
 | **MPEA alone** | 76 | 13 | 19 | 62 | 424.1 | ± 62.2 | 1.1e-6 |
 | **Texas A&M alone** | 21 | 9 | 1 | 11 | 1173.3 | none (one group) | none |
@@ -221,7 +245,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 
 ## Assumptions register
 
-96 entries: 93 in force, 2 open, 1 direction approved (after the owner's decisions of 2026-10-06). Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
+99 entries: 96 in force, 2 open, 1 direction approved, after the owner's decisions and the review fixes of 2026-10-06. New on 2026-10-06: `primary_set_invariants`, `checks_bound_to_records`, `fixed_policies_in_code`, `reference_numbers`. Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
 
 **Applied in step 6, with named settings and tests:**
 - **Moved to "yes":** `tamu_test_temperature`, `tamu_microstructure`, `permitted_test_types`, `same_alloy_rule`, `values_disagree_tolerance`, `conflict_pairing_rule`, `tag_starting_lists`, `room_temperature_scope`, `fcc_microstructure_scope`, `grain_size_floor`, `alloy_eligibility`, `physical_validity_checks`, `sufficiency_options`, `duplicate_identity`, `duplicate_survivor_rule`, `unresolved_duplicates`, `scope_not_confirmed`, `assigned_value_statuses`, `controlled_extract_disabled`, `observation_unit`, `quasistatic_tests`.
@@ -249,19 +273,20 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (816, all passing; 173 new; tests changed listed below)
+## Tests (860, all passing; 217 new in step 6; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_plan.py` | 24 | Default and reference plans valid and equal to their projection; the reference plan's values; each default from its named setting; 19 kinds of invalid plan refused; the fingerprint; three tags. |
+| `tests/test_plan.py` | 33 | Default and reference plans valid and equal to their projection; the reference plan's values; each default from its named setting; 19 kinds of invalid plan refused; the fingerprint; three tags. |
 | `tests/test_flags.py` | 18 | Invalid values; never within one source; tolerance boundaries (1.99% / 2.01%) on yield strength and grain size; known differences; unknown paper or condition; the same-alloy rule and the tolerance from the plan; 1:2, 2:2 and non-linked groups; conflict groups; a dataset cites itself; **flags unchanged when outcomes are replaced by arbitrary values that keep every pairwise and per-record relation, and with the plan's model and hypotheses removed**; import scan. |
-| `tests/test_eligibility.py` | 36 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
-| `tests/test_checkpoints.py` | 17 | The lock (plan, fingerprint, three tags in one transaction); second or changed lock, invalid plan, other version refused and logged; the lock waits for the run lock; **every write after `hc_write_lock`**; records stored after the lock with their extraction; **the guard at three points**; a marked run; changes between read and write refused (three steps); the freeze refuses decisions the rules do not produce; every write after the freeze refused and logged; counts and fingerprint; no dataset frozen; the same fingerprint on another database. |
+| `tests/test_eligibility.py` | 45 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
+| `tests/test_checkpoints.py` | 26 | The lock (plan, fingerprint, three tags in one transaction); second or changed lock, invalid plan, other version refused and logged; the lock waits for the run lock; **every write after `hc_write_lock`**; records stored after the lock with their extraction; **the guard at three points**; a marked run; changes between read and write refused (three steps); the freeze refuses decisions the rules do not produce; every write after the freeze refused and logged; counts and fingerprint; no dataset frozen; the same fingerprint on another database. |
 | `tests/test_controlled_duplicates_handling.py` | 50 | Every extract row against the answer file: flag, primary handling, survivor, sensitivity handling; rows 15–16 under tension and compression. |
 | `tests/test_reference_sets.py` | 6 | The primary set equals the reference selection without row 139; one decision per record (Texas A&M 21/72/1); no shared measurement; the freeze counts; **one change per sensitivity set**, on the reference run and on a marked run with duplicates and conflicts. |
 | `tests/test_access_code_roles.py` | 12 | The code lists; binds only at curation (five other stages); only code roles; an agent setting cannot bind as one; **Inclusion receives no planted outcome value** (Checks as positive control); `record_conditions` contents and hashes. |
-| `tests/test_migrations_step6.py` | 7 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
-| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +2 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06). |
+| `tests/test_migrations_step6.py` | 20 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
+| `tests/test_sensitivity_matching.py` | 3 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
+| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +3 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06); `primary_set_invariants` in one entry, shown on the page. |
 
 ### Tests changed (none weakened)
 
@@ -289,6 +314,16 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_controlled_duplicates.py`: the pinned fingerprint; `test_other_test_type_rows_are_compression_copies_of_tension_records` and `EXPECTED` expect the corrected cells of rows 15–16;
   - `test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files` reads `primary_analysis` for every row, where it read the tension-only column for rows 15–16;
   - `test_assumptions.py`: `PARTLY` gains `reference_numbers`.
+
+- **The review fixes (2026-10-06):**
+  - `test_eligibility.py::test_each_setting_is_read_from_the_locked_plan`: the case that mapped a conflict to `in_scope` is **replaced** (owner's decision) by the allowed choice, the survivor's value counted once.
+  - `test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict` expects the extra conflict flag inside the ambiguous group (finding 4).
+  - `test_flags.py::test_flags_use_only_pairwise_and_per_record_rules` is renamed `test_flags_come_from_pairwise_comparisons_and_group_classification` (wording); `test_checks_imports_no_statistics_…` allows the plan's sensitivity-set names (finding 2).
+  - `test_reference_sets.py::_check_one_change` is **corrected** (finding 2): for a matching change it accepts identity changes that come from the set's own flags; it had assumed only grain-size counts can change.
+  - `test_access_code_roles.py`: Inclusion's list and the audited fields include `set_flags`; `record_conditions` carries the stable identity.
+  - `test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test` marks the bypassed source searched before Checks (Checks now wait for every source); `test_a_change_after_the_decisions_were_read_is_refused_at_the_freeze` expects `checks_not_current`, which the freeze now finds first.
+  - `test_assumptions.py`: `conflicts_not_pooled` is decided on 2026-10-06; new tests for `primary_set_invariants` (shown on the page).
+  - `test_controlled_duplicates.py`: the pinned fingerprint and the explanation of rows 15–16.
 
 No test was removed.
 
@@ -321,6 +356,18 @@ Each change was made in a scratch copy of the package (the copy's import checked
 | 0003 trigger without the extraction requirement | 2 |
 | Plan validation accepts free text | 5 |
 | Texas A&M band not assigned | 6 |
+| *After the review (2026-10-06):* plan validation skips the fixed rules | 13 |
+| Checks run while a source is pending | 1 |
+| Inclusion and the freeze ignore the Checks binding | 3 |
+| Storage allowed after Checks | 1 (after the new test; see below) |
+| Sensitivity sets reuse the primary flags | 2 |
+| An ambiguous group drops its conflict | 2 |
+| Survivor tie-break by database id | 1 |
+| The lock accepts a setting that leaves out a source | 2 |
+| The fingerprint keyed by database id | 1 |
+| The extraction check without coalesce | 4 |
+
+In the review round, **"storage allowed after Checks" first survived**: Checks now wait for every chosen source, so the normal sequence never reaches that refusal. `test_no_record_is_stored_after_checks` creates the state directly (a Checks result while a source is still pending) and fails without it. Its harness run was disturbed by a stale earlier run sharing the scratch copy, so this one was repeated by hand: the copy imported, 1 failed, 25 passed.
 
 **Three mutations first survived**, and two tests were added:
 - **"Write path without `hc_write_lock`":** the database triggers lock the run row too. The new statement-order test now fails without it.
@@ -331,10 +378,12 @@ Each change was made in a scratch copy of the package (the copy's import checked
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-816 passed in 179.58s    (after the owner's decisions of 2026-10-06)
+860 passed                                     (after the review fixes, 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-816 passed in 182.96s
+860 passed in 205.06s
 ```
+
+Before the review: 816 passed locally and in the image.
 
 GitHub Actions, commit `b11e7c8` (the owner's decisions of 2026-10-06, last change to code, tests or data): success; "Run the suite in the test image": 816 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
 https://github.com/kelawady/hypocurate/actions/runs/37354762927
@@ -385,25 +434,37 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 14. **PRD 14.2:** refused changes after a checkpoint are rejected and logged by the write paths as well as the database.
 15. **PRD 2.1 / 10 (controlled extract):** runs that include constructed data are marked at dispatch, may complete, are labelled "test run: includes constructed data", and are excluded from aggregates and lists of real results.
 16. **PRD 18 (backlog; owner, 2026-10-06):** a database rule that refuses a constructed source's records in a run not marked as a test. In sprint 1 the guard is in code only.
+17. **PRD 5.3 (owner, 2026-10-06): fixed rules, not plan defaults.** "The defaults below apply unless the Planner sets a different rule before the lock" no longer holds for these: no plan, including one a model writes, can count an exact duplicate twice, admit both records of a conflict, a physically invalid value, an unresolved-identity group, a model-recalled record, or a constructed record in a run not marked as a test. A plan's only choices are: conflicts neither (default) or the survivor's value once; possible duplicates once (default) or both.
+18. **PRD 3 / 5.6 (order of the steps; review finding 1):** extraction finishes before Checks; the completed Checks result is bound to the exact records it covered; Inclusion and the freeze verify that binding.
+19. **PRD 5.7 / 5.8 / 14.1a (wording):** each "±" in the reference numbers is one standard error (cluster-robust, by group), not a confidence interval.
 
 ## Open items
 
-1. **Owner:**
-   - the open decisions `below_minimum_display` (before step 7) and `curator_tabular_sources` (before step 8);
-   - the answer file's rows 15–16 `explanation` cells still say "The reference plan sets no test-type rule, so both enter"; correcting them was not part of the 2026-10-06 decision.
+1. **Owner:** the open decisions `below_minimum_display` (before step 7) and `curator_tabular_sources` (before step 8).
 2. **Step 7:**
    - the statistics on the frozen sets; the coefficients above become tests;
    - the fixed-minimum check that decides the outcome;
    - the predictor transformation from the plan;
    - the per-source alloys rule (an alloy that qualifies only pooled);
    - the label "test run: includes constructed data" on stored results;
-   - the open item from step 1 on the pooled p-value (1.3e-6 now).
-3. **Step 8:** the Curator and tabular sources; a Planner's plan must pass `validate` and is locked through `lock_rules`.
-4. **Step 10:** the label and the exclusion of marked runs on every screen and list.
-5. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
-6. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
+   - the open item from step 1 on the pooled p-value (1.3e-6 now);
+   - the statistics module reproduces the approved reference numbers independently.
+3. **Step 8:** the Curator and tabular sources; a Planner's plan must pass `validate` (including the fixed rules) and is locked through `lock_rules`.
+4. **Step 9:** the orchestration marks a source refused by the constructed-data guard as failed, so Checks can run (register `checks_bound_to_records`).
+5. **Step 10:** the label and the exclusion of marked runs on every screen and list.
+6. **Later step:** an unknown source definition fails closed (register `constructed_test_runs`).
+7. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
+8. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
 
-## Questions for the reviewer
+## Questions for the re-check
+
+1. Is each of the six findings closed, and do the new tests exercise the scenarios you reproduced?
+2. Does `primary_set_invariants` hold for every plan, including one a model writes (refused at the lock and again when the rules are applied)?
+3. Is the Checks binding (record identities and flags) enough to stop a stale or skipped Checks result from reaching Inclusion or the freeze?
+4. Are the per-set matching flags complete (which settings count as matching), and does Inclusion stay outcome-blind with `set_flags`?
+5. Is any claim still stronger than the code supports?
+
+## Questions for the first review (answered in its text)
 
 1. Can any outcome value reach Inclusion (`record_conditions`, `flags_kind`, the projected plan)? Is the "guaranteed / not claimed" statement accurate?
 2. Do the eligibility rules and their order match PRD 5.3 as the owner decided it, and is each sensitivity set exactly one change?
