@@ -146,6 +146,10 @@ def read_definition_files(definition: SourceDefinition, data_dir: Path = DATA_DI
                           manifest: dict | None = None) -> tuple[dict[str, bytes], date]:
     """Reads a source's data files from disk, checks each against its manifest entry
     (SHA-256 and size) and returns {stored path: bytes} and the date obtained."""
+    from hypocurate.access import file_guard  # here, not at the top: the access layer imports this module
+    if file_guard.installed():
+        raise RegistrationError("source registration reads data/ and cannot run in a guarded pipeline "
+                                "process (step 5)")
     manifest = manifest if manifest is not None else load_manifest(data_dir / "manifest.json")
     listed, obtained = _manifest_files(definition, manifest)
     source_dir = safe_path_within(data_dir, definition.directory)
