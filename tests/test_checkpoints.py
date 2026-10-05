@@ -367,6 +367,23 @@ def test_no_eligible_record_means_no_dataset_is_frozen(engine):
     assert stage(engine, rid) == "closed_without_freeze"
 
 
+def test_the_fingerprint_does_not_depend_on_database_ids(engine):
+    """Review finding 5: two identical runs in the same database, with an unrelated run's records
+    inserted between them (so every record id differs), give the same freeze fingerprint."""
+    first = pw.through_freeze(engine, sources=("mpea", "tamu_fcc"))
+    pw.through_freeze(engine, sources=("tamu_fcc",))  # unrelated inserts
+    second = pw.run_of_version(engine, pw.version_of(engine, first), sources=("mpea", "tamu_fcc"))
+    checkpoints.lock_rules(engine, second, reference_plan(pw.version_of(engine, first)))
+    extract.store_records(engine, second)
+    checks.run_checks(engine, second)
+    inclusion.decide_run(engine, second)
+    checkpoints.freeze_dataset(engine, second)
+    fp = {rid: q(engine, "SELECT fingerprint FROM run_snapshot WHERE run_id = :r", r=rid)[0][0] for rid in (first, second)}
+    ids = {rid: q(engine, "SELECT min(id) FROM record WHERE extraction_run_id = :r", r=rid)[0][0] for rid in (first, second)}
+    assert ids[first] != ids[second]
+    assert fp[first] == fp[second]
+
+
 def test_the_same_steps_on_another_database_give_the_same_fingerprint(admin, database_url, template_database):
     """The freeze is deterministic: the same frozen sources, plan and steps give the same
     fingerprint, counts and decisions."""

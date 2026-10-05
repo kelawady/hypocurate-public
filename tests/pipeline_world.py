@@ -47,6 +47,16 @@ def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False) -> int:
     _val(engine, "UPDATE hypothesis_version SET confirmed_domain_id = :d, domain_confirmed_at = now() WHERE id = :v",
          v=vid, d=domain)
     _val(engine, "UPDATE hypothesis_version SET status = 'dispatched', dispatched_at = now() WHERE id = :v", v=vid)
+    return run_of_version(engine, vid, sources, marked)
+
+
+def run_of_version(engine, vid, sources=("mpea", "tamu_fcc"), marked=False) -> int:
+    """Another running run of an already dispatched hypothesis version."""
+    with engine.connect() as conn:
+        registry = dict(conn.execute(text(
+            "SELECT s.key, (SELECT sv.id FROM source_version sv WHERE sv.source_id = s.id AND sv.sealed_at IS NOT NULL "
+            "ORDER BY sv.id DESC LIMIT 1) FROM source s")).all())
+        ids = dict(conn.execute(text("SELECT key, id FROM source")).all())
     flags = json.dumps({"constructed_test_data": True} if marked else {})
     rid = _val(engine, "INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags) "
                        "VALUES (:v, true, CAST(:f AS jsonb)) RETURNING id", v=vid, f=flags)

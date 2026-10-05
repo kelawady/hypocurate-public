@@ -4491,11 +4491,14 @@
       "note": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Step 6 review, finding 5 (2026-10-06): the freeze fingerprint identifies each record by its stable identity (source-version fingerprint, origin key, item index) and content hash, never by database id. It does include the plan's fingerprint, and the plan names its hypothesis version by id, so runs of different versions differ by design."
+    ],
     "tests": [
-      "tests/test_eligibility.py::test_counts_known_at_the_freeze",
-      "tests/test_checkpoints.py::test_the_freeze_records_its_counts_and_fingerprint",
       "tests/test_checkpoints.py::test_no_eligible_record_means_no_dataset_is_frozen",
+      "tests/test_checkpoints.py::test_the_fingerprint_does_not_depend_on_database_ids",
+      "tests/test_checkpoints.py::test_the_freeze_records_its_counts_and_fingerprint",
+      "tests/test_eligibility.py::test_counts_known_at_the_freeze",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
   },

@@ -15,7 +15,8 @@ transaction that re-checks the records, flags and decisions by id, it stores:
   minimums are met, as information (`stage_result` "dataset_freeze"); step 7 writes the
   analysis results and decides the outcome;
 - the fingerprint: SHA-256 of the canonical JSON of the plan's fingerprint, every set's records
-  (each with a hash of its stored content) and every set's rules, and the counts;
+  and rules, each record identified by its stable identity (source-version fingerprint, origin
+  key, item index) with a hash of its stored content, never by database id, and the counts;
 - `run_snapshot`, or, when no record is eligible, the run-level "no dataset frozen" row
   (PRD 5.6: no dataset is frozen and no test is run).
 """
@@ -105,10 +106,13 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
     counts["per_source"] = {source: el.counts(plan, by_id, [i for i in members[el.PRIMARY]
                                                             if by_id[i]["source"] == source])
                             for source in sorted({by_id[i]["source"] for i in members[el.PRIMARY]})}
+    # Review finding 5: records are identified by their stable identity (source-version
+    # fingerprint, origin key, item index) and their content hash, never by database id.
+    identity = {i: f"{r['version_fingerprint']}|{r['origin']}|{r['item_index']}" for i, r in by_id.items()}
     content = {
         "plan": data["plan"]["fingerprint"],
-        "sets": {key: [[i, by_id[i]["fingerprint"]] for i in ids] for key, ids in members.items()},
-        "rules": {key: {str(i): rule for i, rule in sorted(rules.items())} for key, rules in sets.items()},
+        "sets": {key: sorted([identity[i], by_id[i]["fingerprint"]] for i in ids) for key, ids in members.items()},
+        "rules": {key: dict(sorted((identity[i], rule) for i, rule in rules.items())) for key, rules in sets.items()},
         "counts": counts,
     }
     fp = hashlib.sha256(canonical(content).encode("utf-8")).hexdigest()
