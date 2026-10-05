@@ -131,8 +131,9 @@ def test_record_conditions_carry_statuses_conditions_and_hashed_identities(engin
             dict(r=world.run))}
     assert [r["id"] for r in got] == sorted(stored)
     for r in got:
-        assert set(r) == {"id", "source", "row", "kind", "has_doi", "paper", "batch", "composition", "status",
-                          "values", "categories"}
+        assert set(r) == {"id", "source", "row", "kind", "fingerprint", "has_doi", "paper", "batch", "composition",
+                          "status", "values", "categories"}
+        assert len(r["fingerprint"]) == 64
         s = stored[r["id"]]
         assert set(r["status"]) == set(HARMONIZED_FIELDS)
         assert set(r["values"]) == {"grain_size", "test_temperature"} and not set(r["values"]) & OUTCOME_FIELDS

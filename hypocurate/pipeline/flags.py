@@ -1,0 +1,174 @@
+"""The code checks that raise flags (PRD 5.3; build step 6). Pure functions.
+
+Input: exactly what Checks' access object returns (`records_full`, the projected `plan`).
+Checks sees every value (PRD 4) and only raises flags; Inclusion decides what a flag means
+under the locked plan. **Only per-record and pairwise rules are used**: no model, slope,
+residual or hypothesis of the plan, so agreement with the relationship under test can never
+decide which records are credible (PRD 5.3). Every setting is read from the locked plan.
+
+Flags (owner, 2026-10-05):
+- `invalid_value` / "physically impossible": tensile strength below yield strength, or a
+  grain size of zero or less. One flag per record.
+- Duplicates and conflicts, **only between records of different sources** (register
+  'conflict_pairing_rule'); rows within one source are separate measurements. Two records
+  are *candidates* when they have the same alloy (the plan's same-alloy rule), grain sizes
+  within the plan's tolerance (a matching tolerance), and nothing known that differs: the
+  same paper or a paper unknown on one side, and the same test conditions (test type,
+  test temperature) or a condition unknown on one side.
+  - same paper and every condition known: yield strengths within the tolerance → an exact
+    duplicate; beyond it → a conflict (`values_disagree`, "differ beyond tolerance");
+  - the paper or a condition unknown on one side: yield strengths within the tolerance → a
+    possible duplicate; beyond it → not a candidate (nothing says it is the same measurement).
+  Candidate links form groups (connected components). A group with two or more records from
+  one source, or one in which some pair is not linked, is ambiguous: `possible_duplicate`,
+  "several candidates" (nothing is paired on a guess). Otherwise a group with any conflicting
+  pair is a conflict, else a possible duplicate if any link is possible, else an exact
+  duplicate. One flag per group, naming all its records.
+- Relative difference: |a − b| / min(|a|, |b|) (register 'values_disagree_tolerance').
+- The numbers compared are stored with the flag for audit (`compared_values`) and never
+  returned to the Critic (step 5).
+"""
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+from dataclasses import dataclass, field
+from itertools import combinations
+from typing import Any, Iterable, Mapping
+
+from hypocurate.sources.normalize import doi_group_key, identity_hash, same_alloy_key
+
+VALUE_STATUSES = ("converted", "assigned_from_source", "assigned_by_decision")
+
+
+@dataclass
+class Flag:
+    kind: str
+    category: str
+    records: list[int]
+    compared_values: dict = field(default_factory=dict)
+
+
+def relative_difference(a: float, b: float) -> float:
+    small = min(abs(a), abs(b))
+    if a == b:
+        return 0.0
+    return abs(a - b) / small if small > 0 else math.inf
+
+
+def _value(rec: Mapping, f: str) -> Any:
+    entry = rec["harmonized"].get(f) if isinstance(rec.get("harmonized"), Mapping) else None
+    if isinstance(entry, Mapping) and entry.get("status") in VALUE_STATUSES:
+        return entry.get("value")
+    return None
+
+
+def _number(rec: Mapping, f: str) -> float | None:
+    v = _value(rec, f)
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+
+def paper(rec: Mapping, grouping: Mapping[str, str]) -> str | None:
+    """The paper a record cites: from its DOI for a source grouped by paper; the dataset
+    itself for a source that is its own paper (grouped by dataset)."""
+    if grouping.get(rec["source"]) in ("dataset", "batch"):
+        return f"dataset:{rec['source']}"
+    doi = rec.get("paper_doi")
+    return identity_hash(doi_group_key(doi)) if isinstance(doi, str) and doi.strip() else None
+
+
+def invalid_values(records: Iterable[Mapping], outcome: str) -> list[Flag]:
+    out = []
+    for r in records:
+        ys, uts, gs = _number(r, outcome), _number(r, "ultimate_tensile_strength"), _number(r, "grain_size")
+        reasons = {}
+        if outcome == "yield_strength" and ys is not None and uts is not None and uts < ys:
+            reasons["ultimate_tensile_strength_below_yield_strength"] = [uts, ys]
+        if gs is not None and gs <= 0:
+            reasons["grain_size_not_positive"] = [gs]
+        if reasons:
+            out.append(Flag("invalid_value", "physically impossible", [r["id"]], reasons))
+    return out
+
+
+def _condition(a: Mapping, b: Mapping) -> str:
+    """'same', 'unknown' (a condition missing on one side) or 'differs'."""
+    state = "same"
+    for f in ("test_type", "test_temperature"):
+        va, vb = _value(a, f), _value(b, f)
+        if va is None or vb is None:
+            state = "unknown"
+        elif va != vb:
+            return "differs"
+    return state
+
+
+def _link(a: Mapping, b: Mapping, plan: Mapping, grouping: Mapping) -> tuple[str, dict] | None:
+    """The candidate link between two records of different sources, or None."""
+    tol, outcome = plan["rules"]["duplicate_tolerance"], plan["variables"]["outcome"]["field"]
+    ga, gb, ya, yb = (_number(a, "grain_size"), _number(b, "grain_size"), _number(a, outcome), _number(b, outcome))
+    if None in (ga, gb, ya, yb) or relative_difference(ga, gb) > tol:
+        return None
+    pa, pb = paper(a, grouping), paper(b, grouping)
+    if pa is not None and pb is not None and pa != pb:
+        return None
+    cond = _condition(a, b)
+    if cond == "differs":
+        return None
+    numbers = {"grain_size": [ga, gb], outcome: [ya, yb], "relative_difference": relative_difference(ya, yb)}
+    within = numbers["relative_difference"] <= tol
+    if pa is not None and pb is not None and cond == "same":
+        return ("exact" if within else "conflict"), numbers
+    return ("possible", numbers) if within else None
+
+
+def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any]) -> list[Flag]:
+    rules = plan["rules"]
+    grouping = {g["source"]: g["unit"] for g in rules["grouping"]}
+    by_alloy: dict[str, list[Mapping]] = defaultdict(list)
+    for r in records:
+        comp = _value(r, "composition")
+        if isinstance(comp, Mapping) and comp:
+            by_alloy[same_alloy_key(dict(comp), rules["same_alloy_decimals"])].append(r)
+    links: dict[tuple[int, int], tuple[str, dict]] = {}
+    for group in by_alloy.values():
+        for a, b in combinations(sorted(group, key=lambda r: r["id"]), 2):
+            if a["source"] != b["source"]:
+                link = _link(a, b, plan, grouping)
+                if link:
+                    links[(a["id"], b["id"])] = link
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        while parent.setdefault(x, x) != x:
+            x = parent[x]
+        return x
+
+    for a, b in links:
+        parent[find(a)] = find(b)
+    components: dict[int, list[int]] = defaultdict(list)
+    for x in list(parent):
+        components[find(x)].append(x)
+    source = {r["id"]: r["source"] for r in records}
+    flags = []
+    for ids in sorted(sorted(c) for c in components.values()):
+        pairs = {(a, b): links[(a, b)] for a, b in combinations(ids, 2) if (a, b) in links}
+        compared = {f"{a}-{b}": {"link": kind, **numbers} for (a, b), (kind, numbers) in pairs.items()}
+        sources = [source[i] for i in ids]
+        kinds = {kind for kind, _ in pairs.values()}
+        if len(set(sources)) < len(sources) or len(pairs) < len(ids) * (len(ids) - 1) // 2:
+            flags.append(Flag("possible_duplicate", "several candidates", ids, compared))
+        elif "conflict" in kinds:
+            flags.append(Flag("values_disagree", "differ beyond tolerance", ids, compared))
+        else:
+            identical = all(n["relative_difference"] == 0 and n["grain_size"][0] == n["grain_size"][1]
+                            for _, n in pairs.values())
+            category = "identical values" if identical else "within tolerance"
+            flags.append(Flag("possible_duplicate" if "possible" in kinds else "exact_duplicate", category, ids,
+                              compared))
+    return flags
+
+
+def raise_flags(plan: Mapping[str, Any], records: list[Mapping]) -> list[Flag]:
+    """Every flag for the run's records under the locked plan, in a fixed order."""
+    return invalid_values(records, plan["variables"]["outcome"]["field"]) + duplicate_groups(records, plan)

@@ -123,17 +123,18 @@ def alloy_label(composition: dict[str, float]) -> str:
 
 # The same-alloy rule (register entry 'same_alloy_rule', owner 2026-10-05): each element's
 # atomic percent rounded to this many decimals; two compositions are the same alloy when
-# their rounded compositions are identical. Used by the gap report's condition summaries
-# (step 5); the plan setting that applies it to analysis comes in step 6.
+# their rounded compositions are identical. The default the domain profile copies into each
+# plan (step 6); eligibility and duplicate matching use the locked plan's value. The gap
+# report's condition summaries (step 5) use this default.
 SAME_ALLOY_DECIMALS = 1
 
 
-def same_alloy_key(composition: dict[str, float]) -> str:
+def same_alloy_key(composition: dict[str, float], decimals: int = SAME_ALLOY_DECIMALS) -> str:
     """The same-alloy rule's key for a full-precision composition: elements in
-    alphabetical order, each with its rounded atomic percent. Equal keys mean the same
-    alloy under the rule; unlike `alloy_label`, the key is the rule itself."""
-    return " ".join(f"{e} {round(v, SAME_ALLOY_DECIMALS):.{SAME_ALLOY_DECIMALS}f}"
-                    for e, v in sorted(composition.items()))
+    alphabetical order, each with its atomic percent rounded to `decimals` (Python's round,
+    as in the reference script). Equal keys mean the same alloy under the rule; unlike
+    `alloy_label`, the key is the rule itself."""
+    return " ".join(f"{e} {round(v, decimals):.{decimals}f}" for e, v in sorted(composition.items()))
 
 
 _DOI_WRAPPER = re.compile(r"(?:https?://(?:dx\.)?doi\.org/|doi:)\s*", re.IGNORECASE)

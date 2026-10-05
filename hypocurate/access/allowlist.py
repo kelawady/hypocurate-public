@@ -36,9 +36,10 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Mapping
 
-from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_KINDS, GROUPING_UNITS,
-                                          PHASE_CLASSES, PROCESSING_METHODS, PROFILE_NAMES, SENSITIVITY_KEYS,
-                                          SINGLE_PHASE, SOURCE_KEYS, TEMPERATURE_BANDS, TEST_TYPES, VALUE_STATUSES)
+from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_CATEGORIES, FLAG_KINDS,
+                                          GROUPING_UNITS, PHASE_CLASSES, PROCESSING_METHODS, PROFILE_NAMES,
+                                          SENSITIVITY_KEYS, SINGLE_PHASE, SOURCE_KEYS, TEMPERATURE_BANDS, TEST_TYPES,
+                                          VALUE_STATUSES)
 
 ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 # The code roles of PRD 4 (step 6, owner 2026-10-05): Inclusion and Checks are code, not
@@ -92,8 +93,9 @@ FIELDS = MappingProxyType({
                            "temperature; counts by test type and by phase. Never a row-level value, an "
                            "outcome value or a statistic derived from outcomes.",
     "gap_report": "The Analyst's gap report: the output of each Analyst stage of the run.",
-    "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, whether it "
-                         "carries a DOI, identities as hashes (paper from the DOI, batch), composition, each "
+    "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, a hash of the "
+                         "stored record, whether it carries a DOI, identities as hashes (paper from the DOI, "
+                         "batch), composition, each "
                          "field's status, grain size and test temperature, and the category values from their "
                          "vocabularies. No outcome value, no value as reported, no free text.",
     "outcome": "The run's status, outcome, verdict and exploratory label.",
@@ -201,7 +203,9 @@ PLAN_SCHEMA = MappingProxyType({
     "fields_to_extract": ("list", "field"),
     "exclusion_rules": ("list", {"rule": EXCLUSION_RULES, "min": "number", "max": "number",
                                  "values": ("list", CATEGORY_VALUES)}),
-    "eligibility_rules": ("list", {"flag_kind": FLAG_KINDS, "rule": ELIGIBILITY_RULES}),
+    # A flag category narrows an entry (step 6): an ambiguous group is a possible duplicate
+    # with the category "several candidates".
+    "eligibility_rules": ("list", {"flag_kind": FLAG_KINDS, "category": FLAG_CATEGORIES, "rule": ELIGIBILITY_RULES}),
     "verdict_statement": VERDICT_STATEMENTS,
     "sensitivity_analyses": ("list", SENSITIVITY_KEYS),
     # Step 6 (owner, 2026-10-05): every setting that affects which records are eligible or how

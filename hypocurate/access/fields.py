@@ -16,6 +16,8 @@ rows of the run: after the freeze the Analyst and the Commentator may see outcom
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from collections import Counter
@@ -290,8 +292,14 @@ def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
         batch_column = BATCH_COLUMNS.get(r.source)
         batch = reported.get(batch_column, {}).get("text") if batch_column else None
         doi = r.paper_doi if isinstance(r.paper_doi, str) and r.paper_doi.strip() else None
+        content = {"version_fingerprint": r.version_fingerprint, "origin": r.source_item_key,
+                   "item_index": r.item_index, "kind": r.kind, "harmonized": r.harmonized, "reported": r.reported,
+                   "paper_reference": r.paper_reference, "paper_doi": r.paper_doi}
         out.append({
             "id": r.id, "source": r.source, "row": int(row.group(1)) if row else None, "kind": r.kind,
+            # A hash of the stored record (for the freeze fingerprint): it carries no value.
+            "fingerprint": hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":"),
+                                                     ensure_ascii=False).encode("utf-8")).hexdigest(),
             "has_doi": doi is not None,
             "paper": identity_hash(doi_group_key(doi)) if doi else None,
             "batch": identity_hash(batch) if isinstance(batch, str) and batch.strip() else None,
