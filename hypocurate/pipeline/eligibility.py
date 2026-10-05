@@ -68,18 +68,40 @@ FLAG_RULE_CHOICES = {
 }
 
 
+def ordered_rules(eligibility_rules) -> tuple:
+    """A plan's eligibility rules in lookup order: entries naming a category first, then the
+    others, each group in the plan's order. `lookup` takes the first that matches."""
+    entries = [(e.get("flag_kind"), e.get("category"), e.get("rule")) for e in eligibility_rules]
+    return tuple(sorted(entries, key=lambda t: t[1] is None))
+
+
+def lookup(rules: tuple, kind: str, category: str | None) -> str | None:
+    """The rule a flag of this kind and category gets: the first matching entry."""
+    for k, c, rule in rules:
+        if k == kind and (c is None or c == category):
+            return rule
+    return None
+
+
 def fixed_rule_problems(eligibility_rules) -> list[str]:
-    """What breaks the fixed rules in a plan's eligibility rules (empty if nothing)."""
-    got = {(e.get("flag_kind"), e.get("category")): e.get("rule") for e in eligibility_rules}
-    problems = [f"{kind}{'/' + cat if cat else ''}: missing" for kind, cat in FLAG_RULE_CHOICES
-                if (kind, cat) not in got]
-    for key, rule in got.items():
-        allowed = FLAG_RULE_CHOICES.get(key)
-        if allowed is None:
-            problems.append(f"{key[0]}{'/' + key[1] if key[1] else ''}: not a flag the plan sets a rule for")
-        elif rule not in allowed:
-            problems.append(f"{key[0]}{'/' + key[1] if key[1] else ''}: {rule} (allowed: {', '.join(allowed)})")
-    return problems
+    """What breaks the fixed rules in a plan's eligibility rules (empty if nothing). Duplicate
+    entries are refused, and each flag kind and category is resolved exactly as `lookup` resolves
+    it when the rules are applied (re-check finding 3)."""
+    from hypocurate.access.vocabulary import FLAG_CATEGORIES
+    keys = [(e.get("flag_kind"), e.get("category")) for e in eligibility_rules]
+    name = lambda k: f"{k[0]}{'/' + k[1] if k[1] else ''}"
+    problems = [f"{name(k)}: more than one entry" for k in sorted(set(keys), key=str) if keys.count(k) > 1]
+    problems += [f"{name(k)}: missing" for k in FLAG_RULE_CHOICES if k not in keys]
+    problems += [f"{name(k)}: not a flag the plan sets a rule for" for k in sorted(set(keys), key=str)
+                 if k not in FLAG_RULE_CHOICES]
+    rules = ordered_rules(eligibility_rules)
+    for kind in sorted({k for k, _ in FLAG_RULE_CHOICES}):
+        for category in sorted(FLAG_CATEGORIES):
+            allowed = FLAG_RULE_CHOICES.get((kind, category), FLAG_RULE_CHOICES.get((kind, None), ()))
+            got = lookup(rules, kind, category)
+            if got not in allowed:
+                problems.append(f"{kind} ({category}): resolves to {got} (allowed: {', '.join(allowed)})")
+    return sorted(set(problems))
 
 # The one change of each sensitivity set (owner, 2026-10-05).
 SENSITIVITY_CHANGES = {
@@ -122,8 +144,7 @@ def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
     problems = fixed_rule_problems(plan["eligibility_rules"])
     if problems:
         raise ValueError("the plan breaks a fixed rule for the primary set: " + "; ".join(problems))
-    flag_rules = tuple(sorted(((e["flag_kind"], e.get("category"), e["rule"]) for e in plan["eligibility_rules"]),
-                              key=lambda t: t[1] is None))
+    flag_rules = ordered_rules(plan["eligibility_rules"])
     base = Settings(
         outcome=v["outcome"]["field"], predictor=v["predictor"]["field"], test_types=frozenset(s["test_type"]),
         bands=frozenset(s["temperature_band"]), phase_classes=frozenset(s["phase_class"]),
@@ -224,10 +245,7 @@ def alloy(rec: Mapping, decimals: int) -> str | None:
 
 
 def flag_rule(flag: Mapping, st: Settings) -> str | None:
-    for kind, category, rule in st.flag_rules:
-        if kind == flag["kind"] and (category is None or category == flag["category"]):
-            return rule
-    return None
+    return lookup(st.flag_rules, flag["kind"], flag["category"])
 
 
 def survivor_key(rec: Mapping, st: Settings) -> tuple:

@@ -296,6 +296,25 @@ def test_no_plan_can_put_these_records_in_the_primary_set(kind, category, rule):
         el.settings(plan)
 
 
+@pytest.mark.parametrize("extra", [
+    {"flag_kind": "exact_duplicate", "rule": "in_scope"},  # the re-check's case: prepended, first match wins
+    {"flag_kind": "values_disagree", "rule": "in_scope"},
+    {"flag_kind": "possible_duplicate", "category": "several candidates", "rule": "in_scope"},
+    {"flag_kind": "exact_duplicate", "category": "identical values", "rule": "in_scope"},  # a narrower entry
+])
+def test_the_application_time_guard_refuses_duplicate_or_shadowing_entries(extra):
+    """Re-check finding 3: the guard applied with the rules resolves entries exactly as the rule
+    lookup does (first match, category entries first), and refuses duplicate entries, so a plan
+    that bypassed validation cannot admit both copies of an exact duplicate."""
+    plan = copy.deepcopy(PLAN)
+    plan["eligibility_rules"].insert(0, extra)
+    with pytest.raises(ValueError, match="fixed rule"):
+        el.settings(plan)
+    records = [*pair(1, 10.0), cond(3, "controlled_duplicates"), cond(4, "controlled_duplicates", gs=40.0)]
+    with pytest.raises(ValueError, match="fixed rule"):
+        decide(records, [flag("exact_duplicate", "identical values", 1, 3)], plan)
+
+
 def test_the_fixed_rules_hold_in_every_set_the_plan_names():
     """Sensitivity sets change only what their key names: conflicts keep 'neither' or the survivor's
     value; exact duplicates stay counted once; invalid values and ambiguous groups stay out except
