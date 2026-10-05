@@ -58,6 +58,7 @@ CODES = {
     "checks_not_done": "no completed Checks result for this run",
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
     "set_flags_missing": "the completed Checks result lacks the flags a sensitivity set needs",
+    "invariant_broken": "the primary set breaks a rule no plan can change (register 'primary_set_invariants')",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
 

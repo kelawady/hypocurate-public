@@ -33,7 +33,8 @@ from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
 from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
-from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, decide_sets, flag_index,
+from hypocurate.pipeline.writes import (CONSTRUCTED_MARK, Refused, code_stage, constructed_unmarked, decide_sets,
+                                        flag_index,
                                         inclusion_input, log_refusal,
                                         record_identity, record_ids, require_checks_cover, run_record_sources,
                                         write)
@@ -131,6 +132,12 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
         if record_ids(conn, run_id) != read_ids or flag_index(conn, run_id) != read_flags:
             raise Refused("freeze_dataset", "changed_since_read")
         require_checks_cover(conn, run_id, "freeze_dataset", identity_of, [(k, c, r) for _, k, c, r in read_flags])
+        # The result check (owner, 2026-10-06): the primary set itself against every invariant.
+        run_flags = conn.execute(text("SELECT experiment_flags FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
+        broken = el.primary_set_problems(set(members[el.PRIMARY]), by_id, flags,
+                                         isinstance(run_flags, dict) and run_flags.get(CONSTRUCTED_MARK) is True)
+        if broken:
+            raise Refused("freeze_dataset", "invariant_broken", "; ".join(broken))
         stored = dict(conn.execute(text("SELECT record_id, rule FROM run_record WHERE run_id = :r"),
                                    dict(r=run_id)).all())
         if stored != sets[el.PRIMARY] or _set_records(conn, run_id) != members:

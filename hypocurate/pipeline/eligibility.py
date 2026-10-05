@@ -341,6 +341,35 @@ def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | No
     return [f for f in flags if f["kind"] == "invalid_value"] + own
 
 
+def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: Iterable[Mapping],
+                         marked: bool) -> list[str]:
+    """The result check of the freeze (owner, 2026-10-06; register 'primary_set_invariants'): what
+    in the primary set itself breaks an invariant, whatever the plan said. `flags` are the Checks
+    flags (identity and validity independent of the plan's grouping and outcome); `records` gives
+    each member's kind and source; `marked` is the run's test mark. Empty if nothing."""
+    from hypocurate.sources.versions import SOURCES
+    out = []
+    for f in flags:
+        inside = sorted(i for i in f["records"] if i in members)
+        if f["kind"] == "exact_duplicate" and len(inside) > 1:
+            out.append(f"an exact duplicate counted twice: records {inside}")
+        elif f["kind"] == "values_disagree" and len(inside) > 1:
+            out.append(f"both records of a conflict: records {inside}")
+        elif f["kind"] == "invalid_value" and inside:
+            out.append(f"an invalid value: records {inside}")
+        elif f["kind"] == "possible_duplicate" and f["category"] == "several candidates" and inside:
+            out.append(f"a group of unresolved identity: records {inside}")
+    recalled = sorted(i for i in members if records[i]["kind"] == "model_recalled")
+    if recalled:
+        out.append(f"model-recalled records: {recalled}")
+    # Its own test of the source definition, so that switching off the earlier guard does not
+    # switch off this check.
+    constructed = sorted(i for i in members if getattr(SOURCES.get(records[i]["source"]), "constructed", False))
+    if constructed and not marked:
+        out.append(f"constructed records in a run not marked as a test: {constructed}")
+    return out
+
+
 def all_sets(plan: Mapping[str, Any], records: list[Mapping], flags: list[Mapping],
              set_flags: Mapping[str, list] | None = None) -> dict[str, dict[int, str]]:
     """The primary set and every sensitivity set the plan names, each with its own flags."""
