@@ -275,28 +275,31 @@
       }
     ],
     "notes": [
-      "Which records are compared is the open decision 'conflict_pairing_rule' (step 6)."
+      "Which records are compared is decided by entry 'conflict_pairing_rule' (owner, 2026-10-05): different sources, same paper, alloy, grain size and test conditions."
     ],
     "tests": []
   },
   {
     "key": "conflict_pairing_rule",
     "name": "Which records are compared for a conflict",
-    "state": "open",
-    "statement": "Which pairs of records are compared for the 'values disagree' flag. Two records from the same paper with the same alloy, grain size and conditions in one source may be repeat specimens, which are separate measurements. A conflict is two records that claim to be the same measurement and disagree, which mainly arises between different sources reporting the same paper.",
-    "value": null,
+    "state": "in_force",
+    "statement": "Duplicates and conflicts are looked for only between records from different sources that cite the same paper with the same alloy, grain size and test conditions. Rows within one source are always separate measurements (repeat specimens).",
+    "value": {
+      "text": "different sources citing the same paper, with the same alloy, grain size and test conditions; rows within one source are separate measurements",
+      "unit": null
+    },
     "category": "data_handling",
     "affects": "Whether legitimate repeat specimens are flagged as conflicts; the conflict flags of every run.",
-    "reason": "The 2% tolerance (entry 'values_disagree_tolerance') needs a pairing rule, and the owner did not state one as final.",
+    "reason": "Repeat specimens reported by one source are legitimate separate measurements; a conflict or duplicate is two records that claim to be the same measurement, which arises when different sources report the same paper.",
     "evidence": [
       "Owner's answer on decision f, 2026-10-05 (step 4b summary).",
       "Step 1 summary: MPEA papers with the same alloy and grain size at different values, which duplicate detection must not merge.",
-      "Step 4b review, finding 4."
+      "Step 4b review, finding 4.",
+      "Owner's decision, 2026-10-05 (step 5 instructions)."
     ],
-    "decided": null,
-    "pending": {
-      "by": "owner",
-      "before_step": 6
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -310,9 +313,18 @@
       "note": null
     },
     "tests": [],
-    "history": [],
+    "history": [
+      {
+        "value": "open decision: which pairs of records are compared for the 'values disagree' flag (repeat specimens versus conflicting reports)",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Open entry added after the step 4b review, finding 4."
+      }
+    ],
     "notes": [
-      "Related: entry 'observation_unit' (what one source row represents)."
+      "Known weakness: a source that repeats its own row by mistake is not caught, because rows within one source are never compared.",
+      "Not reviewed by an expert.",
+      "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance)."
     ]
   },
   {
@@ -1967,7 +1979,7 @@
     "tests": [],
     "history": [],
     "notes": [
-      "Connects to the open decision 'conflict_pairing_rule'."
+      "Connects to entry 'conflict_pairing_rule' (decided 2026-10-05): rows within one source are always separate measurements."
     ]
   },
   {

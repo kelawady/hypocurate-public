@@ -108,12 +108,22 @@ def test_the_survivor_rule_has_the_owners_step_1_wording():
     assert "detected by the original paper's DOI" in e["history"][0]["value"]  # the withdrawn wording
 
 
-def test_the_pairing_rule_is_open_and_calibration_awaits_its_technical_review():
-    """Finding 4."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["conflict_pairing_rule"]
+def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review():
+    """Finding 4. The pairing rule was the open entry; the owner decided it on 2026-10-05 (step 5)."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
     pairing = BY_KEY["conflict_pairing_rule"]
-    assert pairing["pending"] == {"by": "owner", "before_step": 6} and pairing["value"] is None
-    assert "repeat specimens" in pairing["statement"]
+    assert pairing["state"] == "in_force" and "pending" not in pairing
+    assert pairing["decided"] == {"by": OWNER, "date": "2026-10-05"}
+    assert pairing["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}
+    assert pairing["applied"]["status"] == "not_yet" and pairing["applied"]["step"] == 6
+    assert pairing["statement"] == (
+        "Duplicates and conflicts are looked for only between records from different sources that cite the "
+        "same paper with the same alloy, grain size and test conditions. Rows within one source are always "
+        "separate measurements (repeat specimens).")
+    notes = " ".join(pairing["notes"])
+    assert "a source that repeats its own row by mistake is not caught" in notes
+    assert "Not reviewed by an expert." in notes
+    assert pairing["history"][0]["value"].startswith("open decision:")
     assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
     assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
 
@@ -357,7 +367,7 @@ HEADINGS = ["Open decisions", "Direction approved, pending technical review",
 def test_the_page_shows_every_entry_grouped_with_pending_states_first():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == HEADINGS
+    assert headings == HEADINGS[1:]  # no open decision since the owner decided the pairing rule (step 5)
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -372,9 +382,9 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
     assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["conflict_pairing_rule", "an_open_question"]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert "2 open decisions</strong>" in html
+    assert "1 open decision</strong>" in html
     second = re.split(r"<h2>", html)[2]
     assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
     assert "pending: second-model technical review, before step 7" in second
@@ -385,9 +395,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
     count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert count == {"in_force": len(REGISTER) - 2, "open": 1, "direction_approved": 1}
+    assert count == {"in_force": len(REGISTER) - 1, "open": 0, "direction_approved": 1}
     assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
-    assert "1 open decision</strong>" in summary
+    assert "0 open decisions</strong>" in summary
     assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
