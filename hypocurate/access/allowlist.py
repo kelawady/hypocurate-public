@@ -93,6 +93,9 @@ FIELDS = MappingProxyType({
                            "temperature; counts by test type and by phase. Never a row-level value, an "
                            "outcome value or a statistic derived from outcomes.",
     "gap_report": "The Analyst's gap report: the output of each Analyst stage of the run.",
+    "set_flags": "From the completed Checks result, for Inclusion (code): per sensitivity set whose matching "
+                 "settings differ from the primary set's, its duplicate, conflict and ambiguity flags: kind and "
+                 "category (from their vocabularies) and record ids. Never the numbers compared.",
     "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, its stable "
                          "identity (source-version fingerprint, origin key, item index), a hash of the stored record, whether it carries a DOI, identities as hashes (paper from the DOI, "
                          "batch), composition, each "
@@ -136,7 +139,7 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
 # record's outcome directly or on its position relative to the tested relationship. It acts on
 # the flags Checks raised, by kind and category.
 CODE_ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
-    "inclusion": MappingProxyType({"curation": frozenset({"plan", "record_conditions", "flags_kind"})}),
+    "inclusion": MappingProxyType({"curation": frozenset({"plan", "record_conditions", "flags_kind", "set_flags"})}),
     "checks": MappingProxyType({"curation": frozenset({"plan", "records_full"})}),
 })
 

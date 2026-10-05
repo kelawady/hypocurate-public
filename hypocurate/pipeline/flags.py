@@ -57,15 +57,15 @@ def relative_difference(a: float, b: float) -> float:
     return abs(a - b) / small if small > 0 else math.inf
 
 
-def _value(rec: Mapping, f: str) -> Any:
+def _value(rec: Mapping, f: str, statuses=VALUE_STATUSES) -> Any:
     entry = rec["harmonized"].get(f) if isinstance(rec.get("harmonized"), Mapping) else None
-    if isinstance(entry, Mapping) and entry.get("status") in VALUE_STATUSES:
+    if isinstance(entry, Mapping) and entry.get("status") in statuses:
         return entry.get("value")
     return None
 
 
-def _number(rec: Mapping, f: str) -> float | None:
-    v = _value(rec, f)
+def _number(rec: Mapping, f: str, statuses=VALUE_STATUSES) -> float | None:
+    v = _value(rec, f, statuses)
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
 
@@ -92,11 +92,30 @@ def invalid_values(records: Iterable[Mapping], outcome: str) -> list[Flag]:
     return out
 
 
-def _condition(a: Mapping, b: Mapping) -> str:
+@dataclass(frozen=True)
+class Matching:
+    """The settings that decide which records are compared (step 6 review, finding 2): the
+    same-alloy step, the tolerance, the grouping (a dataset cites itself) and the value statuses
+    that count as known."""
+    decimals: int
+    tolerance: float
+    grouping: tuple
+    statuses: tuple
+
+
+def matching(plan: Mapping[str, Any], key: str = "primary") -> Matching:
+    """The matching settings of set `key` under the locked plan (its own change applied)."""
+    from hypocurate.pipeline.eligibility import settings
+    st = settings(plan, key)
+    return Matching(st.decimals, plan["rules"]["duplicate_tolerance"], tuple(sorted(st.grouping.items())),
+                    tuple(sorted(st.statuses)))
+
+
+def _condition(a: Mapping, b: Mapping, statuses=VALUE_STATUSES) -> str:
     """'same', 'unknown' (a condition missing on one side) or 'differs'."""
     state = "same"
     for f in ("test_type", "test_temperature"):
-        va, vb = _value(a, f), _value(b, f)
+        va, vb = _value(a, f, statuses), _value(b, f, statuses)
         if va is None or vb is None:
             state = "unknown"
         elif va != vb:
@@ -104,16 +123,17 @@ def _condition(a: Mapping, b: Mapping) -> str:
     return state
 
 
-def _link(a: Mapping, b: Mapping, plan: Mapping, grouping: Mapping) -> tuple[str, dict] | None:
+def _link(a: Mapping, b: Mapping, plan: Mapping, m: Matching) -> tuple[str, dict] | None:
     """The candidate link between two records of different sources, or None."""
-    tol, outcome = plan["rules"]["duplicate_tolerance"], plan["variables"]["outcome"]["field"]
-    ga, gb, ya, yb = (_number(a, "grain_size"), _number(b, "grain_size"), _number(a, outcome), _number(b, outcome))
+    tol, outcome, st, grouping = m.tolerance, plan["variables"]["outcome"]["field"], m.statuses, dict(m.grouping)
+    ga, gb, ya, yb = (_number(a, "grain_size", st), _number(b, "grain_size", st), _number(a, outcome, st),
+                      _number(b, outcome, st))
     if None in (ga, gb, ya, yb) or relative_difference(ga, gb) > tol:
         return None
     pa, pb = paper(a, grouping), paper(b, grouping)
     if pa is not None and pb is not None and pa != pb:
         return None
-    cond = _condition(a, b)
+    cond = _condition(a, b, st)
     if cond == "differs":
         return None
     numbers = {"grain_size": [ga, gb], outcome: [ya, yb], "relative_difference": relative_difference(ya, yb)}
@@ -123,19 +143,18 @@ def _link(a: Mapping, b: Mapping, plan: Mapping, grouping: Mapping) -> tuple[str
     return ("possible", numbers) if within else None
 
 
-def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any]) -> list[Flag]:
-    rules = plan["rules"]
-    grouping = {g["source"]: g["unit"] for g in rules["grouping"]}
+def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any], m: Matching | None = None) -> list[Flag]:
+    m = m or matching(plan)
     by_alloy: dict[str, list[Mapping]] = defaultdict(list)
     for r in records:
-        comp = _value(r, "composition")
+        comp = _value(r, "composition", m.statuses)
         if isinstance(comp, Mapping) and comp:
-            by_alloy[same_alloy_key(dict(comp), rules["same_alloy_decimals"])].append(r)
+            by_alloy[same_alloy_key(dict(comp), m.decimals)].append(r)
     links: dict[tuple[int, int], tuple[str, dict]] = {}
     for group in by_alloy.values():
         for a, b in combinations(sorted(group, key=lambda r: r["id"]), 2):
             if a["source"] != b["source"]:
-                link = _link(a, b, plan, grouping)
+                link = _link(a, b, plan, m)
                 if link:
                     links[(a["id"], b["id"])] = link
     parent: dict[int, int] = {}
@@ -179,3 +198,16 @@ def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any]) -> list[Fl
 def raise_flags(plan: Mapping[str, Any], records: list[Mapping]) -> list[Flag]:
     """Every flag for the run's records under the locked plan, in a fixed order."""
     return invalid_values(records, plan["variables"]["outcome"]["field"]) + duplicate_groups(records, plan)
+
+
+def set_flags(plan: Mapping[str, Any], records: list[Mapping]) -> dict[str, list[Flag]]:
+    """For each sensitivity set whose matching settings differ from the primary set's, the
+    duplicate, conflict and ambiguity flags under its own settings (step 6 review, finding 2).
+    Invalid values do not depend on matching; the set uses the primary set's."""
+    primary = matching(plan)
+    out = {}
+    for key in plan["sensitivity_analyses"]:
+        m = matching(plan, key)
+        if m != primary:
+            out[key] = duplicate_groups(records, plan, m)
+    return out

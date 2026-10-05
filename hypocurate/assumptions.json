@@ -4309,12 +4309,15 @@
     "history": [],
     "notes": [
       "The reference script's 'discretionary removals' analysis (PRD 10: 438 ± 67 with four records removed) is not carried over: its records were chosen after seeing outcomes, so it cannot be named in a plan locked before the data (owner, 2026-10-05).",
-      "Related: 'no_multiplicity_adjustment'."
+      "Related: 'no_multiplicity_adjustment'.",
+      "Step 6 review, finding 2 (2026-10-06): a set that changes a matching setting (the same-alloy step, the accepted value statuses, the grouping) recomputes its duplicate, conflict and ambiguity flags under its own settings; Checks supplies them, so Inclusion stays outcome-blind. Its identity decisions can therefore change, not only the grain-size counts."
     ],
     "tests": [
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
       "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change",
       "tests/test_reference_sets.py::test_each_sensitivity_set_differs_only_by_its_named_change_with_duplicates_and_conflicts",
-      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions"
+      "tests/test_sensitivity_matching.py::test_the_coarser_same_alloy_rule_recomputes_the_duplicates",
+      "tests/test_sensitivity_matching.py::test_the_one_change_rule_holds_with_recomputed_matching_flags"
     ]
   },
   {
@@ -4355,7 +4358,9 @@
       "note": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Step 6 review, finding 2 (2026-10-06): Inclusion's list gains 'set_flags' (each sensitivity set's matching flags from the completed Checks result: codes and record ids, no numbers)."
+    ],
     "tests": [
       "tests/test_access_code_roles.py::test_the_code_lists_match_the_owners_decision",
       "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",

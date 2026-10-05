@@ -281,9 +281,21 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
     return rules
 
 
-def all_sets(plan: Mapping[str, Any], records: list[Mapping], flags: list[Mapping]) -> dict[str, dict[int, str]]:
-    """The primary set and every sensitivity set the plan names."""
-    return {key: decide(plan, records, flags, key) for key in (PRIMARY, *plan["sensitivity_analyses"])}
+def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | None) -> list[Mapping]:
+    """The flags set `key` applies: its own matching flags from Checks where its matching settings
+    differ (step 6 review, finding 2), with the primary set's invalid-value flags; else the primary
+    set's flags."""
+    if not set_flags or key not in set_flags:
+        return flags
+    own = [{"id": 10 ** 12 + n, **f} for n, f in enumerate(set_flags[key])]
+    return [f for f in flags if f["kind"] == "invalid_value"] + own
+
+
+def all_sets(plan: Mapping[str, Any], records: list[Mapping], flags: list[Mapping],
+             set_flags: Mapping[str, list] | None = None) -> dict[str, dict[int, str]]:
+    """The primary set and every sensitivity set the plan names, each with its own flags."""
+    return {key: decide(plan, records, flags_for(key, flags, set_flags), key)
+            for key in (PRIMARY, *plan["sensitivity_analyses"])}
 
 
 def members(rules: Mapping[int, str]) -> list[int]:

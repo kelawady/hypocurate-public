@@ -27,7 +27,7 @@ from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarke
 def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
     data = role_input(bind_code(engine, run_id, "inclusion"))
     plan, records, flags = data["plan"]["content"], data["record_conditions"], data["flags_kind"]
-    sets = el.all_sets(plan, records, flags)
+    sets = el.all_sets(plan, records, flags, data["set_flags"])
     read_ids = sorted(r["id"] for r in records)
     read_flags = [(f["id"], f["kind"], f["category"], tuple(sorted(f["records"]))) for f in flags]
 

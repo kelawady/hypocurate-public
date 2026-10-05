@@ -23,6 +23,50 @@ def registered(engine, keys=SOURCE_KEYS) -> dict[str, int]:
     return {k: register(engine, k).version_id for k in keys}
 
 
+def registered_files(engine, files: dict[str, bytes]) -> dict[str, int]:
+    """Registers each source key with one sealed version holding the given file (MPEA layout for
+    'mpea' and 'controlled_duplicates'), with the settings of the code's source definition."""
+    from hypocurate.sources.versions import SOURCES, files_digest, version_identity
+    out = {}
+    for key, content in files.items():
+        d = SOURCES[key]
+        name = d.data_files[0]
+        with engine.begin() as conn:
+            sid = conn.execute(text(
+                "INSERT INTO source (key, name, source_type, licence, data_kind, adapter_status, enabled, grouping_unit) "
+                "VALUES (:k, :n, :t, :l, :d, 'available', true, :u) RETURNING id"),
+                dict(k=key, n=d.name, t=d.source_type, l=d.licence, d=d.data_kind, u=d.grouping_unit)).scalar()
+            vid = conn.execute(text("INSERT INTO source_version (source_id, label, obtained_on) "
+                                    "VALUES (:s, 'test file', '2026-10-06') RETURNING id"), dict(s=sid)).scalar()
+            import hashlib
+            conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)"),
+                         dict(v=vid, p=name, h=hashlib.sha256(content).hexdigest(), c=content))
+            digest = files_digest({name: content})
+            conn.execute(text("UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v"),
+                         dict(v=vid, fp=version_identity(digest, d.source_type, d.data_kind, d.grouping_unit)))
+        out[key] = vid
+    return out
+
+
+def mpea_csv(rows: list[dict]) -> bytes:
+    """An MPEA-layout file: the frozen header, then rows given as {column: value} (others blank)."""
+    import csv, io
+    from hypocurate.sources.adapters.mpea_layout import HEADER
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(HEADER)
+    for r in rows:
+        w.writerow([r.get(h, "") for h in HEADER])
+    return out.getvalue().encode("utf-8")
+
+
+def mpea_row(formula, gs, ys, doi="10.1016/j.test.2026.001", test="T", temperature="25.0"):
+    return {"FORMULA": formula, "PROPERTY: Microstructure": "FCC", "PROPERTY: BCC/FCC/other": "FCC",
+            "PROPERTY: grain size ($\\mu$m)": str(gs), "PROPERTY: Type of test": test,
+            "PROPERTY: Test temperature ($^\\circ$C)": temperature, "PROPERTY: YS (MPa)": str(ys),
+            "PROPERTY: UTS (MPa)": str(ys * 2), "REFERENCE: doi": doi}
+
+
 def _val(engine, sql, **params):
     with engine.begin() as conn:
         result = conn.execute(text(sql), params)

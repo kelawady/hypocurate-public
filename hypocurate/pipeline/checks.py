@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
-from hypocurate.pipeline.flags import Flag, raise_flags
+from hypocurate.pipeline.flags import Flag, raise_flags, set_flags
 from hypocurate.pipeline.writes import Refused, code_stage, flag_index, record_ids, write
 
 
@@ -21,6 +21,7 @@ def run_checks(engine: Engine, run_id: int) -> list[Flag]:
     data = role_input(bind_code(engine, run_id, "checks"))
     plan, records = data["plan"]["content"], data["records_full"]
     flags = raise_flags(plan, records)
+    per_set = set_flags(plan, records)
     read_ids = sorted(r["id"] for r in records)
 
     def body(conn: Connection, stage: str):
@@ -42,7 +43,11 @@ def run_checks(engine: Engine, run_id: int) -> list[Flag]:
         for f in flags:
             counts[f"{f.kind}/{f.category}"] = counts.get(f"{f.kind}/{f.category}", 0) + 1
         code_stage(conn, run_id, "checks", {"plan": data["plan"]["fingerprint"], "records": len(read_ids)},
-                   {"flags": dict(sorted(counts.items()))})
+                   {"flags": dict(sorted(counts.items())),
+                    # Step 6 review, finding 2: the matching flags of each sensitivity set whose matching
+                    # settings differ (kind, category, records; the numbers stay in Checks).
+                    "set_flags": {key: [{"kind": f.kind, "category": f.category, "records": f.records} for f in fs]
+                                  for key, fs in per_set.items()}})
         return flags
 
     return write(engine, run_id, "checks", "raise_flags", body)

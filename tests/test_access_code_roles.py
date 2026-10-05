@@ -47,7 +47,8 @@ def test_the_code_lists_match_the_owners_decision():
     assert CODE_ROLES == ("inclusion", "checks") and ALL_ROLES == ROLES + CODE_ROLES
     assert not set(CODE_ROLES) & set(ALLOWED)  # the agent table is unchanged
     assert {r: set(s) for r, s in CODE_ALLOWED.items()} == {"inclusion": {"curation"}, "checks": {"curation"}}
-    assert allowed("inclusion", "curation") == {"plan", "record_conditions", "flags_kind"}
+    # set_flags: step 6 review, finding 2 (each sensitivity set's matching flags, codes and ids only).
+    assert allowed("inclusion", "curation") == {"plan", "record_conditions", "flags_kind", "set_flags"}
     assert allowed("checks", "curation") == {"plan", "records_full"}
     for role in CODE_ROLES:
         for stage in ("none", "before_lock", "analysis", "closed_without_freeze", "final", "final_without_freeze"):
@@ -111,7 +112,7 @@ def test_inclusion_receives_no_outcome_value(engine):
     outcome values; Checks' input (all values, by design) is the positive control."""
     world = aw.build(engine, "curation")
     inclusion = role_input(bind_code(engine, world.run, "inclusion"))
-    assert set(inclusion) == {"plan", "record_conditions", "flags_kind"}
+    assert set(inclusion) == {"plan", "record_conditions", "flags_kind", "set_flags"}
     assert leaks(inclusion, aw.PLANTED.values()) == []
     assert aw.DIRECTION not in json.dumps(inclusion)
     checks = role_input(bind_code(engine, world.run, "checks"))
@@ -119,6 +120,7 @@ def test_inclusion_receives_no_outcome_value(engine):
     rows = [r for r in audit(engine, world.run) if r.role in CODE_ROLES and r.function != "bind"]
     assert {(r.role, r.function, r.allowed) for r in rows} == {
         ("inclusion", "plan", True), ("inclusion", "record_conditions", True), ("inclusion", "flags_kind", True),
+        ("inclusion", "set_flags", True),
         ("checks", "plan", True), ("checks", "records_full", True)}
 
 

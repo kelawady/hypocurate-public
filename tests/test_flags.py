@@ -206,4 +206,5 @@ def test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_outcome_f
     assert "hypocurate.pipeline.profile" not in imported
     plan_keys = {n.slice.value for n in ast.walk(tree) if isinstance(n, ast.Subscript)
                  and isinstance(n.value, ast.Name) and n.value.id == "plan" and isinstance(n.slice, ast.Constant)}
-    assert plan_keys == {"rules", "variables"}
+    # Step 6 review, finding 2: the names of the sensitivity sets, to compute each set's own flags.
+    assert plan_keys == {"rules", "variables", "sensitivity_analyses"}

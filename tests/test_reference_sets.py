@@ -102,10 +102,22 @@ CASCADE = {"in_scope", "single_grain_size", "duplicate_counted_once"}
 SCOPE_FIELDS = ("test_type", "test_temperature", "test_temperature_band", "microstructure", "phase_class")
 
 
+def _regrouped(key, run):
+    """Records whose duplicate group differs under the set's own matching flags (step 6 review,
+    finding 2): a matching change can change identity decisions, not only grain-size counts."""
+    if key not in run["set_flags"]:
+        return set()
+    own = {frozenset(f["records"]) for f in run["set_flags"][key]}
+    primary = {frozenset(f["records"]) for f in run["flags"] if f["kind"] != "invalid_value"}
+    return set().union(*(own ^ primary)) if own ^ primary else set()
+
+
 def _direct(key, run, i):
     """Is record i one the set's named change applies to directly?"""
     c, primary = run["conditions"][i], run["rules"]["primary"][i]
     in_flag = lambda kind: any(i in f["records"] for f in run["flags"] if f["kind"] == kind)
+    if i in _regrouped(key, run):
+        return True
     return {
         "no_exclusions": primary == "excluded_by_rule",
         "tension_and_compression": c["categories"]["test_type"] == "compression",
@@ -137,7 +149,9 @@ def _check_one_change(run):
             assert key == "same_alloy_1_at_pct" or alloy(i) in touched_alloys or i in touched_groups, \
                 (key, run["origin"][i])
             if key == "same_alloy_1_at_pct":
-                assert {primary[i], other[i]} == {"in_scope", "single_grain_size"}
+                # Corrected after the review (finding 2): besides the grain-size count, identity
+                # decisions change for records regrouped by the set's own flags (direct, above).
+                assert {primary[i], other[i]} <= {"in_scope", "single_grain_size", "duplicate_counted_once"}
         assert run["sets"][key] == {i for i, r in other.items() if r == "in_scope"}
         differing_total[key] = len(differing)
     return differing_total

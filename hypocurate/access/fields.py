@@ -314,6 +314,21 @@ def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
+def set_flags(conn: Connection, ctx: Context) -> dict:
+    """The per-set matching flags of the run's completed Checks result (step 6 review, finding 2):
+    codes and record ids only."""
+    output = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'checks' "
+                               "AND status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=ctx.run_id)).scalar_one_or_none()
+    stored = output.get("set_flags", {}) if isinstance(output, Mapping) else {}
+    out = {}
+    for key, flags in (stored.items() if isinstance(stored, Mapping) else ()):
+        out[vocab.code(key, vocab.SENSITIVITY_KEYS)] = [
+            {"kind": vocab.code(f.get("kind"), vocab.FLAG_KINDS), "category": vocab.code(f.get("category"), vocab.FLAG_CATEGORIES),
+             "records": [r for r in f.get("records", []) if isinstance(r, int) and not isinstance(r, bool)]}
+            for f in flags if isinstance(f, Mapping)]
+    return out
+
+
 def _flag_records(conn: Connection, ctx: Context) -> dict[int, list[int]]:
     out: dict[int, list[int]] = {}
     for flag_id, record_id in _rows(conn, "SELECT fr.flag_id, fr.record_id FROM flag_record fr "
@@ -477,5 +492,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "plan": plan, "records_full": records_full, "decisions": decisions, "flags_full": flags_full,
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
-    "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions,
+    "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
 }

@@ -100,7 +100,7 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
     data = role_input(bind_code(engine, run_id, "inclusion"))
     plan, records, flags = data["plan"]["content"], data["record_conditions"], data["flags_kind"]
     by_id = {r["id"]: r for r in records}
-    sets = el.all_sets(plan, records, flags)
+    sets = el.all_sets(plan, records, flags, data["set_flags"])
     members = {key: el.members(rules) for key, rules in sets.items()}
     counts: dict[str, Any] = {key: el.counts(plan, by_id, ids, key) for key, ids in members.items()}
     counts["per_source"] = {source: el.counts(plan, by_id, [i for i in members[el.PRIMARY]

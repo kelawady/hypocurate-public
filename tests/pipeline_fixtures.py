@@ -36,6 +36,8 @@ def decisions(engine, run_id) -> dict:
             "WHERE r.extraction_run_id = :r"), dict(r=run_id)).all()
         stage = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'inclusion'"),
                              dict(r=run_id)).scalar_one()
+        checks = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'checks'"),
+                              dict(r=run_id)).scalar_one()
         sets = {}
         for key, rid in conn.execute(text("SELECT a.key, asr.record_id FROM analysis_set a LEFT JOIN "
                                           "analysis_set_record asr ON asr.analysis_set_id = a.id WHERE a.run_id = :r"),
@@ -54,4 +56,5 @@ def decisions(engine, run_id) -> dict:
         rules[key] = {**primary, **{int(i): rule for i, rule in diff.items()}}
     return {"origin": {r.id: r.source_item_key for r in rows}, "source": {r.id: r.source for r in rows},
             "rules": rules, "sets": sets, "conditions": conditions,
-            "flags": [{"id": f.id, "kind": f.kind, "category": f.category, "records": list(f.records)} for f in flags]}
+            "flags": [{"id": f.id, "kind": f.kind, "category": f.category, "records": list(f.records)} for f in flags],
+            "set_flags": checks.get("set_flags", {})}
