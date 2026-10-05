@@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
 
 ## Status
 
-Build step 5 of 12 (PRD Section 15): the access layer. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), plus the access layer with its audit log and the file guard for pipeline processes (step 5). The pipeline, the agents and the screens come in later steps.
+Build step 6 of 12 (PRD Section 15): the plan, the two checkpoints, inclusion and checks. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), the access layer with its audit log and the file guard for pipeline processes (step 5), plus the plan model, the rules lock, record storage, the code checks that raise flags, the eligibility decisions and the dataset freeze (step 6). The statistics, the agents and the screens come in later steps.
 
 ## Set up secrets (once)
 
@@ -139,9 +139,28 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
 - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
 - Not yet run on the live database: registering there is a later step and needs the owner.
 
+## Plan, checkpoints, inclusion and checks
+
+Code in `hypocurate/pipeline/` (step 6; PRD 5). No agent and no model call: plans are fixed inputs.
+
+```python
+from hypocurate.pipeline import checkpoints, checks, extract, inclusion
+from hypocurate.pipeline.plan import reference_plan
+checkpoints.lock_rules(engine, run_id, reference_plan(hypothesis_version_id))  # plan, fingerprint, three tags
+extract.store_records(engine, run_id)       # each chosen source's sealed version, by its adapter
+checks.run_checks(engine, run_id)           # flags: invalid values, duplicates, conflicts
+inclusion.decide_run(engine, run_id)        # one rule per record; the primary and sensitivity sets
+checkpoints.freeze_dataset(engine, run_id)  # counts and fingerprint; or "no dataset frozen"
+```
+
+- **The plan** follows `PLAN_SCHEMA` exactly and holds every setting that affects eligibility or grouping. The default and reference plans take each value from the domain profile (`profile.py`); decision code reads settings only from the locked plan.
+- **Checks and Inclusion read through their own access objects** (`dispatch.bind_code`). Inclusion receives no outcome value.
+- **Every write** takes `hc_write_lock(p_run => …)` in `run_transaction`, re-checks by id what it read, and logs any refusal (`audit_log`, `detail.result` "rejected").
+- **Constructed test data** (the controlled extract) enter only a run marked `{"constructed_test_data": true}` in `experiment_flags` at dispatch.
+
 ## Access layer
 
-Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8).
+Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8). The code roles Inclusion and Checks (step 6) read through access objects too, bound by `dispatch.bind_code` at the curation stage only.
 
 ```python
 from hypocurate.access import bind, role_input

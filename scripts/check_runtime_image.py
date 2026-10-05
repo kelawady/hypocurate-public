@@ -33,7 +33,13 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
             "hypocurate/access/allowlist.py", "hypocurate/access/layer.py", "hypocurate/access/fields.py",
             "hypocurate/access/stage.py", "hypocurate/access/inputs.py", "hypocurate/access/file_guard.py",
             "hypocurate/access/guarded.py", "hypocurate/access/guard_probe.py", "hypocurate/access/vocabulary.py",
-            "hypocurate/access/context.py", "hypocurate/access/dispatch.py"]
+            "hypocurate/access/context.py", "hypocurate/access/dispatch.py",
+            # Step 6: the tag lists, record extraction, and the plan, checkpoints, checks and inclusion.
+            "hypocurate/db/migrations/versions/0002_tag_starting_lists.py",
+            "hypocurate/db/migrations/versions/0003_record_extraction.py",
+            "hypocurate/pipeline/profile.py", "hypocurate/pipeline/plan.py", "hypocurate/pipeline/checkpoints.py",
+            "hypocurate/pipeline/extract.py", "hypocurate/pipeline/flags.py", "hypocurate/pipeline/checks.py",
+            "hypocurate/pipeline/eligibility.py", "hypocurate/pipeline/inclusion.py", "hypocurate/pipeline/writes.py"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 

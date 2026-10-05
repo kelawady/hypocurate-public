@@ -27,16 +27,18 @@ REGISTER = a.load_register()
 BY_KEY = {e["key"]: e for e in REGISTER}
 OWNER = "owner (Khalid El-Awady)"
 
-# The owner's eight decisions of 2026-10-05 (step 4b instructions, a to h).
+# The owner's eight decisions of 2026-10-05 (step 4b instructions, a to h), with how far each is
+# applied: (category, applied status, step that completes it). Step 6 applied a, b, d, f and h,
+# and the plan default of e.
 OWNER_DECISIONS = {
-    "tamu_test_temperature": ("scientific", 6),
-    "permitted_test_types": ("scientific", 6),
-    "tamu_grouping_unit": ("statistical", 7),  # partly applied: the adapter's grouping unit
-    "same_alloy_rule": ("scientific", 6),  # partly applied from step 5: the gap report's summaries
-    "fixed_minimums": ("statistical", 6),  # partly applied: the database's checks
-    "values_disagree_tolerance": ("data_handling", 6),
-    "calibration_noise_levels": ("statistical", 7),
-    "tag_starting_lists": ("data_handling", 6),
+    "tamu_test_temperature": ("scientific", "yes", None),
+    "permitted_test_types": ("scientific", "yes", None),
+    "tamu_grouping_unit": ("statistical", "partly", 7),  # the adapter's unit and the plan's grouping; inference
+    "same_alloy_rule": ("scientific", "yes", None),
+    "fixed_minimums": ("statistical", "partly", 7),  # plan default and freeze counts; the check deciding outcomes
+    "values_disagree_tolerance": ("data_handling", "yes", None),
+    "calibration_noise_levels": ("statistical", "not_yet", 7),
+    "tag_starting_lists": ("data_handling", "yes", None),
 }
 
 
@@ -53,13 +55,14 @@ def test_every_category_has_entries_and_keys_are_unique():
     assert len({e["key"] for e in REGISTER}) == len(REGISTER)
 
 
-PARTLY = {"tamu_grouping_unit", "papers_independent", "sufficiency_options", "controlled_extract_disabled",
-          "validity_checks", "fixed_minimums", "grain_size_transformation_at_analysis", "assigned_value_statuses",
-          "same_alloy_rule"}  # step 5: the gap report's condition summaries group alloys under the rule
+# Step 6 completed same_alloy_rule, sufficiency_options, controlled_extract_disabled and
+# assigned_value_statuses, and added constructed_test_runs (its label and exclusion: steps 7, 10).
+PARTLY = {"tamu_grouping_unit", "papers_independent", "validity_checks", "fixed_minimums",
+          "grain_size_transformation_at_analysis", "constructed_test_runs"}
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
-    for key, (category, step) in OWNER_DECISIONS.items():
+    for key, (category, status, step) in OWNER_DECISIONS.items():
         e = BY_KEY[key]
         # Review finding 4: the calibration direction is approved, its technical review pending.
         expected_state = "direction_approved" if key == "calibration_noise_levels" else "in_force"
@@ -67,8 +70,8 @@ def test_the_owners_eight_decisions_are_recorded_as_decided():
         assert e["category"] == category, key
         assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
         assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}, key
-        status = "partly" if key in PARTLY else "not_yet"
-        assert e["applied"]["status"] == status and e["applied"]["step"] == step, key
+        assert e["applied"]["status"] == status and e["applied"].get("step") == step, key
+        assert (status == "partly") == (key in PARTLY), key
 
 
 def test_decisions_carry_the_owners_wording():
@@ -110,21 +113,30 @@ def test_the_survivor_rule_has_the_owners_step_1_wording():
 
 
 def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review():
-    """Finding 4. The pairing rule was the open entry; the owner decided it on 2026-10-05 (step 5)."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
+    """Finding 4. The pairing rule was the open entry; the owner decided it on 2026-10-05 (step 5)
+    and added the possible-duplicate case and the rule for several candidates in step 6 planning.
+    Step 6 recorded two new open decisions for the owner (steps 7 and 8)."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["below_minimum_display", "curator_tabular_sources"]
+    assert {e["key"]: e["pending"]["before_step"] for e in REGISTER if e["state"] == "open"} == {
+        "below_minimum_display": 7, "curator_tabular_sources": 8}
+    assert "not even a coefficient" in " ".join(BY_KEY["below_minimum_display"]["notes"])
     pairing = BY_KEY["conflict_pairing_rule"]
     assert pairing["state"] == "in_force" and "pending" not in pairing
     assert pairing["decided"] == {"by": OWNER, "date": "2026-10-05"}
     assert pairing["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}
-    assert pairing["applied"]["status"] == "not_yet" and pairing["applied"]["step"] == 6
-    assert pairing["statement"] == (
-        "Duplicates and conflicts are looked for only between records from different sources that cite the "
-        "same paper with the same alloy, grain size and test conditions. Rows within one source are always "
-        "separate measurements (repeat specimens).")
+    assert pairing["applied"]["status"] == "yes"
+    assert pairing["statement"].startswith(
+        "Duplicates and conflicts are looked for only between records from different sources; rows within one "
+        "source are always separate measurements (repeat specimens).")
+    assert "a possible duplicate" in pairing["statement"] and "nothing is paired automatically" in pairing["statement"]
     notes = " ".join(pairing["notes"])
     assert "a source that repeats its own row by mistake is not caught" in notes
     assert "Not reviewed by an expert." in notes
     assert pairing["history"][0]["value"].startswith("open decision:")
+    assert pairing["history"][-1]["value"] == (
+        "Duplicates and conflicts are looked for only between records from different sources that cite the "
+        "same paper with the same alloy, grain size and test conditions. Rows within one source are always "
+        "separate measurements (repeat specimens).")
     assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
     assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
 
@@ -185,7 +197,7 @@ def test_the_microstructure_decision_is_recorded():
     assert e["value"]["text"] == "single-phase FCC (assigned by decision)"
     assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}
     assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}
-    assert e["applied"]["status"] == "not_yet" and e["applied"]["step"] == 6
+    assert e["applied"]["status"] == "yes"  # step 6
     evidence = " ".join(e["evidence"])
     for cited in ("main.tex line 138", "main.tex line 173", "supplementary.tex line 61", "main.tex line 175",
                   "main.tex line 177", "supplementary.tex line 65"):
@@ -196,6 +208,32 @@ def test_the_microstructure_decision_is_recorded():
     assert "Not reviewed by an expert." in notes
     assert "without these records" in e["sensitivity"]
     assert e["history"][0]["value"].endswith("(open decision)")
+
+
+def test_the_step_6_decisions_carry_the_owners_wording():
+    """Owner, step 6 planning and approval (2026-10-05)."""
+    tol = BY_KEY["values_disagree_tolerance"]
+    assert "matching tolerance" in tol["statement"] and "duplicate-or-conflict threshold" in tol["statement"]
+    assert "can never raise a conflict flag" in " ".join(tol["notes"])
+    assert "survive duplicate resolution" in BY_KEY["alloy_eligibility"]["statement"]
+    conflicts = BY_KEY["conflicts_not_pooled"]
+    assert "neither enters the primary analysis" in conflicts["statement"]
+    assert "CLAUDE.md rule 4" in conflicts["reason"] and "PRD 5.3" in conflicts["reason"]
+    one = BY_KEY["sensitivity_one_change"]
+    assert "exactly one named respect" in one["statement"] and "never change the verdict" in one["statement"]
+    assert "no adjustment is made for there being eight" in one["statement"]
+    assert "discretionary removals" in " ".join(one["notes"])
+    access = BY_KEY["code_role_access"]["statement"]
+    assert "Inclusion receives no outcome value" in access and "Not claimed: that outcomes play no part at all" in access
+    assert "test run: includes constructed data" in BY_KEY["constructed_test_runs"]["statement"]
+    assert BY_KEY["constructed_test_runs"]["applied"]["step"] == 10
+    assert "adapter code, with the adapter's name and version" in BY_KEY["record_extraction_provenance"]["statement"]
+    assert "Duplicates are resolved before grain sizes are counted." in BY_KEY["eligibility_rule_order"]["statement"]
+    assert "step 1 answer file" in " ".join(BY_KEY["duplicate_survivor_rule"]["notes"])
+    for key in ("sensitivity_one_change", "code_role_access", "constructed_test_runs", "record_extraction_provenance",
+                "eligibility_rule_order", "conflicts_not_pooled", "freeze_counts"):
+        e = BY_KEY[key]
+        assert e["decided"] == {"by": OWNER, "date": "2026-10-05"} and e["expert_review"]["status"] == "not_reviewed"
 
 
 def open_entry():
@@ -368,7 +406,7 @@ HEADINGS = ["Open decisions", "Direction approved, pending technical review",
 def test_the_page_shows_every_entry_grouped_with_pending_states_first():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == HEADINGS[1:]  # no open decision since the owner decided the pairing rule (step 5)
+    assert headings == HEADINGS  # step 6 recorded two open decisions (steps 7 and 8)
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -383,9 +421,11 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
     assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["below_minimum_display", "curator_tabular_sources",
+                                                             "an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert "1 open decision</strong>" in html
+    assert "Not decided (owner, before step 7)" in first and "Not decided (owner, before step 8)" in first
+    assert "3 open decisions</strong>" in html
     second = re.split(r"<h2>", html)[2]
     assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
     assert "pending: second-model technical review, before step 7" in second
@@ -396,9 +436,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
     count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert count == {"in_force": len(REGISTER) - 1, "open": 0, "direction_approved": 1}
+    assert count == {"in_force": len(REGISTER) - 3, "open": 2, "direction_approved": 1}
     assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
-    assert "0 open decisions</strong>" in summary
+    assert "2 open decisions</strong>" in summary
     assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
