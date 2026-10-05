@@ -1,6 +1,6 @@
 # Build step 3 — summary for review
 
-Date: 2026-10-05. Branch: `step-03-data-model`. **Status: signed off by the second model's second re-check (2026-10-05): all findings closed, "Step 3 can be merged and its migration run on the live database". Merge into `main` approved by the owner (2026-10-05); migration 0001 is frozen from that merge on.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
+Date: 2026-10-05. Branch: `step-03-data-model`. **Status: signed off by the second model's second re-check (2026-10-05): all findings closed, "Step 3 can be merged and its migration run on the live database". Merged into `main` (`427c1a3`, 2026-10-05) and **live on Render**: the pre-deploy migration ran on both services and live `/health` shows schema `0001` at head (see "Live deployment"). Migration 0001 is frozen from this merge on.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step03_review_chatgpt.md`. The plan was approved by the owner on 2026-10-04/05, with decisions on seven questions and four additions, and the fix plan on 2026-10-05, with two additions (the fingerprint computed at sealing; what may be written after a run ends).
 
@@ -407,8 +407,39 @@ Local checks beyond the suite:
    - a stage result starts as `running`;
    - the commentary must come from the commentator stage.
 
+## Live deployment (2026-10-05)
+
+**Merge:** `step-03-data-model` into `main` with `--no-ff` (`427c1a3`), after the branch run was green (https://github.com/kelawady/hypocurate/actions/runs/37252572320, 375 passed). The suite also passed on `main` locally (375), and `main`'s run was green (https://github.com/kelawady/hypocurate/actions/runs/37252769426; started 01:46:49 UTC, passed 01:48:08 UTC). Times below are UTC; the owner's dashboard shows UTC−7.
+
+| Check | How | Result |
+|---|---|---|
+| Live `/health` before the merge | `curl` | `version` `68ba1c4…`, no `schema` field (step 2 code) |
+| Pre-deploy setting, web | Owner: `hypocurate-web` → Settings → Deploy | Pre-Deploy Command `python -m hypocurate.db.migrate upgrade`; Docker Command empty (the Dockerfile's default, uvicorn); Auto-Deploy "After CI Checks Pass" |
+| Pre-deploy setting, worker | Owner: `hypocurate-worker` → Settings → Deploy | Pre-Deploy Command `python -m hypocurate.db.migrate upgrade`; Docker Command `python -m hypocurate.worker`; Auto-Deploy "After CI Checks Pass" |
+| Pre-deploy ran, web | Owner: the web service's log (screenshot) | 01:48:42 `Starting pre-deploy: python -m hypocurate.db.migrate upgrade`; 01:48:49 `schema at 0001`; 01:48:53 `Pre-deploy complete!`; new instance started 01:49:02; `Your service is live` 01:49:05. The old instance answered `/health` throughout. |
+| Pre-deploy ran, worker | Owner: the worker's log (screenshot) | 01:48:43 `Starting pre-deploy`; 01:48:50 `schema at 0001`; 01:48:53 `Pre-deploy complete!`; `Your service is live` 01:49:00; the new worker logs "database reachable". |
+| Live `/health` after | `curl`, 01:49:35 | `{"web":"ok","database":"ok","version":"427c1a3…","schema":{"revision":"0001","at_head":true}}`; the HTML page shows "Schema `0001` (latest)" |
+| Login still required | `curl` | `/` → 303 to `/login`; `/health/export` → 303 |
+
+The two "schema at 0001" lines do not show which service applied the migration and which found it already at head; the advisory lock serialized them and both exited 0.
+
+**A failed deploy before the successful one (worker; not changed or retried).** At 01:46:52, three seconds after the push and **before the GitHub check had passed**, the worker started a pre-deploy that failed:
+- `/usr/local/bin/python: No module named hypocurate.db.migrate`
+- `Pre-deploy has failed`
+- `Exited with status 1`
+
+The old worker kept running (it logged at 01:47:30 and 01:48:30), and nothing reached the database.
+
+My reading: because `render.yaml` changed, Render's Blueprint sync applied the new `preDeployCommand` as soon as the push landed. It then redeployed the commit already running, `68ba1c4`, which has no `hypocurate.db.migrate`. Render documents that a Blueprint update redeploys affected services, and that a failed pre-deploy keeps the previous deploy running.
+
+Two consequences, for later steps:
+- **The `checksPass` gate does not cover Blueprint-sync redeploys of the commit already running.** A settings change can therefore run against old code before the check passes.
+- **Next time,** deploy code that a new setting depends on in one merge, and add the setting in a later one.
+
+The owner did not send the web service's events for 01:46, so whether web also had this failed redeploy was not checked; its log screenshot starts at 01:48:21.
+
 ## Open items
-1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and live `/health` shows `"schema":{"revision":"0001","at_head":true}`. This is the first time a pre-deploy command runs with our Docker services. The merge also syncs the Blueprint.
+1. **Live check after merge: done** (see "Live deployment"). Follow-up for later steps: a `render.yaml` change is applied by the Blueprint sync before the `checksPass` gate, as a redeploy of the code already running. Put settings that depend on new code in a later merge than the code.
 2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
 3. **Step 4 onwards: every real write path follows the locking protocol** (second re-check, note 1). It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`; code review of each later step checks this.
    - The deadlock-free claim is scoped to **single-run transactions** that follow the protocol.
