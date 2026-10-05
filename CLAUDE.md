@@ -22,7 +22,7 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 10. **A change to `render.yaml` takes effect at push, before the checks pass**, and redeploys the code already running (Render's Blueprint sync; seen on the step 3 merge, 2026-10-05). So any setting that depends on new code goes in a later merge than that code, and every `render.yaml` change needs the owner's explicit review, like workflow changes.
 
 11. **Assumptions register.** Any new assumption or changed default is entered in `hypocurate/assumptions.json` in the same merge, with its reason, who decided it and when, and its earlier value in the history. The page /assumptions is generated from that file only.
-12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry marked "applied: yes" names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value.
+12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry applied in code ("yes" or "partly") names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only: it does not show that the entry's wording matches what the code does. Behaviour is covered by the regression tests the entry names, and the register test checks only that they exist.
 
 ## Rules the code must never break
 

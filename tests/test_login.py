@@ -202,6 +202,21 @@ def test_session_expires_after_max_age(monkeypatch):
     assert c.get("/").status_code == 303
 
 
+def test_ordinary_requests_do_not_renew_the_session(monkeypatch):
+    """Step 4b review: the session ends 12 hours after sign-in, however much it is used.
+    The middleware re-signs the cookie only when the session data change (at sign-in)."""
+    now = {"t": 1_800_000_000}
+    monkeypatch.setattr(itsdangerous.timed.TimestampSigner, "get_timestamp", lambda self: now["t"])
+    c = client()
+    assert "set-cookie" in sign_in(c).headers
+    for _ in range(3):
+        now["t"] += SESSION_MAX_AGE // 4
+        r = c.get("/")
+        assert r.status_code == 200 and "set-cookie" not in r.headers
+    now["t"] += SESSION_MAX_AGE // 4 + 1  # 12 hours and 1 second after sign-in
+    assert c.get("/").status_code == 303
+
+
 def test_copied_cookie_still_works_after_logout():
     """Stated limitation of cookie-only sessions (no session table in sprint 1):
     logout clears this browser's cookie but cannot revoke a copy. A copy works

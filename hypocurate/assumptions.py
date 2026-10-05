@@ -1,17 +1,33 @@
 """The assumptions register (step 4b): one source file, `hypocurate/assumptions.json`.
 
 One entry per assumption: what is assumed, its value, why, who decided it and when, the
-expert review, the sensitivity analysis that covers it, whether code applies it yet, and
+expert review, the sensitivity analysis that covers it, whether code applies it yet
+(yes, partly, or not yet), the regression tests that cover the behaviour it describes, and
 its earlier values. The /assumptions page is generated from it and nothing else.
+
+States: `in_force`; `open` (no value in force; who decides, before which step);
+`direction_approved` (the owner approved the direction; a technical review is pending
+before it is applied).
 
 Rules (CLAUDE.md, "How we work"): a new assumption or a changed default is entered here in
 the same merge; code reads a default from one named place, and an entry that code applies
-names that place in `applied.settings`. Each setting reference has one of these forms:
+(fully or partly) names that place in `applied.settings`.
+
+**What the checks establish, and what they do not** (step 4b review, finding 1). The
+settings check is a *reference and value check*: each named setting exists, and, where the
+entry gives `equals`, holds that value. It does not establish that the entry's wording
+describes what the code does: a function can change behaviour under the same name, a
+`sql:` reference matches the name anywhere in the migration text (comments included), and
+a constant can stay unchanged while code stops using it. Behaviour is covered by the
+regression tests an applied entry names in `tests`; `tests/test_assumptions.py` checks only
+that those tests exist.
+
+Each setting reference has one of these forms:
 
 - `python:<module>:<name>[.<attribute or key>…]` — a module attribute, walked by attribute
   or mapping key;
 - `python:<module>:<function>(<parameter>)` — the default of a function's parameter;
-- `sql:<name>` — a constraint, function or message in the migrations;
+- `sql:<name>` — a name in the migrations' text (a whole word; comments are not excluded);
 - `file:<repository path>:<text>` — a fixed text in a repository file (for example the
   Dockerfile's process count).
 
@@ -37,13 +53,16 @@ MIGRATIONS = PACKAGE / "db" / "migrations" / "versions"
 CATEGORIES = {"scientific": "Scientific", "statistical": "Statistical",
               "data_handling": "Data handling", "operational": "Operational"}
 REVIEW_STATUSES = {"not_reviewed": "Not reviewed", "accepted": "Reviewed and accepted", "disputed": "Disputed"}
-STATES = ("in_force", "open")
+STATES = {"in_force": "In force", "open": "Open decision",
+          "direction_approved": "Direction approved, pending technical review"}
+APPLIED = {"yes": "Yes", "partly": "Partly", "not_yet": "Not yet"}
 BUILD_STEPS = range(5, 13)  # PRD 15, steps still to come
 
 FIELDS = {"key", "name", "state", "statement", "value", "category", "affects", "reason", "evidence",
-          "decided", "expert_review", "sensitivity", "applied", "history", "notes"}
-OPEN_ONLY_FIELDS = {"pending"}
+          "decided", "expert_review", "sensitivity", "applied", "tests", "history", "notes"}
+PENDING_STATES = ("open", "direction_approved")  # these carry `pending: {by, before_step}`
 KEY = re.compile(r"[a-z][a-z0-9_]*")
+TEST_REF = re.compile(r"tests/(test_[a-z0-9_]+\.py)::(test_[a-z0-9_]+)")
 
 
 class RegisterError(ValueError):
@@ -107,14 +126,20 @@ def validate(entries: Any) -> None:
 
 
 def _validate_entry(where: str, e: Any) -> None:
-    is_open = isinstance(e, dict) and e.get("state") == "open"
-    _keys(where, e, FIELDS | (OPEN_ONLY_FIELDS if is_open else set()))
+    state = e.get("state") if isinstance(e, dict) else None
+    is_open = state == "open"
+    _keys(where, e, FIELDS | ({"pending"} if state in PENDING_STATES else set()))
     if not isinstance(e["key"], str) or not KEY.fullmatch(e["key"]):
         raise RegisterError(f"{where}.key: lower-case letters, digits and _ only")
     for f in ("name", "statement", "affects", "reason"):
         _text(f"{where}.{f}", e[f])
     if e["state"] not in STATES:
         raise RegisterError(f"{where}.state: one of {list(STATES)}")
+    if state in PENDING_STATES:
+        _keys(f"{where}.pending", e["pending"], {"by", "before_step"})
+        _text(f"{where}.pending.by", e["pending"]["by"])
+        if e["pending"]["before_step"] not in BUILD_STEPS:
+            raise RegisterError(f"{where}.pending.before_step: a build step from 5 to 12")
     if e["category"] not in CATEGORIES:
         raise RegisterError(f"{where}.category: one of {list(CATEGORIES)}")
     if not isinstance(e["evidence"], list) or not e["evidence"]:
@@ -132,10 +157,6 @@ def _validate_entry(where: str, e: Any) -> None:
         # An open decision has no value in force and no decision yet; it says who decides, by when.
         if e["value"] is not None or e["decided"] is not None:
             raise RegisterError(f"{where}: an open decision has value null and decided null")
-        _keys(f"{where}.pending", e["pending"], {"by", "before_step"})
-        _text(f"{where}.pending.by", e["pending"]["by"])
-        if e["pending"]["before_step"] not in BUILD_STEPS:
-            raise RegisterError(f"{where}.pending.before_step: a build step from 5 to 12")
     else:
         _keys(f"{where}.value", e["value"], {"text", "unit"})
         _text(f"{where}.value.text", e["value"]["text"])
@@ -157,6 +178,14 @@ def _validate_entry(where: str, e: Any) -> None:
 
     _validate_applied(f"{where}.applied", e["applied"])
 
+    if not isinstance(e["tests"], list):
+        raise RegisterError(f"{where}.tests: a list")
+    for j, t in enumerate(e["tests"]):
+        if not isinstance(t, str) or not TEST_REF.fullmatch(t):
+            raise RegisterError(f"{where}.tests[{j}]: tests/test_<file>.py::test_<name>")
+    if e["applied"]["status"] in ("yes", "partly") and not e["tests"]:
+        raise RegisterError(f"{where}.tests: an entry applied in code names the regression tests that cover it")
+
     if not isinstance(e["history"], list):
         raise RegisterError(f"{where}.history: a list")
     previous_to = None
@@ -176,10 +205,18 @@ def _validate_entry(where: str, e: Any) -> None:
 
 
 def _validate_applied(where: str, applied: Any) -> None:
-    if not isinstance(applied, dict) or applied.get("status") not in ("yes", "not_yet"):
-        raise RegisterError(f"{where}.status: 'yes' or 'not_yet'")
-    if applied["status"] == "yes":
-        _keys(where, applied, {"status", "settings", "note"})
+    if not isinstance(applied, dict) or applied.get("status") not in APPLIED:
+        raise RegisterError(f"{where}.status: one of {list(APPLIED)}")
+    if applied["status"] in ("yes", "partly"):
+        if applied["status"] == "yes":
+            _keys(where, applied, {"status", "settings", "note"})
+        else:
+            # Partly: what is done, what is pending, and the step that completes it.
+            _keys(where, applied, {"status", "settings", "done", "pending", "step", "note"})
+            _text(f"{where}.done", applied["done"])
+            _text(f"{where}.pending", applied["pending"])
+            if applied["step"] not in BUILD_STEPS:
+                raise RegisterError(f"{where}.step: a build step from 5 to 12")
         if not isinstance(applied["settings"], list) or not applied["settings"]:
             raise RegisterError(f"{where}.settings: applied in code needs at least one named setting")
         for j, s in enumerate(applied["settings"]):
@@ -255,7 +292,8 @@ def resolve_setting(ref: str) -> Any:
 
 def check_settings(entry: dict) -> list[str]:
     """Problems with an applied entry's named settings: each must resolve, and each value
-    given with `equals` must equal the code's. Empty when all is well."""
+    given with `equals` must equal the code's. Empty when all is well. A reference and
+    value check only: it does not show that the code behaves as the entry says."""
     problems = []
     for s in entry["applied"].get("settings", []):
         try:
@@ -270,10 +308,24 @@ def check_settings(entry: dict) -> list[str]:
 
 # --- The page ------------------------------------------------------------------------
 
+def named_tests_missing(entry: dict) -> list[str]:
+    """The entry's named regression tests that do not exist as test functions."""
+    missing = []
+    for ref in entry["tests"]:
+        file, name = TEST_REF.fullmatch(ref).groups()
+        path = REPO_ROOT / "tests" / file
+        if not path.is_file() or not re.search(rf"^def {name}\(", path.read_text(encoding="utf-8"), re.M):
+            missing.append(f"{entry['key']}: {ref} does not exist")
+    return missing
+
+
 def page_sections(entries: list[dict], *, not_reviewed_only: bool = False) -> list[tuple[str, list[dict]]]:
-    """Sections for the page: open decisions first, then the entries in force by category."""
+    """Sections for the page: open decisions first, then directions approved pending a
+    technical review, then the entries in force by category."""
     shown = [e for e in entries if not not_reviewed_only or e["expert_review"]["status"] == "not_reviewed"]
-    sections = [("Open decisions", [e for e in shown if e["state"] == "open"])]
+    sections = [("Open decisions", [e for e in shown if e["state"] == "open"]),
+                ("Direction approved, pending technical review",
+                 [e for e in shown if e["state"] == "direction_approved"])]
     sections += [(label, [e for e in shown if e["state"] == "in_force" and e["category"] == c])
                  for c, label in CATEGORIES.items()]
     return [(label, group) for label, group in sections if group]
@@ -282,7 +334,9 @@ def page_sections(entries: list[dict], *, not_reviewed_only: bool = False) -> li
 def summary_counts(entries: list[dict]) -> dict[str, int]:
     return {
         "total": len(entries),
+        "in_force": sum(e["state"] == "in_force" for e in entries),
         "open": sum(e["state"] == "open" for e in entries),
+        "direction_approved": sum(e["state"] == "direction_approved" for e in entries),
         "scientific_not_reviewed": sum(e["category"] == "scientific"
                                        and e["expert_review"]["status"] == "not_reviewed" for e in entries),
     }

@@ -1,10 +1,13 @@
 """Step 4b: the assumptions register (`hypocurate/assumptions.json`) and its read-only page.
 
 - Every entry follows the schema; the validator refuses each kind of malformed entry.
-- The owner's eight decisions of 2026-10-05 are present as decided.
-- **Every entry marked "applied: yes" names at least one setting that exists in the code,
-  and where the register gives a value, the code holds that value** (CLAUDE.md, "How we
-  work", item 12). A setting renamed or changed in code without the register fails here.
+- The owner's decisions of 2026-10-05 and the step 4b review's corrections are present.
+- **Reference and value checks:** every entry applied in code (fully or partly) names at
+  least one setting that exists, and where the register gives a value, the code holds it
+  (CLAUDE.md, "How we work", item 12). A setting renamed or changed without the register
+  fails here. These checks do **not** show that an entry's wording matches what the code
+  does (step 4b review, finding 1): behaviour is covered by the regression tests each
+  applied entry names, and this file checks only that those tests exist.
 - GET /assumptions needs the login, is generated from the register, and offers no editing.
 """
 import copy
@@ -28,9 +31,9 @@ OWNER = "owner (Khalid El-Awady)"
 OWNER_DECISIONS = {
     "tamu_test_temperature": ("scientific", 6),
     "permitted_test_types": ("scientific", 6),
-    "tamu_grouping_unit": ("statistical", None),  # already applied: the adapter's grouping unit
+    "tamu_grouping_unit": ("statistical", 7),  # partly applied: the adapter's grouping unit
     "same_alloy_rule": ("scientific", 6),
-    "fixed_minimums": ("statistical", 6),
+    "fixed_minimums": ("statistical", 6),  # partly applied: the database's checks
     "values_disagree_tolerance": ("data_handling", 6),
     "calibration_noise_levels": ("statistical", 7),
     "tag_starting_lists": ("data_handling", 6),
@@ -50,17 +53,21 @@ def test_every_category_has_entries_and_keys_are_unique():
     assert len({e["key"] for e in REGISTER}) == len(REGISTER)
 
 
+PARTLY = {"tamu_grouping_unit", "papers_independent", "sufficiency_options", "controlled_extract_disabled",
+          "validity_checks", "fixed_minimums", "grain_size_transformation_at_analysis", "assigned_value_statuses"}
+
+
 def test_the_owners_eight_decisions_are_recorded_as_decided():
     for key, (category, step) in OWNER_DECISIONS.items():
         e = BY_KEY[key]
-        assert e["state"] == "in_force", key
+        # Review finding 4: the calibration direction is approved, its technical review pending.
+        expected_state = "direction_approved" if key == "calibration_noise_levels" else "in_force"
+        assert e["state"] == expected_state, key
         assert e["category"] == category, key
         assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
         assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}, key
-        if step is None:
-            assert e["applied"]["status"] == "yes", key
-        else:
-            assert e["applied"] == {**e["applied"], "status": "not_yet", "step": step}, key
+        status = "partly" if key in PARTLY else "not_yet"
+        assert e["applied"]["status"] == status and e["applied"]["step"] == step, key
 
 
 def test_decisions_carry_the_owners_wording():
@@ -73,18 +80,95 @@ def test_decisions_carry_the_owners_wording():
     assert "within" not in same_alloy["statement"]  # the owner's corrected wording
     assert "1 at.%" in same_alloy["sensitivity"]
     assert "min(|a|, |b|)" in BY_KEY["values_disagree_tolerance"]["statement"]
-    assert "not final" in " ".join(BY_KEY["values_disagree_tolerance"]["notes"])
+    assert "conflict_pairing_rule" in " ".join(BY_KEY["values_disagree_tolerance"]["notes"])
     calibration = BY_KEY["calibration_noise_levels"]
     assert "fixed at the rules lock and applied by code" in calibration["statement"]
     assert "no person or agent chooses the values" in calibration["statement"]
     notes = " ".join(calibration["notes"])
     assert "PRD 5.10" in notes and "second-model review in step 7" in notes and "both ways" in notes
-    assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < 0.05"
+    assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < α (α = 0.05 by default)"
 
 
-def test_the_microstructure_decision_is_recorded_and_no_decision_is_open():
+# --- The step 4b review (second model, 2026-10-05), accepted by the owner -------------------
+
+def test_partly_applied_entries_say_what_is_done_and_what_is_pending():
+    """Finding 2: no entry says 'Yes' while its principal safeguard is pending."""
+    assert {e["key"] for e in REGISTER if e["applied"]["status"] == "partly"} == PARTLY
+    for key in PARTLY:
+        applied = BY_KEY[key]["applied"]
+        assert applied["done"] and applied["pending"] and applied["settings"], key
+
+
+def test_the_survivor_rule_has_the_owners_step_1_wording():
+    """Finding 3: a DOI identifies the cited paper, not where a record was extracted."""
+    e = BY_KEY["duplicate_survivor_rule"]
+    assert e["statement"].startswith("1) Prefer the record that carries the original paper reference (DOI).")
+    assert "directly" not in e["statement"] and "detected" not in e["statement"]
+    assert "extraction-origin metadata, which does not exist" in " ".join(e["notes"])
+    assert "detected by the original paper's DOI" in e["history"][0]["value"]  # the withdrawn wording
+
+
+def test_the_pairing_rule_is_open_and_calibration_awaits_its_technical_review():
+    """Finding 4."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["conflict_pairing_rule"]
+    pairing = BY_KEY["conflict_pairing_rule"]
+    assert pairing["pending"] == {"by": "owner", "before_step": 6} and pairing["value"] is None
+    assert "repeat specimens" in pairing["statement"]
+    assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
+    assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
+
+
+REVIEW_ADDITIONS = {
+    "association_not_causation": "scientific", "measurement_error_not_propagated": "scientific",
+    "equal_row_weights": "statistical", "selection_and_missingness": "statistical",
+    "no_multiplicity_adjustment": "statistical", "calibration_error_model": "statistical",
+    "few_groups_approximate": "statistical", "observation_unit": "data_handling",
+}
+
+
+def test_the_eight_missing_assumptions_are_added_not_reviewed():
+    for key, category in REVIEW_ADDITIONS.items():
+        e = BY_KEY[key]
+        assert e["category"] == category and e["state"] == "in_force", key
+        assert e["expert_review"]["status"] == "not_reviewed" and e["affects"], key
+    assert "never imply proof of cause" in " ".join(BY_KEY["association_not_causation"]["notes"])
+    assert "not the mean of" in BY_KEY["measurement_error_not_propagated"]["statement"]
+    assert "not each paper or alloy" in BY_KEY["equal_row_weights"]["statement"]
+    assert "publication bias" in BY_KEY["selection_and_missingness"]["statement"]
+    assert "do not keep a 5% false-positive rate" in BY_KEY["no_multiplicity_adjustment"]["statement"]
+    assert "It does not simulate source discovery" in BY_KEY["calibration_error_model"]["statement"]
+    assert "approximations" in BY_KEY["few_groups_approximate"]["statement"]
+    assert "repeated specimens" in BY_KEY["observation_unit"]["statement"]
+
+
+def test_the_small_corrections():
+    assert "CSV" in BY_KEY["malformed_files_refused"]["statement"]
+    assert "Spreadsheets are handled differently" in BY_KEY["malformed_files_refused"]["statement"]
+    assert "may change the calibration" in BY_KEY["normal_errors_in_calibration"]["affects"]
+    assert "optimistic" not in json.dumps(BY_KEY["normal_errors_in_calibration"])
+    session = BY_KEY["session_length"]["statement"]
+    assert "12 hours after sign-in" in session and "do not renew" in session
+
+
+def test_every_entry_applied_in_code_names_regression_tests_that_exist():
+    """Finding 1: behaviour is covered by named regression tests, which must exist."""
+    applied = [e for e in REGISTER if e["applied"]["status"] in ("yes", "partly")]
+    assert all(e["tests"] for e in applied)
+    missing = [m for e in REGISTER for m in a.named_tests_missing(e)]
+    assert not missing, "\n".join(missing)
+
+
+def test_a_named_test_that_does_not_exist_is_reported():
+    e = copy.deepcopy(BY_KEY["login_throttle"])
+    e["tests"] = ["tests/test_login_throttle.py::test_no_such_test", "tests/test_nothing.py::test_x",
+                  "tests/test_login_throttle.py::test_defaults_are_as_approved"]
+    assert a.named_tests_missing(e) == ["login_throttle: tests/test_login_throttle.py::test_no_such_test does not exist",
+                                        "login_throttle: tests/test_nothing.py::test_x does not exist"]
+
+
+def test_the_microstructure_decision_is_recorded():
     """Owner, 2026-10-05: the open decision 'tamu_microstructure' became a decision."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
+    assert "tamu_microstructure" not in [e["key"] for e in REGISTER if e["state"] == "open"]
     e = BY_KEY["tamu_microstructure"]
     assert e["state"] == "in_force" and e["category"] == "scientific"
     assert e["value"]["text"] == "single-phase FCC (assigned by decision)"
@@ -104,7 +188,7 @@ def test_the_microstructure_decision_is_recorded_and_no_decision_is_open():
 
 
 def open_entry():
-    """An open decision built for the tests (the register has none since 2026-10-05)."""
+    """An open decision built for the tests, independent of the register's own."""
     e = copy.deepcopy(BY_KEY["tamu_microstructure"])
     e.update(key="an_open_question", state="open", value=None, decided=None, history=[],
              pending={"by": "owner", "before_step": 6})
@@ -154,6 +238,17 @@ def entry(**changes):
     (lambda e: e.update(state="open"), "missing ['pending']"),
     (lambda e: e.update(state="open", pending={"by": "owner", "before_step": 6}), "open decision has value null"),
     (lambda e: e.update(pending={"by": "owner", "before_step": 6}), "unknown"),
+    (lambda e: e.update(state="direction_approved"), "missing ['pending']"),
+    (lambda e: e.update(state="direction_approved", pending={"by": "review", "before_step": 13}), "build step"),
+    (lambda e: e.update(tests=[]), "names the regression tests"),
+    (lambda e: e.update(tests=["tests/test_login.py:test_x"]), "tests[0]"),
+    (lambda e: e.pop("tests"), "missing"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [{"ref": "x"}], "done": "d", "pending": "p",
+                                 "note": None}), "missing ['step']"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [{"ref": "x"}], "done": " ", "pending": "p",
+                                 "step": 6, "note": None}), "applied.done"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [], "done": "d", "pending": "p",
+                                 "step": 6, "note": None}), "at least one named setting"),
 ])
 def test_the_validator_refuses_malformed_entries(bad, message):
     e = entry()
@@ -182,7 +277,8 @@ def test_an_open_decision_needs_who_decides_and_by_when():
 # --- Applied in code: a named setting ---------------------------------------------------
 
 def test_every_applied_entry_names_settings_that_exist_and_match():
-    applied = [e for e in REGISTER if e["applied"]["status"] == "yes"]
+    """Reference and value checks only (review finding 1)."""
+    applied = [e for e in REGISTER if e["applied"]["status"] in ("yes", "partly")]
     assert len(applied) >= 20
     problems = [p for e in applied for p in a.check_settings(e)]
     assert not problems, "\n".join(problems)
@@ -190,7 +286,7 @@ def test_every_applied_entry_names_settings_that_exist_and_match():
 
 def test_applied_values_are_compared_where_the_register_gives_them():
     """Spot-check that `equals` is used for the numeric and categorical defaults."""
-    compared = {s["ref"]: s["equals"] for e in REGISTER if e["applied"]["status"] == "yes"
+    compared = {s["ref"]: s["equals"] for e in REGISTER if e["applied"]["status"] in ("yes", "partly")
                 for s in e["applied"]["settings"] if "equals" in s}
     assert compared["python:hypocurate.web.login_throttle:MAX_FAILURES"] == 5
     assert compared["python:hypocurate.web.login_throttle:WINDOW_SECONDS"] == 900
@@ -254,10 +350,14 @@ def test_the_page_needs_the_login():
         assert r.status_code == 303 and r.headers["location"] == "/login", path
 
 
-def test_the_page_shows_every_entry_grouped_by_category():
+HEADINGS = ["Open decisions", "Direction approved, pending technical review",
+            "Scientific", "Statistical", "Data handling", "Operational"]
+
+
+def test_the_page_shows_every_entry_grouped_with_pending_states_first():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == ["Scientific", "Statistical", "Data handling", "Operational"]  # no open decision now
+    assert headings == HEADINGS
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -270,19 +370,25 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     register = REGISTER + [open_entry()]
     html = signed_in(register).get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == ["Open decisions", "Scientific", "Statistical", "Data handling", "Operational"]
+    assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["conflict_pairing_rule", "an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert "1 open decision</strong>" in html
+    assert "2 open decisions</strong>" in html
+    second = re.split(r"<h2>", html)[2]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
+    assert "pending: second-model technical review, before step 7" in second
 
 
-def test_the_summary_line_counts_open_decisions_and_unreviewed_scientific_entries():
+def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     html = signed_in().get("/assumptions").text
-    summary = re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1)
-    n_open = sum(e["state"] == "open" for e in REGISTER)
+    summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
+    count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert n_open == 0 and "0 open decisions" in summary
+    assert count == {"in_force": len(REGISTER) - 2, "open": 1, "direction_approved": 1}
+    assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
+    assert "1 open decision</strong>" in summary
+    assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
 
@@ -327,6 +433,20 @@ def test_each_row_expands_to_reason_evidence_history_and_sensitivity():
     applied = re.search(r'<tbody id="session_length"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>python:hypocurate.web.app:SESSION_MAX_AGE</code>" in applied
     assert "Not yet: step 7" in re.search(r'<tbody id="exponent_fixed"(.*?)</tbody>', html, re.S).group(1)
+    assert "<code>tests/test_login.py::test_session_expires_after_max_age</code>" in applied
+    assert "Named settings (reference and value checks only)" in applied
+
+
+def test_a_partly_applied_entry_shows_done_and_pending_in_its_main_row():
+    """Finding 2: the reader sees the pending safeguard without expanding the row."""
+    html = signed_in().get("/assumptions").text
+    for key in PARTLY:
+        body = re.search(rf'<tbody id="{key}"(.*?)</tbody>', html, re.S).group(1)
+        main_row = body.split('<tr class="more">')[0]
+        applied = BY_KEY[key]["applied"]
+        assert "<strong>Partly.</strong>" in main_row, key
+        assert str(escape(applied["done"])) in main_row and str(escape(applied["pending"])) in main_row, key
+        assert f"Pending (step {applied['step']}):" in main_row, key
 
 
 def test_the_page_is_read_only():
