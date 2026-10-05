@@ -1,6 +1,6 @@
 # Build step 4 — summary for review
 
-Date: 2026-10-05. Branch: `step-04-adapters`. **Status: signed off for merge.** First review (ChatGPT, 2026-10-05): five findings and one test weakness, all accepted and fixed. Re-check (2026-10-05): five items closed, item 5 partly closed (a percentage overflow), "no other blocker found". That last fix was merged on the strength of its regression test, without a further review round, by the owner's decision (see "Re-check"). PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
+Date: 2026-10-05. Branch: `step-04-adapters`. **Status: signed off, merged into `main` (`3585d16`, 2026-10-05) and live (see "Live deployment"). No source is registered on the live database (owner's decision, below).** First review (ChatGPT, 2026-10-05): five findings and one test weakness, all accepted and fixed. Re-check (2026-10-05): five items closed, item 5 partly closed (a percentage overflow), "no other blocker found". That last fix was merged on the strength of its regression test, without a further review round, by the owner's decision (see "Re-check"). PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed in "Review findings and fixes"; the review text is in `docs/reviews/step04_review_chatgpt.md`, and the fix diffs are in `docs/reviews/step04_fix_packet.md`.
 
@@ -264,9 +264,27 @@ The runtime image also imports the adapters and reads all three sources' files f
 9. **PRD 10 (paper identity)** (review finding 1): a paper's group key is derived from its DOI by conservative normalization (trim, remove a URL or `doi:` wrapper, ASCII case-fold); the DOI as reported is kept.
 10. **PRD 10 (malformed files)** (review finding 3): an adapter refuses a file it cannot parse strictly, naming the file, line and reason; it never returns a partial extraction.
 
+## Live deployment (2026-10-05)
+
+**Merge:** `step-04-adapters` into `main` with `--no-ff` (`3585d16`), after the branch run was green (https://github.com/kelawady/hypocurate/actions/runs/37259087694, 469 passed). Checked before merging: the merge changes no `render.yaml`, no workflow, no migration, no Dockerfile, Compose file or dependency (25 files, all code, tests, README and review documents). The suite also passed on `main` locally (469), and `main`'s run was green (https://github.com/kelawady/hypocurate/actions/runs/37259298471; started 03:24:11 UTC, passed 03:26:00 UTC). Times are UTC.
+
+| Check | How | Result |
+|---|---|---|
+| Live `/health` before the merge | `curl` | `version` `73ba7f2…`, `schema` `0001`, at head |
+| Live `/health` after the deploy | `curl`, 03:26:48 UTC | `{"web":"ok","database":"ok","version":"3585d167e9ebab807fc8d800f5e6a3826c06dae6","schema":{"revision":"0001","at_head":true}}` |
+| Login still required | `curl` | `/` → 303 to `/login` |
+
+No migration ran (schema still `0001`), and no Blueprint sync was expected, because `render.yaml` did not change.
+
+**Live database: no source registered (owner's decision, 2026-10-05).**
+- No source is registered on the live database now. Registration is permanent: the database never deletes a source or a version, and the Texas A&M grouping unit is part of the version's identity.
+- `mpea` and `tamu_fcc` are registered when the first step that runs on the live site needs them, **after** the owner's decisions on the Texas A&M grouping unit and test temperature.
+- The controlled duplicate extract (constructed test data) is decided at step 11.
+- How, when the time comes: the owner runs `python -m hypocurate.cli sources register mpea tamu_fcc` in the Render Shell of one service, then `python -m hypocurate.cli sources test mpea -n 1` (read-only). With the current definitions and frozen files, the fingerprints must be `mpea` `93a527fabf53218bbbbf2bb601c39cc508fb27aa0ce6349a222eb69fe47355e2` and `tamu_fcc` `c760e242fbbc51ff73a53b4af3b83499db1d7fbbdc37d45290fb9397c2b0cf52`; the Texas A&M value changes if its grouping unit changes.
+
 ## Open items
 
-1. **Registering on the live database (owner).** Not done in this step. When the owner agrees: `hypocurate sources register` in the Render Shell of one service. No `render.yaml` change is needed, and no setting depends on it.
+1. **Registering on the live database: not now (owner's decision, 2026-10-05).** `mpea` and `tamu_fcc` are registered when the first step that runs on the live site needs them, after the owner's decisions on the Texas A&M grouping unit and test temperature. The controlled extract is decided at step 11. See "Live deployment".
 2. **Texas A&M test temperature (owner; gates PRD 14.1a in step 6).** See "Consequence" above. If the band is assigned on an accepted source, step 6's scope rule must accept the room-temperature band, with a test that the 21 Texas A&M records stay eligible under the reference plan. The same question applies to the microstructure if the scope requires single-phase FCC.
 3. **Texas A&M grouping unit (owner, PRD 17 decision 9).** One group now; the batch is kept as reported. A `batch` version is refused by the adapter until decided.
 4. **Step 5 (access layer):** adapters read source bytes from the sealed version in the database, not from disk. The approved input list should name the sealed source versions, and `tests/` and `docs/reviews/` stay outside it, as before.
