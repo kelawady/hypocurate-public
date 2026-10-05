@@ -14,7 +14,8 @@ FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
 TRUTH = FIXTURES / "truth.csv"
 # Pinned here, outside data/, so the answer file cannot change without changing a test.
 # Step 6 (owner, 2026-10-05): the restored survivor wording and decision C (rows 7-8 are a conflict).
-TRUTH_SHA256 = "8b293ddd4e760cc2c58e3515be5aefe6b0e9b5d3ed7d3425957fe82d1e113f7f"
+# Owner, 2026-10-06: rows 15-16 describe the reference plan with its test-type rule (tension only).
+TRUTH_SHA256 = "8ff5383783726824faa03a724d3333e519ca2afa9b2ac33146f3c793e2b9a0f9"
 # The frozen source files: fingerprint-pinned, and not written by us, so they
 # cannot hold our answers. Everything else under data/ is scanned.
 FROZEN_SOURCE_FILES = {
@@ -257,9 +258,9 @@ def test_other_test_type_rows_are_compression_copies_of_tension_records():
         src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
         assert (src[tt], row[tt]) == ("T", "C")
         assert t["duplicate_status"] == "not_duplicate"  # known different, not a possible duplicate
-        # The reference plan sets no test-type rule: within scope, and both enter.
-        assert t["prd_5_3_class"] == "Within scope under the reference plan: distinct measurements, not duplicates"
-        assert t["primary_analysis"] == "both enter under the reference plan (it sets no test-type rule)"
+        # The reference plan accepts tension only (owner, 2026-10-05): the compression copy is out of scope.
+        assert t["prd_5_3_class"] == "Incompatible measurements: outside the plan's scope (test-type rule: tension only)"
+        assert t["primary_analysis"] == "not eligible: excluded by the test-type rule (tension only)"
         # Under a tension-only plan the compression record is out of scope.
         assert t["handling_under_tension_only_plan"] == (
             "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')")
@@ -291,7 +292,7 @@ EXPECTED = {
     "not_duplicate_other_temperature": ("not_duplicate", "not eligible under a room-temperature plan", "none"),
     "missing_test_condition": ("possible_duplicate", "not eligible: scope not confirmed", "included"),
     "not_duplicate_other_test_type": (
-        "not_duplicate", "both enter under the reference plan (it sets no test-type rule)", "none"),
+        "not_duplicate", "not eligible: excluded by the test-type rule (tension only)", "none"),
 }
 
 SURVIVOR_RULE = (

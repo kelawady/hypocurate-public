@@ -6,8 +6,8 @@ and goes through the freeze under the reference plan. For each of the 16 extract
 answer file states the flag, the handling in the primary analysis, the survivor and the
 sensitivity handling; every record is kept in the store.
 
-The reference plan accepts tension tests only (owner, 2026-10-05), so for rows 15–16 the
-answer file's column `handling_under_tension_only_plan` applies. For rows 13–14 the answer
+The reference plan accepts tension tests only (owner, 2026-10-05); since 2026-10-06 the answer
+file's rows 15–16 describe that plan in their own columns. For rows 13–14 the answer
 file's "included" in the sensitivity analysis is read as decided by the owner (2026-10-05): in
 `scope_not_confirmed_included` the scope no longer excludes the record, and the duplicate rule
 still counts the measurement once.
@@ -63,16 +63,14 @@ def test_the_flag_is_the_answer_files(run, t):
 def test_the_primary_handling_and_the_survivor_are_the_answer_files(run, t):
     extract_id, mpea_id = ids(run, t)
     rules = run["rules"]["primary"]
-    primary = t["primary_analysis"] if t["handling_under_tension_only_plan"] == "same as under the reference plan" \
-        else t["handling_under_tension_only_plan"]
+    primary = t["primary_analysis"]
     expected = {
         "counted once": ("in_scope", "duplicate_counted_once"),
         "neither enters: conflict unresolved": ("conflict_unresolved", "conflict_unresolved"),
         "both enter": ("in_scope", "in_scope"),
         "not eligible under a room-temperature plan": ("in_scope", "out_of_scope"),
         "not eligible: scope not confirmed": ("in_scope", "scope_not_confirmed"),
-        "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')":
-            ("in_scope", "out_of_scope"),
+        "not eligible: excluded by the test-type rule (tension only)": ("in_scope", "out_of_scope"),
     }[primary]
     assert (rules[mpea_id], rules[extract_id]) == expected
     if t["survivor_in_primary"].startswith("MPEA row"):

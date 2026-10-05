@@ -146,9 +146,10 @@ CASES = {
     ),
     "not_duplicate_other_test_type": dict(
         duplicate_status="not_duplicate",
-        prd_class="Within scope under the reference plan: distinct measurements, not duplicates",
+        # Owner, 2026-10-06: the reference plan has a test-type rule (tension only, 2026-10-05).
+        prd_class="Incompatible measurements: outside the plan's scope (test-type rule: tension only)",
         tension_only=TENSION_ONLY_EXCLUDED,
-        primary_analysis="both enter under the reference plan (it sets no test-type rule)",
+        primary_analysis="not eligible: excluded by the test-type rule (tension only)",
         sensitivity_analysis="none",
         pair=None,
         explanation="Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope.",

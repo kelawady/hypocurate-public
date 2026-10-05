@@ -22,7 +22,7 @@ All 16 source rows are among the records eligible under the reference plan, from
 | 9–10 | `not_duplicate_other_paper` | DOI → constructed `10.5555/hypocurate-test-…` | no | both enter | none |
 | 11–12 | `not_duplicate_other_temperature` | 25 °C → −196 °C | no (conditions differ) | not eligible under a room-temperature plan | none |
 | 13–14 | `missing_test_condition` | test temperature blanked | possible (conditions cannot be confirmed); kept, not removed | not eligible: scope not confirmed | included |
-| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | within scope under the reference plan (it sets no test-type rule): distinct measurements, both enter. Under a tension-only plan: excluded by the test-type rule | none |
+| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | not eligible: excluded by the reference plan's test-type rule (tension only). With tension and compression together, both enter as distinct measurements | none |
 
 **Missing paper vs missing test condition (PRD 5.3).**
 - Rows 5–6: the paper is unknown but the conditions match. This is a possible duplicate that cannot be resolved.
@@ -49,7 +49,7 @@ No pair here lets a source other than MPEA survive. The step 6 tests add constru
 
 ## Permitted test types (decided)
 
-The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. For rows 15–16 the column `handling_under_tension_only_plan` therefore gives the handling under today's reference plan; the columns `prd_5_3_class` and `primary_analysis` still describe the step 1 plan without a test-type rule. Aligning them is an open item for the owner (step 6 summary).
+The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. Since 2026-10-06 (owner's decision) the columns `prd_5_3_class` and `primary_analysis` of rows 15–16 describe this plan; the column `handling_under_tension_only_plan` agrees with them. The rows' `explanation` text still describes the step 1 plan without a test-type rule.
 
 ## Rebuilding
 
