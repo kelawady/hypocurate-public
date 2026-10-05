@@ -7,9 +7,11 @@ controlled duplicate extract, which copies its header verbatim (step 1).
   step 1). One record per row, so `item_index` is 0.
 - Every column is kept as reported text, with the unit its header states.
 - **Paper identity (grouping): the DOI** (`REFERENCE: doi`), as in the reference script.
-  In the frozen MPEA file it is one-to-one with `IDENTIFIER: Reference ID`. A blank DOI
-  gives a record whose group is unknown, with the reason; the Reference ID is never used
-  in its place, and no group is invented.
+  `paper_doi` and the reported text keep the DOI exactly as in the file; the group key is
+  derived from it by `normalize.doi_group_key` (whitespace trimmed, a URL or `doi:`
+  wrapper removed, ASCII case-folded; step 4 review, finding 1), so formatting
+  differences do not split one paper. A blank DOI gives a record whose group is unknown,
+  with the reason; the Reference ID is never used in its place, and no group is invented.
 - Units are those of the headers (µm, MPa, HV, °C); values are converted unchanged.
 - Text values (DOI, title, categories) are kept exactly as reported, surrounding spaces
   included; only a whitespace-only cell counts as blank.
@@ -133,6 +135,7 @@ def _record(version: SealedVersion, path: str, i: int, fields: list[str]) -> Com
     # cell counts as blank.
     doi = cells["REFERENCE: doi"] if cells["REFERENCE: doi"].strip() else None
     title = cells["REFERENCE: title"] if cells["REFERENCE: title"].strip() else None
-    group = Group("paper", f"doi:{doi}") if doi else Group("paper", None, "no DOI in the source: paper unknown")
+    group_key = n.doi_group_key(doi) if doi else None
+    group = Group("paper", group_key) if group_key else Group("paper", None, "no DOI in the source: paper unknown")
     return CommonRecord(version.source_key, version.fingerprint, key, 0, version.data_kind, alloy, title, doi,
                         group, harmonized, reported)

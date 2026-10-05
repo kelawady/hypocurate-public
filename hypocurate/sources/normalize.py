@@ -87,3 +87,23 @@ def alloy_label(composition: dict[str, float]) -> str:
     percent rounded to 0.1 (the reference script's naming, `docs/reference/worked_example.py`).
     The full-precision composition is kept beside it in the record."""
     return "".join(f"{e}{round(v, 1):g}" for e, v in sorted(composition.items()))
+
+
+_DOI_WRAPPER = re.compile(r"(?:https?://(?:dx\.)?doi\.org/|doi:)\s*", re.IGNORECASE)
+_ASCII_UPPER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def doi_group_key(doi: str) -> str | None:
+    """The grouping key of a paper from its DOI as reported (step 4 review, finding 1).
+
+    Conservative normalization, so that formatting differences do not split one paper:
+    surrounding whitespace is trimmed; one `https://doi.org/`, `http://dx.doi.org/` or
+    `doi:` wrapper is removed (case-insensitive); ASCII letters A–Z are case-folded, as DOI
+    equivalence prescribes. Nothing else changes (no Unicode normalization). The DOI as
+    reported is kept unchanged in the record. Returns None if nothing is left."""
+    key = doi.strip()
+    match = _DOI_WRAPPER.match(key)
+    if match:
+        key = key[match.end():]
+    key = key.strip().translate(_ASCII_UPPER)
+    return f"doi:{key}" if key else None

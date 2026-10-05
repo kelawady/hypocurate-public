@@ -116,9 +116,12 @@ def test_paper_identity_is_the_doi(result, rows):
     for record, row in zip(result.records, rows):
         assert record.paper_doi == row[20]
         assert record.group.unit == "paper"
-        assert record.group.key == f"doi:{row[20]}"
+        # The group key is derived (finding 1); written out independently here.
+        assert record.group.key == "doi:" + row[20].strip().lower()
         assert record.paper_reference == (row[22] or None)
+    # Normalization changes the form of 8 DOI strings but merges and splits no group.
     assert len({r.group.key for r in result.records}) == 265
+    assert sum(r.group.key != f"doi:{r.paper_doi}" for r in {r.paper_doi: r for r in result.records}.values()) == 8
     # In the frozen file the DOI and the Reference ID are one-to-one.
     assert len({(row[0], row[20]) for row in rows}) == len({row[20] for row in rows}) == len({row[0] for row in rows})
 
@@ -214,4 +217,26 @@ def test_text_is_kept_exactly_as_reported(result, rows):
     """One MPEA DOI has a leading space; the adapter keeps it (no silent correction)."""
     spaced = [r for r in result.records if r.paper_doi and r.paper_doi != r.paper_doi.strip()]
     assert [r.paper_doi for r in spaced] == [" 10.1038/ncomms10602"]
-    assert spaced[0].group.key == "doi: 10.1038/ncomms10602"
+    assert spaced[0].reported["REFERENCE: doi"].text == " 10.1038/ncomms10602"
+    assert spaced[0].group.key == "doi:10.1038/ncomms10602"
+
+
+@pytest.mark.parametrize("reported", [
+    "10.1016/J.ACTAMAT.2019.04.017", " 10.1016/j.actamat.2019.04.017 ", "doi:10.1016/j.actamat.2019.04.017",
+    "DOI: 10.1016/j.actamat.2019.04.017", "https://doi.org/10.1016/j.actamat.2019.04.017",
+    "http://dx.doi.org/10.1016/J.ActaMat.2019.04.017", "HTTPS://DOI.ORG/10.1016/j.actamat.2019.04.017",
+])
+def test_formatting_differences_do_not_split_a_paper(reported):
+    """Finding 1: one DOI written differently is one group; the DOI as reported is kept."""
+    result = mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": planted([_row(c20=reported)])}))
+    record, = result.records
+    assert record.group.key == "doi:10.1016/j.actamat.2019.04.017"
+    assert record.paper_doi == reported
+    assert record.reported["REFERENCE: doi"].text == reported
+
+
+def test_grouping_folds_ascii_case_only():
+    from hypocurate.sources.normalize import doi_group_key
+    assert doi_group_key("10.1/ÄB") == "doi:10.1/Äb"  # non-ASCII letters are left as they are
+    assert doi_group_key("10.1/ab") != doi_group_key("10.1/ac")
+    assert doi_group_key("   ") is None and doi_group_key("doi:") is None

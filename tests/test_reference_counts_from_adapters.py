@@ -60,7 +60,8 @@ def tamu():
 def test_mpea_77_records_from_20_papers(mpea):
     chosen = mpea_reference_set(mpea)
     assert len(chosen) == 77
-    assert len({r.group.key for r in chosen}) == 20
+    assert len({r.group.key for r in chosen}) == 20  # derived keys (finding 1)
+    assert len({r.paper_doi for r in chosen}) == 20  # DOIs as reported
 
 
 def test_mpea_rows_are_those_of_the_reference_script(mpea):
