@@ -34,7 +34,8 @@ from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
 from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
 from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, flag_index, log_refusal,
-                                        record_ids, run_record_sources, write)
+                                        record_identity, record_ids, require_checks_cover, run_record_sources,
+                                        write)
 
 
 def lock_rules(engine: Engine, run_id: int, content: Mapping[str, Any]) -> str:
@@ -118,6 +119,7 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
     fp = hashlib.sha256(canonical(content).encode("utf-8")).hexdigest()
     read_ids = sorted(by_id)
     read_flags = [(f["id"], f["kind"], f["category"], tuple(sorted(f["records"]))) for f in flags]
+    identity_of = {r["id"]: record_identity(r["version_fingerprint"], r["origin"], r["item_index"]) for r in records}
 
     def body(conn: Connection, stage: str):
         if stage != "curation":
@@ -127,6 +129,7 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
             raise Refused("freeze_dataset", "constructed_data_unmarked")
         if record_ids(conn, run_id) != read_ids or flag_index(conn, run_id) != read_flags:
             raise Refused("freeze_dataset", "changed_since_read")
+        require_checks_cover(conn, run_id, "freeze_dataset", identity_of, [(k, c, r) for _, k, c, r in read_flags])
         stored = dict(conn.execute(text("SELECT record_id, rule FROM run_record WHERE run_id = :r"),
                                    dict(r=run_id)).all())
         if stored != sets[el.PRIMARY] or _set_records(conn, run_id) != members:

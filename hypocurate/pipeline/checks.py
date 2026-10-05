@@ -1,7 +1,7 @@
 """Checks (code; PRD 4, 5.3; build step 6): raise the flags of a run's records.
 
 Reads through its own access object (`dispatch.bind_code(…, "checks")`: the locked plan and
-every stored value), computes the flags with `pipeline.flags` (per-record and pairwise rules
+every stored value) once every chosen source is stored, computes the flags with `pipeline.flags` (per-record and pairwise rules
 only), then writes them in one transaction under the run's lock that re-checks the records by
 id. Checks never decides eligibility. Flags are raised once per run, before the freeze; the
 numbers compared are stored for audit and never returned to the Critic.
@@ -14,7 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline.flags import Flag, raise_flags, set_flags
-from hypocurate.pipeline.writes import Refused, code_stage, flag_index, record_ids, write
+from hypocurate.pipeline.writes import (Refused, binding, code_stage, flag_index, pending_sources, record_ids,
+                                        record_identity, write)
 
 
 def run_checks(engine: Engine, run_id: int) -> list[Flag]:
@@ -23,6 +24,8 @@ def run_checks(engine: Engine, run_id: int) -> list[Flag]:
     flags = raise_flags(plan, records)
     per_set = set_flags(plan, records)
     read_ids = sorted(r["id"] for r in records)
+    identity_of = {r["id"]: record_identity(r["version_fingerprint"], r["origin"], r["item_index"]) for r in records}
+    covered = binding(identity_of.values(), [(f.kind, f.category, [identity_of[i] for i in f.records]) for f in flags])
 
     def body(conn: Connection, stage: str):
         if stage != "curation":
@@ -31,6 +34,8 @@ def run_checks(engine: Engine, run_id: int) -> list[Flag]:
                 "SELECT EXISTS (SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'checks')"),
                 dict(r=run_id)).scalar_one():
             raise Refused("raise_flags", "already_done")
+        if pending_sources(conn, run_id):
+            raise Refused("raise_flags", "extraction_unfinished")
         if record_ids(conn, run_id) != read_ids:
             raise Refused("raise_flags", "changed_since_read")
         for f in flags:
@@ -43,7 +48,7 @@ def run_checks(engine: Engine, run_id: int) -> list[Flag]:
         for f in flags:
             counts[f"{f.kind}/{f.category}"] = counts.get(f"{f.kind}/{f.category}", 0) + 1
         code_stage(conn, run_id, "checks", {"plan": data["plan"]["fingerprint"], "records": len(read_ids)},
-                   {"flags": dict(sorted(counts.items())),
+                   {"flags": dict(sorted(counts.items())), "binding": covered,
                     # Step 6 review, finding 2: the matching flags of each sensitivity set whose matching
                     # settings differ (kind, category, records; the numbers stay in Checks).
                     "set_flags": {key: [{"kind": f.kind, "category": f.category, "records": f.records} for f in fs]

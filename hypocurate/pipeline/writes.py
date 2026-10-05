@@ -10,6 +10,11 @@ layer while holding the run's lock. The write transaction that follows takes the
 and re-checks, by ids and codes only (never record values), that nothing it read has changed
 since: the stage, the records, the flags, the decisions.
 
+**Order of the steps** (step 6 review, finding 1): Checks runs only when every chosen source is
+stored or failed; nothing is stored after Checks; the completed Checks result records exactly
+which records (by stable identity) and flags it covered (`binding`), and Inclusion and the freeze
+refuse unless that binding matches the run's records and flags.
+
 **A refusal is logged, then raised** (PRD 14.2: changes after a checkpoint are rejected and
 logged). Our own refusals (the stage has moved on, something changed since it was read,
 constructed data in a run not marked as a test) and the database's (a trigger or a
@@ -22,6 +27,7 @@ the process log (`hypocurate.pipeline`) is the fallback.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Any, Callable
@@ -46,6 +52,10 @@ CODES = {
     "rejected_by_database": "the database refused the write",
     "invalid_plan": "the plan is not valid for the supported template",
     "tag_not_available": "a tag value of the plan is not an approved value of the fixed lists",
+    "extraction_unfinished": "a chosen source is still waiting for its records",
+    "checks_done": "Checks have run: no record is stored after them",
+    "checks_not_done": "no completed Checks result for this run",
+    "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
 
@@ -133,6 +143,46 @@ def flag_index(conn: Connection, run_id: int) -> list[tuple[int, str, str, tuple
         "FILTER (WHERE fr.record_id IS NOT NULL), '{}') FROM flag f LEFT JOIN flag_record fr ON fr.flag_id = f.id "
         "WHERE f.run_id = :r GROUP BY f.id ORDER BY f.id"), dict(r=run_id)).all()
     return [(i, k, c, tuple(ids)) for i, k, c, ids in rows]
+
+
+# --- Checks bound to the records it covered (step 6 review, finding 1) -----------------------
+
+def record_identity(version_fingerprint: str, origin: str, item_index: int) -> str:
+    """A record's stable identity: never its database id."""
+    return f"{version_fingerprint}|{origin}|{item_index}"
+
+
+def binding(identities, flags) -> dict:
+    """What a completed Checks result covered: the exact record collection (by stable identity)
+    and the flags it raised (kind, category and the identities of their records)."""
+    ids = sorted(identities)
+    digest = hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
+    flag_lines = sorted(f"{k}|{c}|{','.join(sorted(r))}" for k, c, r in flags)
+    return {"records": len(ids), "identities": digest,
+            "flags": hashlib.sha256("\n".join(flag_lines).encode("utf-8")).hexdigest()}
+
+
+def checks_binding(conn: Connection, run_id: int) -> dict | None:
+    """The binding of the run's completed Checks result, or None."""
+    out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'checks' AND status = 'done' "
+                            "ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+    return out.get("binding") if isinstance(out, dict) else None
+
+
+def require_checks_cover(conn: Connection, run_id: int, function: str, identity_of: dict, flags) -> None:
+    """Refuses unless the completed Checks result covers exactly these records and flags."""
+    stored = checks_binding(conn, run_id)
+    if stored is None:
+        raise Refused(function, "checks_not_done")
+    flag_ids = [(kind, category, [identity_of[r] for r in records if r in identity_of])
+                for kind, category, records in flags]
+    if binding(identity_of.values(), flag_ids) != stored:
+        raise Refused(function, "checks_not_current")
+
+
+def pending_sources(conn: Connection, run_id: int) -> int:
+    return conn.execute(text("SELECT count(*) FROM run_source WHERE run_id = :r AND search_status = 'pending' "
+                             "AND source_version_id IS NOT NULL"), dict(r=run_id)).scalar_one()
 
 
 def code_stage(conn: Connection, run_id: int, stage: str, input_: dict, output: dict) -> int:

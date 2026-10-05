@@ -52,6 +52,9 @@ def store_source(engine: Engine, run_id: int, source_key: str) -> int:
             raise Refused("store_records", "stage_mismatch", "the source is not chosen for this run")
         if row.search_status != "pending":
             raise Refused("store_records", "already_done")
+        if conn.execute(text("SELECT EXISTS (SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'checks')"),
+                        dict(r=run_id)).scalar_one():
+            raise Refused("store_records", "checks_done")
         if constructed_unmarked(conn, run_id, [source_key]):
             raise Refused("store_records", "constructed_data_unmarked")
         try:

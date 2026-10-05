@@ -207,6 +207,67 @@ def test_a_change_between_a_steps_read_and_its_write_is_refused(engine, monkeypa
     assert refusals(engine, rid)[-1][1:] == (function, "changed_since_read")
 
 
+# --- Checks bound to the records it covered (step 6 review, finding 1) ---------------------------
+
+def _conflict_ids(engine, rid):
+    """The MPEA and extract records of extract row 7 (MPEA row 1278): a real conflict (YS x 1.3)."""
+    rows = dict(q(engine, "SELECT source_item_key, id FROM record WHERE extraction_run_id = :r AND source_item_key "
+                          "IN ('MPEA_dataset.csv:row:1278', 'extract.csv:row:6')", r=rid))
+    return rows["MPEA_dataset.csv:row:1278"], rows["extract.csv:row:6"]
+
+
+def test_skipping_checks_is_refused_at_inclusion_and_the_freeze(engine):
+    rid = pw.locked_run(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    extract.store_records(engine, rid)
+    for call, function in ((inclusion.decide_run, "decide"), (checkpoints.freeze_dataset, "freeze_dataset")):
+        with pytest.raises(Refused) as refused:
+            call(engine, rid)
+        assert refused.value.code == "checks_not_done"
+        assert refusals(engine, rid)[-1][1:] == (function, "checks_not_done")
+    assert q(engine, "SELECT count(*) FROM run_record WHERE run_id = :r", r=rid)[0][0] == 0
+
+
+def test_checks_wait_until_every_chosen_source_is_stored(engine):
+    """Store MPEA, then Checks while the extract is still pending: refused; after the extract is
+    stored, Checks covers both and the real conflict is flagged and kept out."""
+    rid = pw.locked_run(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    extract.store_source(engine, rid, "mpea")
+    with pytest.raises(Refused) as refused:
+        checks.run_checks(engine, rid)
+    assert refused.value.code == "extraction_unfinished"
+    extract.store_source(engine, rid, "controlled_duplicates")
+    checks.run_checks(engine, rid)
+    with pytest.raises(Refused) as refused:  # nothing more is stored after Checks
+        extract.store_source(engine, rid, "controlled_duplicates")
+    sets = inclusion.decide_run(engine, rid)
+    mpea, copy = _conflict_ids(engine, rid)
+    assert (sets["primary"][mpea], sets["primary"][copy]) == ("conflict_unresolved", "conflict_unresolved")
+
+
+def test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze(engine):
+    """A conflicting copy added after Checks (by plain SQL: storage refuses it) is not covered by
+    the Checks result, so Inclusion and the freeze refuse."""
+    rid = pw.locked_run(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    extract.store_records(engine, rid)
+    checks.run_checks(engine, rid)
+    mpea, _ = _conflict_ids(engine, rid)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, kind, alloy, "
+            "harmonized, reported, paper_reference, paper_doi, extraction) SELECT r.extraction_run_id, "
+            "(SELECT source_version_id FROM record WHERE source_item_key = 'extract.csv:row:6' AND extraction_run_id = :r), "
+            "'added-after-checks', 0, r.kind, r.alloy, jsonb_set(r.harmonized, '{yield_strength,value}', "
+            "to_jsonb((r.harmonized->'yield_strength'->>'value')::float * 1.5)), r.reported, r.paper_reference, "
+            "r.paper_doi, r.extraction FROM record r WHERE r.id = :m"), dict(r=rid, m=mpea))
+    with pytest.raises(Refused) as refused:
+        inclusion.decide_run(engine, rid)
+    assert refused.value.code == "checks_not_current"
+    with pytest.raises(Refused) as refused:
+        checkpoints.freeze_dataset(engine, rid)
+    assert refused.value.code in ("checks_not_current", "changed_since_read")
+    assert q(engine, "SELECT count(*) FROM run_snapshot WHERE run_id = :r", r=rid)[0][0] == 0
+
+
 # --- records, flags and decisions between the checkpoints ------------------------------------
 
 def test_records_are_stored_only_after_the_lock_with_how_they_were_extracted(engine):
@@ -251,6 +312,9 @@ def test_constructed_data_never_enters_a_run_not_marked_as_a_test(engine):
         conn.execute(text("INSERT INTO record (extraction_run_id, source_version_id, source_item_key, kind, harmonized, "
                           "reported, extraction) VALUES (:r, :v, 'extract.csv:row:0', 'measured', '{}', '{}', "
                           "'{\"method\": \"adapter\", \"name\": \"x\", \"version\": \"1\"}')"), dict(r=rid, v=version))
+        # Checks wait until no chosen source is pending (review finding 1): the bypass marks it searched.
+        conn.execute(text("UPDATE run_source SET search_status = 'searched', decided_at = now() WHERE run_id = :r "
+                          "AND source_version_id = :v"), dict(r=rid, v=version))
     checks.run_checks(engine, rid)
     with pytest.raises(Refused) as refused:
         inclusion.decide_run(engine, rid)
@@ -287,8 +351,9 @@ def test_a_change_after_the_decisions_were_read_is_refused_at_the_freeze(engine)
                           "'{\"method\": \"adapter\", \"name\": \"x\", \"version\": \"1\"}')"), dict(r=rid, v=version))
     with pytest.raises(Refused) as refused:
         checkpoints.freeze_dataset(engine, rid)
-    assert refused.value.code == "changed_since_read"
-    assert refusals(engine, rid)[-1] == ("checkpoint", "freeze_dataset", "changed_since_read")
+    # Since the review (finding 1) the freeze first finds that Checks did not cover the added record.
+    assert refused.value.code == "checks_not_current"
+    assert refusals(engine, rid)[-1] == ("checkpoint", "freeze_dataset", "checks_not_current")
     assert stage(engine, rid) == "curation"
 
 

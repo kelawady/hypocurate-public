@@ -4693,5 +4693,52 @@
       "tests/test_plan.py::test_invalid_plans_are_refused",
       "tests/test_plan.py::test_the_plan_choices_that_remain"
     ]
+  },
+  {
+    "key": "checks_bound_to_records",
+    "name": "Checks cover exactly the records decided on",
+    "state": "in_force",
+    "statement": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags.",
+    "value": {
+      "text": "extraction, then Checks, then Inclusion and the freeze, bound by the record collection",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every eligibility decision and every freeze.",
+    "reason": "Step 6 review, finding 1: Checks could be skipped or become stale (a source stored after Checks) while Inclusion and the freeze still accepted the result.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md, finding 1; accepted by the owner on 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.writes:require_checks_cover"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.writes:binding"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "A source refused by the constructed-data guard stays pending, so Checks cannot run until it is marked failed: the run's orchestration (step 9) must do that."
+    ],
+    "tests": [
+      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze",
+      "tests/test_checkpoints.py::test_checks_wait_until_every_chosen_source_is_stored",
+      "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze"
+    ]
   }
 ]

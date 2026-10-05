@@ -20,8 +20,8 @@ from sqlalchemy import Connection, Engine, text
 from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
-from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, flag_index, record_ids,
-                                        run_record_sources, write)
+from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, flag_index, record_identity,
+                                        record_ids, require_checks_cover, run_record_sources, write)
 
 
 def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
@@ -30,6 +30,7 @@ def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
     sets = el.all_sets(plan, records, flags, data["set_flags"])
     read_ids = sorted(r["id"] for r in records)
     read_flags = [(f["id"], f["kind"], f["category"], tuple(sorted(f["records"]))) for f in flags]
+    identity_of = {r["id"]: record_identity(r["version_fingerprint"], r["origin"], r["item_index"]) for r in records}
 
     def body(conn: Connection, stage: str):
         if stage != "curation":
@@ -40,6 +41,7 @@ def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
             raise Refused("decide", "constructed_data_unmarked")
         if record_ids(conn, run_id) != read_ids or flag_index(conn, run_id) != read_flags:
             raise Refused("decide", "changed_since_read")
+        require_checks_cover(conn, run_id, "decide", identity_of, [(k, c, r) for _, k, c, r in read_flags])
         primary = sets[el.PRIMARY]
         if primary:
             conn.execute(text("INSERT INTO run_record (run_id, record_id, eligible, rule) VALUES (:r, :c, :e, :u)"),
