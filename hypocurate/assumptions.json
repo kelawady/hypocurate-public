@@ -2911,9 +2911,9 @@
     "tests": [
       "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
       "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
-      "tests/test_access_planted.py::test_nothing_from_another_run_reaches_any_role",
+      "tests/test_access_projected.py::test_nothing_from_another_run_reaches_any_role",
       "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
-      "tests/test_access_planted.py::test_no_planted_value_in_the_commentators_input_without_a_freeze"
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze"
     ]
   },
   {
@@ -2961,23 +2961,24 @@
     "notes": [],
     "tests": [
       "tests/test_access_layer.py::test_record_counts_are_counts_from_the_sealed_source",
-      "tests/test_access_planted.py::test_no_planted_value_in_the_planners_complete_input"
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_planners_complete_input"
     ]
   },
   {
     "key": "critic_metadata_without_numbers",
     "name": "What the Critic sees about records",
     "state": "in_force",
-    "statement": "The Critic sees source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field, not grain size and not temperature. Flags: kind, category and record ids, never the numbers compared.",
+    "statement": "The Critic sees source descriptions, never source content. Per record: id, source, item index, kind, alloy label (derived by code from the composition) and composition, DOI (DOI syntax only, else 'unrecognized'), each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method) from their vocabularies, else 'unrecognized'. No measured number of any field, no paper title, no origin key. Flags: kind and category from their vocabularies, and record ids; never the numbers compared.",
     "value": {
-      "text": "metadata, statuses and categories; no measured numbers",
+      "text": "metadata, statuses and vocabulary categories; no measured numbers, no titles, no origin keys",
       "unit": null
     },
     "category": "data_handling",
     "affects": "The Critic's classification of flags (step 8).",
     "reason": "PRD 4: the Critic is told the kind of flag, never the numbers compared; and the source files contain the outcome values.",
     "evidence": [
-      "Owner's answer to step 5 question 1, 2026-10-05."
+      "Owner's answer to step 5 question 1, 2026-10-05.",
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -3005,14 +3006,22 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The Critic sees source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field, not grain size and not temperature. Flags: kind, category and record ids, never the numbers compared.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 first build; changed after the second-model review."
+      }
+    ],
     "notes": [
       "Category values and paper references are the source's text, shown as the source gives them."
     ],
     "tests": [
       "tests/test_access_layer.py::test_record_metadata_carries_no_number_but_identity_and_composition",
       "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
-      "tests/test_access_planted.py::test_no_planted_value_in_the_critics_complete_input"
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
+      "tests/test_access_dispatch.py::test_vocabularies_mark_what_they_do_not_know"
     ]
   },
   {
@@ -3066,7 +3075,7 @@
     ],
     "tests": [
       "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
-      "tests/test_access_planted.py::test_no_planted_value_in_the_gap_report_input",
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_gap_report_input",
       "tests/test_access_layer.py::test_ending_without_a_freeze_opens_only_the_gap_report_input"
     ]
   },
@@ -3074,16 +3083,17 @@
     "key": "source_meta_fields",
     "name": "What a role sees about a source",
     "state": "in_force",
-    "statement": "A source is described by a fixed set of named plain fields: key, name, type, kind of data, licence, grouping unit and fields available. Free text such as the address, the version label or notes never reaches the Planner or the Critic.",
+    "statement": "A source is described by a fixed set of named plain fields: key; name, licence and fields available from the code's source definitions (SOURCES); source type, kind of data and grouping unit from the sealed version the run recorded. Nothing from the mutable source registry (address, edited name, licence, properties or settings) reaches a role; editing the registry after dispatch changes nothing for that run.",
     "value": {
-      "text": "key, name, source_type, data_kind, licence, grouping_unit, fields_available",
+      "text": "key; name, licence, fields available (code); type, kind, grouping unit (sealed version)",
       "unit": null
     },
     "category": "data_handling",
     "affects": "The source descriptions every role receives.",
     "reason": "Free text could carry anything, including an outcome value.",
     "evidence": [
-      "Owner's addition B at the approval of the step 5 plan, 2026-10-05."
+      "Owner's addition B at the approval of the step 5 plan, 2026-10-05.",
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -3113,32 +3123,41 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "A source is described by a fixed set of named plain fields: key, name, type, kind of data, licence, grouping unit and fields available. Free text such as the address, the version label or notes never reaches the Planner or the Critic.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 first build; changed after the second-model review."
+      }
+    ],
     "notes": [
       "Name and licence are text; they are set from the code's source definitions (SOURCES in hypocurate/sources/versions.py), not from source content."
     ],
     "tests": [
       "tests/test_access_layer.py::test_sources_meta_is_exactly_the_named_plain_fields",
-      "tests/test_access_planted.py::test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic"
+      "tests/test_access_projected.py::test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic",
+      "tests/test_access_layer.py::test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry"
     ]
   },
   {
     "key": "plan_named_parts",
-    "name": "The named parts of a plan",
+    "name": "The plan's schema",
     "state": "in_force",
-    "statement": "A plan's content is read only under its named parts (PRD 5.1): claim, hypothesis version, variables, scope, model, sufficiency, fields to extract, exclusion rules, eligibility rules, verdict statement, sensitivity analyses. Any other key is withheld from every role. The list of fields to extract keeps only names of the common fields.",
+    "statement": "A plan's content is read only through PLAN_SCHEMA, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped. Power assumptions likewise through POWER_SCHEMA, and the sensitivity keys through their vocabulary. Defined in step 5 (owner, 2026-10-05); the plan model of step 6 must follow it.",
     "value": {
-      "text": "the eleven named parts of PRD 5.1",
+      "text": "PLAN_SCHEMA (nested, named keys and vocabulary leaves)",
       "unit": null
     },
     "category": "data_handling",
     "affects": "What any role receives of a plan; the plan model (step 6) stores its content under these names.",
     "reason": "Allowed fields, not blocked fields (PRD 4).",
     "evidence": [
-      "PRD 5.1; step 5 plan, point 9 (approved by the owner, 2026-10-05)."
+      "PRD 5.1; step 5 plan, point 9 (approved by the owner, 2026-10-05).",
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
     ],
     "decided": {
-      "by": "step 5 (owner's approval of the plan)",
+      "by": "owner (Khalid El-Awady)",
       "date": "2026-10-05"
     },
     "expert_review": {
@@ -3151,27 +3170,24 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.access.allowlist:PLAN_KEYS",
-          "equals": [
-            "claim",
-            "hypothesis_version",
-            "variables",
-            "scope",
-            "model",
-            "sufficiency",
-            "fields_to_extract",
-            "exclusion_rules",
-            "eligibility_rules",
-            "verdict_statement",
-            "sensitivity_analyses"
-          ]
+          "ref": "python:hypocurate.access.allowlist:PLAN_SCHEMA"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:POWER_SCHEMA"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "A plan's content is read only under its named parts (PRD 5.1): claim, hypothesis version, variables, scope, model, sufficiency, fields to extract, exclusion rules, eligibility rules, verdict statement, sensitivity analyses. Any other key is withheld from every role. The list of fields to extract keeps only names of the common fields.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 first build; changed after the second-model review."
+      }
+    ],
     "notes": [
-      "The parts other than the field list are passed as written at the rules lock; step 6 defines their structure and must project each part from named keys too."
+      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval."
     ],
     "tests": [
       "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
@@ -3309,16 +3325,17 @@
     "key": "pipeline_file_guard",
     "name": "Approved input files of pipeline code",
     "state": "in_force",
-    "statement": "A pipeline run executes in a fresh process (python -m hypocurate.access.guarded) under an irreversible guard: it may read only the Python installation and the package's code, and write only in a private scratch directory (an empty, 0700 hc-run-* directory in the system temporary directory, removed afterwards). tests/, docs/, data/ and the repository root cannot be read or listed; other programs and native code through ctypes are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. The database driver is imported before the guard is installed.",
+    "statement": "A tripwire against accidental file access by trusted pipeline code, not a sandbox. Each pipeline run executes in a fresh process (python -m hypocurate.access.guarded) where a Python audit hook refuses reading or listing anything outside the Python installation and the package's code, writing outside a private scratch directory, relative paths, other programs and new native libraries; each refusal is logged (audit log as a failure, or the process log). It does not stop code that tries to get around it: Python warns that audit hooks are unsuitable for a sandbox, and open descriptors, the guard's own state, preloaded ctypes (direct memory access), sockets and the database are not restricted. The only construction-level guarantee is that the deployed image contains no tests/ or docs/.",
     "value": {
-      "text": "read: Python installation and package code; write: private scratch directory only",
+      "text": "tripwire: reads limited to the Python installation and package code; writes to a private scratch directory",
       "unit": null
     },
     "category": "operational",
     "affects": "Every pipeline run (the command line's run command, step 8; the worker, step 9).",
-    "reason": "Answer material and review documents must be unreachable by construction, not by convention (step 1 open item 4).",
+    "reason": "Answer material and review documents should not be reached by accident (step 1 open item 4). The owner's first instruction asked for 'unreachable by construction'; after the step 5 review the owner scoped this to a tripwire against our own mistakes, with the deployed image (no tests/, no docs/) as the only construction-level guarantee.",
     "evidence": [
-      "Step 1 summary, open item 4; step 5 plan and owner's addition C, 2026-10-05."
+      "Step 1 summary, open item 4; step 5 plan and owner's addition C, 2026-10-05.",
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -3350,9 +3367,17 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "A pipeline run executes in a fresh process (python -m hypocurate.access.guarded) under an irreversible guard: it may read only the Python installation and the package's code, and write only in a private scratch directory (an empty, 0700 hc-run-* directory in the system temporary directory, removed afterwards). tests/, docs/, data/ and the repository root cannot be read or listed; other programs and native code through ctypes are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. The database driver is imported before the guard is installed.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 first build; changed after the second-model review."
+      }
+    ],
     "notes": [
-      "Limit: an audit hook sees what Python code opens; files that C libraries open themselves (libpq, OpenSSL) are not seen. It is an in-process guard, not an operating-system sandbox.",
+      "Python documentation, sys.addaudithook and PEP 578: audit hooks are not suitable for implementing a sandbox.",
+      "Sufficient under the threat model (entry 'threat_model'): only trusted code runs; agents return text only.",
       "A library that imports ctypes after the guard is installed is refused; such a library (for example the plotting library, step 7) must be added to PRELOADED with the owner's approval."
     ],
     "tests": [
@@ -3361,7 +3386,410 @@
       "tests/test_access_files.py::test_templates_database_and_certificates_work_under_the_guard",
       "tests/test_access_files.py::test_source_registration_cannot_run_under_the_guard",
       "tests/test_access_files.py::test_the_guarded_process_refuses_a_scratch_directory_that_would_open_anything_else",
-      "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place"
+      "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place",
+      "tests/test_access_files.py::test_preloaded_ctypes_still_works_a_documented_limit",
+      "tests/test_access_dispatch.py::test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log",
+      "tests/test_check_runtime_image.py::test_clean_image_passes"
+    ]
+  },
+  {
+    "key": "threat_model",
+    "name": "Threat model of the access layer",
+    "state": "in_force",
+    "statement": "The access layer and its tests guard against our own code leaking data to a model. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL, a database connection, a file path or other tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. The access layer is not a boundary against hostile code in the same process. Agents that execute code are in the backlog, with operating-system isolation as a precondition.",
+    "value": {
+      "text": "own mistakes; text-only agents; trusted code",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "What the access layer and the file guard claim, and what step 8 may give an agent.",
+    "reason": "The step 5 review showed that an in-process guard cannot contain code that tries to get around it; the owner scoped the guarantees to our own mistakes.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:CLAUDE.md:Nothing a model controls ever receives SQL, a database connection or a file path"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The owner's earlier instruction 'unreachable by construction' overreached; every claim that followed from it is corrected (step 5 summary)."
+    ],
+    "tests": [
+      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed",
+      "tests/test_access_dispatch.py::test_bind_reads_the_role_from_the_runs_agent_settings_and_the_stage_from_the_database"
+    ]
+  },
+  {
+    "key": "access_context_dispatcher",
+    "name": "Access objects come only from the dispatcher",
+    "state": "in_force",
+    "statement": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+    "value": {
+      "text": "dispatch.bind only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every agent read (steps 8 and 9).",
+    "reason": "Review finding 2: caller-chosen, mutable role, run, stage and source could be misused by our own code.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.dispatch:bind"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_dispatch.py::test_bind_refuses_a_setting_or_source_the_run_did_not_record",
+      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed"
+    ]
+  },
+  {
+    "key": "access_logging",
+    "name": "What the audit log records, and its fallback",
+    "state": "in_force",
+    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional.",
+    "value": {
+      "text": "allowed / denied / failed; process log as fallback",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The audit log of every run (PRD 14.2).",
+    "reason": "Review finding 5.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.layer:FAILURES",
+          "equals": [
+            "unknown_run",
+            "lock_timeout",
+            "reader_error",
+            "database_error",
+            "file_guard"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.layer:DENIALS"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_dispatch.py::test_a_readers_error_is_a_logged_failure",
+      "tests/test_access_dispatch.py::test_an_unknown_run_is_a_logged_failure",
+      "tests/test_access_dispatch.py::test_when_the_database_is_unavailable_the_process_log_is_the_fallback",
+      "tests/test_access_dispatch.py::test_role_input_is_never_silently_empty",
+      "tests/test_access_dispatch.py::test_only_validated_bounded_strings_are_logged",
+      "tests/test_access_dispatch.py::test_a_roles_whole_input_is_read_in_one_transaction"
+    ]
+  },
+  {
+    "key": "audit_failure_rows_without_run_lock",
+    "name": "Failure rows: a named exception to the locking protocol",
+    "state": "in_force",
+    "statement": "Audit rows for access failures (unknown run, lock timeout, reader or database error, file-guard refusal) are written in their own short transaction without hc_write_lock: there is no run to lock, or the lock is what failed. An audit_log insert takes only a key-share lock on the run, which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an unknown run, run_id is NULL and the requested id is in the detail.",
+    "value": {
+      "text": "failure rows without hc_write_lock",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The locking protocol of step 3 (every other write path still calls hc_write_lock first).",
+    "reason": "A failure must be logged even when the run's lock cannot be taken.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.layer:log_failure"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Owner's answer to the fix-plan question 1, 2026-10-05: option (a)."
+    ],
+    "tests": [
+      "tests/test_access_layer.py::test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hanging",
+      "tests/test_access_dispatch.py::test_bind_logs_an_unknown_run_as_a_failure_with_no_run"
+    ]
+  },
+  {
+    "key": "category_vocabularies",
+    "name": "Vocabularies of category values in blinded views",
+    "state": "in_force",
+    "statement": "Category values shown to the Planner, the Critic and in gap reports come from fixed vocabularies; any other value is shown as 'unrecognized' (the stored value is unchanged). Test type: tension, compression. Temperature band: room temperature, cryogenic, elevated. Phase class: FCC, BCC, other. Microstructure: '+'-joined tokens from FCC, BCC, B2, HCP, L12, Laves, Sec., Other. Processing method: CAST, WROUGHT, ANNEAL, POWDER, OTHER. Unrecognized values are counted per field (never shown) in test connection and in the run's coverage. Adding a value is a register change needing the owner's approval.",
+    "value": {
+      "text": "five vocabularies; marker 'unrecognized'",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What source text the Planner, the Critic and the gap report can receive.",
+    "reason": "Review finding 3: free text in category fields could carry outcome values. Built from the frozen sources' actual values (no value of either source is unrecognized).",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.vocabulary:TEST_TYPES",
+          "equals": [
+            "compression",
+            "tension"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:TEMPERATURE_BANDS",
+          "equals": [
+            "cryogenic",
+            "elevated",
+            "room temperature"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:PHASE_CLASSES",
+          "equals": [
+            "BCC",
+            "FCC",
+            "other"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:MICROSTRUCTURE_TOKENS",
+          "equals": [
+            "B2",
+            "BCC",
+            "FCC",
+            "HCP",
+            "L12",
+            "Laves",
+            "Other",
+            "Sec."
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:PROCESSING_METHODS",
+          "equals": [
+            "ANNEAL",
+            "CAST",
+            "OTHER",
+            "POWDER",
+            "WROUGHT"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:UNRECOGNIZED",
+          "equals": "unrecognized"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Owner's approval of the vocabularies and of the unrecognized counts, 2026-10-05."
+    ],
+    "tests": [
+      "tests/test_access_dispatch.py::test_vocabularies_mark_what_they_do_not_know",
+      "tests/test_access_dispatch.py::test_the_frozen_sources_have_no_unrecognized_category_value",
+      "tests/test_access_dispatch.py::test_unrecognized_values_are_counted_in_coverage_and_test_connection"
+    ]
+  },
+  {
+    "key": "code_vocabularies",
+    "name": "Vocabularies of codes our own code writes",
+    "state": "in_force",
+    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 must write these codes. Adding one is a register change needing the owner's approval.",
+    "value": {
+      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Flags (step 6), eligibility decisions (step 6), sensitivity analyses (step 7) as roles see them.",
+    "reason": "Review finding 3: stored codes are text and could carry anything.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.vocabulary:FLAG_KINDS",
+          "equals": [
+            "exact_duplicate",
+            "invalid_value",
+            "model_recalled",
+            "out_of_scope",
+            "possible_duplicate",
+            "scope_not_confirmed",
+            "values_disagree"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:FLAG_CATEGORIES",
+          "equals": [
+            "differ beyond tolerance",
+            "identical values",
+            "outside scope",
+            "physically impossible",
+            "scope not confirmed",
+            "within tolerance"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:ELIGIBILITY_RULES",
+          "equals": [
+            "duplicate_counted_once",
+            "excluded_by_rule",
+            "in_scope",
+            "invalid_value",
+            "model_recalled",
+            "out_of_scope",
+            "scope_not_confirmed",
+            "single_grain_size"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SENSITIVITY_KEYS",
+          "equals": [
+            "possible_duplicates_separate",
+            "removal_after_lock",
+            "same_alloy_1_at_pct",
+            "scope_not_confirmed_included",
+            "six_batches_as_groups",
+            "source_only_assignments",
+            "tension_and_compression"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
+      "tests/test_access_dispatch.py::test_the_gap_report_input_has_codes_not_failure_text"
+    ]
+  },
+  {
+    "key": "accepted_disclosures",
+    "name": "What the blinded views disclose by design",
+    "state": "in_force",
+    "statement": "The blinding of the Planner, the Critic, the gap report and the Commentator without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; the Analyst's gap report passed to the Commentator; timing and the existence of refusals. Timing is not protected.",
+    "value": {
+      "text": "the nine disclosures in ACCEPTED_DISCLOSURES",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The claim made for blinding (PRD 4) in every document.",
+    "reason": "Review finding 3 and its note on counts and timing: these follow from the approved contract; 'no row-level value can be inferred' would be false.",
+    "evidence": [
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:ACCEPTED_DISCLOSURES"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
+      "tests/test_access_dispatch.py::test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure"
     ]
   }
 ]

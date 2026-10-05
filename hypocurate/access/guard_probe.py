@@ -1,8 +1,9 @@
 """Checks of the file guard from inside a guarded process (`guarded.run_guarded`).
 
 `probe(actions)` performs each action and reports "ok", or "refused: ..." when the guard
-refused it. It is how the tests (and, later, a deploy-time self-check) show what pipeline
-code can and cannot reach. It reads nothing it reports beyond a byte count.
+refused it. It is how the tests (and, later, a deploy-time self-check) show what the
+tripwire catches. It reads nothing it reports beyond a byte count. It does not show that
+the guard cannot be bypassed: it cannot be, by design (see `file_guard`).
 """
 from __future__ import annotations
 
@@ -103,6 +104,21 @@ def _ctypes(_: Any) -> str:
     return "ok"
 
 
+def _ctypes_string_at(_: Any) -> str:
+    """Calls through preloaded ctypes functions (string_at) raise the call event the guard refuses."""
+    import ctypes
+    return f"ok {ctypes.string_at(ctypes.c_char_p(b'x'), 1)!r}"
+
+
+def _ctypes_from_address(_: Any) -> str:
+    """A documented limit of the tripwire: ctypes, once imported before the guard (by the database
+    driver), can still read process memory directly (`from_address`); only new library loads and
+    foreign calls are refused."""
+    import ctypes
+    buffer = ctypes.create_string_buffer(b"x")
+    return f"ok {ctypes.c_char.from_address(ctypes.addressof(buffer)).value!r}"
+
+
 def _register(_: Any) -> str:
     from hypocurate.sources.versions import SOURCES, read_definition_files
     read_definition_files(SOURCES["mpea"])
@@ -110,13 +126,14 @@ def _register(_: Any) -> str:
 
 
 def _role_input(action: dict) -> str:
-    """A role's complete input, built through the access layer inside the guarded process."""
+    """A role's complete input, built through the dispatcher and the access layer inside the
+    guarded process."""
     import base64
     import json
-    from hypocurate.access import Access, role_input
+    from hypocurate.access import bind, role_input
     from hypocurate.db.engine import make_engine
     engine = make_engine(os.environ["DATABASE_URL"])
-    access = Access(engine, action["run"], action["role"], action["stage"], source_key=action.get("source"))
+    access = bind(engine, action["run"], action["agent_setting"], source_key=action.get("source"))
     out = json.dumps(role_input(access), sort_keys=True,
                      default=lambda b: base64.b64encode(b).decode() if isinstance(b, bytes) else str(b))
     engine.dispose()
@@ -128,7 +145,9 @@ ACTIONS: dict[str, Callable[[dict], str]] = {
     "list": lambda a: _list(a["path"], a.get("how", "listdir")),
     "write": lambda a: _write(a["path"]),
     "write_scratch": _write_scratch, "scratch": _scratch, "render": _render, "database": _database, "certificates": _certificates,
-    "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "register": _register,
+    "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "ctypes_string_at": _ctypes_string_at,
+    "ctypes_from_address": _ctypes_from_address,
+    "register": _register,
     "role_input": _role_input,
 }
 

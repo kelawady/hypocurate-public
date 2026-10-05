@@ -1,97 +1,242 @@
-"""The access object: one per role, stage and run (PRD 4).
+"""The access object: what one agent call may read from one run (PRD 4).
 
-Every read an agent's code path makes goes through `Access.get(field)`. Each call is one
-transaction (`run_transaction`, retried on 40P01 / 40001), in this order:
+Created only by the trusted dispatcher (`dispatch.bind`), around an immutable
+`AccessContext` captured once. There is no public constructor that takes a caller-chosen
+run, role, stage or source (tests use their own helper). Every read goes through `get`
+(one field) or `read_all` (the role's complete input, used by `inputs.role_input`).
 
-1. `SET LOCAL lock_timeout`, then `hc_write_lock(p_run => run)`: the locking protocol of
-   step 3 (the audit row is a write to the run), which also fixes the run's stage until
-   commit;
-2. the run's actual stage, read from the database (`stage.actual_stage`);
-3. the checks: the declared stage equals the actual one, and the field is on the role's
-   list for that stage (`allowlist.allowed`);
-4. the read, by the field's function (`fields.READERS`), which may still refuse;
-5. one `audit_log` row: role, declared stage, field, allowed or denied, and in `detail`
-   the actual stage and the reason, never a value;
-6. commit.
+**One read is one transaction** (`run_transaction`, retried on 40P01 / 40001):
+1. `SET LOCAL lock_timeout`; check that the run exists; `hc_write_lock(p_run => …)`: the
+   locking protocol of step 3 (the audit rows are writes to the run). Holding the run's lock,
+   the stage and the rows read cannot change until commit: writers to the run follow the
+   same protocol and wait. So `read_all` is one snapshot of the role's whole input;
+2. the run's actual stage (`stage.actual_stage`);
+3. the policy checks per field: known role and stage, the context's stage equals the actual
+   one, the field is on the role's list;
+4. the reads (`fields.READERS`); a reader may refuse (a policy denial with its code);
+5. the audit rows: one per field, `allowed` true for a delivered read, false for a denial;
+6. commit, and only then return or raise `AccessDenied`. A refusal therefore survives any
+   rollback by the caller.
 
-A refusal writes its denied row and commits, and only then raises `AccessDenied`, so the
-row survives the rejection: it is never inside a transaction the caller could roll back.
-The object owns its engine and never accepts the caller's connection.
+**Denial and failure are logged apart.** `detail.result` is "allowed", "denied" (a policy
+refusal; `AccessDenied`) or "failed" (an access failure; `AccessFailed`): an unknown run, a
+lock timeout, a reader's error, the database unavailable, a file-guard refusal
+(`guarded.run_guarded`). `detail.code` is a fixed code. Only validated, bounded strings are
+logged: a role, stage or field that is not one of ours is logged as "invalid" with its
+length; a run id must be an integer.
 
-**Never call the access layer while holding a run's lock** (a write transaction that has
-called `hc_write_lock` for the same run): the access transaction would wait for it. The
-lock timeout turns that wait into an error instead of a hang.
+**Failure rows are a named exception to the locking protocol** (owner, 2026-10-05; register
+entry 'audit_failure_rows_without_run_lock'): they are written in their own short
+transaction *without* `hc_write_lock`, because there is no run to lock (unknown run) or the
+lock is what failed (timeout). An `audit_log` insert takes only a key-share lock on the run,
+which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an
+unknown run, `run_id` is NULL and the requested id is in `detail`.
+
+**Fallback.** If a failure row cannot be written (the database is unavailable), the event
+goes to the process log (logger `hypocurate.access`, one bounded JSON line). Durable logging
+in the database is therefore not unconditional.
+
+**Never call the access layer while holding the same run's lock**: the call would wait for
+it, and fails after the lock timeout (logged as a failure).
 """
 from __future__ import annotations
 
-from typing import Any
+import json
+import logging
+import re
+from typing import Any, Iterable
 
 from sqlalchemy import Connection, Engine, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import DBAPIError
 
-from hypocurate.access.allowlist import ROLES, STAGES, allowed
-from hypocurate.access.errors import AccessDenied
-from hypocurate.access.fields import READERS, Context, Refused
+from hypocurate.access.allowlist import FIELDS, ROLES, STAGES, allowed
+from hypocurate.access.context import AccessContext
+from hypocurate.access.errors import AccessDenied, AccessFailed
+from hypocurate.access.fields import READERS, Refused
 from hypocurate.access.stage import actual_stage
-from hypocurate.db.retry import run_transaction
+from hypocurate.db.retry import RETRYABLE_SQLSTATES, run_transaction, sqlstate
 
 # How long an access call waits for a run's lock before failing (milliseconds).
 ACCESS_LOCK_TIMEOUT_MS = 5000
 
+LOG = logging.getLogger("hypocurate.access")
+
+# Fixed codes and their fixed reasons: nothing a caller passes is copied into a reason.
+DENIALS = {
+    "unknown_role": "the role is not one of the five roles",
+    "unknown_stage": "the stage is not one of the access stages",
+    "stage_mismatch": "the run is no longer at the stage this access was bound to",
+    "not_on_list": "the field is not on the role's list at the run's stage",
+    "no_source": "the Curator reads one named source; none was bound",
+    "source_not_recorded": "the source is not recorded for this run",
+    "source_not_for_role": "only the Curator is bound to a source",
+    "setting_not_recorded": "the agent setting is not recorded for this run",
+    "empty_list": "the role has no field at this stage",
+}
+FAILURES = ("unknown_run", "lock_timeout", "reader_error", "database_error", "file_guard")
+FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}
+_SOURCE_KEY = re.compile(r"[a-z][a-z0-9_]{0,40}")
+
 _AUDIT = text("INSERT INTO audit_log (run_id, role, stage, function, allowed, detail) "
               "VALUES (:r, :role, :stage, :field, :allowed, :detail)").bindparams(bindparam("detail", type_=JSONB))
+_TRUSTED = object()  # held by dispatch.bind (and the tests' helper); not a public constructor
+
+
+def bounded(value: Any, valid: Iterable[str]) -> str:
+    """`value` if it is one of ours, else "invalid"."""
+    return value if isinstance(value, str) and value in valid else "invalid"
+
+
+def bounded_source(value: Any) -> str | None:
+    if value is None:
+        return None
+    return value if isinstance(value, str) and _SOURCE_KEY.fullmatch(value) else "invalid"
+
+
+def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | None = None, **extra) -> dict:
+    d: dict[str, Any] = {"result": result}
+    if code is not None:
+        d["code"] = code
+    if actual is not None:
+        d["actual_stage"] = actual
+    if ctx.source_key is not None:
+        d["source"] = bounded_source(ctx.source_key)
+    for name, raw, valid in (("role", ctx.role, ROLES), ("stage", ctx.stage, STAGES)):
+        if bounded(raw, valid) == "invalid" and raw != "invalid":
+            d[f"given_{name}_length"] = len(raw) if isinstance(raw, str) else -1
+    d.update(extra)
+    return d
+
+
+def _row(ctx: AccessContext, run_id: int | None, function: str, allowed_: bool, detail: dict) -> dict:
+    return dict(r=run_id, role=bounded(ctx.role, ROLES), stage=bounded(ctx.stage, STAGES),
+                field=bounded(function, FUNCTIONS), allowed=allowed_, detail=detail)
+
+
+def log_failure(engine: Engine, ctx: AccessContext, function: str, code: str, run_known: bool = True,
+                **extra) -> None:
+    """One failure row, in its own transaction, without the run lock (the named exception);
+    the process log if the database cannot take it."""
+    run_id = ctx.run_id if run_known else None
+    detail = _detail(ctx, "failed", code, **extra)
+    if not run_known:
+        detail["requested_run"] = int(ctx.run_id)
+    try:
+        run_transaction(engine, lambda conn: conn.execute(_AUDIT, _row(ctx, run_id, function, False, detail)))
+    except Exception as error:  # the database is unavailable: the process log is the fallback
+        LOG.error(json.dumps({"audit_fallback": _row(ctx, run_id, function, False, detail),
+                              "error": type(error).__name__}, sort_keys=True))
+
+
+class _ReaderError(Exception):
+    def __init__(self, field: str, error: BaseException):
+        self.field, self.error_class = field, type(error).__name__
+        super().__init__(field)
 
 
 class Access:
-    """What one role may read from one run at one stage."""
+    """What one role may read from one run at one stage. Immutable; see the module docstring."""
 
-    def __init__(self, engine: Engine, run_id: int, role: str, stage: str, source_key: str | None = None,
-                 lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS):
-        self._engine = engine
-        self.run_id = int(run_id)
-        self.role = role
-        self.stage = stage
-        self.source_key = source_key
-        self._lock_timeout_ms = int(lock_timeout_ms)
+    __slots__ = ("_engine", "_context", "_lock_timeout_ms")
+
+    def __init__(self, engine: Engine, context: AccessContext, *, lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS,
+                 _trusted: object = None):
+        if _trusted is not _TRUSTED:
+            raise TypeError("an access object is created only by hypocurate.access.dispatch.bind")
+        if not isinstance(context, AccessContext) or not isinstance(context.run_id, int):
+            raise TypeError("an access object needs an AccessContext with an integer run id")
+        object.__setattr__(self, "_engine", engine)
+        object.__setattr__(self, "_context", context)
+        object.__setattr__(self, "_lock_timeout_ms", int(lock_timeout_ms))
+
+    def __setattr__(self, name, value):
+        raise AttributeError("an access object is immutable")
+
+    @property
+    def context(self) -> AccessContext:
+        return self._context
 
     def __repr__(self) -> str:
-        return f"Access(run={self.run_id}, role={self.role!r}, stage={self.stage!r})"
+        c = self._context
+        return f"Access(run={c.run_id}, role={bounded(c.role, ROLES)!r}, stage={bounded(c.stage, STAGES)!r})"
 
     def get(self, field: str) -> Any:
-        """The field's content, or AccessDenied (already logged)."""
-        outcome = run_transaction(self._engine, lambda conn: self._call(conn, field))
-        if outcome[0] == "denied":
-            raise AccessDenied(self.role, self.stage, field, outcome[1])
+        """One field, or AccessDenied / AccessFailed (already logged)."""
+        return self._read(field, (field,))[field]
+
+    def read_all(self) -> dict[str, Any]:
+        """Every field on the role's list at its stage, in one transaction (one snapshot).
+        Never empty: a role with no field at its stage gets AccessDenied (logged)."""
+        ctx = self._context
+        return self._read("role_input", tuple(sorted(allowed(ctx.role, ctx.stage))))
+
+    def _read(self, function: str, fields: tuple) -> dict[str, Any]:
+        ctx, engine = self._context, self._engine
+        name = bounded(function if fields != (function,) else fields[0], FUNCTIONS)
+        try:
+            outcome = run_transaction(engine, lambda conn: self._transaction(conn, ctx, function, fields))
+        except _ReaderError as error:
+            log_failure(engine, ctx, error.field, "reader_error", error_class=error.error_class)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(error.field, FUNCTIONS),
+                               "reader_error") from error.__cause__
+        except DBAPIError as error:
+            code = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
+            log_failure(engine, ctx, name, code)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, code) from error
+        kind = outcome[0]
+        if kind == "unknown_run":
+            log_failure(engine, ctx, name, "unknown_run", run_known=False)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, "unknown_run")
+        if kind == "denied":
+            field, code = outcome[1]
+            raise AccessDenied(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(field, FUNCTIONS),
+                               code, DENIALS[code])
         return outcome[1]
 
-    def _call(self, conn: Connection, field: str) -> tuple[str, Any]:
+    def _transaction(self, conn: Connection, ctx: AccessContext, function: str, fields: tuple) -> tuple:
         conn.execute(text(f"SET LOCAL lock_timeout = {self._lock_timeout_ms}"))
-        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=self.run_id)).scalar_one()
-        actual = actual_stage(conn, self.run_id, status)
-        reason = self._refusal(field, actual)
-        if reason is None:
-            try:
-                value = READERS[field](conn, Context(self.run_id, self.role, self.source_key))
-            except Refused as refused:
-                reason = str(refused)
-        detail: dict[str, Any] = {"actual_stage": actual}
-        if self.source_key is not None:
-            detail["source"] = self.source_key
-        if reason is not None:
-            detail["reason"] = reason
-        conn.execute(_AUDIT, dict(r=self.run_id, role=self.role, stage=self.stage, field=field,
-                                  allowed=reason is None, detail=detail))
-        return ("denied", reason) if reason is not None else ("allowed", value)
+        if not conn.execute(text("SELECT EXISTS (SELECT 1 FROM run WHERE id = :r)"), dict(r=ctx.run_id)).scalar_one():
+            return ("unknown_run",)
+        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=ctx.run_id)).scalar_one()
+        actual = actual_stage(conn, ctx.run_id, status)
+        if not fields:  # role_input with nothing on the list: never an empty input
+            code = ("unknown_role" if ctx.role not in ROLES else "unknown_stage" if ctx.stage not in STAGES
+                    else "empty_list")
+            conn.execute(_AUDIT, _row(ctx, ctx.run_id, "role_input", False, _detail(ctx, "denied", code, actual)))
+            return ("denied", ("role_input", code))
+        values, denied = {}, []
+        for field in fields:
+            code = _policy(ctx, field, actual)
+            if code is None:
+                try:
+                    values[field] = READERS[field](conn, ctx)
+                except Refused as refused:
+                    code = refused.code
+                except DBAPIError as error:
+                    if sqlstate(error) in RETRYABLE_SQLSTATES:
+                        raise
+                    raise _ReaderError(field, error) from error
+                except Exception as error:
+                    raise _ReaderError(field, error) from error
+            if code is not None:
+                denied.append((field, code))
+        if denied:  # nothing is delivered; each refused field is logged
+            for field, code in denied:
+                conn.execute(_AUDIT, _row(ctx, ctx.run_id, field, False, _detail(ctx, "denied", code, actual)))
+            return ("denied", denied[0])
+        for field in fields:
+            conn.execute(_AUDIT, _row(ctx, ctx.run_id, field, True, _detail(ctx, "allowed", None, actual)))
+        return ("allowed", values)
 
-    def _refusal(self, field: str, actual: str) -> str | None:
-        if self.role not in ROLES:
-            return f"unknown role {self.role!r}"
-        if self.stage not in STAGES:
-            return f"unknown stage {self.stage!r}"
-        if self.stage != actual:
-            return f"the run is at stage {actual!r}, not {self.stage!r}"
-        if field not in allowed(self.role, actual):
-            return f"{field!r} is not on the {self.role}'s list at stage {actual!r}"
-        if field not in READERS:  # listed but not implemented: never silently empty
-            return f"no reader for {field!r}"
-        return None
+
+def _policy(ctx: AccessContext, field: str, actual: str) -> str | None:
+    if ctx.role not in ROLES:
+        return "unknown_role"
+    if ctx.stage not in STAGES:
+        return "unknown_stage"
+    if ctx.stage != actual:
+        return "stage_mismatch"
+    if field not in allowed(ctx.role, actual) or field not in READERS:
+        return "not_on_list"
+    return None

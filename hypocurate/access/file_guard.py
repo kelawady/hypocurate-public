@@ -1,33 +1,50 @@
-"""The approved input files of pipeline code (step 1 open item 4; step 5).
+"""A tripwire against accidental file access by pipeline code (step 5; review finding 1).
 
-Pipeline code reads source data only as the sealed bytes of the source versions its run
-recorded, through the access layer (`fields.source_content`, `fields.record_counts`); the
-access layer has no function that takes a file path. This module makes everything else on
-disk unreachable in the process that runs a pipeline, by construction:
+**What it is.** In the process that runs one pipeline run (`guarded.run_guarded`), a Python
+audit hook (`sys.addaudithook`) refuses, with `PermissionError`, what *trusted, reviewed*
+pipeline code should never do by mistake:
+- reading or listing anything outside the Python installation (standard library, installed
+  packages, the certificate bundle) and the `hypocurate` package's code: so the repository
+  root, `tests/`, `docs/` (including `docs/reviews/`) and `data/`;
+- writing anywhere but the run's private scratch directory;
+- relative paths;
+- starting another program (`subprocess`, `os.system`, `exec`, `spawn`, `fork`) and loading a
+  new native library through `ctypes`.
+Each refusal is written as one bounded line to the process's standard error, and the parent
+copies it into the audit log as a failure (code `file_guard`) when it knows the run.
 
-- `install()` adds a Python audit hook, which cannot be removed once added. From then on
-  the process may **read** only the Python installation (standard library and installed
-  packages, including the certificate bundle) and the `hypocurate` package's own code
-  directory, and may **write** only in its private scratch directory. Everything else is
-  refused with `PermissionError`: in particular the repository root, `tests/`, `docs/`
-  (and so `docs/reviews/`) and `data/`. Relative paths are refused (the hook cannot see a
-  `dir_fd` they may be relative to). Starting another program (`subprocess`, `os.system`,
-  `exec`, `spawn`, `fork`) and loading native code through `ctypes` are refused.
-- It is installed only in a process started for one pipeline run, by
-  `python -m hypocurate.access.guarded` (`guarded.run_guarded`), which exits when the run
-  ends. `install()` refuses to run in any other process, so the guard can never be
-  installed in a process that later needs those paths: the web service, the migrations,
-  the command line's `sources` commands (registration reads `data/`) and the test process
-  never install it.
+**What it is not.** Python's own documentation warns that audit hooks are not suitable for
+implementing a sandbox, because code in the same process can bypass them
+(https://docs.python.org/3/library/sys.html#sys.addaudithook; PEP 578). In particular, as the
+step 5 review showed:
+- a file descriptor that is already open can still be read;
+- the guard's own state can be changed from inside the process;
+- `ctypes`, once imported (the database driver imports it before the guard is installed),
+  can still read and write process memory directly (`from_address`; tested). Foreign calls
+  raise an audit event the hook refuses (`string_at` was refused in our runs, though the
+  review reports it working in its setup), but that is no barrier to code that tries;
+- sockets, and so the database with the credentials the process has, are not restricted;
+- the child inherits its environment, and startup hooks or modules imported before the guard
+  run unguarded;
+- checking a path and then opening it is not atomic.
+So it catches accidents by our own code; it does not stop code that tries to get around it.
+That is enough under the threat model (owner, 2026-10-05; CLAUDE.md, register 'threat_model'):
+agents return text only and never execute code, and only trusted code runs. Agents that
+execute code are in the backlog, with operating-system isolation as a precondition.
 
-Limit: an audit hook sees what Python code opens. Files that C libraries open themselves
-(libpq's configuration, OpenSSL's certificate store) are not seen, and native code could
-bypass the hook entirely, which is why loading native code through `ctypes` is refused.
-It is an in-process guard, not an operating-system sandbox. The deployed image holds no
-`tests/` or `docs/` at all (step 2, checked in CI).
+**The one construction-level guarantee** about answer material is the deployed image: it
+contains no `tests/` and no `docs/` (Dockerfile; checked in CI by `scripts/check_runtime_image.py`).
+In development the files exist on disk, and only this tripwire stands in the way of an
+accidental read.
+
+`install()` runs only in the process started by `python -m hypocurate.access.guarded`, once,
+with a private scratch directory; it refuses to run in any other process, so the web service,
+the migrations, the `sources` commands (registration reads `data/`) and the tests are never
+guarded.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import sys
@@ -87,8 +104,21 @@ def _resolve(path) -> str | None:
     return os.path.realpath(path)
 
 
-def _refuse(what: str) -> None:
-    raise PermissionError(f"file guard: {what} is outside the approved inputs of pipeline code")
+REPORT_PREFIX = "HCGUARD "  # one line per refusal on standard error, read by guarded.run_guarded
+
+
+def _printable(value: str, limit: int = 200) -> str:
+    return "".join(c if c.isprintable() else "?" for c in value[:limit])
+
+
+def _refuse(what: str, event: str = "open") -> None:
+    message = f"file guard: {what} is outside the approved inputs of pipeline code"
+    try:  # no audit event is raised by writing to an already-open stream
+        sys.stderr.write(REPORT_PREFIX + json.dumps({"event": _printable(event, 40), "what": _printable(what)}) + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+    raise PermissionError(message)
 
 
 def _check_path(path, writing: bool) -> None:
@@ -96,11 +126,11 @@ def _check_path(path, writing: bool) -> None:
         return
     real = _resolve(path)
     if real is None:
-        _refuse(f"relative path {os.fsdecode(path)!r}")
+        _refuse(f"relative path {os.fsdecode(path)!r}", "relative_path")
     scratch = _state["scratch"]
     allowed = _inside(real, (scratch,)) if writing else _inside(real, _state["read_roots"] + (scratch,))
     if not allowed:
-        _refuse(f"{'writing' if writing else 'reading'} {real}")
+        _refuse(f"{'writing' if writing else 'reading'} {real}", "write" if writing else "read")
 
 
 def _hook(event: str, args: tuple) -> None:
@@ -115,7 +145,7 @@ def _hook(event: str, args: tuple) -> None:
             if isinstance(a, (str, bytes, os.PathLike)):
                 _check_path(a, writing=True)
     elif event in REFUSED_EVENTS:
-        _refuse(f"{event}")
+        _refuse(f"{event}", event)
 
 
 def check_scratch(scratch: str) -> None:

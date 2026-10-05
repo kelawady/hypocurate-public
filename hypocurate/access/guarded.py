@@ -1,6 +1,6 @@
-"""Runs pipeline code in a fresh process under the file guard (`file_guard`).
+"""Runs pipeline code in a fresh process under the file guard's tripwire (`file_guard`).
 
-`run_guarded("hypocurate.module:function", payload)` starts
+`run_guarded("hypocurate.module:function", payload, audit=(engine, run_id))` starts
 `python -m hypocurate.access.guarded`, sends it the target and a JSON payload, and returns
 the target's JSON result. The child:
 
@@ -10,14 +10,19 @@ the target's JSON result. The child:
    plotting library in step 7); its working directory is the scratch directory;
 2. removes the repository root from its import path (the `hypocurate` package is already
    imported and keeps its own path), and imports the modules in `PRELOADED`;
-3. installs the guard, irreversibly;
+3. installs the guard;
 4. imports the target, which must be inside the `hypocurate` package, calls it with the
    payload, writes the result to its standard output and exits.
 
-This is the only place that installs the guard. The pipeline's entry points (the command
-line's run command, step 8; the worker's run of a claimed job, step 9) run each pipeline
-run through `run_guarded`. The web service, the migrations, the `sources` commands and
-the test process do not.
+The guard's refusals come back on the child's standard error; the parent copies each into
+the audit log as a failure (code `file_guard`) for the run given in `audit`, or to the
+process log if no run is given or the database cannot take it.
+
+This is a tripwire against *accidental* file access by trusted code, not a sandbox (see
+`file_guard`). This is the only place that installs it. The pipeline's entry points (the
+command line's run command, step 8; the worker's run of a claimed job, step 9) run each
+pipeline run through `run_guarded`. The web service, the migrations, the `sources` commands
+and the test process do not.
 """
 from __future__ import annotations
 
@@ -45,9 +50,36 @@ class GuardedRunError(Exception):
     """The guarded process failed; the message is its error."""
 
 
+MAX_REPORTED = 100  # refusals copied into the audit log per run; the rest are counted
+
+
+def _report_refusals(stderr: str, audit) -> None:
+    """Copies the guard's refusal lines into the audit log (or the process log)."""
+    from hypocurate.access.context import AccessContext
+    from hypocurate.access.layer import LOG, log_failure
+    reports = []
+    for line in stderr.splitlines():
+        if line.startswith(file_guard.REPORT_PREFIX):
+            try:
+                r = json.loads(line[len(file_guard.REPORT_PREFIX):])
+                reports.append({"event": str(r.get("event", ""))[:40], "what": str(r.get("what", ""))[:200]})
+            except ValueError:
+                reports.append({"event": "unreadable", "what": ""})
+    for i, r in enumerate(reports[:MAX_REPORTED]):
+        extra = dict(r, **({"more": len(reports) - MAX_REPORTED} if i == MAX_REPORTED - 1
+                           and len(reports) > MAX_REPORTED else {}))
+        if audit is None:
+            LOG.warning(json.dumps({"file_guard": extra}, sort_keys=True))
+        else:
+            engine, run_id = audit
+            log_failure(engine, AccessContext(int(run_id), "invalid", "invalid"), "guarded_run", "file_guard",
+                        **extra)
+
+
 def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = None,
-                timeout: float | None = None) -> Any:
-    """Runs `target(payload)` in a guarded child process and returns its JSON result."""
+                timeout: float | None = None, audit=None) -> Any:
+    """Runs `target(payload)` in a guarded child process and returns its JSON result.
+    `audit`: (engine, run_id), where the guard's refusals are logged as failures."""
     if not target.startswith("hypocurate.") or ":" not in target:
         raise ValueError(f"target {target!r} must be 'hypocurate.<module>:<function>'")
     # mode 0700, in the system temporary directory; removed here, whatever the child does
@@ -59,6 +91,7 @@ def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = N
                                    env=env if env is not None else dict(os.environ))
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+    _report_refusals(completed.stderr, audit)
     lines = completed.stdout.strip().splitlines()
     try:
         answer = json.loads(lines[-1])

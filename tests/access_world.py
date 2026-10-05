@@ -12,6 +12,12 @@ OTHER: a different value in other runs: the original run of the narrower questio
 records, coefficient, stage outputs and commentary) and an earlier, failed run of the same
 hypothesis version (its records and stage outputs).
 
+Inside allowed fields (step 5 review, finding 3), PLANTED is also in: category cells
+(microstructure, processing method, phase class), the paper title, the DOI, every kind of
+plan leaf and the power assumptions, an eligibility rule, a failed source's failure text, a
+flag's kind and category, and the source registry's licence and properties edited after
+dispatch.
+
 GAP_REPORT: the text of the Analyst's gap report, on runs that end with no dataset frozen.
 
 DIRECTION: a token in the claim and in the plan's hypotheses and field list, for the
@@ -42,6 +48,9 @@ GAP_REPORT = "Insufficient in the sources searched: grain size is missing for mo
 
 YS, UTS, HV = "PROPERTY: YS (MPa)", "PROPERTY: UTS (MPa)", "PROPERTY: HV"
 GS, TT, TYPE = "PROPERTY: grain size ($\\mu$m)", "PROPERTY: Test temperature ($^\\circ$C)", "PROPERTY: Type of test"
+MICRO, PROCESS, PHASE = "PROPERTY: Microstructure", "PROPERTY: Processing method", "PROPERTY: BCC/FCC/other"
+TITLE, DOI = "REFERENCE: title", "REFERENCE: doi"
+ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 
 
 def mpea_rows(n: int) -> tuple[list[str], list[dict]]:
@@ -63,6 +72,12 @@ def planted_csv(value_ys=PLANTED["yield_strength"], value_uts=PLANTED["ultimate_
         r[TYPE], r[TT] = "T", "25.0"
         r[GS] = f"{12.5 + i}"
         planted.append(r)
+    # Planted inside fields the blinded views do show: category cells, the title, the DOI.
+    planted[0][MICRO] = f"FCC; yield strength {value_ys} MPa"
+    planted[0][PROCESS] = f"CAST {value_ys}"
+    planted[0][PHASE] = f"FCC {value_ys}"
+    planted[0][TITLE] = f"Yield strength of {value_ys} MPa in CoCrNi"
+    planted[0][DOI] = f"doi {value_ys}"
     unreadable = dict(rows[0])
     unreadable[YS] = f"{value_ys} MPa"  # the adapter keeps it as 'not a number: ...'
     planted.append(unreadable)
@@ -92,6 +107,7 @@ class AccessWorld:
     earlier_run: int  # an earlier run of the same hypothesis version
     records: list[int] = field(default_factory=list)
     flags: list[int] = field(default_factory=list)
+    settings: dict = field(default_factory=dict)  # role -> agent setting id recorded for the run
 
 
 def add_planted_version(w: World, key="mpea", content: bytes | None = None, label="v-planted") -> int:
@@ -142,13 +158,26 @@ def stage(w: World, run: int, name: str, role: str, payload: str, attempt=1) -> 
 
 
 def lock(w: World, run: int) -> None:
-    content = {"claim": DIRECTION, "model": {"alternative": f"k > 0 ({DIRECTION})"},
-               "fields_to_extract": ["grain_size", "yield_strength", "composition", DIRECTION,
-                                     repr(PLANTED["yield_strength"]), PLANTED["yield_strength"]],
-               "scope": {"phase_class": "FCC"},
-               "unnamed_key": {"planted": PLANTED["yield_strength"]}}
+    ys = PLANTED["yield_strength"]
+    # Planted in every kind of plan leaf; the projection keeps only named keys, vocabulary
+    # values (else the marker), numbers and field names.
+    content = {"claim": DIRECTION,
+               "variables": {"outcome": {"field": "yield_strength", "unit": f"{ys} MPa", "note": f"{ys}"},
+                             "predictor": {"field": "grain_size", "unit": "µm", "transformation": f"x^{ys}"}},
+               "model": {"name": "hall_petch_alloy_intercepts", "null": "k <= 0",
+                         "alternative": f"k > 0 ({DIRECTION}, {ys})", "alpha": 0.05, "comment": f"{ys}"},
+               "scope": {"phase_class": ["FCC", f"FCC {ys}"], "alloy_class": [f"{ys}"], "free": f"{ys}"},
+               "fields_to_extract": ["grain_size", "yield_strength", "composition", DIRECTION, repr(ys), ys],
+               "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1, "note": f"{ys}"},
+                                   {"rule": f"ys above {ys}", "values": ["tension", f"{ys}"]}],
+               "eligibility_rules": [{"flag_kind": "values_disagree", "rule": f"keep {ys}"}],
+               "verdict_statement": f"supported if {ys}",
+               "sensitivity_analyses": ["tension_and_compression", f"drop {ys}"],
+               "unnamed_key": {"planted": ys}}
     sql(w, "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
-           "min_groups, min_resid_df) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1)", r=run, j_c=content, fp=FP)
+           "min_groups, min_resid_df, power_assumptions) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1, :j_p)",
+        r=run, j_c=content, fp=FP, j_p={"method": "information_only", "scatter": 60.0, "note": f"{ys}",
+                                         "smallest_effect": f"{ys}"})
 
 
 def original_run(w: World) -> int:
@@ -180,8 +209,9 @@ def build(engine, stage_name: str) -> AccessWorld:
     # B: planted values in the source's free text: the version label and the address.
     add_planted_version(w, label=f"label {PLANTED['yield_strength']}")
     sql(w, "UPDATE source SET address = :a WHERE key = 'mpea'", a=f"https://example.org/{PLANTED['yield_strength']}")
-    sql(w, "INSERT INTO agent_setting (role, version, instruction, model) VALUES ('planner', 1, :i, 'model-a')",
-        i=f"remember {PLANTED['yield_strength']}")
+    settings = {"planner": val(w, "INSERT INTO agent_setting (role, version, instruction, model) "
+                                  "VALUES ('planner', 1, :i, 'model-a') RETURNING id",
+                               i=f"remember {PLANTED['yield_strength']}")}
     sql(w, "INSERT INTO tag_value (kind, value, status, decided_at) "
            "VALUES ('property', 'yield strength', 'approved', now())")
     sql(w, "INSERT INTO tag_value (kind, value, status) VALUES ('property', :v, 'proposed')",
@@ -190,17 +220,29 @@ def build(engine, stage_name: str) -> AccessWorld:
     h = w.hypothesis(narrower_of=original)
     vid = val(w, "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id) "
                  "VALUES (:h, 1, :t, :d) RETURNING id", h=h, t=DIRECTION, d=w.domain["grain_size_strengthening"])
-    w.run_sql("INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=w.source["mpea"])
+    for key in ("mpea", "tamu_fcc"):
+        w.run_sql("INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=w.source[key])
     w.submit(vid)
     w.confirm(vid)
     w.dispatch_version(vid)
-    earlier = w.running(vid=vid, sources=("mpea",))
+    earlier = w.running(vid=vid, sources=("mpea", "tamu_fcc"))
     w.lock(earlier)
     store_value_records(w, earlier, OTHER)
     stage(w, earlier, "curator", "curator", f"saw {OTHER}")
     w.fail(earlier)
-    rid = w.run(vid=vid, sources=("mpea",))
+    rid = w.run(vid=vid, sources=("mpea", "tamu_fcc"))
     world = AccessWorld(w, rid, original, earlier)
+    # Dispatch records the agent setting of each role (the dispatcher reads roles from here).
+    for role in ROLES:
+        sid = settings.get(role) or val(w, "INSERT INTO agent_setting (role, version, instruction, model) "
+                                           "VALUES (:o, 1, 'instruction', 'model-a') RETURNING id", o=role)
+        settings[role] = sid
+        sql(w, "INSERT INTO run_agent_setting (run_id, role, agent_setting_id) VALUES (:r, :o, :a)",
+            r=rid, o=role, a=sid)
+    world.settings = settings
+    # Edits to the source registry after dispatch must change nothing for this run.
+    sql(w, "UPDATE source SET licence = :l, properties_covered = :p WHERE key = 'mpea'",
+        l=f"licence {PLANTED['yield_strength']}", p=["yield_strength", f"{PLANTED['yield_strength']}"])
     if stage_name == "queued":
         return world
     w.start(rid)
@@ -211,6 +253,8 @@ def build(engine, stage_name: str) -> AccessWorld:
         return world
     lock(w, rid)
     w.search(rid, "mpea")
+    w.search(rid, "tamu_fcc", status="failed", nothing_found="failed_search",
+             reason=f"timed out after reading {PLANTED['yield_strength']}")
     world.records = store_records(w, rid)
     planted = [r for r in world.records
                if val(w, "SELECT harmonized->'yield_strength'->>'value' FROM record WHERE id = :r", r=r)
@@ -221,11 +265,13 @@ def build(engine, stage_name: str) -> AccessWorld:
     for rec in planted[:2]:
         sql(w, "INSERT INTO flag_record VALUES (:f, :r)", f=fid, r=rec)
     world.flags.append(fid)
+    world.flags.append(val(w, "INSERT INTO flag (run_id, kind, category) VALUES (:r, :k, :c) RETURNING id", r=rid,
+                           k=f"kind {PLANTED['yield_strength']}", c=f"differ by {PLANTED['yield_strength']}"))
     stage(w, rid, "curator", "curator", f"extracted yield strength {PLANTED['yield_strength']} MPa")
     if stage_name == "curation":
         return world
-    for rec in world.records:
-        w.decide(rid, rec)
+    for i, rec in enumerate(world.records):
+        w.decide(rid, rec, rule=f"kept at {PLANTED['yield_strength']}" if i == 0 else "in_scope")
     if stage_name in ("closed_without_freeze", "final_without_freeze"):
         sql(w, "INSERT INTO calibration_result (run_id, status, reason) VALUES (:r, 'unavailable', 'no_dataset_frozen')",
             r=rid)

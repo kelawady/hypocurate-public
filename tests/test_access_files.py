@@ -1,13 +1,19 @@
-"""Step 5: the approved input files of pipeline code (`hypocurate.access.file_guard`).
+"""Step 5: the file guard, a tripwire against accidental file access by trusted pipeline code.
 
 Each test starts real guarded processes (`run_guarded`) and probes them from inside
-(`hypocurate.access.guard_probe`). Under the guard: answer material (`tests/`), review
-documents (`docs/reviews/`), the frozen files (`data/`) and the repository root cannot be
-read or listed, by any of Python's ways of opening a file; writes outside the private
-scratch directory are refused; no other program can be started and no native code loaded.
-The things pipeline code needs still work: the web templates render, the database driver
-connects, an HTTPS client loads its certificate bundle, a library can write its cache in
-the scratch directory, and a role's complete input is built through the access layer.
+(`hypocurate.access.guard_probe`). The tests show what the tripwire catches when our own code
+makes a mistake: reading or listing answer material (`tests/`), review documents
+(`docs/reviews/`), the frozen files (`data/`) or the repository root, by any of Python's usual
+ways of opening a file; writing outside the private scratch directory; starting another
+program; loading a new native library. They also show that what pipeline code needs still
+works (templates, the database driver, the certificate bundle, the scratch directory, a role's
+input through the dispatcher).
+
+They do **not** show that the guard cannot be bypassed: it can, by code that tries (an open
+descriptor, the guard's own state, preloaded ctypes; see `file_guard` and Python's warning on
+audit hooks). `test_preloaded_ctypes_still_works_a_documented_limit` records one such limit.
+The construction-level guarantee is the deployed image without `tests/` and `docs/`
+(`tests/test_check_runtime_image.py`).
 """
 from __future__ import annotations
 
@@ -24,7 +30,7 @@ import sqlalchemy
 import pytest
 
 import access_world as aw
-from hypocurate.access import Access, file_guard, role_input
+from hypocurate.access import bind, file_guard, role_input
 from hypocurate.access.guarded import GuardedRunError, run_guarded
 from hypocurate.db.engine import make_engine
 
@@ -100,7 +106,7 @@ def test_a_library_can_use_the_private_scratch_directory_which_is_removed_afterw
     assert not Path(path).exists()
 
 
-def test_no_other_program_and_no_native_code():
+def test_no_other_program_and_no_new_native_library():
     results = probe([{"op": "subprocess"}, {"op": "system"}, {"op": "ctypes"}])
     assert results[0] == "refused: file guard: subprocess.Popen is outside the approved inputs of pipeline code"
     assert results[1] == "refused: file guard: os.system is outside the approved inputs of pipeline code"
@@ -113,6 +119,13 @@ def test_templates_database_and_certificates_work_under_the_guard(migrated_datab
     assert results == ["ok True", "ok True", "ok True"]
 
 
+def test_preloaded_ctypes_still_works_a_documented_limit():
+    """Review finding 1: ctypes imported before the guard can still read process memory directly.
+    (A foreign call such as string_at raises the call event, which the tripwire refuses here.)"""
+    assert probe([{"op": "ctypes_from_address"}, {"op": "ctypes_string_at"}]) == [
+        "ok b'x'", "refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code"]
+
+
 def test_source_registration_cannot_run_under_the_guard():
     result, = probe([{"op": "register"}])
     assert result == ("error: RegistrationError: source registration reads data/ and cannot run in a guarded "
@@ -122,9 +135,9 @@ def test_source_registration_cannot_run_under_the_guard():
 def test_a_roles_complete_input_is_the_same_inside_the_guard(migrated_database):
     engine = make_engine(migrated_database)
     world = aw.build(engine, "before_lock")
-    expected = role_input(Access(engine, world.run, "planner", "before_lock"))
+    expected = role_input(bind(engine, world.run, world.settings["planner"]))
     engine.dispose()
-    got, = probe([{"op": "role_input", "run": world.run, "role": "planner", "stage": "before_lock"}],
+    got, = probe([{"op": "role_input", "run": world.run, "agent_setting": world.settings["planner"]}],
                  migrated_database)
     assert json.loads(got) == json.loads(json.dumps(expected, sort_keys=True))
 

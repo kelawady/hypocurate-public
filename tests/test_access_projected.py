@@ -1,24 +1,41 @@
-"""Step 5: the planted-value test (PRD 4 testing requirement; criterion 14.2, second point).
+"""Step 5: the projected-data test (PRD 4 testing requirement; criterion 14.2, second point).
+
+Formerly "the planted-value test"; renamed after the step 5 review (finding 6), because it
+tests the **data a role is given** (`role_input`, built through the real dispatcher), not the
+complete model request.
 
 Distinctive outcome values are planted everywhere the main run stores them
-(`access_world`). None may appear, in any encoding we can reasonably anticipate, anywhere
-in the complete input of the Planner (before the rules lock), the Critic (between the lock
-and the freeze) or the Analyst writing a gap report (a run that ended with no dataset
-frozen; owner, 2026-10-05). A positive control shows the detector finds the values where
-they are allowed (the Analyst after the freeze).
+(`access_world`): in discarded fields (stored outcomes, values as reported, reasons, flag
+numbers, stage text, model instructions, proposed tags, the source's address and label) and
+**inside the fields the blinded views do show** (category cells, the paper title, the DOI,
+every kind of plan leaf, power assumptions, eligibility rules, a failure text, flag kinds and
+categories, the source registry's licence and properties edited after dispatch). None may
+appear in the projected input of the Planner (before the rules lock), the Critic (between the
+lock and the freeze), the Analyst writing a gap report, or the Commentator on a run that ended
+with no dataset frozen. A positive control shows the detector finds the values where they are
+allowed (the Analyst after the freeze).
 
 Single-run scope (owner's addition A): a different value, planted in the original run of
 the narrower question and in an earlier run of the same hypothesis, appears in no role's
-complete input at any stage.
+projected input at any stage.
 
-What "any encoding" covers: the value's decimal text at full precision and rounded to 2, 1
-and 0 decimals; its integer part; thousands separators (comma, space, thin space) and a
-decimal comma; scientific notation at several precisions; `g` formats; the value in GPa,
-ksi and psi; `float.hex`; the IEEE-754 bytes (both byte orders) in hex and base64; the
-decimal text in base64, hex and URL encoding. Only encodings of at least five characters
-are searched, so that short fragments (for example "48.2") cannot match unrelated text by
-chance. The input is searched as JSON (keys and values, with and without ASCII escapes),
-as its Python repr, and case-insensitively.
+**What this test does not cover** (review finding 6):
+- the actual outbound model request: agent instructions, message history, tool errors, retry
+  prompts, attachments, anything step 8 adds (a **step 8 acceptance requirement**);
+- values split across fields, spelled out in words, transformed arbitrarily or compressed;
+- what counts, flag kinds and condition summaries reveal by design, and timing (register
+  entry 'accepted_disclosures');
+- human-written text the views pass on (the claim, approved tag values): a person who writes an
+  outcome value there discloses it.
+A longer list of encodings cannot prove the absence of leakage; it catches our own mistakes.
+
+Encodings searched: the value's decimal text at full precision and rounded to 2, 1 and 0
+decimals; its integer part; thousands separators (comma, space, thin space) and a decimal
+comma; scientific notation at several precisions; `g` formats; GPa, ksi and psi; `float.hex`;
+the IEEE-754 bytes (both byte orders) in hex and base64; the decimal text in base64, hex and
+URL encoding. Only encodings of at least five characters are searched, so short fragments
+cannot match unrelated text by chance. The input is searched as JSON (keys and values, with
+and without ASCII escapes), as its Python repr, and case-insensitively.
 """
 from __future__ import annotations
 
@@ -31,7 +48,7 @@ import pytest
 from sqlalchemy import text
 
 import access_world as aw
-from hypocurate.access import Access, role_input
+from hypocurate.access import bind, role_input
 from hypocurate.access.allowlist import ROLES, allowed
 from hypocurate.db.engine import make_engine
 
@@ -81,8 +98,12 @@ def engine(migrated_database):
     e.dispose()
 
 
-def inputs_of(engine, world, role, stage):
-    return role_input(Access(engine, world.run, role, stage, source_key="mpea" if role == "curator" else None))
+def inputs_of(engine, world, role, stage=None):
+    """The role's projected input, through the real dispatcher (role from the run's agent
+    settings, stage from the database). `stage` is only checked."""
+    access = bind(engine, world.run, world.settings[role], source_key="mpea" if role == "curator" else None)
+    assert stage is None or access.context.stage == stage
+    return role_input(access)
 
 
 def test_the_encodings_catch_the_value_where_it_is_allowed(engine):
@@ -101,7 +122,7 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
     """The test is not vacuous: the values are in the source file, the records (harmonized,
     as reported, in a reason), the flag's numbers, the stage outputs, a model instruction,
     a proposed tag value, and the source's free text."""
-    world = aw.build(engine, "curation")
+    world = aw.build(engine, "closed_without_freeze")
     ys = repr(aw.PLANTED["yield_strength"])
     with engine.connect() as conn:
         def count(sql):
@@ -112,6 +133,15 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
         assert count("SELECT count(*) FROM record WHERE reported::text LIKE :v") == 4
         assert count("SELECT count(*) FROM record WHERE harmonized->'yield_strength'->>'reason' LIKE :v") == 1
         assert count("SELECT count(*) FROM flag WHERE compared_values::text LIKE :v") == 1
+        assert count("SELECT count(*) FROM flag WHERE kind LIKE :v AND category LIKE :v") == 1
+        assert count("SELECT count(*) FROM record WHERE paper_reference LIKE :v AND paper_doi LIKE :v") == 1
+        assert count("SELECT count(*) FROM record WHERE harmonized->'microstructure'->>'value' LIKE :v "
+                     "AND harmonized->'processing_method'->>'value' LIKE :v "
+                     "AND harmonized->'phase_class'->>'value' LIKE :v") == 1
+        assert count("SELECT count(*) FROM run_record WHERE rule LIKE :v") == 1
+        assert count("SELECT count(*) FROM run_source WHERE failure_reason LIKE :v") == 1
+        assert count("SELECT count(*) FROM plan WHERE power_assumptions::text LIKE :v") == 1
+        assert count("SELECT count(*) FROM source WHERE licence LIKE :v") == 1
         assert count("SELECT count(*) FROM stage_result WHERE output::text LIKE :v AND reasoning LIKE :v "
                      "AND tool_calls::text LIKE :v AND input::text LIKE :v") == 1
         assert count("SELECT count(*) FROM agent_setting WHERE instruction LIKE :v") == 1
@@ -121,7 +151,7 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
         assert count("SELECT count(*) FROM plan WHERE content::text LIKE :v") == 1
 
 
-def test_no_planted_value_in_the_planners_complete_input(engine):
+def test_no_projected_planted_value_in_the_planners_complete_input(engine):
     world = aw.build(engine, "before_lock")
     got = inputs_of(engine, world, "planner", "before_lock")
     assert set(got) == allowed("planner", "before_lock")
@@ -129,7 +159,7 @@ def test_no_planted_value_in_the_planners_complete_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_critics_complete_input(engine):
+def test_no_projected_planted_value_in_the_critics_complete_input(engine):
     world = aw.build(engine, "curation")
     got = inputs_of(engine, world, "critic", "curation")
     assert set(got) == allowed("critic", "curation")
@@ -137,7 +167,7 @@ def test_no_planted_value_in_the_critics_complete_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_gap_report_input(engine):
+def test_no_projected_planted_value_in_the_gap_report_input(engine):
     world = aw.build(engine, "closed_without_freeze")
     got = inputs_of(engine, world, "analyst", "closed_without_freeze")
     assert set(got) == allowed("analyst", "closed_without_freeze")
@@ -145,7 +175,7 @@ def test_no_planted_value_in_the_gap_report_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_commentators_input_without_a_freeze(engine):
+def test_no_projected_planted_value_in_the_commentators_input_without_a_freeze(engine):
     """Owner, 2026-10-05: on a run that ended with no dataset frozen, the Commentator gets only the
     gap-report input, the Analyst's gap report and the run's outcome."""
     world = aw.build(engine, "final_without_freeze")
@@ -161,9 +191,10 @@ def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engi
     """Owner's addition B: the address and version label hold the planted value; sources_meta
     is a fixed set of named plain fields."""
     world = aw.build(engine, "before_lock")
-    meta = Access(engine, world.run, "planner", "before_lock").get("sources_meta")
+    meta = bind(engine, world.run, world.settings["planner"]).get("sources_meta")
     assert leaks(meta, aw.PLANTED.values()) == []
     assert "example.org" not in json.dumps(meta) and "label" not in json.dumps(meta)
+    assert "licence 4" not in json.dumps(meta)  # the registry's licence, edited after dispatch
 
 
 @pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final",

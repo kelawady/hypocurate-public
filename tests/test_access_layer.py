@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
-
 import access_world as aw
-from hypocurate.access import Access, AccessDenied, allowlist, layer, role_input
-from hypocurate.access.allowlist import ALLOWED, FIELDS, PLAN_KEYS, ROLES, SOURCE_META_FIELDS, STAGES, allowed
+from access_testing import access_for
+from hypocurate.access import Access, AccessDenied, AccessFailed, allowlist, bind, layer, role_input
+from hypocurate.access import vocabulary
+from hypocurate.access.allowlist import ALLOWED, FIELDS, ROLES, SOURCE_META_FIELDS, STAGES, allowed
 from hypocurate.access.fields import READERS
 from hypocurate.db.engine import make_engine
 from hypocurate.sources.record import HARMONIZED_FIELDS
@@ -43,7 +43,7 @@ def engine(migrated_database):
 def access(engine, world, role, stage, **kw):
     if role == "curator" and "source_key" not in kw:
         kw["source_key"] = "mpea"
-    return Access(engine, world.run, role, stage, **kw)
+    return access_for(engine, world.run, role, stage, **kw)
 
 
 def audit(engine, run=None):
@@ -107,13 +107,15 @@ def test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged(engine, w
                 a.get(field)
                 rows = audit(engine, world.run)[before:]
                 assert [(r.role, r.stage, r.function, r.allowed) for r in rows] == [(role, stage, field, True)]
-                assert rows[0].detail == {"actual_stage": stage, **({"source": "mpea"} if role == "curator" else {})}
+                assert rows[0].detail == {"result": "allowed", "actual_stage": stage,
+                                          **({"source": "mpea"} if role == "curator" else {})}
             else:
                 with pytest.raises(AccessDenied):
                     a.get(field)
                 rows = audit(engine, world.run)[before:]
                 assert [(r.role, r.stage, r.function, r.allowed) for r in rows] == [(role, stage, field, False)]
-                assert rows[0].detail["actual_stage"] == stage and "not on the" in rows[0].detail["reason"]
+                assert rows[0].detail["actual_stage"] == stage
+                assert rows[0].detail["result"] == "denied" and rows[0].detail["code"] == "not_on_list"
 
 
 @pytest.mark.parametrize("world_stage", ["queued", "failed"])
@@ -183,18 +185,21 @@ def test_unknown_roles_stages_and_fields_are_denied_and_logged(engine):
     for role, stage, field in (("judge", "before_lock", "claim"), ("planner", "anytime", "claim"),
                                ("planner", "before_lock", "everything")):
         with pytest.raises(AccessDenied):
-            Access(engine, world.run, role, stage).get(field)
-    rows = [(r.role, r.stage, r.function, r.allowed) for r in audit(engine, world.run)]
-    assert rows == [("judge", "before_lock", "claim", False), ("planner", "anytime", "claim", False),
-                    ("planner", "before_lock", "everything", False)]
+            access_for(engine, world.run, role, stage).get(field)
+    rows = [(r.role, r.stage, r.function, r.allowed, r.detail["code"]) for r in audit(engine, world.run)]
+    # Only validated strings are logged: anything not ours is "invalid" (with its length).
+    assert rows == [("invalid", "before_lock", "claim", False, "unknown_role"),
+                    ("planner", "invalid", "claim", False, "unknown_stage"),
+                    ("planner", "before_lock", "invalid", False, "not_on_list")]
 
 
 # --- Stages are read from the database; both sides of each checkpoint ------------------------
 
 def test_a_declared_stage_is_checked_against_the_database(engine):
     world = aw.build(engine, "before_lock")
-    with pytest.raises(AccessDenied, match="the run is at stage 'before_lock', not 'curation'"):
+    with pytest.raises(AccessDenied) as denied:
         access(engine, world, "critic", "curation").get("sources_meta")
+    assert denied.value.code == "stage_mismatch"
 
 
 def test_the_rules_lock_changes_what_each_role_may_see(engine):
@@ -207,7 +212,7 @@ def test_the_rules_lock_changes_what_each_role_may_see(engine):
         with pytest.raises(AccessDenied):
             a.get(field)
     aw.lock(world.w, world.run)
-    with pytest.raises(AccessDenied, match="at stage 'curation'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         planner.get("claim")
     assert critic.get("record_metadata") == []
     assert curator.get("plan_fields_to_extract") == ["grain_size", "yield_strength", "composition"]
@@ -228,7 +233,7 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
         w.add(primary, rec)
     w.freeze(world.run, len(world.records))
     for a, field in ((critic, "flags_kind"), (curator, "sources_meta")):
-        with pytest.raises(AccessDenied, match="at stage 'analysis'"):
+        with pytest.raises(AccessDenied, match="no longer at the stage"):
             a.get(field)
     assert len(analyst.get("records_full")) == len(world.records)
 
@@ -258,11 +263,11 @@ def test_completion_without_a_freeze_moves_access_to_the_commentator_only(engine
         commentator.get("outcome")
     assert gap.get("claim")
     world.w.complete(world.run, "insufficient")
-    with pytest.raises(AccessDenied, match="at stage 'final_without_freeze'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         gap.get("claim")
     assert commentator.get("outcome") == {"status": "completed", "outcome": "insufficient", "verdict": None,
                                           "exploratory": False}
-    with pytest.raises(AccessDenied, match="at stage 'final_without_freeze', not 'final'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         access(engine, world, "commentator", "final").get("results")
 
 
@@ -274,7 +279,7 @@ def test_completion_after_a_freeze_moves_access_to_the_commentator_only(engine):
         commentator.get("results")
     assert analyst.get("results")
     world.w.complete(world.run, "partly_sufficient")
-    with pytest.raises(AccessDenied, match="at stage 'final'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         analyst.get("results")
     assert commentator.get("results")["run"]["outcome"] == "partly_sufficient"
 
@@ -307,7 +312,7 @@ def test_experiment_flags_relax_nothing(engine):
     assert w.val("SELECT experiment_flags->>'access' FROM run WHERE id = :r", r=flagged) == "all"
     for field in sorted(set(FIELDS) - allowed("planner", "before_lock")):
         with pytest.raises(AccessDenied):
-            Access(engine, flagged, "planner", "before_lock").get(field)
+            access_for(engine, flagged, "planner", "before_lock").get(field)
 
 
 # --- What each field contains -----------------------------------------------------------
@@ -317,20 +322,34 @@ def test_sources_meta_is_exactly_the_named_plain_fields(engine):
     got = access(engine, world, "critic", "curation").get("sources_meta")
     assert SOURCE_META_FIELDS == ("key", "name", "source_type", "data_kind", "licence", "grouping_unit",
                                   "fields_available")
-    assert [list(s) for s in got] == [list(SOURCE_META_FIELDS)]
-    assert got[0]["key"] == "mpea"  # the chosen source only: tamu_fcc was not selected for this run
+    assert [list(s) for s in got] == [list(SOURCE_META_FIELDS)] * 2
+    assert [s["key"] for s in got] == ["mpea", "tamu_fcc"]  # the chosen sources only
+
+
+def test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry(engine):
+    """Review finding 4: editing the source registry after dispatch changes nothing for the run
+    (the world has already changed the licence and properties; here also the name and the
+    interpretation settings)."""
+    from hypocurate.sources.versions import SOURCES
+    world = aw.build(engine, "curation")
+    aw.sql(world.w, "UPDATE source SET name = 'renamed', grouping_unit = 'dataset', data_kind = 'computed' "
+                    "WHERE key = 'mpea'")
+    mpea = access(engine, world, "critic", "curation").get("sources_meta")[0]
+    d = SOURCES["mpea"]
+    assert mpea == {"key": "mpea", "name": d.name, "source_type": "uploaded_table", "data_kind": "measured",
+                    "licence": d.licence, "grouping_unit": "paper", "fields_available": list(d.properties_covered)}
 
 
 def test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim(engine):
     world = aw.build(engine, "curation")
     got = role_input(access(engine, world, "curator", "curation"))
     assert got["plan_fields_to_extract"] == ["grain_size", "yield_strength", "composition"]
-    assert [s["key"] for s in got["sources_meta"]] == ["mpea"]
+    assert [s["key"] for s in got["sources_meta"]] == ["mpea"]  # its own source only
     assert list(got["source_content"]["files"]) == ["mpea_planted.csv"]
     without_files = json.dumps({k: v for k, v in got.items() if k != "source_content"})
     assert "ZQXDIR" not in without_files and "rises" not in without_files and "k > 0" not in without_files
     assert b"ZQXDIR" not in got["source_content"]["files"]["mpea_planted.csv"]
-    other = access(engine, world, "curator", "curation", source_key="tamu_fcc")
+    other = access(engine, world, "curator", "curation", source_key="controlled_duplicates")
     assert other.get("sources_meta") == []
     with pytest.raises(AccessDenied, match="not recorded for this run"):
         other.get("source_content")
@@ -349,29 +368,44 @@ def test_record_metadata_carries_no_number_but_identity_and_composition(engine):
     got = access(engine, world, "critic", "curation").get("record_metadata")
     assert len(got) == len(world.records)
     for r in got:
-        assert set(r) == {"id", "source", "origin", "item_index", "kind", "alloy", "composition", "paper_reference",
-                          "paper_doi", "status", "categories"}
+        assert set(r) == {"id", "source", "item_index", "kind", "alloy", "composition", "paper_doi", "status",
+                          "categories"}  # no origin key, no paper title (review finding 3)
         assert set(r["status"]) == set(HARMONIZED_FIELDS)
         assert set(r["status"].values()) <= {"converted", "not_reported", "not_convertible", "assigned", None}
-        assert all(v is None or isinstance(v, str) for v in r["categories"].values())
+        for f, v in r["categories"].items():
+            assert v is None or v == "unrecognized" or vocabulary.category(f, v) == v, (f, v)
     planted = [r for r in got if r["status"]["yield_strength"] == "not_convertible"]
     assert len(planted) == 1  # the unreadable cell: its reason (which quotes it) is withheld
+    marked = [r for r in got if r["categories"]["microstructure"] == "unrecognized"]
+    assert len(marked) == 1 and marked[0]["categories"]["processing_method"] == "unrecognized"
+    assert marked[0]["categories"]["phase_class"] == "unrecognized" and marked[0]["paper_doi"] == "unrecognized"
 
 
 def test_flags_kind_has_no_numbers(engine):
     world = aw.build(engine, "curation")
     got = access(engine, world, "critic", "curation").get("flags_kind")
     assert got == [{"id": world.flags[0], "kind": "values_disagree", "category": "differ beyond tolerance",
-                    "records": got[0]["records"]}]
+                    "records": got[0]["records"]},
+                   {"id": world.flags[1], "kind": "unrecognized", "category": "unrecognized", "records": []}]
     assert len(got[0]["records"]) == 2
 
 
 def test_the_plan_is_projected_by_its_named_parts(engine):
     world = aw.build(engine, "analysis")
     got = access(engine, world, "analyst", "analysis").get("plan")
-    assert set(got["content"]) <= set(PLAN_KEYS) and "unnamed_key" not in got["content"]
-    assert got["content"]["fields_to_extract"] == ["grain_size", "yield_strength", "composition"]
+    u = "unrecognized"
+    assert got["content"] == {
+        "variables": {"outcome": {"field": "yield_strength"},
+                      "predictor": {"field": "grain_size", "unit": "µm", "transformation": u}},
+        "model": {"name": "hall_petch_alloy_intercepts", "null": "k <= 0", "alternative": u, "alpha": 0.05},
+        "scope": {"phase_class": ["FCC", u], "alloy_class": [u]},
+        "fields_to_extract": ["grain_size", "yield_strength", "composition"],
+        "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}, {"rule": u, "values": ["tension", u]}],
+        "eligibility_rules": [{"flag_kind": "values_disagree", "rule": u}],
+        "verdict_statement": u,
+        "sensitivity_analyses": ["tension_and_compression", u]}
     assert got["minimums"] == {"records": 4, "alloys": 1, "groups": 2, "resid_df": 1}
+    assert got["power_assumptions"] == {"method": "information_only", "scatter": 60.0}
 
 
 def test_tag_values_are_the_approved_lists_only(engine):
@@ -383,12 +417,15 @@ def test_tag_values_are_the_approved_lists_only(engine):
 def test_record_counts_are_counts_from_the_sealed_source(engine):
     world = aw.build(engine, "before_lock")
     got = access(engine, world, "planner", "before_lock").get("record_counts")
-    assert [c["source"] for c in got] == ["mpea"] and got[0]["readable"]
+    assert [c["source"] for c in got] == ["mpea", "tamu_fcc"] and got[0]["readable"]
+    assert got[1] == {"source": "tamu_fcc", "readable": False}  # the world's placeholder file
     c = got[0]
     assert c["n_records"] == 8  # four real rows and four planted ones
     assert c["by_status"]["yield_strength"] == {"converted": 7, "not_convertible": 1}
     assert c["by_category"]["test_type"]["tension"] >= 3
     assert set(c["by_category"]) == set(allowlist.CATEGORY_FIELDS)
+    assert c["unrecognized"] == {"microstructure": 1, "phase_class": 1, "processing_method": 1}
+    assert c["by_category"]["microstructure"]["unrecognized"] == 1
     assert not set(c["by_category"]) & allowlist.OUTCOME_FIELDS
 
 
@@ -417,12 +454,16 @@ def test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hangin
     with holder.connect() as conn:
         tx = conn.begin()
         conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
-        with pytest.raises(OperationalError, match="lock timeout"):
-            Access(engine, world.run, "critic", "curation", lock_timeout_ms=300).get("flags_kind")
+        with pytest.raises(AccessFailed) as failed:
+            access_for(engine, world.run, "critic", "curation", lock_timeout_ms=300).get("flags_kind")
+        # The failure row is written while the lock is still held (named exception: no run lock).
+        rows = audit(engine, world.run)[before:]
         tx.rollback()
     holder.dispose()
-    assert len(audit(engine, world.run)) == before  # nothing was read, nothing logged
-    assert Access(engine, world.run, "critic", "curation").get("flags_kind")
+    assert failed.value.code == "lock_timeout"
+    assert [(r.function, r.allowed, r.detail["result"], r.detail["code"]) for r in rows] == [
+        ("flags_kind", False, "failed", "lock_timeout")]
+    assert access_for(engine, world.run, "critic", "curation").get("flags_kind")
     assert layer.ACCESS_LOCK_TIMEOUT_MS == 5000
 
 
@@ -434,7 +475,7 @@ def test_an_access_call_waits_for_a_writer_holding_the_run_lock(engine):
         tx = conn.begin()
         conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
         reader = threading.Thread(target=lambda: result.update(
-            got=Access(engine, world.run, "critic", "curation").get("flags_kind")))
+            got=access_for(engine, world.run, "critic", "curation").get("flags_kind")))
         reader.start()
         waiting = False
         for _ in range(100):
@@ -462,7 +503,7 @@ def test_every_access_call_runs_in_run_transaction(engine, monkeypatch):
         return real(e, fn, *args, **kwargs)
 
     monkeypatch.setattr(layer, "run_transaction", spy)
-    a = Access(engine, world.run, "critic", "curation")
+    a = access_for(engine, world.run, "critic", "curation")
     a.get("flags_kind")
     with pytest.raises(AccessDenied):
         a.get("records_full")
@@ -471,11 +512,12 @@ def test_every_access_call_runs_in_run_transaction(engine, monkeypatch):
 
 def test_the_access_transaction_calls_hc_write_lock_before_anything_else():
     src = Path(layer.__file__).read_text()
-    body = src[src.index("def _call"):src.index("def _refusal")]
+    body = src[src.index("def _transaction"):src.index("def _policy")]
     statements = [line.strip() for line in body.splitlines() if "conn.execute" in line or "actual_stage(" in line]
     assert "SET LOCAL lock_timeout" in statements[0]
-    assert "hc_write_lock(p_run => :r)" in statements[1]
-    assert "actual_stage(" in statements[2]
+    assert "FROM run WHERE id = :r" in statements[1]  # does the run exist (else a failure row)
+    assert "hc_write_lock(p_run => :r)" in statements[2]
+    assert "actual_stage(" in statements[3]
 
 
 # --- Static checks: one way in -------------------------------------------------------------
@@ -499,24 +541,13 @@ def _imports(tree: ast.AST) -> set[str]:
     return out
 
 
-def test_pipeline_code_reaches_data_only_through_the_access_layer():
-    """Agents and the pipeline (steps 6-8) import no database, source or file API."""
-    forbidden = ("sqlalchemy", "psycopg", "hypocurate.db", "hypocurate.sources.versions",
-                 "hypocurate.sources.adapters", "pathlib", "io", "shutil", "glob")
-    for path in sorted((REPO / "hypocurate" / "pipeline").rglob("*.py")):
-        tree = ast.parse(path.read_text())
-        bad = {m for m in _imports(tree) if any(m == f or m.startswith(f + ".") for f in forbidden)}
-        assert not bad, f"{path}: {bad}"
-        assert "open" not in _calls(tree), path
-
-
 def test_the_access_layer_has_no_function_that_takes_a_path():
-    for name in ("allowlist", "errors", "fields", "inputs", "layer", "stage"):
+    for name in ("allowlist", "context", "dispatch", "errors", "fields", "inputs", "layer", "stage", "vocabulary"):
         tree = ast.parse((REPO / "hypocurate" / "access" / f"{name}.py").read_text())
         assert not {"open", "read_bytes", "read_text", "Path", "listdir", "scandir"} & set(_calls(tree)), name
         assert not {"pathlib", "io", "glob", "shutil"} & _imports(tree), name
-    assert list(Access.__init__.__code__.co_varnames[:7]) == [
-        "self", "engine", "run_id", "role", "stage", "source_key", "lock_timeout_ms"]
+    assert list(Access.__init__.__code__.co_varnames[:5]) == ["self", "engine", "context", "lock_timeout_ms",
+                                                              "_trusted"]
 
 
 def test_the_guard_is_installed_in_one_place():

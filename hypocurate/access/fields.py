@@ -7,6 +7,12 @@ inside its transaction, after the run is locked and the role's field is checked.
 
 Stored records carry their fields in the common record format of step 4
 (`CommonRecord.to_json()`): `harmonized` maps a field name to {value, unit, status, ...}.
+
+Blinded views (the fields listed for the Planner, the Critic, the gap report and the
+Commentator without a freeze) carry text only from vocabularies (`vocabulary.py`) or the
+marker "unrecognized"; the plan is projected recursively by `PLAN_SCHEMA`. The post-freeze
+fields (`records_full`, `flags_full`, `results`, `stage_outputs`, `run_cost`) return the stored
+rows of the run: after the freeze the Analyst and the Commentator may see outcomes.
 """
 from __future__ import annotations
 
@@ -19,26 +25,26 @@ from typing import Any, Callable, Iterable, Mapping
 
 from sqlalchemy import Connection, text
 
+from hypocurate.access import vocabulary as vocab
 from hypocurate.access.allowlist import (CATEGORY_FIELDS, CONDITION_COUNT_FIELDS, CONDITION_RANGE_FIELDS,
-                                         PLAN_KEYS, SOURCE_META_FIELDS)
+                                         PLAN_SCHEMA, POWER_SCHEMA, SOURCE_META_FIELDS)
+from hypocurate.access.context import AccessContext as Context
 from hypocurate.sources import adapters
-from hypocurate.sources.normalize import same_alloy_key
+from hypocurate.sources.normalize import alloy_label, same_alloy_key
 from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, AdapterError
-from hypocurate.sources.versions import UnsealedVersion, load_sealed_version
+from hypocurate.sources.versions import SOURCES, UnsealedVersion, load_sealed_version
 
 HAS_VALUE = ("converted", "assigned")
+UNITS = frozenset(u for u in HARMONIZED_FIELDS.values() if u)
 
 
 class Refused(Exception):
     """A field function refuses this read (for example a Curator asking for a source its
-    run did not record). The layer logs it as denied and raises AccessDenied."""
+    run did not record). The layer logs it as a denial with this code."""
 
-
-@dataclass(frozen=True)
-class Context:
-    run_id: int
-    role: str
-    source_key: str | None  # the Curator's one source
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
 
 
 def _plain(v: Any) -> Any:
@@ -57,10 +63,11 @@ def _rows(conn: Connection, sql: str, **params) -> list:
 # --- Shared readers -----------------------------------------------------------------
 
 def _chosen_sources(conn: Connection, ctx: Context) -> list:
-    """The run's chosen sources (a version recorded at dispatch), in key order."""
-    return _rows(conn, "SELECT s.key, s.name, s.source_type, s.data_kind, s.licence, s.grouping_unit, "
-                       "s.properties_covered, rs.source_version_id FROM run_source rs "
-                       "JOIN source s ON s.id = rs.source_id "
+    """The run's chosen sources (a version recorded at dispatch), in key order, with the
+    interpretation settings of that sealed version (never the mutable source row's)."""
+    return _rows(conn, "SELECT s.key, sv.source_type, sv.data_kind, sv.grouping_unit, rs.source_version_id "
+                       "FROM run_source rs JOIN source s ON s.id = rs.source_id "
+                       "JOIN source_version sv ON sv.id = rs.source_version_id "
                        "WHERE rs.run_id = :r AND rs.source_version_id IS NOT NULL ORDER BY s.key", r=ctx.run_id)
 
 
@@ -89,11 +96,18 @@ def _number(entry: Any) -> float | None:
     return None
 
 
-def _category(entry: Any) -> str | None:
-    """A category field's value, only if it has a value status and is text."""
-    if _status(entry) in HAS_VALUE and isinstance(entry.get("value"), str):
-        return entry["value"]
+def _category(field: str, entry: Any) -> str | None:
+    """A category field's value through its vocabulary (or the marker), only if it has a
+    value status; None otherwise."""
+    if _status(entry) in HAS_VALUE:
+        return vocab.category(field, entry.get("value"))
     return None
+
+
+def _unrecognized(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Per category field, how many values are unrecognized (counts only)."""
+    return vocab.unrecognized_counts((f, h.get(f, {}).get("value")) for h in harmonized_rows
+                                     for f in CATEGORY_FIELDS if _status(h.get(f)) in HAS_VALUE)
 
 
 def _composition(entry: Any) -> dict[str, float] | None:
@@ -111,7 +125,9 @@ def _composition(entry: Any) -> dict[str, float] | None:
 
 
 def _counts(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict:
-    """Counts by field status and by category value. Never a value of a non-category field."""
+    """Counts by field status and by category value (through the vocabularies), and the
+    unrecognized counts. Never a value of a non-category field."""
+    harmonized_rows = list(harmonized_rows)
     n = 0
     by_status = {f: Counter() for f in HARMONIZED_FIELDS}
     by_category = {f: Counter() for f in CATEGORY_FIELDS}
@@ -120,12 +136,13 @@ def _counts(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict:
         for f in HARMONIZED_FIELDS:
             by_status[f][_status(h.get(f)) or "missing"] += 1
         for f in CATEGORY_FIELDS:
-            value = _category(h.get(f))
+            value = _category(f, h.get(f))
             if value is not None:
                 by_category[f][value] += 1
     return {"n_records": n,
             "by_status": {f: dict(sorted(c.items())) for f, c in by_status.items()},
-            "by_category": {f: dict(sorted(c.items())) for f, c in by_category.items()}}
+            "by_category": {f: dict(sorted(c.items())) for f, c in by_category.items()},
+            "unrecognized": _unrecognized(harmonized_rows)}
 
 
 # --- The fields ---------------------------------------------------------------------
@@ -145,13 +162,19 @@ def domain(conn: Connection, ctx: Context) -> dict:
 
 
 def sources_meta(conn: Connection, ctx: Context) -> list[dict]:
+    """Name, licence and fields available from the code's source definitions; interpretation
+    settings from the sealed version the run recorded. The source registry's text never."""
     out = []
     for row in _chosen_sources(conn, ctx):
         if ctx.role == "curator" and row.key != ctx.source_key:
             continue
-        values = {"key": row.key, "name": row.name, "source_type": row.source_type, "data_kind": row.data_kind,
-                  "licence": row.licence, "grouping_unit": row.grouping_unit,
-                  "fields_available": [f for f in row.properties_covered if f in HARMONIZED_FIELDS]}
+        d = SOURCES.get(row.key)
+        values = {"key": row.key,
+                  "name": d.name if d else vocab.UNRECOGNIZED,
+                  "source_type": row.source_type, "data_kind": row.data_kind,
+                  "licence": d.licence if d else vocab.UNRECOGNIZED,
+                  "grouping_unit": row.grouping_unit,
+                  "fields_available": [f for f in d.properties_covered if f in HARMONIZED_FIELDS] if d else []}
         out.append({k: values[k] for k in SOURCE_META_FIELDS})
     return out
 
@@ -176,46 +199,74 @@ def record_counts(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
-def _fields_to_extract(content: Any) -> list[str]:
-    """The plan's list of fields to extract: only names of the common fields, in order;
-    anything else in the list is withheld."""
-    listed = content.get("fields_to_extract") if isinstance(content, Mapping) else None
-    out: list[str] = []
-    for f in listed if isinstance(listed, list) else []:
-        if isinstance(f, str) and f in HARMONIZED_FIELDS and f not in out:
-            out.append(f)
-    return out
+def project(value: Any, schema: Any) -> Any:
+    """`value` projected by `schema` (allowlist.PLAN_SCHEMA): named keys only, recursively;
+    vocabulary leaves give the value or the marker; number, integer, field and unit leaves
+    give the value or nothing. Returns None for nothing."""
+    if isinstance(schema, Mapping):
+        if not isinstance(value, Mapping):
+            return None
+        out = {}
+        for key, sub in schema.items():
+            if key in value:
+                p = project(value[key], sub)
+                if p is not None:
+                    out[key] = p
+        return out
+    if isinstance(schema, tuple) and schema[0] == "list":
+        if not isinstance(value, list):
+            return None
+        return [p for p in (project(v, schema[1]) for v in value) if p is not None]
+    if isinstance(schema, frozenset):
+        return vocab.code(value, schema)
+    if isinstance(value, bool):
+        return None
+    if schema == "number":
+        return float(value) if isinstance(value, (int, float)) and math.isfinite(value) else None
+    if schema == "integer":
+        return value if isinstance(value, int) else None
+    if schema == "field":
+        return value if isinstance(value, str) and value in HARMONIZED_FIELDS else None
+    if schema == "unit":
+        return value if isinstance(value, str) and value in UNITS else None
+    raise ValueError(f"unknown schema leaf {schema!r}")
 
 
 def plan_fields_to_extract(conn: Connection, ctx: Context) -> list[str]:
-    return _fields_to_extract(_rows(conn, "SELECT content FROM plan WHERE run_id = :r", r=ctx.run_id)[0].content)
+    """Only names of the common fields, in order, without repeats."""
+    content = _rows(conn, "SELECT content FROM plan WHERE run_id = :r", r=ctx.run_id)[0].content
+    listed = project(content, PLAN_SCHEMA).get("fields_to_extract", []) if isinstance(content, Mapping) else []
+    return list(dict.fromkeys(listed))
 
 
 def source_content(conn: Connection, ctx: Context) -> dict:
     """The sealed files of the Curator's one source, from the version its run recorded."""
     if ctx.source_key is None:
-        raise Refused("the Curator reads one named source; none was given")
+        raise Refused("no_source")
     vid = conn.execute(text(
         "SELECT rs.source_version_id FROM run_source rs JOIN source s ON s.id = rs.source_id "
         "WHERE rs.run_id = :r AND s.key = :k AND rs.source_version_id IS NOT NULL"),
         dict(r=ctx.run_id, k=ctx.source_key)).scalar_one_or_none()
     if vid is None:
-        raise Refused(f"source {ctx.source_key!r} is not recorded for this run")
+        raise Refused("source_not_recorded")
     version = load_sealed_version(conn, vid)
     return {"source": ctx.source_key, "files": dict(version.files)}
 
 
 def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
-    """No measured number of any field (owner, 2026-10-05): statuses, categories, identity."""
+    """No measured number of any field (owner, 2026-10-05): statuses, categories from their
+    vocabularies, identity. No paper title and no origin key (step 5 review, finding 3)."""
     out = []
     for r in _stored_records(conn, ctx):
         h = r.harmonized if isinstance(r.harmonized, Mapping) else {}
+        composition = _composition(h.get("composition"))
         out.append({
-            "id": r.id, "source": r.source, "origin": r.source_item_key, "item_index": r.item_index,
-            "kind": r.kind, "alloy": r.alloy, "composition": _composition(h.get("composition")),
-            "paper_reference": r.paper_reference, "paper_doi": r.paper_doi,
+            "id": r.id, "source": r.source, "item_index": r.item_index, "kind": r.kind,
+            # The label is derived by code from the composition, never taken from the source.
+            "alloy": alloy_label(composition) if composition else None,
+            "composition": composition, "paper_doi": vocab.doi(r.paper_doi),
             "status": {f: _status(h.get(f)) for f in HARMONIZED_FIELDS},
-            "categories": {f: _category(h.get(f)) for f in CATEGORY_FIELDS},
+            "categories": {f: _category(f, h.get(f)) for f in CATEGORY_FIELDS},
         })
     return out
 
@@ -232,7 +283,8 @@ def _flag_records(conn: Connection, ctx: Context) -> dict[int, list[int]]:
 def flags_kind(conn: Connection, ctx: Context) -> list[dict]:
     """Kind, category and records only: never the numbers compared (PRD 4)."""
     records = _flag_records(conn, ctx)
-    return [{"id": f.id, "kind": f.kind, "category": f.category, "records": records.get(f.id, [])}
+    return [{"id": f.id, "kind": vocab.code(f.kind, vocab.FLAG_KINDS),
+             "category": vocab.code(f.category, vocab.FLAG_CATEGORIES), "records": records.get(f.id, [])}
             for f in _rows(conn, "SELECT id, kind, category FROM flag WHERE run_id = :r ORDER BY id", r=ctx.run_id)]
 
 
@@ -250,19 +302,13 @@ def plan(conn: Connection, ctx: Context) -> dict:
     p = _rows(conn, "SELECT content, fingerprint, locked_at, sufficiency_option, min_records, min_alloys, "
                     "min_groups, min_resid_df, sensitivity_analysis_keys, power_assumptions "
                     "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
-    content = p.content if isinstance(p.content, Mapping) else {}
-    # The named parts as written at the rules lock; the field list as the Curator gets it.
-    # (The structure of the other parts is step 6's plan model, which projects each part.)
-    named = {k: content[k] for k in PLAN_KEYS if k in content}
-    if "fields_to_extract" in named:
-        named["fields_to_extract"] = _fields_to_extract(content)
-    return {"content": named,
+    return {"content": project(p.content, PLAN_SCHEMA) or {},
             "fingerprint": p.fingerprint, "locked_at": _plain(p.locked_at),
             "sufficiency_option": p.sufficiency_option,
             "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
                          "resid_df": p.min_resid_df},
-            "sensitivity_analyses": list(p.sensitivity_analysis_keys),
-            "power_assumptions": p.power_assumptions}
+            "sensitivity_analyses": [vocab.code(k, vocab.SENSITIVITY_KEYS) for k in p.sensitivity_analysis_keys],
+            "power_assumptions": project(p.power_assumptions, POWER_SCHEMA)}
 
 
 def records_full(conn: Connection, ctx: Context) -> list[dict]:
@@ -278,10 +324,12 @@ def decisions(conn: Connection, ctx: Context) -> dict:
     for key, record_id in _rows(conn, "SELECT a.key, asr.record_id FROM analysis_set a "
                                       "LEFT JOIN analysis_set_record asr ON asr.analysis_set_id = a.id "
                                       "WHERE a.run_id = :r ORDER BY a.key, asr.record_id", r=ctx.run_id):
+        key = vocab.code(key, vocab.ANALYSIS_SET_KEYS)
         sets.setdefault(key, [])
         if record_id is not None:
             sets[key].append(record_id)
-    return {"records": [{"record": rec, "eligible": eligible, "rule": rule} for rec, eligible, rule in _rows(
+    return {"records": [{"record": rec, "eligible": eligible, "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
+                        for rec, eligible, rule in _rows(
                 conn, "SELECT record_id, eligible, rule FROM run_record WHERE run_id = :r ORDER BY record_id",
                 r=ctx.run_id)],
             "sets": sets}
@@ -307,9 +355,15 @@ def results(conn: Connection, ctx: Context) -> dict:
 
 
 def coverage(conn: Connection, ctx: Context) -> dict:
-    per_source = [{"source": key, "search_status": st, "nothing_found": nf, "failure_reason": fr}
-                  for key, st, nf, fr in _rows(
-                      conn, "SELECT s.key, rs.search_status, rs.nothing_found, rs.failure_reason FROM run_source rs "
+    """Codes and counts only: no failure text (step 5 review, finding 3). `unrecognized`: per
+    source, how many category values of the run's records were unrecognized (owner, 2026-10-05)."""
+    by_source: dict[str, list] = {}
+    for r in _stored_records(conn, ctx):
+        by_source.setdefault(r.source, []).append(r.harmonized if isinstance(r.harmonized, Mapping) else {})
+    per_source = [{"source": key, "search_status": st, "nothing_found": nf,
+                   "unrecognized": _unrecognized(by_source.get(key, []))}
+                  for key, st, nf in _rows(
+                      conn, "SELECT s.key, rs.search_status, rs.nothing_found FROM run_source rs "
                             "JOIN source s ON s.id = rs.source_id WHERE rs.run_id = :r ORDER BY s.key", r=ctx.run_id)]
     view = _rows(conn, "SELECT * FROM run_search_coverage WHERE run_id = :r", r=ctx.run_id)[0]
     return {"sources": per_source,
@@ -343,7 +397,7 @@ def _summary(harmonized_rows: list[Mapping[str, Any]]) -> dict:
         values = [v for v in (_number(h.get(f)) for h in harmonized_rows) if v is not None]
         out[f] = {"n": len(values), "min": min(values) if values else None, "max": max(values) if values else None}
     for f in CONDITION_COUNT_FIELDS:
-        out[f] = dict(sorted(Counter(v for v in (_category(h.get(f)) for h in harmonized_rows)
+        out[f] = dict(sorted(Counter(v for v in (_category(f, h.get(f)) for h in harmonized_rows)
                                      if v is not None).items()))
     return out
 
