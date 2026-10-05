@@ -1,6 +1,6 @@
 # Build step 4 — summary for review
 
-Date: 2026-10-05. Branch: `step-04-adapters`. **Status: first review received (ChatGPT, 2026-10-05: five findings and one test weakness, all accepted by the owner); fixes done, suite passing; awaiting the re-check.** PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
+Date: 2026-10-05. Branch: `step-04-adapters`. **Status: signed off for merge.** First review (ChatGPT, 2026-10-05): five findings and one test weakness, all accepted and fixed. Re-check (2026-10-05): five items closed, item 5 partly closed (a percentage overflow), "no other blocker found". That last fix was merged on the strength of its regression test, without a further review round, by the owner's decision (see "Re-check"). PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed in "Review findings and fixes"; the review text is in `docs/reviews/step04_review_chatgpt.md`, and the fix diffs are in `docs/reviews/step04_fix_packet.md`.
 
@@ -150,7 +150,30 @@ README updated in `4aad3a2`.
 
 The review's other checks found no problem: ordinary unit conversions, assigned values on ordinary rows, registration and sealing, path containment, answer isolation and scope. The reviewer could not retrieve the pinned paper, so the citations were checked against the packet, not the publication; the fetched files' SHA-256 are listed above.
 
-## Tests (467, all passing; 92 new in step 4; no test from an earlier step changed)
+## Re-check (ChatGPT, 2026-10-05)
+
+The text is in `docs/reviews/step04_recheck_chatgpt.md`.
+
+| Item | Re-check status |
+|---|---|
+| 1. DOI grouping | closed |
+| 2. Display-only alloy label | closed |
+| 3. Strict CSV parsing | closed |
+| 4. Spreadsheet formulas | closed |
+| 5. Finite composition checks | partly closed: `percent_columns_to_atomic_percent` summed finite but huge values (Fe 1e308, Ni 1e308) and `math.fsum` raised `OverflowError`, aborting the whole spreadsheet instead of marking one composition |
+| 6. Independent expected strings | closed |
+
+On the replaced tests, the reviewer found "no still-required behaviour lost". **The second model found no other blocker** within the review's scope.
+
+**Fix (`git log`: "Step 4 re-check item 5").** A percentage above 100 is `not_convertible` before summing ("percentage above 100 for Fe, Ni"), and an overflow in the sum is also caught ("the percentages are too large to sum"). After the range check that second guard cannot be reached by values of at most 100; it is kept as a defence. Regression tests:
+- `test_huge_finite_percentages_are_marked_not_raised` (`tests/test_normalize.py`);
+- `test_a_composition_that_overflows_is_marked_and_the_other_rows_are_kept` (`tests/test_adapter_tamu.py`): three rows, the middle one with Fe and Ni at 1e308; all three are returned, the middle row's composition is marked with the reason, and its other fields are kept.
+
+**Both tests failed on the code before the fix**, with `OverflowError: intermediate overflow in fsum`, and pass after it.
+
+**By the owner's decision, this last fix was merged on the strength of its regression test, without a further review round.**
+
+## Tests (469, all passing; 94 new in step 4; no test from an earlier step changed)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data tests/test_login.py tests/test_login_throttle.py tests/test_data_model.py tests/test_concurrency.py tests/test_migrations.py` is empty.
 
@@ -159,9 +182,9 @@ The review's other checks found no problem: ordinary unit conversions, assigned 
 | `tests/test_write_retry.py` | 5 | Both SQLSTATEs rerun the whole transaction (the first attempt's insert is rolled back); other errors are not retried; it gives up after the last attempt; a real deadlock between two transactions is retried and both complete. |
 | `tests/test_source_versions.py` | 20 | Digest and identity equal the database's. Unsafe stored paths are refused before the database. All three sources registered and sealed, with stored bytes equal to disk and settings copied; registering again adds nothing. A concurrent registration **waits on the source lock** and leaves one version (new source, and existing source with a new version). Two registrations at once leave one version. A changed file is refused and nothing is written; changed interpretation settings are refused. Paths stay inside their directory. Unsealed versions are refused. A loaded version reads exactly like the files on disk. Changed settings on a loaded version are refused. |
 | `tests/test_adapter_mpea.py` | 32 | 1,545 records, one per row, origin keys in order. Every reported text equals the file's cell. Common fields and units. Numbers converted unchanged. 237 grain sizes. Nothing unconvertible in the frozen file. Test-type codes. No value assigned. Display labels follow the reference naming. Paper identity is the DOI, group key derived (expected keys written out independently; 265 groups, one-to-one with the Reference ID; 8 DOI strings change form, no group merges). The format has no decision fields. **Planted rows:** a non-numeric grain size, an unknown element, a blank formula, a negative grain size, a temperature with text, an unknown test type, a blank DOI, a blank line, NaN, a zero amount; each record kept and marked. Another layout or encoding is refused, another grouping unit is refused, altered bytes are refused before parsing, text is kept exactly as reported. **Finding 1:** seven spellings of one DOI give one group, with the DOI kept as reported; ASCII-only case folding. **Finding 2:** compositions differing below the rounding step share a label but not a composition. **Finding 3:** unterminated quote at the end, unterminated quote swallowing later rows (start and detection lines), malformed quote, wrong field counts (24 and 21) with the line, a legitimate multi-line field, a multi-line record's line range; each refusal message starts with the file and line. |
-| `tests/test_normalize.py` (new) | 5 | **Finding 5:** a coefficient too large to represent; large finite coefficients normalized without overflow; a ratio too extreme or an amount too small to represent; every converted composition finite and summing to 100; non-finite percentages refused. |
+| `tests/test_normalize.py` (new) | 6 | **Finding 5:** a coefficient too large to represent; large finite coefficients normalized without overflow; a ratio too extreme or an amount too small to represent; every converted composition finite and summing to 100; non-finite percentages refused. **Re-check item 5:** huge finite percentages (Fe 1e308, Ni 1e308) and a percentage of 100.5 are marked "percentage above 100", not raised. |
 | `tests/test_adapter_extract.py` | 5 | 16 records. Each equals its MPEA source row except where a listed column changed (the answer file is read on the test side only). A renamed formula gives the same composition. Unknown paper is marked, never invented. A constructed DOI is its own paper. |
-| `tests/test_adapter_tamu.py` | 14 | 94 records, every value as reported, **and a few cells of BBA01, BBA02 and BBA09 checked against strings written out by hand from the file's XML** (test weakness), BBA09's yield strength `not_reported` and the record kept. One group (the dataset), batches kept. Assigned values carry their passage. Assigned and reported stay distinguishable. Temperature not reported. Composition in at.% with 82 distinct compositions and 82 labels. Agrees with the authors' `inputs.csv`. **Planted rows:** a non-numeric percentage, a sum of 99, a blank yield strength, a formula in the grain-size SD (**finding 4:** only that field is affected; every other value, the assignments and the not-reported temperature equal those of the ordinary row), a formula in an element column (the composition only), a blank row, an extra column, a negative grain size, a number stored as text. Another layout is refused; the `batch` grouping unit is refused until the owner decides. |
+| `tests/test_adapter_tamu.py` | 15 | 94 records, every value as reported, **and a few cells of BBA01, BBA02 and BBA09 checked against strings written out by hand from the file's XML** (test weakness), BBA09's yield strength `not_reported` and the record kept. One group (the dataset), batches kept. Assigned values carry their passage. Assigned and reported stay distinguishable. Temperature not reported. Composition in at.% with 82 distinct compositions and 82 labels. Agrees with the authors' `inputs.csv`. **Planted rows:** a non-numeric percentage, a sum of 99, a blank yield strength, a formula in the grain-size SD (**finding 4:** only that field is affected; every other value, the assignments and the not-reported temperature equal those of the ordinary row), a formula in an element column (the composition only), a blank row, an extra column, a negative grain size, a number stored as text. **Re-check item 5:** a spreadsheet whose middle row has Fe and Ni at 1e308 returns all three rows; that row's composition is `not_convertible` with the reason and its other fields are kept. Another layout is refused; the `batch` grouping unit is refused until the owner decides. |
 | `tests/test_reference_counts_from_adapters.py` | 4 | As in the table above. |
 | `tests/test_source_connection.py` | 7 | Sample records in the common format for each source, with no row count changing in seven tables. Assigned values shown with their citation. A sealed version is needed. The transaction is read-only (a write slipped in is refused by PostgreSQL). The command line: register, register again, test, unknown source. |
 | `tests/source_helpers.py` | — | Builds `SealedVersion` objects with a correct digest and identity for adapter tests that need no database. |
@@ -205,10 +228,13 @@ Review round:
 
 ```
 $ .venv/bin/pytest -q                    (Codespace, Python 3.14.2, `docker compose up -d db`)
-467 passed in 62.52s
+469 passed in 61.30s
 $ docker compose run --rm test           (the test image, rebuilt)
-467 passed in 63.37s
+469 passed in 62.03s
 ```
+
+GitHub Actions, commit `fbb2e99` (the re-check fix, last code change): success; "Run the suite in the test image": 469 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37258951764
 
 GitHub Actions, commit `4aad3a2` (after the review fixes): success; "Run the suite in the test image": 467 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
 https://github.com/kelawady/hypocurate/actions/runs/37257783194
