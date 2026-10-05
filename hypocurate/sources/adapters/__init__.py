@@ -18,6 +18,22 @@ ADAPTERS: Mapping[str, Callable[[SealedVersion], AdapterResult]] = MappingProxyT
 })
 
 
+# How a record was extracted (stored in record.extraction, step 6): by adapter code, with the
+# adapter's name and version, so records extracted by code can always be told apart from
+# records an agent extracts later (owner, 2026-10-05).
+ADAPTER_IDENTITY: Mapping[str, tuple[str, str]] = MappingProxyType({
+    "mpea": ("mpea_layout", mpea_layout.ADAPTER_VERSION),
+    "controlled_duplicates": ("mpea_layout", mpea_layout.ADAPTER_VERSION),
+    "tamu_fcc": ("tamu_fcc", tamu_fcc.ADAPTER_VERSION),
+})
+
+
+def extraction(source_key: str) -> dict:
+    """The `record.extraction` value for a record this source's adapter extracted."""
+    name, version = ADAPTER_IDENTITY[source_key]
+    return {"method": "adapter", "name": name, "version": version}
+
+
 def read(version: SealedVersion) -> AdapterResult:
     """Reads a sealed version with its source's adapter."""
     adapter = ADAPTERS.get(version.source_key)

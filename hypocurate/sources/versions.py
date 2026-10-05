@@ -98,6 +98,9 @@ class SourceDefinition:
     data_files: tuple[str, ...]  # file names inside `directory`, as stored
     version_label: str
     manifest_section: tuple[str, ...]  # where its files are listed in data/manifest.json
+    # Constructed test data (step 6): its records enter only a run marked as a test
+    # (run.experiment_flags constructed_test_data; register 'constructed_test_runs').
+    constructed: bool = False
 
 
 SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
@@ -127,10 +130,10 @@ SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
         source_type="uploaded_table", data_kind="measured", grouping_unit="paper",
         licence="Apache-2.0 (derived from the MPEA dataset)", address=None,
         properties_covered=("yield_strength", "ultimate_tensile_strength", "hardness", "grain_size"),
-        # Off by default: constructed data. A real guard against choosing it is step 6's.
+        # Off by default: constructed data. Its records enter only a run marked as a test (step 6).
         enabled=False, directory="controlled_duplicates", data_files=("extract.csv",),
         version_label="built 2026-10-04 from the MPEA dataset",
-        manifest_section=("controlled_duplicates",)),
+        manifest_section=("controlled_duplicates",), constructed=True),
 })
 
 

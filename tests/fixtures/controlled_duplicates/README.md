@@ -18,11 +18,11 @@ All 16 source rows are among the records eligible under the reference plan, from
 | 1–2 | `exact_duplicate_verbatim` | nothing (byte-for-byte copy) | yes | counted once | none |
 | 3–4 | `exact_duplicate_renamed_alloy` | formula written differently (`CoCrFeMnNi`, `Co4Cr1Ni4`); same atomic % | yes | counted once | none |
 | 5–6 | `possible_duplicate_unknown_paper` | reference ID, DOI, year, title blanked | possible: flagged, kept, not removed | counted once | both counted separately |
-| 7–8 | `not_duplicate_value_differs` | yield strength × 1.3 | no | both enter | none |
+| 7–8 | `conflict_value_differs` | yield strength × 1.3 | conflict: the same measurement reported with values beyond the tolerance | neither enters (decision C, owner 2026-10-05) | counted once by the survivor rule in `conflicts_survivor_value` |
 | 9–10 | `not_duplicate_other_paper` | DOI → constructed `10.5555/hypocurate-test-…` | no | both enter | none |
 | 11–12 | `not_duplicate_other_temperature` | 25 °C → −196 °C | no (conditions differ) | not eligible under a room-temperature plan | none |
 | 13–14 | `missing_test_condition` | test temperature blanked | possible (conditions cannot be confirmed); kept, not removed | not eligible: scope not confirmed | included |
-| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | within scope under the reference plan (it sets no test-type rule): distinct measurements, both enter. Under a tension-only plan: excluded by the test-type rule | none |
+| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | not eligible: excluded by the reference plan's test-type rule (tension only). With tension and compression together, both enter as distinct measurements | none |
 
 **Missing paper vs missing test condition (PRD 5.3).**
 - Rows 5–6: the paper is unknown but the conditions match. This is a possible duplicate that cannot be resolved.
@@ -32,8 +32,8 @@ Every row is kept in the store and none is removed.
 
 ## Which record survives in the primary analysis
 
-Owner's decision, 2026-10-04, refining PRD 5.3:
-1. Prefer the record that comes directly from the original paper. This is detected by the original paper's DOI on the record.
+Owner's decision, 2026-10-04, refining PRD 5.3 (rule 1 in the owner's wording, restored in step 6; register entry 'duplicate_survivor_rule'):
+1. Prefer the record that carries the original paper reference (DOI). A DOI identifies the cited paper, not where a record was extracted.
 2. If both or neither do, take the first source in the fixed order: MPEA, Texas A&M, controlled extract.
 3. Within one source, take the lowest row number.
 
@@ -41,13 +41,15 @@ For every duplicate and possible-duplicate row in this extract, the MPEA record 
 - rows 1–4 and 13–14 by rule 2: both records carry the paper's DOI, and MPEA comes first in the fixed order (rows 13–14 are not eligible anyway);
 - rows 5–6 by rule 1: only the MPEA record carries the paper's DOI.
 
-No pair here lets a source other than MPEA survive. The behavioural tests in step 6 need one that does.
+Rows 7–8 are a conflict (decision C, owner 2026-10-05): neither enters the primary analysis; the sensitivity analysis `conflicts_survivor_value` counts each pair once, the MPEA record by rule 2.
+
+No pair here lets a source other than MPEA survive. The step 6 tests add constructed records in which one does (`tests/test_eligibility.py`): the extract record wins by rule 1, and a Texas A&M record wins over an extract record by rule 2.
 
 `truth.csv` gives the survivor and the reason for each row.
 
-## Open question (owner)
+## Permitted test types (decided)
 
-The reference plan's 77 MPEA records include one compression test (MPEA row 139). The reference plan does not yet state its permitted test types, and membership in that result set must not define the rule. The plan must state them explicitly before eligibility is implemented in step 6. This is pending the owner's decision. Rows 15–16 give the expected handling both ways: under the reference plan as it stands (no test-type rule), and under a tension-only plan.
+The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. Since 2026-10-06 (owner's decision) the columns `prd_5_3_class` and `primary_analysis` of rows 15–16 describe this plan; the column `handling_under_tension_only_plan` agrees with them. Their `explanation` text describes this plan too (owner, 2026-10-06, after the step 6 review).
 
 ## Rebuilding
 

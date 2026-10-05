@@ -9,6 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 FP = "0" * 64  # a well-formed fingerprint
+# How a test record was extracted (record.extraction, required from migration 0003, step 6).
+EXTRACTION = '{"method": "adapter", "name": "test", "version": "1"}'
 
 
 def sha(data: bytes) -> str:
@@ -172,8 +174,9 @@ class World:
         kind = kind or self.val("SELECT data_kind FROM source_version WHERE id = :v", v=self.version[source])
         return self.val(
             "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, kind, "
-            "alloy, harmonized, reported) VALUES (:r, :sv, :k, :i, :kind, 'CoCrNi', '{}', '{}') RETURNING id",
-            r=rid, sv=self.version[source], k=key, i=index, kind=kind)
+            "alloy, harmonized, reported, extraction) VALUES (:r, :sv, :k, :i, :kind, 'CoCrNi', '{}', '{}', "
+            "CAST(:x AS jsonb)) RETURNING id",
+            r=rid, sv=self.version[source], k=key, i=index, kind=kind, x=EXTRACTION)
 
     def decide(self, rid, rec, eligible=True, rule="in_scope"):
         self.run_sql("INSERT INTO run_record (run_id, record_id, eligible, rule) VALUES (:r, :c, :e, :u)",

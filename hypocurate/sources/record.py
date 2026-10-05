@@ -15,9 +15,13 @@ flags, duplicates or survivors: those are decided by code under the locked plan
 - `not_reported`: blank in the source, or the source has no such column (the reason says which);
 - `not_convertible`: present in the source but could not be converted; the reason says why,
   and the text as reported is kept in `reported`;
-- `assigned`: not in the data file, set by the adapter from the source's own documentation.
-  It always carries a `Citation` (file, location and the exact passage), so an assigned
-  value can never be mistaken for a reported one.
+- `assigned_from_source`: not in the data file, set by the adapter from an explicit
+  statement in the source's own documentation, quoted with file and location;
+- `assigned_by_decision`: not in the data file and not stated by the source, set from a
+  recorded owner or expert decision (register `hypocurate/assumptions.json`), citing it.
+Both always carry a `Citation`, so an assigned value can never be mistaken for a reported
+one, and the two stay distinguishable wherever they are stored or shown (register entry
+'assigned_value_statuses', owner 2026-10-05; split in step 6).
 """
 from __future__ import annotations
 
@@ -25,7 +29,10 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
-STATUSES = ("converted", "not_reported", "not_convertible", "assigned")
+STATUSES = ("converted", "not_reported", "not_convertible", "assigned_from_source", "assigned_by_decision")
+ASSIGNED_STATUSES = ("assigned_from_source", "assigned_by_decision")
+# The statuses that carry a value.
+VALUE_STATUSES = ("converted",) + ASSIGNED_STATUSES
 
 # The harmonized fields, the same for every adapter, with their units (None: no unit).
 # A source without a column for a field reports it as `not_reported`.
@@ -54,7 +61,8 @@ TEST_TYPES = ("tension", "compression")
 
 @dataclass(frozen=True)
 class Citation:
-    """Where an assigned value (or a unit not stated in the data file) comes from."""
+    """Where an assigned value (or a unit not stated in the data file) comes from: a passage
+    of the source's documentation, or a decision recorded in the assumptions register."""
     document: str  # e.g. "ArroyaveLab/2026-mulukutla-hall-petch@11390ee paper/main.tex"
     location: str  # e.g. "line 177"
     quote: str  # the exact passage
@@ -80,16 +88,16 @@ class Value:
     def __post_init__(self):
         if self.status not in STATUSES:
             raise ValueError(f"unknown status {self.status!r}")
-        if self.status in ("converted", "assigned") and self.value is None:
+        if self.status in VALUE_STATUSES and self.value is None:
             raise ValueError(f"a {self.status} value needs a value")
         if self.status in ("not_reported", "not_convertible"):
             if self.value is not None:
                 raise ValueError(f"a {self.status} value has no value")
             if not self.reason:
                 raise ValueError(f"a {self.status} value needs a reason")
-        if self.status == "assigned" and self.citation is None:
+        if self.status in ASSIGNED_STATUSES and self.citation is None:
             raise ValueError("an assigned value needs a citation")
-        if self.citation is not None and self.status not in ("assigned", "converted"):
+        if self.citation is not None and self.status not in VALUE_STATUSES:
             raise ValueError("only an assigned value, or a converted value whose unit is documented "
                              "outside the data file, carries a citation")
         if isinstance(self.value, dict):

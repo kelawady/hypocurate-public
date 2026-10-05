@@ -96,32 +96,53 @@ def test_one_group_the_dataset(records):
 
 
 def test_assigned_values_carry_their_passage(records):
+    """Step 6 (owner, 2026-10-05): two assigned statuses. Test type and phase class are
+    assigned from the source's own statements; the band and the microstructure by decision."""
     for r in records:
         t, p = r.harmonized["test_type"], r.harmonized["phase_class"]
-        assert (t.value, t.status, t.citation) == ("tension", "assigned", tamu_fcc.TEST_TYPE_CITATION)
-        assert (p.value, p.status, p.citation) == ("FCC", "assigned", tamu_fcc.PHASE_CITATION)
+        assert (t.value, t.status, t.citation) == ("tension", "assigned_from_source", tamu_fcc.TEST_TYPE_CITATION)
+        assert (p.value, p.status, p.citation) == ("FCC", "assigned_from_source", tamu_fcc.PHASE_CITATION)
         assert "Quasistatic tensile testing" in t.citation.quote and t.citation.location.startswith("line 177")
         assert "94 FCC alloy conditions" in p.citation.quote
+        b, m = r.harmonized["test_temperature_band"], r.harmonized["microstructure"]
+        assert (b.value, b.status, b.citation) == ("room temperature", "assigned_by_decision",
+                                                   tamu_fcc.TEMPERATURE_DECISION)
+        assert (m.value, m.status, m.citation) == ("FCC", "assigned_by_decision", tamu_fcc.MICROSTRUCTURE_DECISION)
         out = r.to_json()["harmonized"]
-        assert out["test_type"]["status"] == "assigned" and out["test_type"]["citation"]["quote"]
-    assigned = {k for r in records for k, v in r.harmonized.items() if v.status == "assigned"}
-    assert assigned == {"test_type", "phase_class"}
+        assert out["test_type"]["status"] == "assigned_from_source" and out["test_type"]["citation"]["quote"]
+        assert out["microstructure"]["status"] == "assigned_by_decision" and out["microstructure"]["citation"]["quote"]
+    by_status = lambda status: {k for r in records for k, v in r.harmonized.items() if v.status == status}
+    assert by_status("assigned_from_source") == {"test_type", "phase_class"}
+    assert by_status("assigned_by_decision") == {"test_temperature_band", "microstructure"}
+
+
+def test_decision_citations_quote_the_register():
+    """The citation of a value assigned by decision is the register entry's own statement."""
+    entries = {e["key"]: e for e in json.loads((REPO / "hypocurate" / "assumptions.json").read_text())}
+    for key, citation in (("tamu_test_temperature", tamu_fcc.TEMPERATURE_DECISION),
+                          ("tamu_microstructure", tamu_fcc.MICROSTRUCTURE_DECISION)):
+        e = entries[key]
+        assert citation.document == "hypocurate/assumptions.json"
+        assert citation.quote == e["statement"]
+        assert f"'{key}'" in citation.location and e["decided"]["date"] in citation.location
+        assert e["state"] == "in_force"
 
 
 def test_assigned_and_reported_stay_distinguishable(records):
     for r in records:
         for v in r.harmonized.values():
-            assert (v.status == "assigned") <= (v.citation is not None)
+            assert (v.status in ("assigned_from_source", "assigned_by_decision")) <= (v.citation is not None)
         assert all(isinstance(rep, Reported) and not hasattr(rep, "citation") for rep in r.reported.values())
         assert "tension" not in {rep.text for rep in r.reported.values()}
+        assert "room temperature" not in {rep.text for rep in r.reported.values()}
 
 
-def test_temperature_is_not_reported(records):
+def test_temperature_is_not_reported_and_the_band_is_assigned_by_decision(records):
     for r in records:
-        for name in ("test_temperature", "test_temperature_band"):
-            v = r.harmonized[name]
-            assert (v.status, v.value) == ("not_reported", None)
-            assert "states no test temperature" in v.reason
+        v = r.harmonized["test_temperature"]
+        assert (v.status, v.value) == ("not_reported", None)
+        assert "states no test temperature" in v.reason
+        assert r.harmonized["test_temperature_band"].status == "assigned_by_decision"
 
 
 def test_composition_in_atomic_percent(records):
@@ -211,7 +232,8 @@ def test_planted_values_are_kept_and_marked():
     assert {k: v for k, v in by_row[4].harmonized.items() if k != "grain_size_sd"} == \
         {k: v for k, v in by_row[0].harmonized.items() if k != "grain_size_sd"}
     assert (h(4, "grain_size").value, h(4, "yield_strength").value) == (23.0, 284.2)
-    assert (h(4, "test_type").status, h(4, "test_type").citation) == ("assigned", tamu_fcc.TEST_TYPE_CITATION)
+    assert (h(4, "test_type").status, h(4, "test_type").citation) == ("assigned_from_source",
+                                                                      tamu_fcc.TEST_TYPE_CITATION)
     assert h(4, "test_temperature").status == "not_reported"
     assert h(4, "test_temperature").reason == tamu_fcc.TEMPERATURE_NOT_REPORTED
     assert by_row[4].alloy == by_row[0].alloy

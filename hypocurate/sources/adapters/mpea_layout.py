@@ -51,6 +51,10 @@ UNITS = {
     "PROPERTY: C content (wppm)": "wppm",
 }
 
+# The adapter's version, stored with every record it extracts (record.extraction; step 6).
+# Raise it whenever what the adapter returns for the same file changes.
+ADAPTER_VERSION = "1"
+
 TEST_TYPE_CODES = {"T": "tension", "C": "compression"}
 
 NO_COLUMN = "the source has no column for this field"

@@ -41,8 +41,14 @@ def test_it_returns_sample_records_in_the_common_format(registered, key, total):
 def test_assigned_values_are_shown_with_their_citation(registered):
     report = connection.test_connection(registered, "tamu_fcc", n=1).to_json()
     test_type = report["sample"][0]["harmonized"]["test_type"]
-    assert test_type["status"] == "assigned" and "Quasistatic tensile testing" in test_type["citation"]["quote"]
-    assert report["status_counts"]["assigned"] == 94 * 2
+    assert test_type["status"] == "assigned_from_source"
+    assert "Quasistatic tensile testing" in test_type["citation"]["quote"]
+    band = report["sample"][0]["harmonized"]["test_temperature_band"]
+    assert band["status"] == "assigned_by_decision" and "'tamu_test_temperature'" in band["citation"]["location"]
+    # Two fields from the source and two by decision, for each of the 94 records (step 6).
+    assert report["status_counts"]["assigned_from_source"] == 94 * 2
+    assert report["status_counts"]["assigned_by_decision"] == 94 * 2
+    assert "assigned" not in report["status_counts"]
 
 
 def test_it_needs_a_sealed_version(db):
@@ -75,6 +81,6 @@ def test_the_command_line(db, migrated_database, monkeypatch, capsys):
     assert cli.main(["sources", "test", "tamu_fcc", "-n", "2"]) == 0
     shown = json.loads(capsys.readouterr().out)
     assert shown["records_read"] == 94 and len(shown["sample"]) == 2
-    assert shown["sample"][0]["harmonized"]["test_type"]["status"] == "assigned"
+    assert shown["sample"][0]["harmonized"]["test_type"]["status"] == "assigned_from_source"
     assert cli.main(["sources", "register", "nope"]) == 1
     assert "unknown source" in capsys.readouterr().err

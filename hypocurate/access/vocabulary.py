@@ -57,15 +57,30 @@ def unrecognized_counts(values: Iterable[tuple[str, Any]]) -> dict[str, int]:
 
 FLAG_KINDS = frozenset({"exact_duplicate", "possible_duplicate", "values_disagree", "out_of_scope",
                         "scope_not_confirmed", "invalid_value", "model_recalled"})
+# Step 6 additions (owner, 2026-10-05): the category "several candidates" (an ambiguous match
+# group), the rules "missing_value", "identity_unresolved" and "conflict_unresolved", and the
+# sensitivity keys "no_exclusions" and "conflicts_survivor_value".
 FLAG_CATEGORIES = frozenset({"identical values", "differ beyond tolerance", "within tolerance",
-                             "outside scope", "scope not confirmed", "physically impossible"})
+                             "outside scope", "scope not confirmed", "physically impossible",
+                             "several candidates"})
 ELIGIBILITY_RULES = frozenset({"in_scope", "out_of_scope", "scope_not_confirmed", "invalid_value",
                                "duplicate_counted_once", "model_recalled", "single_grain_size",
-                               "excluded_by_rule"})
+                               "excluded_by_rule", "missing_value", "identity_unresolved",
+                               "conflict_unresolved"})
 SENSITIVITY_KEYS = frozenset({"tension_and_compression", "six_batches_as_groups", "same_alloy_1_at_pct",
                               "source_only_assignments", "possible_duplicates_separate",
-                              "scope_not_confirmed_included", "removal_after_lock"})
+                              "scope_not_confirmed_included", "removal_after_lock", "no_exclusions",
+                              "conflicts_survivor_value"})
 ANALYSIS_SET_KEYS = frozenset({"primary"}) | SENSITIVITY_KEYS
+
+
+# Codes in the locked plan's rules (step 6): the registered sources, grouping units, value
+# statuses, domain profiles, and whether single phase is required.
+SOURCE_KEYS = frozenset({"mpea", "tamu_fcc", "controlled_duplicates"})
+GROUPING_UNITS = frozenset({"paper", "dataset", "batch"})
+VALUE_STATUSES = frozenset({"converted", "assigned_from_source", "assigned_by_decision"})
+PROFILE_NAMES = frozenset({"grain_size_strengthening"})
+SINGLE_PHASE = frozenset({"required", "not_required"})
 
 
 def code(value: Any, vocabulary: frozenset[str]) -> str:

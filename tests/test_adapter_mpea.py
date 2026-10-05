@@ -94,7 +94,7 @@ def test_test_type_codes(result):
 
 def test_no_value_is_assigned(result):
     assert not [r for r in result.records for v in r.harmonized.values()
-                if v.status == "assigned" or v.citation is not None]
+                if v.status in ("assigned_from_source", "assigned_by_decision") or v.citation is not None]
 
 
 def _reference_norm(f):

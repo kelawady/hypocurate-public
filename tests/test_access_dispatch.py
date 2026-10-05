@@ -275,7 +275,7 @@ def test_the_frozen_sources_have_no_unrecognized_category_value():
     for key in ("mpea", "tamu_fcc"):
         recs = adapters.read(sealed_from_disk(key)).records
         values = [(f, r.harmonized[f].value) for r in recs for f in vocabulary.CATEGORY_FIELDS
-                  if r.harmonized[f].status in ("converted", "assigned")]
+                  if r.harmonized[f].status in ("converted", "assigned_from_source", "assigned_by_decision")]
         assert vocabulary.unrecognized_counts(values) == {}, key
 
 

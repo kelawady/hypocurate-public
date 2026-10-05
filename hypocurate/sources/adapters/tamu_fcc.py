@@ -16,11 +16,15 @@ spreadsheet, the source of record (step 1).
   batch (`Iteration`, six values) is kept as reported. **The grouping unit is an open
   decision for the owner (PRD 17, decision 9):** one group in sprint 1; batches only if
   the owner agrees they are independent enough. This adapter refuses any other unit.
-- Values not in the file are set only where the source's own documentation states them,
-  as `assigned` with the exact passage (owner, 2026-10-05, step 4 question 3):
-  test type `tension`, phase class `FCC`. **Test temperature is not assigned**: the
-  repository states no test temperature for these measurements (step 4 summary), so the
-  temperature and its band are `not_reported`, and the owner decides later.
+- Values not in the file are set with one of two statuses (register entry
+  'assigned_value_statuses'), each with its citation:
+  - `assigned_from_source`, where the source's own documentation states them (owner,
+    2026-10-05, step 4 question 3): test type `tension`, phase class `FCC`;
+  - `assigned_by_decision`, where the source does not state them and the owner decided
+    (register entries 'tamu_test_temperature' and 'tamu_microstructure', 2026-10-05):
+    temperature band `room temperature`, microstructure `FCC` (single-phase).
+  The numeric test temperature stays `not_reported`: neither the source nor the decision
+  gives a number.
 """
 from __future__ import annotations
 
@@ -34,6 +38,10 @@ from hypocurate.sources import normalize as n
 from hypocurate.sources.record import (HARMONIZED_FIELDS, AdapterError, AdapterResult, Citation,
                                        CommonRecord, Group, Reported, Value)
 from hypocurate.sources.versions import SealedVersion
+
+# The adapter's version, stored with every record it extracts (record.extraction; step 6).
+# Raise it whenever what the adapter returns for the same file changes.
+ADAPTER_VERSION = "2"  # 2: the two assigned statuses; band and microstructure by decision (step 6)
 
 SHEET = "GS_MasterTable_Iterations "  # verbatim: the sheet name ends with a space
 HEADER = (
@@ -67,8 +75,20 @@ COMPOSITION_UNIT_CITATION = Citation(
     "Al is not included in the 15\\% statement because it spans only 0--4~at.\\% and has a much wider "
     "interval.")
 
+# Decisions recorded in the assumptions register (status `assigned_by_decision`). The quote is
+# the entry's statement; tests check it against the register.
+REGISTER = "hypocurate/assumptions.json"
+TEMPERATURE_DECISION = Citation(
+    REGISTER, "entry 'tamu_test_temperature' (decided by the owner, Khalid El-Awady, 2026-10-05)",
+    "The Texas A&M records are treated as tested at room temperature. The value is 'assigned by decision': "
+    "the source does not report it and does not state it explicitly.")
+MICROSTRUCTURE_DECISION = Citation(
+    REGISTER, "entry 'tamu_microstructure' (decided by the owner, Khalid El-Awady, 2026-10-05)",
+    "The Texas A&M records are treated as single-phase FCC. The value is 'assigned by decision': the source "
+    "does not state it explicitly as a result.")
+
 TEMPERATURE_NOT_REPORTED = ("no per-record temperature; the source states no test temperature for its "
-                            "own measurements (owner decides; step 4 summary)")
+                            "own measurements (the room-temperature band is assigned by decision)")
 NO_COLUMN = "the source has no column for this field"
 
 
@@ -123,12 +143,12 @@ def _harmonize(cells: dict) -> tuple[dict[str, Value], str | None]:
     h["cold_work"] = _number(cells["Cold Work (%Reduction)"], "% reduction")
     h["recrystallization_temperature"] = _number(cells["Recrystallization Temp(℃)"], "°C")
     h["holding_time"] = _number(cells["Holding time (h)"], "h")
-    h["test_type"] = Value("tension", None, "assigned", citation=TEST_TYPE_CITATION)
-    h["phase_class"] = Value("FCC", None, "assigned", citation=PHASE_CITATION)
+    h["test_type"] = Value("tension", None, "assigned_from_source", citation=TEST_TYPE_CITATION)
+    h["phase_class"] = Value("FCC", None, "assigned_from_source", citation=PHASE_CITATION)
     h["test_temperature"] = Value(None, "°C", "not_reported", TEMPERATURE_NOT_REPORTED)
-    h["test_temperature_band"] = Value(None, None, "not_reported", TEMPERATURE_NOT_REPORTED)
-    h["microstructure"] = Value(None, None, "not_reported",
-                                "the source does not state the phases present per record")
+    h["test_temperature_band"] = Value("room temperature", None, "assigned_by_decision",
+                                       citation=TEMPERATURE_DECISION)
+    h["microstructure"] = Value("FCC", None, "assigned_by_decision", citation=MICROSTRUCTURE_DECISION)
     h["processing_method"] = Value(None, None, "not_reported",
                                    "the source gives processing parameters (cold work, recrystallization "
                                    "temperature, holding time), not a processing-method category")

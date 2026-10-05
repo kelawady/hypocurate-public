@@ -8,6 +8,7 @@ the job of the code checks under the locked plan (step 6).
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 
@@ -122,17 +123,18 @@ def alloy_label(composition: dict[str, float]) -> str:
 
 # The same-alloy rule (register entry 'same_alloy_rule', owner 2026-10-05): each element's
 # atomic percent rounded to this many decimals; two compositions are the same alloy when
-# their rounded compositions are identical. Used by the gap report's condition summaries
-# (step 5); the plan setting that applies it to analysis comes in step 6.
+# their rounded compositions are identical. The default the domain profile copies into each
+# plan (step 6); eligibility and duplicate matching use the locked plan's value. The gap
+# report's condition summaries (step 5) use this default.
 SAME_ALLOY_DECIMALS = 1
 
 
-def same_alloy_key(composition: dict[str, float]) -> str:
+def same_alloy_key(composition: dict[str, float], decimals: int = SAME_ALLOY_DECIMALS) -> str:
     """The same-alloy rule's key for a full-precision composition: elements in
-    alphabetical order, each with its rounded atomic percent. Equal keys mean the same
-    alloy under the rule; unlike `alloy_label`, the key is the rule itself."""
-    return " ".join(f"{e} {round(v, SAME_ALLOY_DECIMALS):.{SAME_ALLOY_DECIMALS}f}"
-                    for e, v in sorted(composition.items()))
+    alphabetical order, each with its atomic percent rounded to `decimals` (Python's round,
+    as in the reference script). Equal keys mean the same alloy under the rule; unlike
+    `alloy_label`, the key is the rule itself."""
+    return " ".join(f"{e} {round(v, decimals):.{decimals}f}" for e, v in sorted(composition.items()))
 
 
 _DOI_WRAPPER = re.compile(r"(?:https?://(?:dx\.)?doi\.org/|doi:)\s*", re.IGNORECASE)
@@ -153,3 +155,12 @@ def doi_group_key(doi: str) -> str | None:
         key = key[match.end():]
     key = key.strip().translate(_ASCII_UPPER)
     return f"doi:{key}" if key else None
+
+
+def identity_hash(key: str | None) -> str | None:
+    """A paper or batch identity as an opaque hash (step 6): equal keys give equal hashes, and
+    the text of the key (a DOI, a batch label as reported) is not carried along. Used where
+    code compares identities without receiving the text (Inclusion's `record_conditions`)."""
+    if key is None:
+        return None
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()

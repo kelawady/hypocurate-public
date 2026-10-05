@@ -16,7 +16,10 @@ rows of the run: after the freeze the Analyst and the Commentator may see outcom
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -26,15 +29,17 @@ from typing import Any, Callable, Iterable, Mapping
 from sqlalchemy import Connection, text
 
 from hypocurate.access import vocabulary as vocab
-from hypocurate.access.allowlist import (CATEGORY_FIELDS, CONDITION_COUNT_FIELDS, CONDITION_RANGE_FIELDS,
-                                         PLAN_SCHEMA, POWER_SCHEMA, SOURCE_META_FIELDS)
+from hypocurate.access.allowlist import (BATCH_COLUMNS, CATEGORY_FIELDS, CONDITION_COUNT_FIELDS,
+                                         CONDITION_RANGE_FIELDS, OUTCOME_FIELDS, PLAN_SCHEMA, POWER_SCHEMA,
+                                         SOURCE_META_FIELDS)
 from hypocurate.access.context import AccessContext as Context
+from hypocurate.pipeline.binding import binding, record_identity
 from hypocurate.sources import adapters
-from hypocurate.sources.normalize import alloy_label, same_alloy_key
-from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, AdapterError
+from hypocurate.sources.normalize import alloy_label, doi_group_key, identity_hash, same_alloy_key
+from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, VALUE_STATUSES, AdapterError
 from hypocurate.sources.versions import SOURCES, UnsealedVersion, load_sealed_version
 
-HAS_VALUE = ("converted", "assigned")
+HAS_VALUE = VALUE_STATUSES
 UNITS = frozenset(u for u in HARMONIZED_FIELDS.values() if u)
 
 
@@ -271,6 +276,74 @@ def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
+_ROW = re.compile(r":row:(\d+)$")
+# The non-outcome measured values Inclusion needs (scope and the grain-size rules).
+CONDITION_NUMBERS = ("grain_size", "test_temperature")
+
+
+def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
+    """For Inclusion (code; step 6). No outcome value: outcome fields give their status only.
+    No value as reported and no free text: categories through their vocabularies, the paper
+    (from the DOI) and the batch as hashes, the row number from the origin key."""
+    out = []
+    for r in _stored_records(conn, ctx):
+        h = r.harmonized if isinstance(r.harmonized, Mapping) else {}
+        reported = r.reported if isinstance(r.reported, Mapping) else {}
+        row = _ROW.search(r.source_item_key or "")
+        batch_column = BATCH_COLUMNS.get(r.source)
+        batch = reported.get(batch_column, {}).get("text") if batch_column else None
+        doi = r.paper_doi if isinstance(r.paper_doi, str) and r.paper_doi.strip() else None
+        content = {"version_fingerprint": r.version_fingerprint, "origin": r.source_item_key,
+                   "item_index": r.item_index, "kind": r.kind, "harmonized": r.harmonized, "reported": r.reported,
+                   "paper_reference": r.paper_reference, "paper_doi": r.paper_doi}
+        out.append({
+            "id": r.id, "source": r.source, "row": int(row.group(1)) if row else None, "kind": r.kind,
+            # Stable identity (step 6 review, findings 3 and 5): for tie-breaks and the freeze
+            # fingerprint, never a database id. The origin key carries no value.
+            "version_fingerprint": r.version_fingerprint, "origin": r.source_item_key, "item_index": r.item_index,
+            # A hash of the stored record (for the freeze fingerprint): it carries no value.
+            "fingerprint": hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":"),
+                                                     ensure_ascii=False).encode("utf-8")).hexdigest(),
+            "has_doi": doi is not None,
+            "paper": identity_hash(doi_group_key(doi)) if doi else None,
+            "batch": identity_hash(batch) if isinstance(batch, str) and batch.strip() else None,
+            "composition": _composition(h.get("composition")),
+            "status": {f: _status(h.get(f)) for f in HARMONIZED_FIELDS},
+            "values": {f: _number(h.get(f)) for f in CONDITION_NUMBERS if f not in OUTCOME_FIELDS},
+            "categories": {f: _category(f, h.get(f)) for f in CATEGORY_FIELDS},
+        })
+    return out
+
+
+def set_flags(conn: Connection, ctx: Context) -> dict:
+    """The per-set matching flags of the run's completed Checks result (step 6 review, finding 2):
+    codes and record ids only.
+
+    Re-check finding 1: read in the same transaction as the role's other fields, under the run's
+    lock, and only after verifying that a completed Checks result exists and covers exactly the
+    records and flags of the run as they are now; otherwise the read is refused
+    (`checks_not_done`, `checks_not_current`), never answered with "no flags"."""
+    output = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'checks' "
+                               "AND status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=ctx.run_id)).scalar_one_or_none()
+    if not isinstance(output, Mapping) or not isinstance(output.get("binding"), Mapping):
+        raise Refused("checks_not_done")
+    identity = {i: record_identity(fp, key, ix) for i, fp, key, ix in _rows(
+        conn, "SELECT r.id, sv.fingerprint, r.source_item_key, r.item_index FROM record r "
+              "JOIN source_version sv ON sv.id = r.source_version_id WHERE r.extraction_run_id = :r", r=ctx.run_id)}
+    flagged = [(f.kind, f.category, [identity[x] for x in _flag_records(conn, ctx).get(f.id, []) if x in identity])
+               for f in _rows(conn, "SELECT id, kind, category FROM flag WHERE run_id = :r", r=ctx.run_id)]
+    if binding(identity.values(), flagged) != dict(output["binding"]):
+        raise Refused("checks_not_current")
+    stored = output.get("set_flags", {})
+    out = {}
+    for key, flags in (stored.items() if isinstance(stored, Mapping) else ()):
+        out[vocab.code(key, vocab.SENSITIVITY_KEYS)] = [
+            {"kind": vocab.code(f.get("kind"), vocab.FLAG_KINDS), "category": vocab.code(f.get("category"), vocab.FLAG_CATEGORIES),
+             "records": [r for r in f.get("records", []) if isinstance(r, int) and not isinstance(r, bool)]}
+            for f in flags if isinstance(f, Mapping)]
+    return out
+
+
 def _flag_records(conn: Connection, ctx: Context) -> dict[int, list[int]]:
     out: dict[int, list[int]] = {}
     for flag_id, record_id in _rows(conn, "SELECT fr.flag_id, fr.record_id FROM flag_record fr "
@@ -434,5 +507,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "plan": plan, "records_full": records_full, "decisions": decisions, "flags_full": flags_full,
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
-    "gap_report": gap_report, "outcome": outcome,
+    "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
 }

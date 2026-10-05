@@ -541,8 +541,18 @@ class Record(Base):
     reported: Mapped[dict] = mapped_column(JSONB)
     paper_reference: Mapped[str | None] = mapped_column(Text)
     paper_doi: Mapped[str | None] = mapped_column(Text)
+    # How the record was extracted (migration 0003, step 6): {"method": "adapter" | "agent",
+    # "name", "version"}. Required for every new record by the insert trigger.
+    extraction: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created()
     __table_args__ = (
+        CheckConstraint("extraction IS NULL OR coalesce(jsonb_typeof(extraction) = 'object' "
+                        "AND jsonb_typeof(extraction->'method') = 'string' "
+                        "AND jsonb_typeof(extraction->'name') = 'string' "
+                        "AND jsonb_typeof(extraction->'version') = 'string' "
+                        "AND (extraction->>'method') IN ('adapter', 'agent') "
+                        "AND length(extraction->>'name') > 0 AND length(extraction->>'version') > 0, false)",
+                        name="extraction_shape"),
         UniqueConstraint("extraction_run_id", "source_version_id", "source_item_key", "item_index",
                          name="uq_record_origin_per_run"),
         Index("ix_record_source_version_id_source_item_key", "source_version_id", "source_item_key"),

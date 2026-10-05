@@ -75,7 +75,9 @@ def assert_schema_is_head(engine):
             "SELECT conname FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace "
             "WHERE n.nspname = 'public' AND contype = 'c'"))}
         domains = conn.execute(text("SELECT key FROM domain ORDER BY key")).scalars().all()
+        approved_tags = conn.execute(text("SELECT count(*) FROM tag_value WHERE status = 'approved'")).scalar()
     assert db_checks == model_check_names()
+    assert approved_tags == 19  # migration 0002 (step 6)
     s = snapshot(engine)
     assert {(t, n) for t, n, _ in s["triggers"]} == expected_triggers()
     assert {v for v, _ in s["views"]} == set(MIGRATION.VIEW_NAMES)
@@ -95,13 +97,26 @@ def assert_schema_is_empty(engine):
 
 # --- revisions ------------------------------------------------------------------------
 
+# Revisions that only insert rows, whose downgrade leaves the rows (owner, 2026-10-05): tag
+# values can never be deleted. Their downgrade is tested by behaviour in test_migrations_step6.py.
+DATA_ONLY = {"0002"}
+
+
 def test_exactly_one_head_and_every_revision_has_a_downgrade():
     scripts = ScriptDirectory(str(migrate.MIGRATIONS))
     assert len(scripts.get_heads()) == 1
+    revisions = {rev.revision for rev in scripts.walk_revisions()}
+    assert DATA_ONLY <= revisions
     for rev in scripts.walk_revisions():
         source = Path(rev.path).read_text()
         body = source.split("def downgrade() -> None:", 1)[1]
-        assert "drop" in body.lower(), rev.revision
+        if rev.revision in DATA_ONLY:
+            # A data-only revision: its upgrade changes no schema, and its downgrade does nothing.
+            upgrade = source.split("def upgrade() -> None:", 1)[1].split("def downgrade", 1)[0]
+            assert not re.search(r"op\.(create|add|drop|alter)_", upgrade), rev.revision
+            assert "op." not in body and body.strip().startswith('"""'), rev.revision
+        else:
+            assert "drop" in body.lower(), rev.revision
 
 
 def test_migrations_stay_inside_the_one_transaction():

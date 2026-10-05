@@ -27,9 +27,14 @@
     },
     "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the effect of this and every other decision-based assignment.",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Today the adapter reports the temperature as not reported (tamu_fcc.TEMPERATURE_NOT_REPORTED)."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.tamu_fcc:TEMPERATURE_DECISION.quote",
+          "equals": "The Texas A&M records are treated as tested at room temperature. The value is 'assigned by decision': the source does not report it and does not state it explicitly."
+        }
+      ],
+      "note": "The band 'room temperature' with status 'assigned_by_decision'; the numeric temperature stays not reported."
     },
     "history": [
       {
@@ -42,7 +47,13 @@
     "notes": [
       "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_decision_citations_quote_the_register",
+      "tests/test_adapter_tamu.py::test_temperature_is_not_reported_and_the_band_is_assigned_by_decision",
+      "tests/test_eligibility.py::test_texas_am_band_and_microstructure_by_decision_are_in_scope_unless_the_set_refuses_them",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+    ]
   },
   {
     "key": "permitted_test_types",
@@ -70,9 +81,16 @@
     },
     "sensitivity": "Tension and compression together.",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": null
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:PERMITTED_TEST_TYPES",
+          "equals": [
+            "tension"
+          ]
+        }
+      ],
+      "note": "The plan's scope.test_type; MPEA row 139 is out of scope in the primary set and enters 'tension_and_compression'."
     },
     "history": [
       {
@@ -83,9 +101,15 @@
       }
     ],
     "notes": [
-      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."
+      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7.",
+      "Recomputed in step 6 and approved by the owner on 2026-10-06 (entry 'reference_numbers')."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_controlled_duplicates_handling.py::test_rows_15_and_16_enter_together_when_compression_is_permitted",
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+    ]
   },
   {
     "key": "tamu_grouping_unit",
@@ -118,10 +142,14 @@
         {
           "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.grouping_unit",
           "equals": "dataset"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:GROUPING.tamu_fcc",
+          "equals": "dataset"
         }
       ],
-      "done": "The adapter gives every record one group (the dataset) and refuses any other grouping unit.",
-      "pending": "Using the groups in inference (step 7) and the six-batch sensitivity analysis.",
+      "done": "The adapter gives every record one group (the dataset) and refuses any other grouping unit; the plan states the grouping per source, and the sensitivity set 'six_batches_as_groups' groups the Texas A&M records by batch (step 6).",
+      "pending": "Using the groups in inference (step 7).",
       "step": 7,
       "note": null
     },
@@ -133,10 +161,15 @@
         "note": "PRD 17, decision 9."
       }
     ],
-    "notes": [],
+    "notes": [
+      "The 21 eligible records come from three of the six batches (CBA, CBB, CBC), so the six-batch analysis has three Texas A&M groups (step 6)."
+    ],
     "tests": [
       "tests/test_adapter_tamu.py::test_one_group_the_dataset",
-      "tests/test_adapter_tamu.py::test_the_batch_grouping_unit_is_refused_until_the_owner_decides"
+      "tests/test_adapter_tamu.py::test_the_batch_grouping_unit_is_refused_until_the_owner_decides",
+      "tests/test_checkpoints.py::test_the_lock_refuses_settings_that_leave_out_a_chosen_source",
+      "tests/test_eligibility.py::test_grouping_is_read_from_the_locked_plan",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
   },
   {
@@ -166,16 +199,17 @@
     },
     "sensitivity": "The same rule with a rounding step of 1 at.%.",
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.normalize:SAME_ALLOY_DECIMALS",
           "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:SAME_ALLOY_DECIMALS_DEFAULT",
+          "equals": 1
         }
       ],
-      "done": "The gap report's condition summaries group records by alloy under this rule (normalize.same_alloy_key, step 5).",
-      "pending": "The plan setting that applies it to the analysis, eligibility and duplicate matching.",
-      "step": 6,
       "note": "The adapters give the full-precision composition; the display label (normalize.alloy_label) is not this rule."
     },
     "history": [
@@ -189,11 +223,14 @@
     "notes": [
       "Known weakness: compositions closer than the step can fall into different bins at a boundary.",
       "Ties follow the reference script's rounding (Python round on the computed percentage) unless step 6 states otherwise.",
-      "Possible improvement for step 6, not a decision: a tolerance-based grouping, which would need a stated rule for chains and the owner's approval."
+      "Applied in step 6 from the locked plan (rules.same_alloy_decimals) to the grain-size rule, the counts and duplicate matching."
     ],
     "tests": [
       "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
-      "tests/test_access_layer.py::test_condition_summaries_group_alloys_by_the_same_alloy_rule"
+      "tests/test_access_layer.py::test_condition_summaries_group_alloys_by_the_same_alloy_rule",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_flags.py::test_the_same_alloy_rule_of_the_plan_decides_which_records_are_compared",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change"
     ]
   },
   {
@@ -225,12 +262,21 @@
       "status": "partly",
       "settings": [
         {
+          "ref": "python:hypocurate.pipeline.profile:FIXED_MINIMUMS",
+          "equals": {
+            "min_records": 30,
+            "min_alloys": 5,
+            "min_groups": 10,
+            "min_resid_df": 10
+          }
+        },
+        {
           "ref": "sql:hc_run_update"
         }
       ],
-      "done": "Each plan stores its four minimums, and the database checks that 'minimums met' agrees with them and that a sufficient outcome under the fixed minimum has them met.",
-      "pending": "These values as the plan's defaults (step 6) and the check computed by code (step 7).",
-      "step": 6,
+      "done": "The four minimums are each plan's default (step 6); the database checks that 'minimums met' agrees with them; the freeze records the counts and whether they are met, as information.",
+      "pending": "The fixed-minimum check that decides the outcome, computed by code (step 7).",
+      "step": 7,
       "note": null
     },
     "history": [
@@ -243,15 +289,18 @@
     ],
     "notes": [],
     "tests": [
+      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met",
       "tests/test_data_model.py::test_minimums_met_must_agree_with_the_plan",
-      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met"
+      "tests/test_eligibility.py::test_counts_known_at_the_freeze",
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
   },
   {
     "key": "values_disagree_tolerance",
     "name": "When values disagree",
     "state": "in_force",
-    "statement": "Two values that should be the same measurement raise a conflict flag when their relative difference |a - b| / min(|a|, |b|) is above 2%. Applies to yield strength and grain size.",
+    "statement": "Relative difference = |a - b| / min(|a|, |b|), with a tolerance of 2%. For grain size it is a matching tolerance: two records are compared only if their grain sizes are within it. For yield strength it is the duplicate-or-conflict threshold: within it two compared records are duplicates, beyond it a conflict flag is raised.",
     "value": {
       "text": "2% relative difference, relative to the smaller value",
       "unit": "%"
@@ -273,9 +322,14 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": null
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:DUPLICATE_TOLERANCE",
+          "equals": 0.02
+        }
+      ],
+      "note": "Read from the locked plan (rules.duplicate_tolerance)."
     },
     "history": [
       {
@@ -283,18 +337,29 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "PRD 17, decision 4."
+      },
+      {
+        "value": "Two values that should be the same measurement raise a conflict flag when their relative difference |a - b| / min(|a|, |b|) is above 2%. Applies to yield strength and grain size.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 4b wording; reworded at the owner's step 6 decision (2026-10-05)."
       }
     ],
     "notes": [
-      "Which records are compared is decided by entry 'conflict_pairing_rule' (owner, 2026-10-05): different sources, same paper, alloy, grain size and test conditions."
+      "Which records are compared is decided by entry 'conflict_pairing_rule' (owner, 2026-10-05): different sources, same paper, alloy, grain size and test conditions.",
+      "Known limit (owner, 2026-10-05): grain size is a matching criterion, not something that can be in conflict. Two records whose grain sizes differ by more than 2% are separate measurements, so a grain-size disagreement between sources can never raise a conflict flag."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_flags.py::test_exact_duplicate_and_the_tolerance_on_yield_strength",
+      "tests/test_flags.py::test_grain_size_is_a_matching_tolerance_never_a_conflict",
+      "tests/test_flags.py::test_the_tolerance_is_read_from_the_plan"
+    ]
   },
   {
     "key": "conflict_pairing_rule",
     "name": "Which records are compared for a conflict",
     "state": "in_force",
-    "statement": "Duplicates and conflicts are looked for only between records from different sources that cite the same paper with the same alloy, grain size and test conditions. Rows within one source are always separate measurements (repeat specimens).",
+    "statement": "Duplicates and conflicts are looked for only between records from different sources; rows within one source are always separate measurements (repeat specimens). Two records are compared when they have the same alloy, grain sizes within the tolerance, and nothing known that differs. Same paper and every test condition known: an exact duplicate (yield strengths within the tolerance) or a conflict (beyond it). The paper or a test condition missing on one side and the values within the tolerance: a possible duplicate. If a record has more than one candidate in another source, or the candidates are not all linked to each other, nothing is paired automatically and all of them are flagged as possible duplicates ('several candidates').",
     "value": {
       "text": "different sources citing the same paper, with the same alloy, grain size and test conditions; rows within one source are separate measurements",
       "unit": null
@@ -319,23 +384,57 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.flags:duplicate_groups"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:DUPLICATE_TOLERANCE",
+          "equals": 0.02
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_controlled_duplicates_handling.py::test_the_flag_is_the_answer_files",
+      "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
+      "tests/test_flags.py::test_a_group_whose_records_are_not_all_linked_is_ambiguous",
+      "tests/test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict",
+      "tests/test_flags.py::test_a_known_difference_in_paper_or_conditions_means_no_pair",
+      "tests/test_flags.py::test_a_mixed_group_keeps_its_definite_conflict_without_imposing_it_on_the_others",
+      "tests/test_flags.py::test_a_mixed_group_keeps_its_definite_pairs",
+      "tests/test_flags.py::test_a_source_without_dois_is_unknown_against_a_record_with_one",
+      "tests/test_flags.py::test_an_ambiguous_group_keeps_its_definite_exact_pair",
+      "tests/test_flags.py::test_an_unknown_paper_or_condition_gives_a_possible_duplicate_only_if_the_values_match",
+      "tests/test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting",
+      "tests/test_flags.py::test_rows_within_one_source_are_never_compared",
+      "tests/test_flags.py::test_several_candidates_from_one_source_pair_nothing",
+      "tests/test_flags.py::test_unequal_reference_text_is_unknown_not_a_different_paper",
+      "tests/test_flags.py::test_without_a_doi_the_normalized_paper_reference_identifies_the_paper"
+    ],
     "history": [
       {
         "value": "open decision: which pairs of records are compared for the 'values disagree' flag (repeat specimens versus conflicting reports)",
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Open entry added after the step 4b review, finding 4."
+      },
+      {
+        "value": "Duplicates and conflicts are looked for only between records from different sources that cite the same paper with the same alloy, grain size and test conditions. Rows within one source are always separate measurements (repeat specimens).",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 decision; the possible-duplicate case and the rule for several candidates added by the owner in step 6 planning (2026-10-05)."
       }
     ],
     "notes": [
       "Known weakness: a source that repeats its own row by mistake is not caught, because rows within one source are never compared.",
       "Not reviewed by an expert.",
-      "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance)."
+      "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance).",
+      "A record with a missing test condition is also 'scope not confirmed': Checks still raises the possible-duplicate flag, and Inclusion applies the scope rule before the duplicate rule (owner, 2026-10-05).",
+      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'.",
+      "A paper is identified from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. The plan's grouping is for clustering only and never changes paper identity (re-check finding 2a, 2026-10-06). Texas A&M records carry the dataset's reference and no DOI.",
+      "Confirmation (2026-10-06): only unequal DOIs prove different papers; unequal reference text alone is unknown. Inside a mixed group, every definite pair (exact, conflict) whose kind the group's label does not state is kept as its own flag; an exact pair only if neither record has another exact match in the other's source."
     ]
   },
   {
@@ -413,9 +512,16 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": null
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:TAG_STARTING_LISTS"
+        },
+        {
+          "ref": "sql:TAG_STARTING_LISTS"
+        }
+      ],
+      "note": "Seeded as approved by migration 0002; each run gets one tag of each kind at the rules lock."
     },
     "history": [
       {
@@ -426,7 +532,13 @@
       }
     ],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_checkpoints.py::test_the_lock_stores_the_plan_its_fingerprint_and_three_tags_in_one_transaction",
+      "tests/test_migrations_step6.py::test_0002_changes_no_schema_and_seeds_19_approved_values",
+      "tests/test_migrations_step6.py::test_0002_is_safe_on_a_database_that_already_has_some_values",
+      "tests/test_migrations_step6.py::test_the_seeded_lists_are_the_registers_and_the_profiles",
+      "tests/test_plan.py::test_three_tags_one_per_kind_from_the_plan"
+    ]
   },
   {
     "key": "tamu_microstructure",
@@ -458,9 +570,14 @@
     },
     "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the result without these records.",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Today the adapter reports the microstructure as not reported and assigns phase class FCC from source."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.tamu_fcc:MICROSTRUCTURE_DECISION.quote",
+          "equals": "The Texas A&M records are treated as single-phase FCC. The value is 'assigned by decision': the source does not state it explicitly as a result."
+        }
+      ],
+      "note": "Microstructure 'FCC' with status 'assigned_by_decision'."
     },
     "history": [
       {
@@ -476,7 +593,11 @@
       "Not reviewed by an expert.",
       "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_decision_citations_quote_the_register",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+    ]
   },
   {
     "key": "shared_coefficient",
@@ -836,13 +957,19 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "No code applies a rate rule; step 6 states the scope."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:PLAN_SCHEMA.scope"
+        }
+      ],
+      "note": "The plan's scope has no loading-rate rule."
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions"
+    ]
   },
   {
     "key": "composition_as_reported",
@@ -892,7 +1019,7 @@
     "key": "room_temperature_scope",
     "name": "Room temperature",
     "state": "in_force",
-    "statement": "A room-temperature scope accepts reported test temperatures from 20 to 25 °C.",
+    "statement": "A room-temperature scope accepts a reported test temperature from 20 to 25 °C; a record with no reported temperature is accepted on the band 'room temperature' held with a status the plan accepts (the Texas A&M band is assigned by decision).",
     "value": {
       "text": "20 to 25",
       "unit": "°C"
@@ -904,8 +1031,8 @@
       "docs/reference/worked_example.py: d['T'].between(20, 25)."
     ],
     "decided": {
-      "by": "reference script and PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -914,15 +1041,35 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Used on the test side only (tests/test_reference_counts_from_adapters.py)."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:ROOM_TEMPERATURE_C",
+          "equals": [
+            20.0,
+            25.0
+          ]
+        }
+      ],
+      "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "A room-temperature scope accepts reported test temperatures from 20 to 25 °C.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 4b wording; the band rule added in step 6 (owner's requirement: the scope accepts the assigned band)."
+      }
+    ],
     "notes": [
       "How a record with an assigned room-temperature band (decision 'tamu_test_temperature') passes this scope is defined in step 6."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_eligibility.py::test_texas_am_band_and_microstructure_by_decision_are_in_scope_unless_the_set_refuses_them",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+    ]
   },
   {
     "key": "fcc_microstructure_scope",
@@ -950,15 +1097,30 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Used on the test side only."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SINGLE_PHASE",
+          "equals": "required"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:PHASE_CLASSES",
+          "equals": [
+            "FCC"
+          ]
+        }
+      ],
+      "note": "Single phase: the microstructure exactly equals the scope's phase class; the phase column is not used."
     },
     "history": [],
     "notes": [
       "The Texas A&M records meet it by decision (entry 'tamu_microstructure')."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+    ]
   },
   {
     "key": "mpea_microstructure_label_trusted",
@@ -1029,19 +1191,28 @@
     },
     "sensitivity": "No exclusions (the reference script's sensitivity analysis).",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Used on the test side only."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:GRAIN_SIZE_FLOOR_UM",
+          "equals": 0.1
+        }
+      ],
+      "note": "An exclusion rule from the menu (grain_size_range, min 0.1) in the locked plan."
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_excluded_and_identity_come_before_the_grain_size_count",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change"
+    ]
   },
   {
     "key": "alloy_eligibility",
     "name": "Alloys with two or more grain sizes",
     "state": "in_force",
-    "statement": "Only alloys measured at two or more distinct grain sizes within the plan's scope enter a test. Others are kept and marked not eligible.",
+    "statement": "Only alloys measured at two or more distinct grain sizes within the plan's scope enter a test. The grain sizes are counted among the records that survive duplicate resolution. Others are kept and marked not eligible.",
     "value": {
       "text": "at least 2 distinct grain sizes",
       "unit": null
@@ -1053,8 +1224,8 @@
       "PRD 5.7 ('Which alloys can be used'); CLAUDE.md, rule 6."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1063,21 +1234,37 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:MIN_GRAIN_SIZES_PER_ALLOY",
+          "equals": 2
+        }
+      ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Only alloys measured at two or more distinct grain sizes within the plan's scope enter a test. Others are kept and marked not eligible.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 4b wording; 'counted after duplicate resolution' added by the owner (2026-10-05)."
+      }
+    ],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_eligibility.py::test_duplicates_are_resolved_before_grain_sizes_are_counted",
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_reference_sets.py::test_every_record_has_one_decision_with_its_rule"
+    ]
   },
   {
     "key": "physical_validity_checks",
     "name": "Physical validity checks",
     "state": "in_force",
-    "statement": "A physically impossible value (for example tensile strength below yield strength, or a negative grain size) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+    "statement": "A physically impossible value (tensile strength below yield strength, or a grain size of zero or less) is flagged and never enters the primary analysis, whatever the plan (a fixed rule). Agreement with the grain-size relationship under test is never used to judge a record.",
     "value": {
-      "text": "UTS < YS or grain size < 0: invalid",
+      "text": "UTS < YS or grain size <= 0: invalid",
       "unit": null
     },
     "category": "scientific",
@@ -1087,8 +1274,8 @@
       "PRD 5.3."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1097,13 +1284,39 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "The adapters convert such values unchanged; they do not judge them."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.flags:invalid_values"
+        }
+      ],
+      "note": null
     },
-    "history": [],
-    "notes": [],
-    "tests": []
+    "history": [
+      {
+        "value": "UTS < YS or grain size < 0: invalid | A physically impossible value (for example tensile strength below yield strength, or a negative grain size) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 4b wording ('a negative grain size'); zero added in step 6, since the model needs a positive grain size."
+      },
+      {
+        "value": "A physically impossible value (tensile strength below yield strength, or a grain size of zero or less) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; made a fixed rule by the owner on 2026-10-06."
+      }
+    ],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Checked on every record whatever the plan's outcome (re-check finding 2b, 2026-10-06)."
+    ],
+    "tests": [
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
+      "tests/test_flags.py::test_physical_validity_does_not_depend_on_the_outcome_setting",
+      "tests/test_flags.py::test_physically_impossible_values_are_flagged_per_record"
+    ]
   },
   {
     "key": "tamu_test_type",
@@ -1590,7 +1803,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "sql:ck_plan_sufficiency_option"
@@ -1600,19 +1813,21 @@
         },
         {
           "ref": "sql:hc_run_update"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:SUFFICIENCY_OPTION",
+          "equals": "fixed_minimum"
         }
       ],
-      "done": "The database allows only the two options and enforces the 'exploratory' rule.",
-      "pending": "The fixed minimum as each plan's default.",
-      "step": 6,
       "note": null
     },
     "history": [],
     "notes": [],
     "tests": [
-      "tests/test_data_model.py::test_sufficiency_option_and_minimums",
       "tests/test_data_model.py::test_exploratory_means_use_available_and_minimums_not_met",
-      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met"
+      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met",
+      "tests/test_data_model.py::test_sufficiency_option_and_minimums",
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions"
     ]
   },
   {
@@ -1983,11 +2198,17 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.extract:store_source"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_checkpoints.py::test_records_are_stored_only_after_the_lock_with_how_they_were_extracted"
+    ],
     "history": [],
     "notes": [
       "Connects to entry 'conflict_pairing_rule' (decided 2026-10-05): rows within one source are always separate measurements."
@@ -1997,7 +2218,7 @@
     "key": "duplicate_identity",
     "name": "When two records are the same measurement",
     "state": "in_force",
-    "statement": "Two records are duplicates only if they come from the same original paper and match on alloy, grain size, value and test conditions. Matching alloy and grain size alone is not enough.",
+    "statement": "Two records are duplicates only if they come from different sources, cite the same original paper and match on alloy (the same-alloy rule), grain size and yield strength (each within the tolerance) and test conditions. Matching alloy and grain size alone is not enough.",
     "value": {
       "text": "same paper, alloy, grain size, value and conditions",
       "unit": null
@@ -2009,8 +2230,8 @@
       "PRD 5.3."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2019,19 +2240,34 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": "Alloy under the rule 'same_alloy_rule'; paper under 'paper_grouping_by_doi'."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.flags:duplicate_groups"
+        }
+      ],
+      "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Two records are duplicates only if they come from the same original paper and match on alloy, grain size, value and test conditions. Matching alloy and grain size alone is not enough.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 4b wording; 'different sources' and the tolerances added in step 6 (owner, 2026-10-05)."
+      }
+    ],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_controlled_duplicates_handling.py::test_the_flag_is_the_answer_files",
+      "tests/test_flags.py::test_a_known_difference_in_paper_or_conditions_means_no_pair",
+      "tests/test_flags.py::test_exact_duplicate_and_the_tolerance_on_yield_strength"
+    ]
   },
   {
     "key": "duplicate_survivor_rule",
     "name": "Which duplicate is kept in the primary analysis",
     "state": "in_force",
-    "statement": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
+    "statement": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number. An exact duplicate is always counted once (a fixed rule).",
     "value": {
       "text": "the record carrying the original paper reference; then source order; then lowest row",
       "unit": null
@@ -2043,8 +2279,8 @@
       "PRD 5.3; step 1 summary, 'Survivor rule'."
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), step 1; wording restored 2026-10-05",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2053,9 +2289,18 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 6,
-      "note": null
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SURVIVOR_SOURCE_ORDER",
+          "equals": [
+            "mpea",
+            "tamu_fcc",
+            "controlled_duplicates"
+          ]
+        }
+      ],
+      "note": "Read from the locked plan (rules.survivor_source_order)."
     },
     "history": [
       {
@@ -2063,19 +2308,38 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "Wording of the step 1 re-check correction and of the first step 4b register; withdrawn after the step 4b review, finding 3."
+      },
+      {
+        "value": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; 'always counted once' made a fixed rule by the owner on 2026-10-06."
       }
     ],
     "notes": [
       "A DOI identifies the cited paper, not where a record was extracted: a compilation and a copied extract can both carry it. Preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist.",
-      "The step 1 answer file and fixtures README still carry the withdrawn wording (their fingerprints are pinned); to be aligned with the owner's approval when step 6 builds duplicate handling."
+      "The step 1 answer file, its builder and README carry this wording since step 6 (owner's approval, 2026-10-05).",
+      "Rule 1 can only decide a possible duplicate: paired records otherwise cite the same paper.",
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Step 6 review, finding 3 (2026-10-06): the lock refuses a survivor order or a grouping that leaves out a chosen source, and the final tie-breaker is the record's stable identity (source, origin key, item index), never a database id.",
+      "Confirmation round 2 (2026-10-06): a chain of exact pairs keeps exactly one survivor by this rule; its last tie-break is the record's stable identity (source, origin key, item index)."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_checkpoints.py::test_the_lock_refuses_settings_that_leave_out_a_chosen_source",
+      "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
+      "tests/test_eligibility.py::test_survivor_rule_one_a_source_other_than_mpea_survives_when_it_alone_carries_the_doi",
+      "tests/test_eligibility.py::test_survivor_rule_three_the_lowest_row_within_one_source",
+      "tests/test_eligibility.py::test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order",
+      "tests/test_eligibility.py::test_the_survivor_does_not_depend_on_database_ids_or_insertion_order",
+      "tests/test_order_independence.py::test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order"
+    ]
   },
   {
     "key": "unresolved_duplicates",
     "name": "Possible duplicates that cannot be resolved",
     "state": "in_force",
-    "statement": "A possible duplicate that cannot be resolved is kept, counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis.",
+    "statement": "A possible duplicate is kept and counted once in the primary analysis by the survivor rule (the plan may instead count both records), and counted separately in a sensitivity analysis. When identity cannot be resolved (several candidates), none of the group's records ever enters the primary analysis (a fixed rule); all of them are counted separately only in 'possible_duplicates_separate'.",
     "value": {
       "text": "counted once",
       "unit": null
@@ -2087,8 +2351,8 @@
       "PRD 5.3."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2097,13 +2361,39 @@
     },
     "sensitivity": "Both counted separately.",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:decide"
+        }
+      ],
       "note": null
     },
-    "history": [],
-    "notes": [],
-    "tests": []
+    "history": [
+      {
+        "value": "A possible duplicate that cannot be resolved is kept, counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 4b wording; the ambiguous group added by the owner (2026-10-05, decision C)."
+      },
+      {
+        "value": "A possible duplicate is kept and counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis. When identity cannot be resolved (several candidates), none of the group's records enters the primary analysis; all of them enter the same sensitivity analysis.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; the unresolved-identity rule made fixed by the owner on 2026-10-06."
+      }
+    ],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'."
+    ],
+    "tests": [
+      "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
+      "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
+      "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
+      "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set"
+    ]
   },
   {
     "key": "scope_not_confirmed",
@@ -2131,13 +2421,21 @@
     },
     "sensitivity": "Included.",
     "applied": {
-      "status": "not_yet",
-      "step": 6,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:scope"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_identity_applies_only_among_records_that_passed_the_earlier_rules",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change"
+    ]
   },
   {
     "key": "assigned_value_statuses",
@@ -2165,7 +2463,7 @@
     },
     "sensitivity": "The reference plan names a sensitivity analysis that accepts only reported values and values assigned from source, so the effect of every decision-based assignment is visible.",
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.record:STATUSES",
@@ -2173,14 +2471,20 @@
             "converted",
             "not_reported",
             "not_convertible",
-            "assigned"
+            "assigned_from_source",
+            "assigned_by_decision"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:ACCEPTED_VALUE_STATUSES",
+          "equals": [
+            "converted",
+            "assigned_from_source",
+            "assigned_by_decision"
           ]
         }
       ],
-      "done": "One status 'assigned', which needs a citation and is used only for statements in the source (that is, 'assigned from source').",
-      "pending": "The two statuses 'assigned from source' and 'assigned by decision', and the source-only sensitivity analysis.",
-      "step": 6,
-      "note": null
+      "note": "The source-only sensitivity analysis ('source_only_assignments') accepts converted values and values assigned from source."
     },
     "history": [
       {
@@ -2192,8 +2496,10 @@
     ],
     "notes": [],
     "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable",
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
-      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+      "tests/test_eligibility.py::test_texas_am_band_and_microstructure_by_decision_are_in_scope_unless_the_set_refuses_them",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
   },
   {
@@ -2230,7 +2536,8 @@
             "converted",
             "not_reported",
             "not_convertible",
-            "assigned"
+            "assigned_from_source",
+            "assigned_by_decision"
           ]
         }
       ],
@@ -2415,8 +2722,8 @@
         }
       ],
       "done": "Records carry grain size in µm only.",
-      "pending": "The transformation the locked plan names, applied when the analysis dataset is built.",
-      "step": 6,
+      "pending": "The transformation the locked plan names (variables.predictor.transformation), applied when the analysis data are built (step 7).",
+      "step": 7,
       "note": null
     },
     "history": [],
@@ -2451,21 +2758,24 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.versions:SOURCES.controlled_duplicates.enabled",
           "equals": false
+        },
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.controlled_duplicates.constructed",
+          "equals": true
         }
       ],
-      "done": "The extract is registered switched off (enabled = false).",
-      "pending": "A guard so that it cannot enter a real analysis; today no database rule prevents choosing a disabled source.",
-      "step": 6,
-      "note": null
+      "note": "The guard is in code at storage, inclusion and freeze; the database itself does not refuse it (see 'constructed_test_runs')."
     },
     "history": [],
     "notes": [],
     "tests": [
+      "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records",
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
       "tests/test_source_versions.py::test_registering_seals_every_source"
     ]
   },
@@ -3144,7 +3454,7 @@
     "key": "plan_named_parts",
     "name": "The plan's schema",
     "state": "in_force",
-    "statement": "A plan's content is read only through PLAN_SCHEMA, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped. Power assumptions likewise through POWER_SCHEMA, and the sensitivity keys through their vocabulary. Defined in step 5 (owner, 2026-10-05); the plan model of step 6 must follow it.",
+    "statement": "A plan's content follows PLAN_SCHEMA exactly and is read only through it, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped, and the plan model refuses content its projection would change. Since step 6 the schema holds every setting that affects which records are eligible or how they are grouped ('rules'), the domain profile and version the defaults came from ('profile'), and an optional flag category in each eligibility rule.",
     "value": {
       "text": "PLAN_SCHEMA (nested, named keys and vocabulary leaves)",
       "unit": null
@@ -3184,14 +3494,24 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5 first build; changed after the second-model review."
+      },
+      {
+        "value": "A plan's content is read only through PLAN_SCHEMA, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped. Power assumptions likewise through POWER_SCHEMA, and the sensitivity keys through their vocabulary. Defined in step 5 (owner, 2026-10-05); the plan model of step 6 must follow it.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5 wording; extended by the owner in step 6 planning (2026-10-05)."
       }
     ],
     "notes": [
       "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval."
     ],
     "tests": [
+      "tests/test_access_layer.py::test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim",
       "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
-      "tests/test_access_layer.py::test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim"
+      "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_plan.py::test_invalid_plans_are_refused",
+      "tests/test_plan.py::test_the_default_plan_is_valid_and_is_its_own_projection"
     ]
   },
   {
@@ -3548,7 +3868,7 @@
     "key": "audit_failure_rows_without_run_lock",
     "name": "Failure rows: a named exception to the locking protocol",
     "state": "in_force",
-    "statement": "Audit rows for access failures (unknown run, lock timeout, reader or database error, file-guard refusal) are written in their own short transaction without hc_write_lock: there is no run to lock, or the lock is what failed. An audit_log insert takes only a key-share lock on the run, which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an unknown run, run_id is NULL and the requested id is in the detail.",
+    "statement": "Audit rows for access failures (unknown run, lock timeout, reader or database error, file-guard refusal) are written in their own short transaction without hc_write_lock: there is no run to lock, or the lock is what failed. An audit_log insert takes only a key-share lock on the run, which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an unknown run, run_id is NULL and the requested id is in the detail. Since step 6 the same exception covers the refusals of the pipeline's write paths (rules lock, record storage, checks, inclusion, freeze): a refusal is logged in its own transaction before it is raised (owner, 2026-10-05).",
     "value": {
       "text": "failure rows without hc_write_lock",
       "unit": null
@@ -3578,13 +3898,22 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Audit rows for access failures (unknown run, lock timeout, reader or database error, file-guard refusal) are written in their own short transaction without hc_write_lock: there is no run to lock, or the lock is what failed. An audit_log insert takes only a key-share lock on the run, which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an unknown run, run_id is NULL and the requested id is in the detail.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5."
+      }
+    ],
     "notes": [
       "Owner's answer to the fix-plan question 1, 2026-10-05: option (a)."
     ],
     "tests": [
+      "tests/test_access_dispatch.py::test_bind_logs_an_unknown_run_as_a_failure_with_no_run",
       "tests/test_access_layer.py::test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hanging",
-      "tests/test_access_dispatch.py::test_bind_logs_an_unknown_run_as_a_failure_with_no_run"
+      "tests/test_checkpoints.py::test_a_second_lock_or_a_changed_plan_is_refused_and_logged",
+      "tests/test_checkpoints.py::test_after_the_freeze_every_write_is_refused_and_logged"
     ]
   },
   {
@@ -3682,9 +4011,9 @@
     "key": "code_vocabularies",
     "name": "Vocabularies of codes our own code writes",
     "state": "in_force",
-    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 must write these codes. Adding one is a register change needing the owner's approval.",
+    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys, and the codes in the locked plan's rules (source keys, grouping units, value statuses, profile names, single phase) reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 write these codes. Adding one is a register change needing the owner's approval.",
     "value": {
-      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys",
+      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys, plan rule codes",
       "unit": null
     },
     "category": "data_handling",
@@ -3726,16 +4055,20 @@
             "outside scope",
             "physically impossible",
             "scope not confirmed",
+            "several candidates",
             "within tolerance"
           ]
         },
         {
           "ref": "python:hypocurate.access.vocabulary:ELIGIBILITY_RULES",
           "equals": [
+            "conflict_unresolved",
             "duplicate_counted_once",
             "excluded_by_rule",
+            "identity_unresolved",
             "in_scope",
             "invalid_value",
+            "missing_value",
             "model_recalled",
             "out_of_scope",
             "scope_not_confirmed",
@@ -3745,6 +4078,8 @@
         {
           "ref": "python:hypocurate.access.vocabulary:SENSITIVITY_KEYS",
           "equals": [
+            "conflicts_survivor_value",
+            "no_exclusions",
             "possible_duplicates_separate",
             "removal_after_lock",
             "same_alloy_1_at_pct",
@@ -3753,11 +4088,55 @@
             "source_only_assignments",
             "tension_and_compression"
           ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SOURCE_KEYS",
+          "equals": [
+            "controlled_duplicates",
+            "mpea",
+            "tamu_fcc"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:GROUPING_UNITS",
+          "equals": [
+            "batch",
+            "dataset",
+            "paper"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:VALUE_STATUSES",
+          "equals": [
+            "assigned_by_decision",
+            "assigned_from_source",
+            "converted"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:PROFILE_NAMES",
+          "equals": [
+            "grain_size_strengthening"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SINGLE_PHASE",
+          "equals": [
+            "not_required",
+            "required"
+          ]
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "flag categories without 'several candidates'; eligibility rules without 'missing_value', 'identity_unresolved', 'conflict_unresolved'; sensitivity keys without 'no_exclusions', 'conflicts_survivor_value'; no plan rule codes",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5. Step 6 additions approved by the owner on 2026-10-05 (planning, questions 3, 5, 6, 9 and decision C)."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
@@ -3803,6 +4182,763 @@
     "tests": [
       "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
       "tests/test_access_dispatch.py::test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure"
+    ]
+  },
+  {
+    "key": "eligibility_rule_order",
+    "name": "One eligibility rule per record, in a fixed order",
+    "state": "in_force",
+    "statement": "Every record gets one rule, the first that applies: model-recalled; invalid value; out of scope; missing value; scope not confirmed; excluded by a rule; identity (ambiguous group, conflict, or not the survivor of a duplicate group); fewer than two grain sizes for its alloy; otherwise eligible. Duplicates are resolved before grain sizes are counted.",
+    "value": {
+      "text": "model_recalled, invalid_value, out_of_scope, missing_value, scope_not_confirmed, excluded_by_rule, identity, single_grain_size, in_scope",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every eligibility decision and the rule the run records for it.",
+    "reason": "PRD 5.3 needs one stated rule per record; the order makes the decision deterministic.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:decide"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Confirmation (2026-10-06): within the identity rule, definite relationships (exact duplicates, conflicts) are applied before the plan's possible-duplicate choice, which then applies to what remains.",
+      "Confirmation round 2 (2026-10-06): the identity rule decides whole groups, never flag by flag: records linked by a chain of exact pairs are one measurement (one survivor); a chain touching a definite conflict follows the plan's conflict rule as one group; then the possible-duplicate choice per connected possible group. No decision depends on record ids, flag ids or insertion order."
+    ],
+    "tests": [
+      "tests/test_eligibility.py::test_a_conflict_inside_a_mixed_group_stays_out_and_the_others_follow_the_plan",
+      "tests/test_eligibility.py::test_a_mixed_group_never_admits_an_exact_duplicate_twice",
+      "tests/test_eligibility.py::test_duplicates_are_resolved_before_grain_sizes_are_counted",
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_excluded_and_identity_come_before_the_grain_size_count",
+      "tests/test_eligibility.py::test_rule_order",
+      "tests/test_order_independence.py::test_a_chain_touching_a_conflict_enters_with_none_of_its_records",
+      "tests/test_order_independence.py::test_permuted_ids_and_insertion_order_give_the_same_frozen_result",
+      "tests/test_order_independence.py::test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order",
+      "tests/test_reference_sets.py::test_every_record_has_one_decision_with_its_rule"
+    ]
+  },
+  {
+    "key": "conflicts_not_pooled",
+    "name": "Conflicting reports are not pooled",
+    "state": "in_force",
+    "statement": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and neither enters the primary analysis: this is a fixed rule under every plan, not a default. No record connected to the conflict enters either, including one linked to it by exact duplicates. The survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value', which counts the group once by the survivor rule.",
+    "value": {
+      "text": "neither in primary; survivor value in a sensitivity analysis",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Conflicting records; the controlled extract's rows 7-8.",
+    "reason": "CLAUDE.md rule 4: conflicting records are preserved, not automatically pooled. PRD 5.3's 'both enter' contradicted it (correction for the next PRD update).",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md. Decision C."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Conflict groups counted once by the survivor rule ('conflicts_survivor_value').",
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:decide"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:conflict_survivor_allowed"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and neither enters the primary analysis: code does not choose between them. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording (decision C); made a fixed rule by the owner on 2026-10-06 (the override to 'both enter' removed)."
+      },
+      {
+        "value": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and both never enter the primary analysis together: this is a fixed rule, not a plan default. By default neither enters the primary analysis; the only other choice a plan has is the survivor's value counted once. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Wording after it was made a fixed rule (owner, 2026-10-06) and before the third confirmation: it still called the exclusion a default and left a plan the survivor's value."
+      }
+    ],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Third confirmation (ChatGPT, 2026-10-06): a plan could still map conflicts to 'counted once' and admit one record of a conflict-connected group; the owner's rule is stricter (none, under any plan)."
+    ],
+    "tests": [
+      "tests/test_conflict_policy.py::test_a_plan_mapping_conflicts_to_counted_once_admits_neither_record",
+      "tests/test_conflict_policy.py::test_the_reviewers_chain_enters_primary_with_none_of_its_records",
+      "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
+      "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
+      "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set"
+    ]
+  },
+  {
+    "key": "sensitivity_one_change",
+    "name": "Each sensitivity analysis changes one thing",
+    "state": "in_force",
+    "statement": "Each sensitivity set differs from the primary set in exactly one named respect, and every other rule applies unchanged. The reference and default plans name eight: no exclusions; tension and compression together; six batches for Texas A&M; the same-alloy rule at 1 at.%; source-only values; scope not confirmed included; possible duplicates separate; conflicts by the survivor value. Sensitivity results are descriptive, never change the verdict, and no adjustment is made for there being eight.",
+    "value": {
+      "text": "eight sets, one change each",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The sensitivity sets frozen with the dataset (step 6) and their results (step 7).",
+    "reason": "A sensitivity analysis is interpretable only if it isolates one change.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SENSITIVITY_ANALYSES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:SENSITIVITY_CHANGES"
+        }
+      ],
+      "note": "What each key changes is fixed by the key itself, not by a number in the plan."
+    },
+    "history": [],
+    "notes": [
+      "The reference script's 'discretionary removals' analysis (PRD 10: 438 ± 67 with four records removed) is not carried over: its records were chosen after seeing outcomes, so it cannot be named in a plan locked before the data (owner, 2026-10-05).",
+      "Related: 'no_multiplicity_adjustment'.",
+      "Step 6 review, finding 2 (2026-10-06): a set that changes a matching setting (the same-alloy step, the accepted value statuses, the grouping) recomputes its duplicate, conflict and ambiguity flags under its own settings; Checks supplies them, so Inclusion stays outcome-blind. Its identity decisions can therefore change, not only the grain-size counts."
+    ],
+    "tests": [
+      "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_only_by_its_named_change_with_duplicates_and_conflicts",
+      "tests/test_sensitivity_matching.py::test_the_coarser_same_alloy_rule_recomputes_the_duplicates",
+      "tests/test_sensitivity_matching.py::test_the_one_change_rule_holds_with_recomputed_matching_flags"
+    ]
+  },
+  {
+    "key": "code_role_access",
+    "name": "Inclusion and Checks read through access objects",
+    "state": "in_force",
+    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds.",
+    "value": {
+      "text": "Inclusion: plan, record conditions, flag kinds; Checks: plan, all values",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Eligibility decisions and flags.",
+    "reason": "PRD 4 lists Inclusion and Checks; their reads are logged like the agents'. Blinding Inclusion keeps outcomes out of eligibility by construction of its input.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:CODE_ALLOWED"
+        },
+        {
+          "ref": "python:hypocurate.access.dispatch:bind_code"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Step 6 review, finding 2 (2026-10-06): Inclusion's list gains 'set_flags' (each sensitivity set's matching flags from the completed Checks result: codes and record ids, no numbers)."
+    ],
+    "tests": [
+      "tests/test_access_code_roles.py::test_the_code_lists_match_the_owners_decision",
+      "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",
+      "tests/test_access_code_roles.py::test_only_code_roles_bind_without_an_agent_setting",
+      "tests/test_access_code_roles.py::test_an_agent_setting_cannot_bind_as_a_code_role",
+      "tests/test_access_code_roles.py::test_code_roles_do_not_bind_at_any_other_stage",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
+    ]
+  },
+  {
+    "key": "record_extraction_provenance",
+    "name": "Each record states how it was extracted",
+    "state": "in_force",
+    "statement": "Every stored record states how it was extracted: by adapter code, with the adapter's name and version, or (from step 8) by an agent. Records extracted by code can always be told apart from records extracted by an agent.",
+    "value": {
+      "text": "record.extraction: method, name, version",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every stored record.",
+    "reason": "Owner's condition when approving record storage by the adapters in step 6.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "sql:ck_record_extraction_shape"
+        },
+        {
+          "ref": "python:hypocurate.sources.adapters:ADAPTER_IDENTITY"
+        }
+      ],
+      "note": "Migration 0003."
+    },
+    "history": [],
+    "notes": [
+      "Step 6 review, finding 6 (2026-10-06): the check requires method, name and version as present JSON strings and is made explicitly true or false; migration 0003 was changed in place, before it ran on the live database."
+    ],
+    "tests": [
+      "tests/test_checkpoints.py::test_records_are_stored_only_after_the_lock_with_how_they_were_extracted",
+      "tests/test_migrations_step6.py::test_0003_a_new_record_states_its_extraction",
+      "tests/test_migrations_step6.py::test_0003_keeps_every_check_of_0001_and_adds_one",
+      "tests/test_migrations_step6.py::test_0003_refuses_a_missing_null_or_wrongly_typed_extraction_field"
+    ]
+  },
+  {
+    "key": "constructed_test_runs",
+    "name": "Runs with constructed test data",
+    "state": "in_force",
+    "statement": "Constructed test data (the controlled duplicate extract) enter only a run marked as a test (run.experiment_flags constructed_test_data, set at dispatch). An unmarked run refuses them, and logs the refusal, at record storage, inclusion and the freeze. A marked run may freeze, be analysed and complete normally with a verdict; every place its outcome, verdict or numbers are stored or shown carries 'test run: includes constructed data', and marked runs are excluded from every aggregate, count or list of real results.",
+    "value": {
+      "text": "marked at dispatch; refused otherwise",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Acceptance 14.1 'Duplicates' and the 14.7 demonstration; every list of real results.",
+    "reason": "The extract must never enter a real analysis, yet the duplicate handling must be demonstrable end to end.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.writes:CONSTRUCTED_MARK",
+          "equals": "constructed_test_data"
+        }
+      ],
+      "done": "The mark and the refusals at storage, inclusion and freeze (step 6).",
+      "pending": "The label wherever a marked run's outcome, verdict or numbers are stored or shown, and the exclusion from aggregates and lists of real results (steps 7 and 10).",
+      "step": 10,
+      "note": "The guard is in code; the database itself does not refuse a constructed record."
+    },
+    "history": [],
+    "notes": [
+      "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1.",
+      "Step 6 review (2026-10-06), for a later step: a source whose definition is unknown to the code should fail closed (be treated as constructed, or refused), not pass the guard."
+    ],
+    "tests": [
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
+      "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records"
+    ]
+  },
+  {
+    "key": "freeze_counts",
+    "name": "Counts known at the dataset freeze",
+    "state": "in_force",
+    "statement": "At the dataset freeze, code computes from structure and grain sizes only (no outcome value), for the primary set, each source within it and each sensitivity set: records, alloys, alloys with enough grain sizes, independent groups and residual degrees of freedom, and whether the plan's minimums are met. They are recorded as information; step 7 writes the analysis results and decides the outcome. With no eligible record no dataset is frozen.",
+    "value": {
+      "text": "counts at the freeze; outcome in step 7",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The freeze record and the data-sufficiency decision.",
+    "reason": "PRD 3 step 7: sufficiency is decided from the predictor values, before any outcome is visible.",
+    "evidence": [
+      "Step 6 planning (owner, 2026-10-05); docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:counts"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Step 6 review, finding 5 (2026-10-06): the freeze fingerprint identifies each record by its stable identity (source-version fingerprint, origin key, item index) and content hash, never by database id. It does include the plan's fingerprint, and the plan names its hypothesis version by id, so runs of different versions differ by design."
+    ],
+    "tests": [
+      "tests/test_checkpoints.py::test_no_eligible_record_means_no_dataset_is_frozen",
+      "tests/test_checkpoints.py::test_the_fingerprint_does_not_depend_on_database_ids",
+      "tests/test_checkpoints.py::test_the_freeze_records_its_counts_and_fingerprint",
+      "tests/test_eligibility.py::test_counts_known_at_the_freeze",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+    ]
+  },
+  {
+    "key": "below_minimum_display",
+    "name": "What a run below the fixed minimums shows",
+    "state": "open",
+    "statement": "Open: what a run below the fixed minimums may show besides 'insufficient'.",
+    "value": null,
+    "category": "statistical",
+    "affects": "The gap report and the run viewer for runs below the minimums.",
+    "reason": "The sufficiency option must not be choosable after seeing an estimate.",
+    "evidence": [
+      "Owner, step 6 approval (2026-10-05)."
+    ],
+    "decided": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Owner's starting position: the counts and which minimums were not met, and nothing derived from outcome values, not even a coefficient, so that the sufficiency option cannot be chosen after seeing an estimate."
+    ],
+    "tests": [],
+    "pending": {
+      "by": "owner",
+      "before_step": 7
+    }
+  },
+  {
+    "key": "curator_tabular_sources",
+    "name": "The Curator's role for tabular sources",
+    "state": "open",
+    "statement": "Open: what the Curator agent does for tabular sources, whose records the adapters (code) extract in step 6.",
+    "value": null,
+    "category": "data_handling",
+    "affects": "Record extraction from step 8; which records count as extracted by an agent.",
+    "reason": "Step 6 stores records by adapter code and does not settle the Curator's role.",
+    "evidence": [
+      "Owner, step 6 planning (2026-10-05)."
+    ],
+    "decided": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 8,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [],
+    "pending": {
+      "by": "owner",
+      "before_step": 8
+    }
+  },
+  {
+    "key": "reference_numbers",
+    "name": "Reference numbers of the fixed-plan test",
+    "state": "in_force",
+    "statement": "Under the reference plan (tension only; Texas A&M room temperature and single-phase FCC assigned by decision): pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M alone 21 records, 9 alloys, one group, coefficient ≈ 1173 with no uncertainty and no verdict. Each ± is one standard error (cluster-robust, by group), not a confidence interval. The statistics module (step 7) must reproduce them independently.",
+    "value": {
+      "text": "pooled 97 / 22 / 20 / 74, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA 76 / 13 / 19, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M 21 / 9 / 1, k ≈ 1173 (± one standard error)",
+      "unit": "MPa·µm^½"
+    },
+    "category": "statistical",
+    "affects": "The fixed reference run (PRD 13.1, 14.1a) and every statistics regression test from step 7.",
+    "reason": "The owner's step 6 decisions (tension only removes MPEA row 139) changed the reference set; the numbers were recomputed on the sets frozen by the step 6 pipeline.",
+    "evidence": [
+      "docs/reviews/step06_summary.md, 'Reference sets and numbers': recomputed test-side (statsmodels 0.15.0) with the method of docs/reference/worked_example.py; scripts and output in docs/reviews/step06_review_packet.md, section 13.",
+      "The set 'tension_and_compression' reproduces the earlier values exactly (pooled 428.0 ± 63.5, p = 7.4e-7; MPEA 427.2 ± 61.4, p = 6.2e-7)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary.",
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "file:CLAUDE.md:Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6"
+        },
+        {
+          "ref": "file:CLAUDE.md:First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6"
+        }
+      ],
+      "done": "The record counts, alloys, groups and residual degrees of freedom are regression tests on the pipeline's frozen sets (step 6).",
+      "pending": "The coefficients, uncertainties and p-values, reproduced independently by the statistics module and made regression tests (step 7).",
+      "step": 7,
+      "note": "The step 6 values come from a test-side script, not from package code."
+    },
+    "history": [
+      {
+        "value": "pooled 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 428 ± 64, p ≈ 8e-7 (recomputed 7.4e-7); MPEA alone 77 records, 20 papers, k = 427 ± 61, p ≈ 6e-7; Texas A&M alone ≈ 1173, one group",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "PRD v1.6 and CLAUDE.md, before the tension-only decision; it included MPEA row 139, a compression test."
+      }
+    ],
+    "notes": [
+      "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day."
+    ],
+    "tests": [
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+    ]
+  },
+  {
+    "key": "primary_set_invariants",
+    "name": "What no plan can ever do to the primary set",
+    "state": "in_force",
+    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) No record connected to a definite conflict ever enters, under any plan: not both records, not one. That includes a record linked by exact duplicates to a record in conflict (the whole connected group stays out). A survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value'. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The one plan choice that remains: possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+    "value": {
+      "text": "six things no plan can do",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The primary set of every run, whoever writes its plan (the fixed reference plan now, the Planner from step 8).",
+    "reason": "Owner, 2026-10-06, after the step 6 review: the conflict rule was a plan default a plan could override; these are fixed rules, not defaults.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md (finding on the conflict policy) and the owner's decision of 2026-10-06 in docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Only the named sensitivity analyses change (2) and (4): 'conflicts_survivor_value' and 'possible_duplicates_separate'.",
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:FLAG_RULE_CHOICES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:fixed_rule_problems"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:conflict_survivor_allowed"
+        },
+        {
+          "ref": "sql:a model-recalled record is never eligible"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.writes:constructed_unmarked"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:primary_set_problems"
+        }
+      ],
+      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…], tests/test_conflict_policy.py (the reviewer's chain, through the pipeline and at the freeze); (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused. The result check at the freeze: test_each_invariant_is_checked_on_the_primary_set (all six) and the end-to-end tests in tests/test_freeze_invariants.py."
+    },
+    "history": [
+      {
+        "value": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) Both records of a conflict never enter: neither enters (the default), or the plan may choose the survivor's value counted once. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The only plan choices that remain: conflicts as in (2), and possible duplicates counted once (the default) or both counted.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the re-check: enforced on the settings only."
+      },
+      {
+        "value": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) Both records of a conflict never enter: neither enters (the default), or the plan may choose the survivor's value counted once. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The only plan choices that remain: conflicts as in (2), and possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the third confirmation: point (2) let a plan choose the survivor's value counted once, and the freeze check refused only more than one record of a conflict group."
+      }
+    ],
+    "notes": [
+      "Shown on the assumptions page like every entry.",
+      "Confirmation (2026-10-06): the freeze check sees every retained pairwise exact or conflict result (two-record flags inside mixed groups), not only group labels.",
+      "Confirmation round 2 (2026-10-06): the freeze check allows at most one record per chain of exact pairs, and per group linked by a definite conflict, forming the chains itself from Checks' flags.",
+      "Third confirmation (ChatGPT, 2026-10-06): a plan could still map conflicts to 'counted once' and admit one record of a conflict-connected group; the owner's rule is stricter (none, under any plan). Fixed at validation (FLAG_RULE_CHOICES), application (conflict_survivor_allowed) and the freeze (any record refused)."
+    ],
+    "tests": [
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
+      "tests/test_conflict_policy.py::test_a_plan_mapping_conflicts_to_counted_once_admits_neither_record",
+      "tests/test_conflict_policy.py::test_the_freeze_check_refuses_any_record_of_a_conflict_connected_group",
+      "tests/test_conflict_policy.py::test_the_freeze_refuses_one_conflict_record_with_every_safeguard_bypassed",
+      "tests/test_conflict_policy.py::test_the_reviewers_chain_enters_primary_with_none_of_its_records",
+      "tests/test_data_model.py::test_a_model_recalled_record_is_stored_but_never_eligible",
+      "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
+      "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
+      "tests/test_eligibility.py::test_the_fixed_rules_hold_in_every_set_the_plan_names",
+      "tests/test_freeze_invariants.py::test_a_conflict_admitted_past_every_guard_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_a_constructed_record_in_an_unmarked_run_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_an_exact_duplicate_counted_twice_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_an_invalid_value_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_an_unresolved_identity_group_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_each_invariant_is_checked_on_the_primary_set",
+      "tests/test_freeze_invariants.py::test_the_reviewers_grouping_case_is_refused_at_the_freeze",
+      "tests/test_freeze_invariants.py::test_the_reviewers_outcome_case_is_refused_at_the_freeze",
+      "tests/test_mixed_groups.py::test_the_freeze_check_catches_the_exact_pair_with_eligibility_bypassed",
+      "tests/test_mixed_groups.py::test_the_pipeline_never_admits_the_exact_duplicate_twice",
+      "tests/test_order_independence.py::test_the_freeze_check_allows_at_most_one_record_per_chain",
+      "tests/test_plan.py::test_invalid_plans_are_refused",
+      "tests/test_plan.py::test_the_plan_choices_that_remain"
+    ]
+  },
+  {
+    "key": "checks_bound_to_records",
+    "name": "Checks cover exactly the records decided on",
+    "state": "in_force",
+    "statement": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags. Inclusion and the freeze read their inputs in the same transaction, under the run's lock, that verifies the completed Checks result covers exactly those records and flags; a sensitivity set whose own flags are missing from that result is refused, never treated as having no flags.",
+    "value": {
+      "text": "extraction, then Checks, then Inclusion and the freeze, bound by the record collection",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every eligibility decision and every freeze.",
+    "reason": "Step 6 review, finding 1: Checks could be skipped or become stale (a source stored after Checks) while Inclusion and the freeze still accepted the result.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md, finding 1; accepted by the owner on 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.writes:require_checks_cover"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.writes:binding"
+        },
+        {
+          "ref": "python:hypocurate.access.fields:set_flags"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:needs_own_flags"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the re-check (finding 1)."
+      }
+    ],
+    "notes": [
+      "A source refused by the constructed-data guard stays pending, so Checks cannot run until it is marked failed: the run's orchestration (step 9) must do that."
+    ],
+    "tests": [
+      "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",
+      "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze",
+      "tests/test_checkpoints.py::test_checks_wait_until_every_chosen_source_is_stored",
+      "tests/test_checkpoints.py::test_no_record_is_stored_after_checks",
+      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze",
+      "tests/test_sensitivity_matching.py::test_a_missing_required_per_set_flag_result_is_a_refusal",
+      "tests/test_sensitivity_matching.py::test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records",
+      "tests/test_sensitivity_matching.py::test_the_reviewers_interleaving_is_refused"
+    ]
+  },
+  {
+    "key": "fixed_policies_in_code",
+    "name": "Policies fixed in code for every plan",
+    "state": "in_force",
+    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: only unequal DOIs prove different papers; equal DOIs, or equal reference texts, are the same paper; anything else, unequal reference text included, is unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+    "value": {
+      "text": "eleven fixed policies",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What a plan can and cannot set.",
+    "reason": "Step 6 review: the claim 'every setting comes only from the plan' was broader than the code; it is narrowed to plan settings, and the fixed policies are listed.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md, 'Locked settings and sensitivity names'; accepted by the owner on 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.flags:VALUE_STATUSES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:FLAG_RULE_CHOICES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:SENSITIVITY_CHANGES"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:CODE_ALLOWED"
+        }
+      ],
+      "note": "The meaning of each sensitivity key must stay stable, or be versioned with the domain profile."
+    },
+    "history": [
+      {
+        "value": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (the DOI's derived key; a source grouped by dataset cites itself); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the re-check (finding 2a)."
+      },
+      {
+        "value": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: both DOIs, else both reference texts, else unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the confirmation review (paper identity)."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
+      "tests/test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting",
+      "tests/test_flags.py::test_physical_validity_does_not_depend_on_the_outcome_setting"
+    ]
+  },
+  {
+    "key": "supported_outcomes",
+    "name": "Supported outcomes",
+    "state": "in_force",
+    "statement": "Sprint 1 supports one model, whose outcome is yield strength. Plan validation refuses a plan with any other outcome.",
+    "value": {
+      "text": "yield_strength",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Which plans can be locked; the outcome Checks compares for duplicates and conflicts.",
+    "reason": "Re-check finding 2b: choosing another outcome disabled a physical-validity check; CLAUDE.md rule 6 allows one model.",
+    "evidence": [
+      "docs/reviews/step06_recheck_chatgpt.md, finding 2; the owner's instruction of 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:SUPPORTED_OUTCOMES",
+          "equals": [
+            "yield_strength"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.flags:COMPARED_OUTCOME",
+          "equals": "yield_strength"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_plan.py::test_invalid_plans_are_refused"
     ]
   }
 ]
