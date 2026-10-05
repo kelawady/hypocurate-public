@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 import sqlalchemy
@@ -76,14 +77,19 @@ def test_the_python_installation_and_the_package_code_can_be_read():
 
 
 def test_writes_outside_the_scratch_directory_are_refused():
-    outside = Path(tempfile.gettempdir()) / "hc-outside-scratch.txt"
+    name = f"hc-written-{uuid.uuid4().hex}.txt"  # unique, and removed below even if the guard fails
     site = Path(sqlalchemy.__file__).parent.parent
-    targets = [REPO / "hypocurate" / "written.txt", site / "written.txt", REPO / "written.txt",
-               REPO / "tests" / "written.txt", outside]
-    results = probe([{"op": "write", "path": str(t)} for t in targets])
+    targets = [REPO / "hypocurate" / name, site / name, REPO / name, REPO / "tests" / name,
+               Path(tempfile.gettempdir()) / name]
+    try:
+        results = probe([{"op": "write", "path": str(t)} for t in targets])
+        created = [t for t in targets if t.exists()]
+    finally:
+        for t in targets:
+            t.unlink(missing_ok=True)
+    assert created == []
     for t, result in zip(targets, results):
         assert result.startswith("refused: file guard: writing"), (t, result)
-        assert not t.exists(), t
 
 
 def test_a_library_can_use_the_private_scratch_directory_which_is_removed_afterwards():
