@@ -508,6 +508,9 @@ class ModelCall(Base):
         CheckConstraint(one_of("status", CALL_STATUSES), name="status"),
         CheckConstraint("length(model) > 0 AND length(price_table_version) > 0", name="model_and_prices_named"),
         CheckConstraint("max_cost > 0", name="max_cost_positive"),
+        # Re-check item 3: unbounded numeric also holds NaN and Infinity; PostgreSQL orders
+        # NaN above Infinity, so "< 'Infinity'" excludes both. -Infinity fails "> 0"/">= 0".
+        CheckConstraint("max_cost < 'Infinity' AND (cost IS NULL OR cost < 'Infinity')", name="money_finite"),
         CheckConstraint(" AND ".join(f"coalesce({c}, 0) >= 0" for c in USAGE), name="usage_not_negative"),
         CheckConstraint(f"status <> 'started' OR ({_all('IS NULL')} AND finished_at IS NULL)",
                         name="started_has_no_usage"),

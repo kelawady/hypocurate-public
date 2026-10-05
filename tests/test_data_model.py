@@ -1087,6 +1087,29 @@ def test_small_costs_are_stored_exactly(w):
                r=rid, s=w.val("SELECT min(id) FROM stage_result"))
 
 
+@pytest.mark.parametrize("value, match", [
+    ("NaN", "ck_model_call_money_finite"), ("Infinity", "ck_model_call_money_finite"),
+    ("-Infinity", "ck_model_call_max_cost_positive"),
+])
+def test_max_cost_must_be_finite(w, value, match):
+    """Re-check item 3: NaN and infinity would contaminate totals and caps."""
+    rid = w.running()
+    w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost) "
+               "VALUES (:r, :s, 'planner', 'm', 'p', CAST(:v AS numeric))", match, r=rid, s=w.stage(rid), v=value)
+
+
+@pytest.mark.parametrize("value, match", [
+    ("NaN", "ck_model_call_money_finite"), ("Infinity", "ck_model_call_money_finite"),
+    ("-Infinity", "ck_model_call_usage_not_negative"),
+])
+def test_reported_cost_must_be_finite(w, value, match):
+    rid = w.running()
+    call = w.call(rid, w.stage(rid))
+    w.rejected("UPDATE model_call SET status = 'succeeded', input_tokens = 1, output_tokens = 1, cached_tokens = 0, "
+               "cost = CAST(:v AS numeric), finished_at = now() WHERE id = :c", match, c=call, v=value)
+    assert w.val("SELECT status FROM model_call WHERE id = :c", c=call) == "started"
+
+
 def test_call_times_are_set_by_the_database(w):
     rid = w.running()
     st = w.stage(rid)

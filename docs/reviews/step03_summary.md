@@ -130,7 +130,7 @@ Every rejection by a trigger raises SQLSTATE 23514 with a message starting `hypo
      - `exploratory = (use_available AND NOT minimums_met)`.
    - Other endings need no pooled result.
 5. **Model calls and totals** (question 5; finding 7).
-   - The row is inserted **before** the request (`started`), with `max_cost` > 0 as the upper bound. It is finished exactly once: `succeeded` (all four usage values), `failed` (all four or none), or `interrupted` (none).
+   - The row is inserted **before** the request (`started`), with `max_cost` > 0 as the upper bound. `max_cost` and `cost` must be finite: NaN and ±Infinity are rejected (re-check item 3). It is finished exactly once: `succeeded` (all four usage values), `failed` (all four or none), or `interrupted` (none).
    - `cost` and `max_cost` are `numeric` without a fixed scale, so they are stored exactly and nothing rounds.
    - `started_at` and `finished_at` must equal the database's transaction time, so they cannot be backdated. A call counts in the UTC month of its `started_at`.
    - No table stores totals. The views give `reported_cost`, the token sums, `unconfirmed_calls`, `unconfirmed_cost_bound` (the sum of `max_cost` for calls without reported cost) and `cap_cost` = reported + bound.

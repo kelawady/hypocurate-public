@@ -462,6 +462,7 @@ def upgrade() -> None:
     sa.CheckConstraint('coalesce(input_tokens, 0) >= 0 AND coalesce(output_tokens, 0) >= 0 AND coalesce(cached_tokens, 0) >= 0 AND coalesce(cost, 0) >= 0', name=op.f('ck_model_call_usage_not_negative')),
     sa.CheckConstraint('length(model) > 0 AND length(price_table_version) > 0', name=op.f('ck_model_call_model_and_prices_named')),
     sa.CheckConstraint('max_cost > 0', name=op.f('ck_model_call_max_cost_positive')),
+    sa.CheckConstraint("max_cost < 'Infinity' AND (cost IS NULL OR cost < 'Infinity')", name=op.f('ck_model_call_money_finite')),
     sa.ForeignKeyConstraint(['stage_result_id', 'run_id'], ['stage_result.id', 'stage_result.run_id'], name='fk_model_call_stage_result'),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_model_call'))
     )
