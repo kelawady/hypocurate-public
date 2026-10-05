@@ -1246,3 +1246,16 @@ def test_the_audit_log_is_append_only(w):
     w.rejected("UPDATE audit_log SET allowed = false", "append-only")
     w.rejected("DELETE FROM audit_log", "append-only")
     w.rejected("TRUNCATE audit_log", "append-only")
+
+
+# --- the protocol's entry point (re-check item 1) ---------------------------------------------------------
+
+def test_write_lock_locks_a_run_or_a_version(w):
+    rid = w.running()
+    vid = w.val("SELECT hypothesis_version_id FROM run WHERE id = :r", r=rid)
+    assert w.val("SELECT hc_write_lock(p_run => :r)", r=rid) == "running"
+    assert w.val("SELECT hc_write_lock(p_version => :v)", v=vid) == "dispatched"
+    assert w.val("SELECT hc_write_lock(p_run => :r, p_version => :v)", r=rid, v=vid) == "running"
+    w.rejected("SELECT hc_write_lock(p_run => :r, p_version => :v)", "does not belong", r=rid, v=w.dispatched())
+    w.rejected("SELECT hc_write_lock(p_run => 999999)", "no run 999999")
+    w.rejected("SELECT hc_write_lock()", "needs a run or a hypothesis version")

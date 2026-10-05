@@ -15,9 +15,15 @@ No table stores token or cost totals; the views `model_call_totals_by_*` sum
 run either; the view `run_search_coverage` reports them per source, from the run's
 own dispatch-time `run_source` rows.
 
-Locking protocol (review finding 1): every trigger that checks or changes a run's
-state first locks that run's row (FOR NO KEY UPDATE); triggers on chosen sources and
-on dispatch lock the hypothesis version first. Lock order: version, then run.
+Locking protocol (review finding 1; re-check item 1). Lock order: version, then run,
+then the run's child rows. Application code calls `SELECT hc_write_lock(p_run => ...)`
+(or `p_version => ...` for chosen sources, submission and dispatch) first in every
+transaction that writes to them; such paths cannot deadlock with each other. The
+triggers lock the run (or version) before checking its state, which makes the checks
+race-free but does not by itself fix the lock order: an UPDATE of a child row locks
+that row before its trigger asks for the run lock. A path that skips the protocol may
+deadlock; PostgreSQL then aborts one transaction (SQLSTATE 40P01) and the caller must
+retry the whole transaction.
 
 What the CHECKs on `analysis_result` establish (review finding 5): necessary
 conditions on the stored counts only. The full validity rules of PRD 5.7 and the

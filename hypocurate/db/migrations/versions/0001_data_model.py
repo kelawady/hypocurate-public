@@ -562,13 +562,20 @@ def downgrade() -> None:
 # Hand-written: trigger functions, triggers, views, seed rows.
 # No '%' anywhere: messages are built with ||.
 #
-# Locking protocol (review finding 1). Every trigger that checks or changes a run's
-# state first locks that run's row with hc_lock_run (SELECT ... FOR NO KEY UPDATE),
-# and reads the run's status from that same statement, so it sees the latest
-# committed state. Updates of the run row itself take the same lock. Triggers on
-# chosen sources and on dispatch lock the hypothesis version first (hc_lock_version);
-# submission and dispatch are updates of that row. Lock order: version, then run.
-# A transaction that holds a run's lock makes every other writer to that run wait.
+# Locking protocol (review finding 1; re-check item 1). The lock order is version,
+# then run, then the run's child rows. Two parts:
+#  - The protocol, for application code: every transaction that will write to a run
+#    or its child rows first calls hc_write_lock(p_run => ...); every transaction that
+#    will change a hypothesis version's chosen sources, submit it or dispatch it first
+#    calls hc_write_lock(p_version => ...). Paths that follow it acquire locks in the
+#    order above, so they cannot deadlock with each other.
+#  - The triggers: every trigger that checks or changes a run's state locks the run
+#    (hc_lock_run) and reads its status in the same statement; chosen-source and
+#    dispatch triggers lock the version (hc_lock_version). This makes the checks
+#    race-free. It does NOT by itself establish the lock order: an UPDATE of a child
+#    row locks that row before its trigger asks for the run lock. A path that skips
+#    the protocol can therefore deadlock; PostgreSQL then aborts one transaction
+#    (SQLSTATE 40P01), and callers must retry the whole transaction.
 #
 # What may be written to a run in each state (review finding 3; owner, 2026-10-05):
 #   queued:    run_source and run_agent_setting (dispatch); the run becomes running.
@@ -589,6 +596,7 @@ FUNCTION_NAMES = [
     "hc_is_frozen(bigint)",
     "hc_lock_run(bigint)",
     "hc_lock_version(bigint)",
+    "hc_write_lock(bigint, bigint)",
     "hc_files_fingerprint(bigint)",
     "hc_original_domain(bigint)",
     "hc_hypothesis_insert()",
@@ -666,6 +674,36 @@ FUNCTIONS = [
     DECLARE s text;
     BEGIN
         SELECT status INTO s FROM hypothesis_version WHERE id = p_version FOR NO KEY UPDATE;
+        RETURN s;
+    END $$
+    """,
+    # The protocol's entry point for application code (re-check item 1): call it first,
+    # before any write to the run's or the version's rows. Locks the version, then the
+    # run; returns the run's status (or the version's, when no run is given).
+    """
+    CREATE FUNCTION hc_write_lock(p_run bigint DEFAULT NULL, p_version bigint DEFAULT NULL)
+    RETURNS text LANGUAGE plpgsql AS $$
+    DECLARE s text;
+    BEGIN
+        IF p_run IS NULL AND p_version IS NULL THEN
+            PERFORM hc_reject('hc_write_lock needs a run or a hypothesis version');
+        END IF;
+        IF p_version IS NOT NULL THEN
+            s := hc_lock_version(p_version);
+            IF s IS NULL THEN
+                PERFORM hc_reject('no hypothesis version ' || p_version);
+            END IF;
+        END IF;
+        IF p_run IS NOT NULL THEN
+            IF p_version IS NOT NULL AND p_version IS DISTINCT FROM
+               (SELECT hypothesis_version_id FROM run WHERE id = p_run) THEN
+                PERFORM hc_reject('run ' || p_run || ' does not belong to hypothesis version ' || p_version);
+            END IF;
+            s := hc_lock_run(p_run);
+            IF s IS NULL THEN
+                PERFORM hc_reject('no run ' || p_run);
+            END IF;
+        END IF;
         RETURN s;
     END $$
     """,

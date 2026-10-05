@@ -231,3 +231,107 @@ def test_sealing_first_then_file_is_rejected(w):
                  dict(v=sv, fp=files_fingerprint({"a.csv": b"a"})), dict(v=sv, h=sha(b"b"), c=b"b"))
     rejected(error, "sealed source version")
     assert w.val("SELECT count(*) FROM source_file WHERE source_version_id = :v", v=sv) == 1
+
+
+# --- the protocol against child-row deadlocks (re-check item 1) ----------------------------------------------
+# A holds the run lock; B updates a child row; A then updates the same child row.
+# The child UPDATE locks its row before its trigger asks for the run lock, so the
+# triggers alone cannot fix the lock order. The protocol does: every writer calls
+# hc_write_lock first.
+
+LOCK_RUN = "SELECT hc_write_lock(p_run => :r)"
+B_WRITES = "UPDATE stage_result SET output = '{\"by\": \"B\"}' WHERE id = :s"
+A_WRITES = "UPDATE stage_result SET output = '{\"by\": \"A\"}' WHERE id = :s"
+
+
+def interleave(engine, b_statements, params):
+    """A: lock the run. B (thread): run b_statements; it must end up waiting on a lock.
+    A: update the same child row, then commit. Returns (A's error, B's error)."""
+    outcome = {}
+
+    def run_b():
+        try:
+            with engine.begin() as b:
+                for sql in b_statements:
+                    b.execute(text(sql), params)
+            outcome["error"] = None
+        except Exception as error:
+            outcome["error"] = error
+
+    a_error = None
+    with engine.connect() as a:
+        tx = a.begin()
+        a.execute(text(LOCK_RUN), params)
+        thread = threading.Thread(target=run_b)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while waiting_on_a_lock(engine) == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert waiting_on_a_lock(engine) == 1, "B should be waiting on A's lock"
+        try:
+            a.execute(text(A_WRITES), params)
+            tx.commit()
+        except Exception as error:
+            a_error = error
+            tx.rollback()
+    thread.join(30)
+    assert not thread.is_alive()
+    return a_error, outcome["error"]
+
+
+def deadlocked(error) -> bool:
+    return error is not None and "deadlock detected" in str(error)
+
+
+def test_skipping_the_protocol_can_deadlock(w):
+    """Without the protocol, B locks the child row and then waits for the run; A waits
+    for the child row. PostgreSQL detects the deadlock and aborts one of them
+    (SQLSTATE 40P01); the caller must retry. Nothing is half-written."""
+    rid = w.running()
+    st = w.stage(rid)
+    a_error, b_error = interleave(w.e, [B_WRITES], dict(r=rid, s=st))
+    assert deadlocked(a_error) != deadlocked(b_error), (a_error, b_error)  # exactly one was aborted
+    survivor = "B" if deadlocked(a_error) else "A"
+    assert w.val("SELECT output->>'by' FROM stage_result WHERE id = :s", s=st) == survivor
+
+
+def test_following_the_protocol_does_not_deadlock(w):
+    """With the protocol, B asks for the run lock before touching the child row, so it
+    waits without holding anything A needs. A writes and commits; then B writes."""
+    rid = w.running()
+    st = w.stage(rid)
+    a_error, b_error = interleave(w.e, [LOCK_RUN, B_WRITES], dict(r=rid, s=st))
+    assert a_error is None and b_error is None
+    assert w.val("SELECT output->>'by' FROM stage_result WHERE id = :s", s=st) == "B"
+
+
+def test_following_the_protocol_on_model_calls_does_not_deadlock(w):
+    rid = w.running()
+    call = w.call(rid, w.stage(rid))
+    finish = ("UPDATE model_call SET status = 'interrupted', finished_at = now() WHERE id = :c "
+              "AND status = 'started'")
+    outcome = {}
+
+    def run_b():
+        try:
+            with w.e.begin() as b:
+                b.execute(text(LOCK_RUN), dict(r=rid))
+                b.execute(text(finish), dict(c=call))
+            outcome["error"] = None
+        except Exception as error:
+            outcome["error"] = error
+
+    with w.e.connect() as a:
+        tx = a.begin()
+        a.execute(text(LOCK_RUN), dict(r=rid))
+        thread = threading.Thread(target=run_b)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while waiting_on_a_lock(w.e) == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert waiting_on_a_lock(w.e) == 1
+        a.execute(text(finish.replace("interrupted', finished_at", "failed', finished_at")), dict(c=call))
+        tx.commit()
+    thread.join(30)
+    assert outcome["error"] is None  # B's guarded update found the call already finished and changed nothing
+    assert w.val("SELECT status FROM model_call WHERE id = :c", c=call) == "failed"

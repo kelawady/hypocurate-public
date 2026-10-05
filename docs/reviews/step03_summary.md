@@ -60,13 +60,26 @@ Views: `run_search_coverage` (replaces `run_nothing_found`, finding 6), and `mod
 - **A successful migration is not undone if the application then fails to start.** Every migration must therefore keep working with the previous release's code.
 - **Editing a migration in place breaks the downgrade of databases migrated with the old text.** I saw this on the local development database in this fix round (see "Deviations"). It is why 0001 is frozen after the merge.
 
-## The locking protocol (review finding 1)
+## The locking protocol (review finding 1; corrected after the re-check)
 
-- **Run triggers.** Every trigger that checks or changes a run's state first calls `hc_lock_run(run_id)`. That function runs `SELECT status FROM run WHERE id = … FOR NO KEY UPDATE`, which locks the row and returns its latest committed status in one statement. Updates of the run row (start, completion, failure) take the same lock themselves.
-- **Version triggers.** Triggers on chosen sources and on dispatch (run insert) call `hc_lock_version` first. Submission and dispatch are updates of the version row, so they take the same lock themselves.
-- **Source files.** A `source_file` insert locks its version row; sealing is an update of that row.
-- **Lock order:** version, then run. No trigger locks a version after a run.
-- **Consequence:** a transaction that writes to a run makes every other writer to that run, including a worker's heartbeat update, wait until it commits. Step 9 should keep transactions on a run short (open item 2).
+**The lock order is version, then run, then the run's child rows. It is established for paths that follow the protocol below, not by the child-row triggers alone.** The first fix round said the triggers established it. The re-check showed they do not, and I tested its counter-example.
+
+- **The protocol, for application code** (all write paths, from step 4 on):
+  - Every transaction that will write to a run or any of its child rows first calls `SELECT hc_write_lock(p_run => <run id>)`.
+  - Every transaction that will change a version's chosen sources, submit it or dispatch it first calls `SELECT hc_write_lock(p_version => <version id>)`.
+  - `hc_write_lock` locks the version, then the run (`FOR NO KEY UPDATE`), and returns the status. It rejects an unknown run or version, and a run that does not belong to the given version.
+- **The triggers.**
+  - Every trigger that checks or changes a run's state calls `hc_lock_run(run_id)`, which locks the row and returns its latest committed status in one statement. Updates of the run row take the same lock themselves.
+  - Triggers on chosen sources and on dispatch call `hc_lock_version`. A `source_file` insert locks its version row; sealing is an update of that row.
+  - This makes every state check race-free (the checkpoint tests).
+- **Why the triggers are not enough.** An UPDATE of a child row (a stage result, a model call, a run source, a flag) locks that row *before* its trigger asks for the run lock. So:
+  1. A holds the run lock;
+  2. B updates a child row and waits for the run;
+  3. A updates the same child row.
+  
+  That is a deadlock. `test_skipping_the_protocol_can_deadlock` reproduces it: PostgreSQL aborts exactly one of the two transactions, and nothing of the aborted one is written. `test_following_the_protocol_does_not_deadlock` runs the same interleaving with B calling `hc_write_lock` first. B then waits before touching the child row, A writes and commits, and B writes after it, with no error. `test_following_the_protocol_on_model_calls_does_not_deadlock` does the same for finishing a model call.
+- **Retries.** A path that skips the protocol, or any multi-row pattern not covered by it, may get SQLSTATE `40P01` (deadlock) or `40001` (serialization failure). The caller must retry the whole transaction.
+- **Consequence:** a transaction holding a run's lock makes every other writer to that run, including a worker's heartbeat update, wait until it commits. Step 9 should keep transactions on a run short (open item 2).
 
 ## What may be written to a run in each state (review finding 3; owner, 2026-10-05)
 
@@ -347,10 +360,11 @@ Local checks beyond the suite:
 ## Open items
 1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and live `/health` shows `"schema":{"revision":"0001","at_head":true}`. This is the first time a pre-deploy command runs with our Docker services. The merge also syncs the Blueprint.
 2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
-3. **Step 4** adopts the source-version fingerprint definition above, seals every version before use, and loads the two frozen sources.
-4. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
-5. **Step 7 and step 9 requirements** are listed above.
-6. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.
-7. The test database user must be allowed to create databases. The tests never run against Render.
-8. Source registration's "access key" (PRD 9.6) has no column; secrets stay in environment variables.
-9. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
+3. **Step 4 onwards: every write path follows the locking protocol.** It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`. Code review of each later step checks this.
+4. **Step 4** adopts the source-version identity defined above, seals every version before use, and loads the two frozen sources.
+5. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
+6. **Step 7 and step 9 requirements** are listed above.
+7. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.
+8. The test database user must be allowed to create databases. The tests never run against Render.
+9. Source registration's "access key" (PRD 9.6) has no column; secrets stay in environment variables.
+10. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
