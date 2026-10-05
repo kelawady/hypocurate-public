@@ -114,3 +114,22 @@ def test_a_missing_required_per_set_flag_result_is_a_refusal(db):
     assert refused.value.code == "set_flags_missing"
     with db.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM run_record WHERE run_id = :r"), dict(r=rid)).scalar() == 0
+
+
+def test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records(db):
+    """Re-check finding 1: the verification is in the transaction that reads Inclusion's inputs,
+    not only in the later write. A record added after Checks makes the read itself refused."""
+    from hypocurate.access import AccessDenied, role_input
+    from hypocurate.access.dispatch import bind_code
+    from hypocurate.pipeline import checks
+    rid = _coarse_run(db)
+    checks.run_checks(db, rid)
+    role_input(bind_code(db, rid, "inclusion"))  # covered: the read succeeds
+    with db.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, kind, alloy, harmonized, "
+            "reported, extraction) SELECT extraction_run_id, source_version_id, 'added-after-checks', 0, kind, alloy, "
+            "harmonized, reported, extraction FROM record WHERE extraction_run_id = :r LIMIT 1"), dict(r=rid))
+    with pytest.raises(AccessDenied) as denied:
+        role_input(bind_code(db, rid, "inclusion"))
+    assert denied.value.code == "checks_not_current"
