@@ -244,7 +244,7 @@ def test_checks_wait_until_every_chosen_source_is_stored(engine):
     assert (sets["primary"][mpea], sets["primary"][copy]) == ("conflict_unresolved", "conflict_unresolved")
 
 
-def test_no_record_is_stored_after_checks(engine, monkeypatch):
+def test_no_record_is_stored_even_when_checks_ran_early(engine, monkeypatch):
     """A second guard: storage refuses once Checks have run. Through the normal order this cannot
     arise (Checks refuse while a source is pending, and a decided source is final), so the test
     lets Checks run with the extract pending, then stores it."""
