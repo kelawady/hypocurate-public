@@ -1,4 +1,5 @@
-"""The web service (PRD Section 6): login, health page, and a placeholder home page.
+"""The web service (PRD Section 6): login, health page, a placeholder home page, and the
+read-only assumptions register (step 4b, /assumptions).
 
 Every page needs the shared login except exactly /login and /health, and the
 files under /static/. The session is a signed cookie (Starlette
@@ -17,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
 from starlette.middleware.sessions import SessionMiddleware
 
+from hypocurate import assumptions
 from hypocurate.config import Settings, load_settings
 from hypocurate.db.engine import database_reachable, make_engine
 from hypocurate.db.migrate import schema_status
@@ -35,10 +37,16 @@ def create_app(
     settings: Settings | None = None,
     engine: Engine | None = None,
     login_throttle: LoginThrottle | None = None,
+    register: list[dict] | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     engine = engine or make_engine(settings.database_url)
     throttle = login_throttle or LoginThrottle()
+    # Read and validated once at start: an invalid register stops the service starting.
+    if register is None:
+        register = assumptions.load_register()
+    else:
+        assumptions.validate(register)
 
     app = FastAPI(title="HypoCurate", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -90,6 +98,18 @@ def create_app(
     def logout(request: Request) -> Response:
         request.session.clear()
         return RedirectResponse("/login", status_code=303)
+
+    @app.get("/assumptions", response_class=HTMLResponse)
+    def assumptions_page(request: Request, review: str | None = None):
+        """Read-only: generated from hypocurate/assumptions.json; nothing is edited here."""
+        not_reviewed_only = review == "not_reviewed"
+        return templates.TemplateResponse(request, "assumptions.html", {
+            "sections": assumptions.page_sections(register, not_reviewed_only=not_reviewed_only),
+            "counts": assumptions.summary_counts(register),
+            "not_reviewed_only": not_reviewed_only,
+            "categories": assumptions.CATEGORIES,
+            "review_labels": assumptions.REVIEW_STATUSES,
+        })
 
     @app.get("/health")
     def health(request: Request) -> Response:

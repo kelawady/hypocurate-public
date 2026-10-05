@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Assumptions · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block nav %}<nav class="nav"><a href="/">Home</a><form method="post" action="/logout" class="logout"><button type="submit">Sign out</button></form></nav>{% endblock %}
+{% block content %}
+
+<h1>Assumptions</h1>
+<p class="summary" id="summary">
+  {{ counts.total }} entries:
+  {{ counts.in_force }} in force ·
+  <strong>{{ counts.open }} open decision{{ "" if counts.open == 1 else "s" }}</strong> ·
+  <strong>{{ counts.direction_approved }} direction{{ "" if counts.direction_approved == 1 else "s" }} approved, pending technical review</strong> ·
+  <strong>{{ counts.scientific_not_reviewed }} scientific assumption{{ "" if counts.scientific_not_reviewed == 1 else "s" }} not reviewed by an expert</strong>
+</p>
+<p class="muted">Read-only. Generated from <code>hypocurate/assumptions.json</code>; changes are made there, in a reviewed merge.
+"Applied in code" names the settings that hold each value; the register's tests check only that those settings exist and hold the stated values, not that the code behaves as stated. Behaviour is covered by the regression tests each entry names.</p>
+<p class="filter">
+  {% if not_reviewed_only %}Showing: not reviewed by an expert. <a href="/assumptions">Show all</a>
+  {% else %}Showing: all. <a href="/assumptions?review=not_reviewed">Show only: not reviewed by an expert</a>{% endif %}
+</p>
+
+{% for label, entries in sections %}
+<h2>{{ label }}</h2>
+<table class="register">
+  <thead><tr><th>Assumption</th><th>Value</th><th>What it affects</th><th>Expert review</th><th>Applied in code</th></tr></thead>
+  {% for e in entries %}
+  {% set unreviewed_scientific = e.category == "scientific" and e.expert_review.status == "not_reviewed" %}
+  <tbody id="{{ e.key }}" class="entry{% if unreviewed_scientific %} unreviewed-scientific{% endif %} state-{{ e.state }}">
+    <tr>
+      <td>
+        <strong>{{ e.name }}</strong>
+        {% if e.state == "open" %}<span class="badge open-badge">Open decision</span>{% endif %}
+        {% if e.state == "direction_approved" %}<span class="badge open-badge">Direction approved, pending technical review</span>{% endif %}
+        {% if unreviewed_scientific %}<span class="badge unreviewed">Not reviewed by an expert</span>{% endif %}
+        <div>{{ e.statement }}</div>
+        {% if e.state != "in_force" %}<div class="muted">{{ categories[e.category] }}{% if e.state == "direction_approved" %} · pending: {{ e.pending.by }}, before step {{ e.pending.before_step }}{% endif %}</div>{% endif %}
+      </td>
+      <td>{% if e.value %}{{ e.value.text }}{% if e.value.unit and e.value.unit not in e.value.text %} {{ e.value.unit }}{% endif %}
+          {% else %}Not decided ({{ e.pending.by }}, before step {{ e.pending.before_step }}){% endif %}</td>
+      <td>{{ e.affects }}</td>
+      <td>{{ review_labels[e.expert_review.status] }}{% if e.expert_review.name %}: {{ e.expert_review.name }}, {{ e.expert_review.date }}{% endif %}</td>
+      <td>{% if e.applied.status == "yes" %}Yes
+          {% elif e.applied.status == "partly" %}<strong>Partly.</strong> Done: {{ e.applied.done }} <strong>Pending (step {{ e.applied.step }}):</strong> {{ e.applied.pending }}
+          {% else %}Not yet: step {{ e.applied.step }}{% endif %}</td>
+    </tr>
+    <tr class="more">
+      <td colspan="5">
+        <details>
+          <summary>Reason, evidence, history and sensitivity analysis</summary>
+          <dl>
+            <dt>Reason</dt><dd>{{ e.reason }}</dd>
+            <dt>Evidence</dt><dd><ul>{% for ev in e.evidence %}<li>{{ ev }}</li>{% endfor %}</ul></dd>
+            <dt>Decided</dt><dd>{% if e.decided %}{{ e.decided.by }}, {{ e.decided.date }}{% else %}Not yet decided{% endif %}</dd>
+            <dt>Sensitivity analysis</dt><dd>{{ e.sensitivity or "None" }}</dd>
+            <dt>Applied in code</dt><dd>
+              {% if e.applied.status == "yes" %}Yes.{% elif e.applied.status == "partly" %}Partly (pending: step {{ e.applied.step }}).{% else %}Not yet: step {{ e.applied.step }}.{% endif %}
+              {% if e.applied.note %} {{ e.applied.note }}{% endif %}</dd>
+            {% if e.applied.settings %}<dt>Named settings (reference and value checks only)</dt><dd>{% for s in e.applied.settings %}<code>{{ s.ref }}</code>{% if s.equals is defined %} = <code>{{ s.equals }}</code>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+            <dt>Regression tests</dt><dd>{% if e.tests %}<ul>{% for t in e.tests %}<li><code>{{ t }}</code></li>{% endfor %}</ul>{% else %}None yet{% endif %}</dd>
+            <dt>Earlier values</dt><dd>{% if e.history %}<ul>{% for h in e.history %}<li>{{ h.from }} to {{ h.to }}: {{ h.value }}{% if h.note %} ({{ h.note }}){% endif %}</li>{% endfor %}</ul>{% else %}None{% endif %}</dd>
+            {% if e.notes %}<dt>Notes</dt><dd><ul>{% for n in e.notes %}<li>{{ n }}</li>{% endfor %}</ul></dd>{% endif %}
+            <dt>Key</dt><dd><code>{{ e.key }}</code></dd>
+          </dl>
+        </details>
+      </td>
+    </tr>
+  </tbody>
+  {% endfor %}
+</table>
+{% endfor %}
+
+{% endblock %}

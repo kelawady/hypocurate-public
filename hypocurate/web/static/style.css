@@ -11,3 +11,22 @@ button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 4px; bac
 .error { color: var(--bad); }
 .ok { color: var(--good); }
 th { text-align: left; padding-right: 16px; color: var(--muted); font-weight: 500; }
+/* Assumptions register (step 4b): plain table; full styling comes with the step 10 screens. */
+main.wide { max-width: 72rem; }
+.nav { display: flex; align-items: center; gap: 16px; }
+.muted { color: var(--muted); }
+a { color: var(--accent); }
+code { font-size: 0.9em; overflow-wrap: anywhere; }
+.register { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+.register th, .register td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; }
+.register thead th { border-bottom: 2px solid var(--line); }
+.register tbody { border-bottom: 1px solid var(--line); }
+.register tr.more td { padding-top: 0; }
+.register .unreviewed-scientific td:first-child { border-left: 4px solid var(--bad); padding-left: 8px; }
+.badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 0.85em; }
+.badge.unreviewed { background: #fdecea; color: var(--bad); }
+.badge.open-badge { background: #fff4e5; color: #8a4b00; }
+details summary { cursor: pointer; color: var(--muted); }
+dl { margin: 8px 0; } dt { font-weight: 600; margin-top: 6px; } dd { margin-left: 0; }
+dd ul { margin: 0; padding-left: 1.2em; }
+@media (max-width: 48rem) { .register thead { display: none; } .register td { display: block; padding-right: 0; } }
