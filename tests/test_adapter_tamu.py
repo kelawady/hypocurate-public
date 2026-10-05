@@ -159,16 +159,17 @@ def test_planted_values_are_kept_and_marked():
         _row(c4="abc"),           # 1: a percentage that is not a number
         _row(c8=47),              # 2: percentages sum to 99
         _row(c12=None),           # 3: blank yield strength
-        _row(c17="=1+1"),         # 4: a formula, not a value
+        _row(c18="=1+1"),         # 4: a formula in the grain-size SD, not a value
         [None] * 19,              # 5: blank row
         GOOD + ["extra"],         # 6: an extra column
         _row(c17=-5),             # 7: negative grain size: converted as reported, not judged here
         _row(c17="12.5"),         # 8: a number stored as text
+        _row(c4="=A1"),           # 9: a formula in an element column
     ]
     result = tamu_fcc.read(sealed("tamu_fcc", {FILE: workbook(rows)}))
     by_row = {int(r.source_item_key.rsplit(":", 1)[1]): r for r in result.records}
     assert result.blank_rows == (5,)
-    assert sorted(by_row) == [0, 1, 2, 3, 4, 6, 7, 8]
+    assert sorted(by_row) == [0, 1, 2, 3, 4, 6, 7, 8, 9]
 
     def h(i, field):
         return by_row[i].harmonized[field]
@@ -178,8 +179,23 @@ def test_planted_values_are_kept_and_marked():
     assert by_row[1].alloy is None and by_row[1].reported["Cr"].text == "abc"
     assert h(2, "composition").reason == "percentages sum to 99, not 100"
     assert h(3, "yield_strength").status == "not_reported"
-    assert all(v.status == "not_convertible" for v in by_row[4].harmonized.values())
-    assert by_row[4].reported["Grain Size(µm)"].text == "=1+1"
+    # Finding 4: only the field the formula cell feeds is affected; everything else is as
+    # in the ordinary row 0, assignments and the deliberately not-reported temperature too.
+    assert h(4, "grain_size_sd").status == "not_convertible"
+    assert h(4, "grain_size_sd").reason == "the cell holds a formula, not a value: '=1+1'"
+    assert by_row[4].reported["SD, Grain Size(µm)"].text == "=1+1"
+    assert {k: v for k, v in by_row[4].harmonized.items() if k != "grain_size_sd"} == \
+        {k: v for k, v in by_row[0].harmonized.items() if k != "grain_size_sd"}
+    assert (h(4, "grain_size").value, h(4, "yield_strength").value) == (23.0, 284.2)
+    assert (h(4, "test_type").status, h(4, "test_type").citation) == ("assigned", tamu_fcc.TEST_TYPE_CITATION)
+    assert h(4, "test_temperature").status == "not_reported"
+    assert h(4, "test_temperature").reason == tamu_fcc.TEMPERATURE_NOT_REPORTED
+    assert by_row[4].alloy == by_row[0].alloy
+    # A formula in an element column affects the composition only.
+    assert h(9, "composition").status == "not_convertible" and h(9, "composition").reason.startswith("Cr: ")
+    assert by_row[9].alloy is None
+    assert {k: v for k, v in by_row[9].harmonized.items() if k != "composition"} == \
+        {k: v for k, v in by_row[0].harmonized.items() if k != "composition"}
     assert by_row[6].reported["(column 20, no header)"].text == "extra"
     assert (h(7, "grain_size").status, h(7, "grain_size").value) == ("converted", -5.0)
     assert (h(8, "grain_size").status, h(8, "grain_size").value) == ("converted", 12.5)

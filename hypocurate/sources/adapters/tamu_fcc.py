@@ -86,6 +86,9 @@ def reported_text(value) -> str:
 def _number(value, unit: str | None) -> Value:
     if value is None or (isinstance(value, str) and value.strip() == ""):
         return Value(None, unit, "not_reported", "blank in the source")
+    if isinstance(value, str) and value.startswith("="):
+        # Only the field this cell feeds is affected (step 4 review, finding 4).
+        return Value(None, unit, "not_convertible", f"the cell holds a formula, not a value: {value!r}")
     if isinstance(value, bool):
         return Value(None, unit, "not_convertible", f"not a number: {value!r}")
     if isinstance(value, (int, float)):
@@ -171,12 +174,6 @@ def _record(version: SealedVersion, path: str, i: int, values: tuple) -> CommonR
         if v is not None:
             reported[f"(column {extra}, no header)"] = Reported(f"(column {extra}, no header)", reported_text(v), None)
     group = Group("dataset", f"dataset:{DATASET_DOI}")
-    formulas = [name for name, v in zip(HEADER, values) if isinstance(v, str) and v.startswith("=")]
-    if formulas:
-        reason = f"cells hold formulas, not values: {', '.join(formulas)}"
-        harmonized = {name: Value(None, unit, "not_convertible", reason) for name, unit in HARMONIZED_FIELDS.items()}
-        return CommonRecord(version.source_key, version.fingerprint, key, 0, version.data_kind, None,
-                            DATASET_REFERENCE, None, group, harmonized, reported)
     harmonized, alloy = _harmonize(dict(zip(HEADER, values)))
     return CommonRecord(version.source_key, version.fingerprint, key, 0, version.data_kind, alloy,
                         DATASET_REFERENCE, None, group, harmonized, reported)
