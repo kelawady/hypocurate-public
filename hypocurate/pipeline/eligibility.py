@@ -289,24 +289,7 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
             rules[r["id"]] = "scope_not_confirmed"
         elif _excluded(r, st):
             rules[r["id"]] = "excluded_by_rule"
-    # 7, in a fixed order (review finding 4): unresolved identity, then conflicts, then counted once,
-    # so that a record in an ambiguous group and in a conflict gets the first that applies.
-    # Within one rule, definite relationships (exact duplicates, conflicts) come before possible
-    # duplicates, so that the plan's possible-duplicate choice applies only to what remains
-    # (confirmation, 2026-10-06).
-    order = {"identity_unresolved": 0, "conflict_unresolved": 1, "duplicate_counted_once": 2}
-    definite = ("exact_duplicate", "values_disagree")
-    for f in sorted(flags, key=lambda f: (order.get(flag_rule(f, st), 3), f["kind"] not in definite, f["id"])):
-        rule = flag_rule(f, st)
-        members = [rid for rid in f["records"] if rid in records and rid not in rules]
-        if rule in ("identity_unresolved", "conflict_unresolved"):
-            for rid in members:
-                rules[rid] = rule
-        elif rule == "duplicate_counted_once" and members:
-            survivor = min(members, key=lambda rid: survivor_key(records[rid], st))
-            for rid in members:
-                if rid != survivor:
-                    rules[rid] = "duplicate_counted_once"
+    _identity(records, flags, rules, st)
     sizes: dict[str, set] = defaultdict(set)  # 8
     for r in records.values():
         if r["id"] not in rules:
@@ -356,13 +339,23 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
     each member's kind and source; `marked` is the run's test mark. Empty if nothing."""
     from hypocurate.sources.versions import SOURCES
     out = []
+    flags = list(flags)
+    # At most one record per chain of exact pairs, and per group linked by a definite conflict
+    # (confirmation round 2): the chains are formed here from Checks' flags, independently of how
+    # Inclusion resolved them.
+    exact = [f["records"] for f in flags if f["kind"] == "exact_duplicate"]
+    conflicting = {i for f in flags if f["kind"] == "values_disagree" for i in f["records"]}
+    for group in components(exact):
+        inside = sorted(i for i in group if i in members)
+        if len(inside) > 1:
+            out.append(f"an exact duplicate counted twice: records {inside}")
+    for group in components(exact + [f["records"] for f in flags if f["kind"] == "values_disagree"]):
+        inside = sorted(i for i in group if i in members)
+        if set(group) & conflicting and len(inside) > 1:
+            out.append(f"both records of a conflict: records {inside}")
     for f in flags:
         inside = sorted(i for i in f["records"] if i in members)
-        if f["kind"] == "exact_duplicate" and len(inside) > 1:
-            out.append(f"an exact duplicate counted twice: records {inside}")
-        elif f["kind"] == "values_disagree" and len(inside) > 1:
-            out.append(f"both records of a conflict: records {inside}")
-        elif f["kind"] == "invalid_value" and inside:
+        if f["kind"] == "invalid_value" and inside:
             out.append(f"an invalid value: records {inside}")
         elif f["kind"] == "possible_duplicate" and f["category"] == "several candidates" and inside:
             out.append(f"a group of unresolved identity: records {inside}")
@@ -375,6 +368,77 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
     if constructed and not marked:
         out.append(f"constructed records in a run not marked as a test: {constructed}")
     return out
+
+
+def components(groups: Iterable[Iterable[int]]) -> list[list[int]]:
+    """Connected components of records linked by the given groups (each group links all its
+    members): a pure function of the links, whatever their order or the ids' values."""
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for group in groups:
+        group = list(group)
+        for x in group:
+            find(x)
+        for a, b in zip(group, group[1:]):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[max(ra, rb)] = min(ra, rb)
+    out: dict[int, list[int]] = defaultdict(list)
+    for x in parent:
+        out[find(x)].append(x)
+    return [sorted(c) for c in out.values()]
+
+
+def _identity(records: Mapping[int, Mapping], flags: list[Mapping], rules: dict[int, str], st: Settings) -> None:
+    """Rule 7 (confirmation round 2, 2026-10-06): no decision depends on record ids, flag ids or
+    the order of flags. In this order, each step a whole-group decision:
+    1. unresolved identity: every pending record of an ambiguous group;
+    2. definite relationships: records linked by a chain of exact-duplicate pairs are one
+       measurement, and a definite conflict links its records as well. A connected group that
+       touches a conflict follows the plan's conflict rule (neither: all its pending records are
+       `conflict_unresolved`; the survivor's value: one survivor); a group of exact duplicates
+       only keeps one survivor;
+    3. the plan's possible-duplicate choice on what remains: counted once, one survivor per
+       connected possible group, or both counted.
+    A survivor is chosen by the plan's survivor rule (`survivor_key`), whose last tie-break is the
+    source's stable identity (source, origin key, item index)."""
+    def pending(ids):
+        return [i for i in ids if i in records and i not in rules]
+
+    for f in flags:  # 1
+        if flag_rule(f, st) == "identity_unresolved":
+            for i in pending(f["records"]):
+                rules[i] = "identity_unresolved"
+    exact = [f["records"] for f in flags if f["kind"] == "exact_duplicate" and flag_rule(f, st) == "duplicate_counted_once"]
+    conflict = [f for f in flags if f["kind"] == "values_disagree"
+                and flag_rule(f, st) in ("conflict_unresolved", "duplicate_counted_once")]
+    in_conflict = {i: flag_rule(f, st) for f in conflict for i in f["records"]}
+    for group in components(exact + [f["records"] for f in conflict]):  # 2
+        live = pending(group)
+        touched = sorted({in_conflict[i] for i in group if i in in_conflict})
+        if "conflict_unresolved" in touched:
+            for i in live:
+                rules[i] = "conflict_unresolved"
+        elif live:
+            survivor = min(live, key=lambda i: survivor_key(records[i], st))
+            for i in live:
+                if i != survivor:
+                    rules[i] = "duplicate_counted_once"
+    possible = [f["records"] for f in flags if f["kind"] == "possible_duplicate"
+                and flag_rule(f, st) == "duplicate_counted_once"]
+    for group in components(possible):  # 3
+        live = pending(group)
+        if live:
+            survivor = min(live, key=lambda i: survivor_key(records[i], st))
+            for i in live:
+                if i != survivor:
+                    rules[i] = "duplicate_counted_once"
 
 
 def all_sets(plan: Mapping[str, Any], records: list[Mapping], flags: list[Mapping],

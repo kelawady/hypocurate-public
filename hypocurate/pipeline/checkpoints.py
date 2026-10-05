@@ -98,6 +98,21 @@ def _set_records(conn: Connection, run_id: int) -> dict[str, list[int]]:
     return {k: sorted(v) for k, v in out.items()}
 
 
+def freeze_fingerprint(plan_fingerprint: str, by_id: Mapping[int, Mapping], members: Mapping[str, list],
+                       sets: Mapping[str, Mapping[int, str]], counts: Mapping[str, Any]) -> str:
+    """The dataset freeze's fingerprint. Review finding 5: records are identified by their stable
+    identity (source-version fingerprint, origin key, item index) and their content hash, never by
+    database id, so the same data in any id or insertion order gives the same fingerprint."""
+    identity = {i: f"{r['version_fingerprint']}|{r['origin']}|{r['item_index']}" for i, r in by_id.items()}
+    content = {
+        "plan": plan_fingerprint,
+        "sets": {key: sorted([identity[i], by_id[i]["fingerprint"]] for i in ids) for key, ids in members.items()},
+        "rules": {key: dict(sorted((identity[i], rule) for i, rule in rules.items())) for key, rules in sets.items()},
+        "counts": counts,
+    }
+    return hashlib.sha256(canonical(content).encode("utf-8")).hexdigest()
+
+
 def freeze_dataset(engine: Engine, run_id: int) -> dict:
     """Freezes the analysis dataset (or records that none is frozen); returns the freeze record."""
     data = inclusion_input(engine, run_id, "checkpoint", "freeze_dataset")
@@ -109,16 +124,7 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
     counts["per_source"] = {source: el.counts(plan, by_id, [i for i in members[el.PRIMARY]
                                                             if by_id[i]["source"] == source])
                             for source in sorted({by_id[i]["source"] for i in members[el.PRIMARY]})}
-    # Review finding 5: records are identified by their stable identity (source-version
-    # fingerprint, origin key, item index) and their content hash, never by database id.
-    identity = {i: f"{r['version_fingerprint']}|{r['origin']}|{r['item_index']}" for i, r in by_id.items()}
-    content = {
-        "plan": data["plan"]["fingerprint"],
-        "sets": {key: sorted([identity[i], by_id[i]["fingerprint"]] for i in ids) for key, ids in members.items()},
-        "rules": {key: dict(sorted((identity[i], rule) for i, rule in rules.items())) for key, rules in sets.items()},
-        "counts": counts,
-    }
-    fp = hashlib.sha256(canonical(content).encode("utf-8")).hexdigest()
+    fp = freeze_fingerprint(data["plan"]["fingerprint"], by_id, members, sets, counts)
     read_ids = sorted(by_id)
     read_flags = [(f["id"], f["kind"], f["category"], tuple(sorted(f["records"]))) for f in flags]
     identity_of = {r["id"]: record_identity(r["version_fingerprint"], r["origin"], r["item_index"]) for r in records}
