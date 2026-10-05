@@ -8,6 +8,6 @@
 </head>
 <body>
   <header><span class="brand">HypoCurate</span>{% block nav %}{% endblock %}</header>
-  <main>{% block content %}{% endblock %}</main>
+  <main{% block main_attrs %}{% endblock %}>{% block content %}{% endblock %}</main>
 </body>
 </html>

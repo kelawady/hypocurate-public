@@ -25,7 +25,10 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
             # Step 4: the sources are registered and read from inside the deployed image.
             "hypocurate/sources/versions.py", "hypocurate/sources/adapters/__init__.py",
             "data/sources/mpea/MPEA_dataset.csv", "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx",
-            "data/controlled_duplicates/extract.csv"]
+            "data/controlled_duplicates/extract.csv",
+            # Step 4b: the assumptions register and its page.
+            "hypocurate/assumptions.json", "hypocurate/assumptions.py",
+            "hypocurate/web/templates/assumptions.html"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 
