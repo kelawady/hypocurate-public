@@ -2,8 +2,10 @@
 
 One `CommonRecord` per observation, mirroring the `record` table (step 3) so that a
 later step can store it unchanged: its origin (`source_item_key`, `item_index`), the
-kind of data, the alloy, the paper and its grouping identity, the harmonized values
-and the values as reported.
+kind of data, a display label for the alloy, the paper and its grouping identity, the
+harmonized values (the full-precision composition among them) and the values as
+reported. The adapter states no alloy identity: when two compositions are the same
+alloy is decided under the plan (step 6).
 
 An adapter converts and reports. The format therefore has no field for eligibility,
 flags, duplicates or survivors: those are decided by code under the locked plan
@@ -136,7 +138,7 @@ class CommonRecord:
     source_item_key: str  # stable origin key within the source version
     item_index: int
     kind: str  # the version's kind of data
-    alloy: str | None  # canonical label from the composition; None if not convertible
+    alloy: str | None  # display label only, never an identity (see normalize.alloy_label); None if not convertible
     paper_reference: str | None
     paper_doi: str | None
     group: Group

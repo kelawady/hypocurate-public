@@ -71,13 +71,12 @@ def test_each_record_equals_its_mpea_row_except_the_changed_columns(extract, mpe
                 assert rep.text != source.reported[column].text
 
 
-def test_a_renamed_formula_gives_the_same_alloy(extract, mpea, truth):
+def test_a_renamed_formula_gives_the_same_composition(extract, mpea, truth):
     renamed = [(t, r) for t, r in zip(truth, extract) if t["changed_columns"] == "FORMULA"]
     assert len(renamed) == 2
     for t, record in renamed:
         source = mpea[int(t["mpea_row"])]
         assert record.reported["FORMULA"].text != source.reported["FORMULA"].text
-        assert record.alloy == source.alloy
         a, b = record.harmonized["composition"].value, source.harmonized["composition"].value
         assert a.keys() == b.keys() and all(a[e] == pytest.approx(b[e], abs=1e-9) for e in a)
 

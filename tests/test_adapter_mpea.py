@@ -106,7 +106,7 @@ def _reference_norm(f):
     return ''.join(f"{e}{round(100 * v / s, 1):g}" for e, v in sorted(comp.items()))
 
 
-def test_alloy_names_follow_the_reference_naming(result, rows):
+def test_display_labels_follow_the_reference_naming(result, rows):
     for record, row in zip(result.records, rows):
         assert record.alloy == _reference_norm(row[1])
         assert sum(record.harmonized["composition"].value.values()) == pytest.approx(100)
@@ -240,3 +240,14 @@ def test_grouping_folds_ascii_case_only():
     assert doi_group_key("10.1/ÄB") == "doi:10.1/Äb"  # non-ASCII letters are left as they are
     assert doi_group_key("10.1/ab") != doi_group_key("10.1/ac")
     assert doi_group_key("   ") is None and doi_group_key("doi:") is None
+
+
+def test_compositions_differing_below_the_rounding_step_are_not_identical():
+    """Finding 2: the display label rounds to 0.1 at.%; the adapter's compositions do not."""
+    result = mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": planted(
+        [_row(c1="Fe50.01 Ni49.99"), _row(c1="Fe50.04 Ni49.96")])}))
+    a, b = result.records
+    assert a.alloy == b.alloy == "Fe50Ni50"  # the same display label …
+    ca, cb = a.harmonized["composition"].value, b.harmonized["composition"].value
+    assert ca != cb  # … but not the same composition
+    assert ca["Fe"] == pytest.approx(50.01) and cb["Fe"] == pytest.approx(50.04)

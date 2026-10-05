@@ -5,6 +5,10 @@ The filter below is a copy of the reference script's scope and rules
 harmonization. It is not package code: eligibility is decided by code under the locked
 plan in step 6, and these counts are not a rule.
 
+Alloys are grouped here by the 0.1 at.% display label, which is how the reference numbers
+were computed. That rounding is the current default pending the owner's approval; the
+rule for when two compositions are the same alloy is set in step 6 (review, finding 2).
+
 The Texas A&M count ignores temperature: the source states no test temperature for its
 own measurements (step 4 question 3), and how a room-temperature scope treats it is the
 owner's step 6 decision."""

@@ -83,9 +83,14 @@ def percent_columns_to_atomic_percent(columns: dict[str, float | None]
 
 
 def alloy_label(composition: dict[str, float]) -> str:
-    """The canonical alloy name: elements in alphabetical order, each with its atomic
-    percent rounded to 0.1 (the reference script's naming, `docs/reference/worked_example.py`).
-    The full-precision composition is kept beside it in the record."""
+    """An alloy name **for display only**: elements in alphabetical order, each with its
+    atomic percent rounded to 0.1 (the reference script's naming,
+    `docs/reference/worked_example.py`).
+
+    Equal labels do not mean the same alloy: Fe50.01Ni49.99 and Fe50.04Ni49.96 both read
+    `Fe50Ni50` (step 4 review, finding 2). The record carries the full-precision
+    composition; when two compositions count as the same alloy is a plan and
+    domain-profile setting, defined in step 6 with a tolerance the owner approves."""
     return "".join(f"{e}{round(v, 1):g}" for e, v in sorted(composition.items()))
 
 

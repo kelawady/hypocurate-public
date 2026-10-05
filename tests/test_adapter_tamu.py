@@ -107,7 +107,7 @@ def test_composition_in_atomic_percent(records):
         assert sum(c.value.values()) == pytest.approx(100, abs=1e-9)
         for e in tamu_fcc.ELEMENT_COLUMNS:
             assert c.value.get(e, 0.0) == float(r.reported[e].text)
-    # 82 distinct compositions (PRD 10), and the naming keeps them distinct.
+    # 82 distinct compositions (PRD 10); their display labels happen to be distinct too.
     assert len({tuple(sorted(r.harmonized["composition"].value.items())) for r in records}) == 82
     assert len({r.alloy for r in records}) == 82
 
