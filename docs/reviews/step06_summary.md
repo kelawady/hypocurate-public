@@ -369,7 +369,24 @@ Each change was made in a scratch copy of the package (the copy's import checked
 
 In the review round, **"storage allowed after Checks" first survived**: Checks now wait for every chosen source, so the normal sequence never reaches that refusal. `test_no_record_is_stored_after_checks` creates the state directly (a Checks result while a source is still pending) and fails without it. Its harness run was disturbed by a stale earlier run sharing the scratch copy, so this one was repeated by hand: the copy imported, 1 failed, 25 passed.
 
-**Three mutations first survived**, and two tests were added:
+**After the review fixes (2026-10-06)** all 33 mutations were run again, alone, in one clean run (the 23 above, the ten below); each made its tests fail:
+
+| Removed or changed in the copy (review fixes) | Failing tests |
+|---|---|
+| Plan validation skips the fixed rules | 13 |
+| Checks run while a source is pending | 1 |
+| Inclusion and the freeze ignore the Checks binding | 3 |
+| Storage allowed after Checks | 1 |
+| Sensitivity sets reuse the primary flags | 2 |
+| An ambiguous group drops its conflict | 2 |
+| Survivor tie-break by database id | 1 |
+| The lock accepts a setting that leaves out a source | 2 |
+| The fingerprint keyed by database id | 1 |
+| The extraction check coalesced to NULL instead of false | 4 |
+
+"Storage allowed after Checks" first survived (the earlier test met the "already stored" refusal first); `test_no_record_is_stored_after_checks` was added for it. An earlier attempt at this run was discarded: a second harness process wrote to the same scratch copy at the same time and gave one wrong result.
+
+**Three mutations first survived** in the first build, and two tests were added:
 - **"Write path without `hc_write_lock`":** the database triggers lock the run row too. The new statement-order test now fails without it.
 - **"Freeze does not re-check its read":** its decision comparison caught the earlier scenario. The new tests change the run between each step's read and its write.
 - **"`record_conditions` carries the outcome value":** the first mutation was neutralised by the reader's second filter. The stronger mutation (both removed) fails three tests.
