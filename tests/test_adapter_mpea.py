@@ -162,7 +162,7 @@ def test_planted_values_are_kept_and_marked():
         _row(c9="X"),                # 6: unknown test type
         _row(c20=""),                # 7: no DOI
         "",                          # 8: blank line
-        GOOD + ",extra",             # 9: an extra field
+        _row(c2="FCC+BCC"),          # 9: an ordinary row (a wrong field count now refuses the file: finding 3)
         _row(c11="nan"),             # 10: not finite
         _row(c1="Co1 Cr0 Ni1"),      # 11: zero amount
     ]
@@ -186,15 +186,13 @@ def test_planted_values_are_kept_and_marked():
     assert h(6, "test_type").status == "not_convertible" and "'X'" in h(6, "test_type").reason
     assert by_row[7].group.key is None and by_row[7].group.reason == "no DOI in the source: paper unknown"
     assert by_row[7].paper_doi is None
-    assert all(v.status == "not_convertible" for v in by_row[9].harmonized.values())
-    assert by_row[9].reported["(column 24, no header)"].text == "extra"
-    assert by_row[9].group.key is None
+    assert h(9, "microstructure").value == "FCC+BCC"
     assert h(10, "yield_strength").status == "not_convertible"
     assert h(11, "composition").status == "not_convertible" and "not positive" in h(11, "composition").reason
 
 
 def test_a_file_in_another_layout_is_refused():
-    with pytest.raises(AdapterError, match="header"):
+    with pytest.raises(AdapterError, match="line 1: the header"):
         mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": b"a,b\n1,2\n"}))
     with pytest.raises(AdapterError, match="UTF-8"):
         mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": b"\xff\xfe\x00"}))
@@ -251,3 +249,46 @@ def test_compositions_differing_below_the_rounding_step_are_not_identical():
     ca, cb = a.harmonized["composition"].value, b.harmonized["composition"].value
     assert ca != cb  # … but not the same composition
     assert ca["Fe"] == pytest.approx(50.01) and cb["Fe"] == pytest.approx(50.04)
+
+
+# --- Strict parsing (finding 3): a malformed file is refused, never partly read --------
+
+def refused(lines, match):
+    with pytest.raises(AdapterError, match=match) as error:
+        mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": planted(lines)}))
+    assert str(error.value).startswith("MPEA_dataset.csv: line")
+    assert str(error.value).endswith("the file is refused")
+    return str(error.value)
+
+
+def test_an_unterminated_quote_at_the_end_refuses_the_file():
+    # header is line 1; GOOD is line 2; the broken record starts on line 3
+    refused([GOOD, '2,"Co1 Cr1 Ni1,FCC'], r"line 3: the record starting on this line cannot be parsed")
+
+
+def test_an_unterminated_quote_that_swallows_later_rows_refuses_the_file():
+    message = refused([GOOD, GOOD.replace(",A paper", ',"unterminated title'), GOOD, GOOD],
+                      r"line 3: the record starting on this line cannot be parsed")
+    assert "detected at line 5" in message
+
+
+def test_a_malformed_quote_refuses_the_file():
+    refused([GOOD, GOOD.replace("A paper", '"A" paper')], r"^MPEA_dataset.csv: line 3: .*',' expected after")
+
+
+@pytest.mark.parametrize("change,found", [(GOOD + ",extra", 24), (GOOD.rsplit(",", 2)[0], 21)])
+def test_a_wrong_field_count_refuses_the_file_and_names_the_line(change, found):
+    refused([GOOD, GOOD, change, GOOD], rf"^MPEA_dataset.csv: line 4: expected 23 fields, found {found}; ")
+
+
+def test_a_legitimate_quoted_multi_line_field_is_read():
+    multi = GOOD.replace(",A paper", ',"A paper\nwith a second line"')
+    result = mpea_layout.read(sealed("mpea", {"MPEA_dataset.csv": planted([GOOD, multi, GOOD])}))
+    assert [r.source_item_key for r in result.records] == [f"MPEA_dataset.csv:row:{i}" for i in range(3)]
+    assert result.records[1].reported["REFERENCE: title"].text == "A paper\nwith a second line"
+    assert result.records[1].paper_reference == "A paper\nwith a second line"
+
+
+def test_a_wrong_field_count_after_a_multi_line_field_names_both_lines():
+    multi = GOOD.replace(",A paper", ',"A paper\nwith a second line"')
+    refused([multi, multi.rsplit(",", 2)[0] + ',"x\ny"'], r"lines 4-5: expected 23 fields, found 22")

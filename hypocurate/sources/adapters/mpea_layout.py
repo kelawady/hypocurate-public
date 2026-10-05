@@ -3,6 +3,10 @@ controlled duplicate extract, which copies its header verbatim (step 1).
 
 - One record per data row, in file order; no row is dropped. An entirely blank line is
   listed in `blank_rows`, not turned into a record.
+- Strict CSV parsing: a quoting error or a row with the wrong number of fields refuses
+  the whole file with an `AdapterError` naming the file, the line and the reason. No
+  partial extraction is returned. A legitimate quoted field may span lines; the row
+  number in the origin key counts records, not physical lines.
 - Origin key: `<file>:row:<n>`, n the 0-based data row (the row numbering used in
   step 1). One record per row, so `item_index` is 0.
 - Every column is kept as reported text, with the unit its header states.
@@ -104,31 +108,44 @@ def read(version: SealedVersion) -> AdapterResult:
         decoded = content.decode("utf-8")
     except UnicodeDecodeError as error:
         raise AdapterError(f"{path} is not UTF-8: {error}") from None
-    rows = csv.reader(io.StringIO(decoded, newline=""))
-    header = tuple(next(rows, ()))
+    # Strict parsing (step 4 review, finding 3): a quoting error, or a row with the wrong
+    # number of fields, refuses the whole file. A partial extraction is never returned,
+    # because a stray quote can swallow the rows after it. The message names the file, the
+    # line and the reason, so whoever supplied the file can correct it.
+    rows = csv.reader(io.StringIO(decoded, newline=""), strict=True)
+    header = tuple(_next(rows, path, 1) or ())
     if header != HEADER:
-        raise AdapterError(f"{path}: the header is not the MPEA layout")
+        raise AdapterError(f"{path}: line 1: the header is not the MPEA layout; the file is refused")
     records, blank = [], []
-    for i, fields in enumerate(rows):
+    i, start = 0, rows.line_num + 1
+    while (fields := _next(rows, path, start)) is not None:
+        end = rows.line_num
+        lines = f"line {start}" if end == start else f"lines {start}-{end}"
         if not fields or all(f.strip() == "" for f in fields):
             blank.append(i)
-            continue
-        records.append(_record(version, path, i, fields))
+        elif len(fields) != len(HEADER):
+            raise AdapterError(f"{path}: {lines}: expected {len(HEADER)} fields, found {len(fields)}; "
+                               "the file is refused")
+        else:
+            records.append(_record(version, path, i, fields))
+        i, start = i + 1, end + 1
     return AdapterResult(tuple(records), tuple(blank))
+
+
+def _next(rows, path: str, start: int) -> list[str] | None:
+    """The next row, or None at the end of the file. A parsing error refuses the file."""
+    try:
+        return next(rows)
+    except StopIteration:
+        return None
+    except csv.Error as error:
+        raise AdapterError(f"{path}: line {start}: the record starting on this line cannot be parsed "
+                           f"({error}, detected at line {rows.line_num}); the file is refused") from None
 
 
 def _record(version: SealedVersion, path: str, i: int, fields: list[str]) -> CommonRecord:
     key = f"{path}:row:{i}"
-    reported = {}
-    for name, value in zip(HEADER, fields):
-        reported[name] = Reported(name, value, UNITS.get(name))
-    for extra, value in enumerate(fields[len(HEADER):], start=len(HEADER) + 1):
-        reported[f"(column {extra}, no header)"] = Reported(f"(column {extra}, no header)", value, None)
-    if len(fields) != len(HEADER):
-        reason = f"the row has {len(fields)} fields, the header {len(HEADER)}"
-        harmonized = {name: Value(None, unit, "not_convertible", reason) for name, unit in HARMONIZED_FIELDS.items()}
-        return CommonRecord(version.source_key, version.fingerprint, key, 0, version.data_kind, None, None, None,
-                            Group("paper", None, reason), harmonized, reported)
+    reported = {name: Reported(name, value, UNITS.get(name)) for name, value in zip(HEADER, fields)}
     cells = dict(zip(HEADER, fields))
     harmonized, alloy = _harmonize(cells)
     # Kept exactly as reported (one MPEA DOI has a leading space); only a whitespace-only
