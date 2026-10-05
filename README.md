@@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
 
 ## Status
 
-Build step 4 of 12 (PRD Section 15): sources and harmonization. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), plus the three sources registered as sealed versions, one adapter per source and "test connection" (step 4). The access layer, the pipeline and the screens come in later steps.
+Build step 5 of 12 (PRD Section 15): the access layer. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), plus the access layer with its audit log and the file guard for pipeline processes (step 5). The pipeline, the agents and the screens come in later steps.
 
 ## Set up secrets (once)
 
@@ -138,3 +138,20 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
 - "Test connection" runs in a read-only transaction.
 - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
 - Not yet run on the live database: registering there is a later step and needs the owner.
+
+## Access layer
+
+Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8).
+
+```python
+from hypocurate.access import bind, role_input
+critic = bind(engine, run_id, agent_setting_id)   # role from the run's recorded agent settings
+role_input(critic)                                 # what the Critic may receive, in one transaction under the run's lock
+```
+
+- **Threat model** (CLAUDE.md): the access layer guards against *our own code* leaking data to a model. Agents return text only and never receive SQL, a connection or a file path; only trusted code runs. It is not a boundary against hostile code in the same process.
+- **The dispatcher** (`dispatch.bind`) is the only way to get an access object. It reads the role from the run's agent settings and the stage from the database, and accepts a source only for the Curator and only if the run recorded it. The context is immutable.
+- **Allowed fields, not blocked fields.** `allowlist.py` lists the fields each role may receive at each stage. In the blinded views (Planner, Critic, gap report, Commentator without a freeze) text comes from fixed vocabularies (`vocabulary.py`) or shows as `unrecognized`, and the plan is projected recursively by `PLAN_SCHEMA`. What these views still disclose by design (counts, flag kinds, singleton condition summaries, DOIs, human-written text, timing) is listed in `ACCEPTED_DISCLOSURES` and the register. Unrecognized category values are counted per source in "test connection" and in a run's coverage.
+- **Stages come from the database**, on every call: before the rules lock, curation, analysis, closed without a freeze, final, final without a freeze. Queued and failed runs give nothing.
+- **Logging.** Every read, policy denial and access failure is logged in `audit_log` (`detail.result`: allowed, denied or failed, with a fixed code; only validated, bounded strings). A role's input is read in one transaction that calls `hc_write_lock(p_run => …)` first: one snapshot of the run data protected by the run-lock protocol. The original error of a failure goes to the process log only; the error raised carries nothing of it. Failure rows are written without the run lock (a named exception). If the database cannot take a failure row, it goes to the process log (`hypocurate.access`). Never call the access layer while holding the same run's lock: the call waits, then fails after 5 seconds.
+- **The file guard is a tripwire, not a sandbox.** Pipeline runs execute in `python -m hypocurate.access.guarded` (`run_guarded`), where an audit hook refuses accidental reads outside the Python installation and the package, writes outside a private scratch directory, other programs and new native libraries, and logs each refusal. Python warns that audit hooks cannot contain code that tries to get around them, and this one does not (open descriptors, its own state, preloaded `ctypes`, sockets and the database are not restricted). The only construction-level guarantee is that the deployed image contains no `tests/` or `docs/`.
