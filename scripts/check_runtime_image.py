@@ -18,7 +18,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 TOP_LEVEL = {"hypocurate", "data", "requirements.lock"}
-REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.json", "requirements.lock"]
+REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.json", "requirements.lock",
+            # Step 3: Render's pre-deploy command migrates from inside the deployed image.
+            "hypocurate/db/migrate.py", "hypocurate/db/migrations/env.py",
+            "hypocurate/db/migrations/versions/0001_data_model.py"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 

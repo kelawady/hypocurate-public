@@ -67,3 +67,11 @@ def test_outcome_vocabulary_under_data_fails(image):
 def test_missing_server_fails(image):
     (image / "hypocurate" / "web" / "main.py").unlink()
     assert "missing hypocurate/web/main.py" in check.problems(image)
+
+
+@pytest.mark.parametrize("missing", ["hypocurate/db/migrate.py", "hypocurate/db/migrations/env.py",
+                                     "hypocurate/db/migrations/versions/0001_data_model.py"])
+def test_missing_migrations_fail(image, missing):
+    """Step 3: Render's pre-deploy command runs the migrations from inside the deployed image."""
+    (image / missing).unlink()
+    assert f"missing {missing}" in check.problems(image)

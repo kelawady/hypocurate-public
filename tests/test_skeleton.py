@@ -1,4 +1,5 @@
-"""Step 2: the skeleton's files: layout, locked dependencies, image, compose, Render and CI."""
+"""Step 2: the skeleton's files: layout, locked dependencies, image, compose, Render and CI.
+Step 3: the migration service in Compose and the pre-deploy command on Render."""
 import os
 import re
 from pathlib import Path
@@ -239,6 +240,7 @@ COMPOSE_ENV = {
     "db": {"POSTGRES_USER", "POSTGRES_DB", "POSTGRES_PASSWORD"},
     "web": {"HYPOCURATE_ENV", "DATABASE_URL", "HYPOCURATE_PASSWORD", "SESSION_SECRET"},
     "worker": {"HYPOCURATE_ENV", "DATABASE_URL"},
+    "migrate": {"HYPOCURATE_ENV", "DATABASE_URL"},
     "test": {"DATABASE_URL", "HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD"},
 }
 
@@ -253,6 +255,17 @@ def test_compose_has_web_worker_database_and_test():
     assert services["worker"]["command"] == ["python", "-m", "hypocurate.worker"]
     assert services["web"]["build"]["target"] == services["worker"]["build"]["target"] == "runtime"
     assert services["test"]["build"]["target"] == "test"
+
+
+def test_compose_migrates_before_web_and_worker_start():
+    """Step 3: the same command as Render's pre-deploy, in the runtime image."""
+    services = compose()
+    assert services["migrate"]["command"] == ["python", "-m", "hypocurate.db.migrate", "upgrade"]
+    assert services["migrate"]["build"]["target"] == "runtime"
+    assert services["migrate"]["depends_on"] == {"db": {"condition": "service_healthy"}}
+    for name in ("web", "worker"):
+        assert services[name]["depends_on"] == {"db": {"condition": "service_healthy"},
+                                                "migrate": {"condition": "service_completed_successfully"}}, name
 
 
 def test_compose_gives_each_service_only_its_variables():
@@ -320,6 +333,13 @@ def test_render_holds_no_secret_values():
     for e in (web, wk):
         assert e["HYPOCURATE_ENV"]["value"] == "production"
         assert "value" not in e["DATABASE_URL"] and e["DATABASE_URL"]["fromDatabase"]["property"] == "connectionString"
+
+
+def test_render_migrates_before_each_deploy():
+    """Step 3: both services run the migration as the pre-deploy command, so neither
+    starts new code on an older schema. A failed migration fails the deploy."""
+    for s in render()["services"]:
+        assert s["preDeployCommand"] == "python -m hypocurate.db.migrate upgrade", s["name"]
 
 
 def test_render_worker_gets_no_login_secrets():

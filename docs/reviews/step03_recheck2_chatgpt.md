@@ -1,0 +1,9 @@
+All four are closed. Step 3 can be merged and its migration run on the live database.
+1. Lock order — closed. hc_write_lock provides the parent-before-child entry point, with version before run when both are supplied. The tests reproduce the original deadlock without the protocol and demonstrate successful serialization with it, including model-call finishing. The documentation now correctly distinguishes application protocol from trigger protection and requires whole-transaction retries.
+2. Source fingerprints — closed. The path restriction eliminates the delimiter ambiguity. The database computes files_digest, and version identity includes all three interpretation settings. The regression test now actually seals identical files under revised settings, verifies distinct identities, and rejects an identical duplicate.
+3. Finite costs — closed. The new upper-bound check, together with existing lower bounds, rejects NaN and both infinities. Tests cover reservations and reported costs, including verifying that rejected completion leaves the call unchanged.
+4. Frozen stage role — closed. IS DISTINCT FROM handles changes involving NULL correctly. Tests cover running stages and post-completion Commentator stages, including relabelling combined with finishing.
+No new result-corruption or live-database blocker found. The packet reports 375 passing tests, including container execution; I reviewed the code and reported output rather than independently rerunning PostgreSQL.
+For later steps:
+- Apply the lock helper and retry handling to actual write paths. The deadlock-free claim should remain scoped to the documented single-run transactions; multi-run transactions need an additional ordering rule.
+- Before writing stored paths to disk, validate directory containment: the fingerprint-safe character restriction still permits paths such as a/../../outside.csv.

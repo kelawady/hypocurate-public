@@ -17,6 +17,9 @@ services:
     autoDeployTrigger: checksPass
     dockerfilePath: ./Dockerfile
     dockerContext: .
+    # Step 3: migrate before the new version starts. If it fails, Render fails the
+    # deploy and keeps the previous version running (README, "Database migrations").
+    preDeployCommand: python -m hypocurate.db.migrate upgrade
     healthCheckPath: /health
     envVars:
       - key: HYPOCURATE_ENV
@@ -41,6 +44,8 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     dockerCommand: python -m hypocurate.worker
+    # Both services run it; an advisory lock makes the second wait and find the schema at head.
+    preDeployCommand: python -m hypocurate.db.migrate upgrade
     envVars:
       - key: HYPOCURATE_ENV
         value: production

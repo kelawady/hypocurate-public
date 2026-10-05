@@ -1,4 +1,5 @@
-"""Step 2: the health page, the idle worker and the command line against a real PostgreSQL."""
+"""Step 2: the health page, the idle worker and the command line against a real PostgreSQL.
+Step 3: /health also reports the schema revision (informational)."""
 import logging
 
 from fastapi.testclient import TestClient
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from hypocurate import cli, worker
 from hypocurate.config import Settings
 from hypocurate.db.engine import make_engine
+from hypocurate.db.migrate import head_revision
 from hypocurate.web.app import create_app
 
 PASSWORD = "test-password-not-a-secret"
@@ -19,22 +21,32 @@ def client(database_url):
     return TestClient(create_app(s, engine=make_engine(database_url)), follow_redirects=False)
 
 
-def test_health_without_login_database_up(database_url):
-    r = client(database_url).get("/health")
+def test_health_without_login_database_up(migrated_database):
+    r = client(migrated_database).get("/health")
     assert r.status_code == 200
-    assert r.json() == {"web": "ok", "database": "ok", "version": "abc123"}
+    assert r.json() == {"web": "ok", "database": "ok", "version": "abc123",
+                        "schema": {"revision": head_revision(), "at_head": True}}
 
 
-def test_health_page_in_a_browser(database_url):
-    r = client(database_url).get("/health", headers={"accept": "text/html"})
+def test_health_reports_an_unmigrated_database_without_failing(empty_database):
+    """The schema field is informational: it never changes the status code."""
+    r = client(empty_database).get("/health")
+    assert r.status_code == 200
+    assert r.json()["schema"] == {"revision": None, "at_head": False}
+
+
+def test_health_page_in_a_browser(migrated_database):
+    r = client(migrated_database).get("/health", headers={"accept": "text/html"})
     assert r.status_code == 200
     assert "Database" in r.text and ">ok<" in r.text
+    assert f"<code>{head_revision()}</code> (latest)" in r.text
 
 
 def test_health_reports_database_down_without_crashing():
     r = client(UNREACHABLE_DB).get("/health")
     assert r.status_code == 503
     assert r.json()["database"] == "unreachable"
+    assert r.json()["schema"] == {"revision": None, "at_head": False}
 
 
 def test_health_shows_no_secrets(database_url):
