@@ -234,7 +234,9 @@ def test_the_step_6_decisions_carry_the_owners_wording():
     for key in ("sensitivity_one_change", "code_role_access", "constructed_test_runs", "record_extraction_provenance",
                 "eligibility_rule_order", "conflicts_not_pooled", "freeze_counts"):
         e = BY_KEY[key]
-        assert e["decided"] == {"by": OWNER, "date": "2026-10-05"} and e["expert_review"]["status"] == "not_reviewed"
+        # conflicts_not_pooled was made a fixed rule by the owner on 2026-10-06.
+        date = "2026-10-06" if key == "conflicts_not_pooled" else "2026-10-05"
+        assert e["decided"] == {"by": OWNER, "date": date} and e["expert_review"]["status"] == "not_reviewed"
 
 
 def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history():
@@ -246,6 +248,23 @@ def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history
     assert e["applied"]["status"] == "partly" and e["applied"]["step"] == 7
     assert "k = 428 ± 64" in e["history"][0]["value"] and "77 records" in e["history"][0]["value"]
     assert "database rule" in " ".join(BY_KEY["constructed_test_runs"]["notes"])
+
+
+def test_what_no_plan_can_do_to_the_primary_set_is_listed_in_one_entry():
+    """Owner, 2026-10-06: one entry, in plain words, with a test for each point; shown on the page."""
+    e = BY_KEY["primary_set_invariants"]
+    s = e["statement"]
+    for words in ("including any plan written by a model", "exact duplicate is never counted twice",
+                  "Both records of a conflict never enter", "physically invalid value never enters",
+                  "several candidates) never enters", "model-recalled record never enters",
+                  "constructed record (the controlled extract) never enters a run that is not marked as a test"):
+        assert words in s, words
+    assert e["decided"] == {"by": OWNER, "date": "2026-10-06"} and e["applied"]["status"] == "yes"
+    for point in ("(1)", "(2)", "(3)", "(4)", "(5)", "(6)"):
+        assert point in e["applied"]["note"], point
+    html = signed_in().get("/assumptions").text
+    assert 'id="primary_set_invariants"' in html and "What no plan can ever do to the primary set" in html
+    assert "made a fixed rule" in BY_KEY["conflicts_not_pooled"]["history"][-1]["note"]
 
 
 def open_entry():

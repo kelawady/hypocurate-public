@@ -39,6 +39,36 @@ from hypocurate.sources.normalize import same_alloy_key
 PRIMARY = "primary"
 FLAG_STAGE_RULES = ("identity_unresolved", "conflict_unresolved", "duplicate_counted_once")
 
+# Fixed rules, not plan defaults (owner, 2026-10-06; register 'primary_set_invariants'): what each
+# flag means for the primary set. Every plan has exactly these eligibility-rule entries (flag kind,
+# category), with a rule from the allowed choices; validation refuses anything else, and so does
+# `settings` for a plan that bypassed validation. No plan, including one a model writes, can count
+# an exact duplicate twice, admit both records of a conflict, an invalid value or an unresolved-
+# identity group. The only plan choices: a conflict enters with neither record (the default) or
+# with the survivor's value counted once; a possible duplicate is counted once (the default) or
+# both records are counted.
+FLAG_RULE_CHOICES = {
+    ("invalid_value", None): ("invalid_value",),
+    ("exact_duplicate", None): ("duplicate_counted_once",),
+    ("values_disagree", None): ("conflict_unresolved", "duplicate_counted_once"),
+    ("possible_duplicate", "several candidates"): ("identity_unresolved",),
+    ("possible_duplicate", None): ("duplicate_counted_once", "in_scope"),
+}
+
+
+def fixed_rule_problems(eligibility_rules) -> list[str]:
+    """What breaks the fixed rules in a plan's eligibility rules (empty if nothing)."""
+    got = {(e.get("flag_kind"), e.get("category")): e.get("rule") for e in eligibility_rules}
+    problems = [f"{kind}{'/' + cat if cat else ''}: missing" for kind, cat in FLAG_RULE_CHOICES
+                if (kind, cat) not in got]
+    for key, rule in got.items():
+        allowed = FLAG_RULE_CHOICES.get(key)
+        if allowed is None:
+            problems.append(f"{key[0]}{'/' + key[1] if key[1] else ''}: not a flag the plan sets a rule for")
+        elif rule not in allowed:
+            problems.append(f"{key[0]}{'/' + key[1] if key[1] else ''}: {rule} (allowed: {', '.join(allowed)})")
+    return problems
+
 # The one change of each sensitivity set (owner, 2026-10-05).
 SENSITIVITY_CHANGES = {
     "no_exclusions": "the menu exclusion rules are dropped; the scope is kept",
@@ -77,6 +107,9 @@ class Settings:
 def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
     """The settings of set `key` under the locked plan's content."""
     r, s, v = plan["rules"], plan["scope"], plan["variables"]
+    problems = fixed_rule_problems(plan["eligibility_rules"])
+    if problems:
+        raise ValueError("the plan breaks a fixed rule for the primary set: " + "; ".join(problems))
     flag_rules = tuple(sorted(((e["flag_kind"], e.get("category"), e["rule"]) for e in plan["eligibility_rules"]),
                               key=lambda t: t[1] is None))
     base = Settings(

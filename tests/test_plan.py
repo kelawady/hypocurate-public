@@ -77,6 +77,21 @@ def test_each_default_comes_from_its_named_setting(monkeypatch):
         assert default_plan(1)["sufficiency"]["min_records"] == 3
 
 
+def _set_rule(content, kind, category, rule):
+    for e in content["eligibility_rules"]:
+        if e["flag_kind"] == kind and e.get("category") == category:
+            e["rule"] = rule
+
+
+def test_the_plan_choices_that_remain():
+    """Conflicts: neither (default) or the survivor's value counted once. Possible duplicates:
+    counted once (default) or counted separately."""
+    for kind, rule in (("values_disagree", "duplicate_counted_once"), ("possible_duplicate", "in_scope")):
+        content = default_plan(1)
+        _set_rule(content, kind, None, rule)
+        validate(content)
+
+
 @pytest.mark.parametrize("change, message", [
     (lambda c: c.update(extra=1), "outside PLAN_SCHEMA"),
     (lambda c: c["rules"].update(note="free text"), "outside PLAN_SCHEMA"),
@@ -93,6 +108,18 @@ def test_each_default_comes_from_its_named_setting(monkeypatch):
     (lambda c: c["sufficiency"].update(min_records=0), "at least 1"),
     (lambda c: c["exclusion_rules"].append({"rule": "grain_size_range"}), "minimum or a maximum"),
     (lambda c: c["eligibility_rules"].append({"flag_kind": "values_disagree", "rule": "in_scope"}), "one eligibility"),
+    # Owner, 2026-10-06: fixed rules a plan can never change (register 'primary_set_invariants').
+    (lambda c: _set_rule(c, "values_disagree", None, "in_scope"), "fixed rule"),
+    (lambda c: _set_rule(c, "exact_duplicate", None, "in_scope"), "fixed rule"),
+    (lambda c: _set_rule(c, "invalid_value", None, "in_scope"), "fixed rule"),
+    (lambda c: _set_rule(c, "possible_duplicate", "several candidates", "in_scope"), "fixed rule"),
+    (lambda c: _set_rule(c, "possible_duplicate", "several candidates", "duplicate_counted_once"), "fixed rule"),
+    (lambda c: c.update(eligibility_rules=[e for e in c["eligibility_rules"] if e["flag_kind"] != "values_disagree"]),
+     "fixed rule"),
+    (lambda c: c.update(eligibility_rules=[e for e in c["eligibility_rules"] if e["flag_kind"] != "invalid_value"]),
+     "fixed rule"),
+    (lambda c: c["eligibility_rules"].append({"flag_kind": "exact_duplicate", "category": "within tolerance",
+                                              "rule": "in_scope"}), "fixed rule"),
     (lambda c: c["eligibility_rules"].append({"flag_kind": "model_recalled", "rule": "out_of_scope"}),
      "flag rule codes"),
     (lambda c: c["sensitivity_analyses"].append("removal_after_lock"), "named once each"),

@@ -216,7 +216,11 @@ def _changed(path, value):
     (("scope", "phase_class"), ["BCC"], pair(1, 10.0), [], 1, "in_scope", "out_of_scope"),
     (("exclusion_rules",), [{"rule": "grain_size_range", "min": 20.0}], pair(1, 10.0), [], 1, "in_scope",
      "excluded_by_rule"),
-    (("eligibility_rules",), [{"flag_kind": "values_disagree", "rule": "in_scope"}],
+    # Owner, 2026-10-06: for conflicts a plan may choose only between neither record (the default)
+    # and the survivor's value counted once. (Replaces the step 6 case that mapped a conflict to
+    # in_scope, which the owner removed.)
+    (("eligibility_rules",), [{**e, "rule": "duplicate_counted_once"} if e["flag_kind"] == "values_disagree" else e
+                              for e in PLAN["eligibility_rules"]],
      [*pair(1, 10.0), cond(3, "controlled_duplicates"), cond(4, "controlled_duplicates", gs=40.0)],
      [flag("values_disagree", "differ beyond tolerance", 1, 3)], 1, "conflict_unresolved", "in_scope"),
     (("variables", "outcome", "field"), "hardness", pair(1, 10.0), [], 1, "in_scope", "missing_value"),
@@ -226,6 +230,37 @@ def test_each_setting_is_read_from_the_locked_plan(path, value, records, flags, 
     decision accordingly; code that read the value from anywhere else would not."""
     assert decide(records, flags)[record] == before
     assert decide(records, flags, _changed(path, value))[record] == after
+
+
+@pytest.mark.parametrize("kind, category, rule", [
+    ("exact_duplicate", None, "in_scope"),  # an exact duplicate counted twice
+    ("values_disagree", None, "in_scope"),  # both records of a conflict
+    ("invalid_value", None, "in_scope"),  # an invalid value
+    ("possible_duplicate", "several candidates", "in_scope"),  # an unresolved-identity group
+    ("possible_duplicate", "several candidates", "duplicate_counted_once"),
+])
+def test_no_plan_can_put_these_records_in_the_primary_set(kind, category, rule):
+    """Owner, 2026-10-06 (register 'primary_set_invariants'): fixed rules, not plan defaults. A
+    plan that bypassed validation is refused when its settings are built, too."""
+    plan = copy.deepcopy(PLAN)
+    for e in plan["eligibility_rules"]:
+        if e["flag_kind"] == kind and e.get("category") == category:
+            e["rule"] = rule
+    with pytest.raises(ValueError, match="fixed rule"):
+        el.settings(plan)
+
+
+def test_the_fixed_rules_hold_in_every_set_the_plan_names():
+    """Sensitivity sets change only what their key names: conflicts keep 'neither' or the survivor's
+    value; exact duplicates stay counted once; invalid values and ambiguous groups stay out except
+    that 'possible_duplicates_separate' counts ambiguous groups separately."""
+    records = [*pair(1, 10.0), cond(3, "controlled_duplicates"), cond(4, "controlled_duplicates", gs=40.0),
+               cond(5, "tamu_fcc", doi=False), cond(6, "tamu_fcc", doi=False, gs=40.0)]
+    for flags, primary_out in (([flag("exact_duplicate", "identical values", 1, 3)], {3}),
+                               ([flag("invalid_value", "physically impossible", 1)], {1})):
+        for key in (el.PRIMARY, *PLAN["sensitivity_analyses"]):
+            got = decide(records, flags, key=key)
+            assert all(got[i] != "in_scope" for i in primary_out), (key, flags)
 
 
 def test_grouping_is_read_from_the_locked_plan():

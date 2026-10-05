@@ -1252,7 +1252,7 @@
     "key": "physical_validity_checks",
     "name": "Physical validity checks",
     "state": "in_force",
-    "statement": "A physically impossible value (tensile strength below yield strength, or a grain size of zero or less) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+    "statement": "A physically impossible value (tensile strength below yield strength, or a grain size of zero or less) is flagged and never enters the primary analysis, whatever the plan (a fixed rule). Agreement with the grain-size relationship under test is never used to judge a record.",
     "value": {
       "text": "UTS < YS or grain size <= 0: invalid",
       "unit": null
@@ -1265,7 +1265,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1288,11 +1288,20 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "Step 4b wording ('a negative grain size'); zero added in step 6, since the model needs a positive grain size."
+      },
+      {
+        "value": "A physically impossible value (tensile strength below yield strength, or a grain size of zero or less) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; made a fixed rule by the owner on 2026-10-06."
       }
     ],
-    "notes": [],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+    ],
     "tests": [
       "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
       "tests/test_flags.py::test_flags_use_only_pairwise_and_per_record_rules",
       "tests/test_flags.py::test_physically_impossible_values_are_flagged_per_record"
     ]
@@ -2246,7 +2255,7 @@
     "key": "duplicate_survivor_rule",
     "name": "Which duplicate is kept in the primary analysis",
     "state": "in_force",
-    "statement": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
+    "statement": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number. An exact duplicate is always counted once (a fixed rule).",
     "value": {
       "text": "the record carrying the original paper reference; then source order; then lowest row",
       "unit": null
@@ -2258,8 +2267,8 @@
       "PRD 5.3; step 1 summary, 'Survivor rule'."
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), step 1; wording restored 2026-10-05",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2287,15 +2296,23 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "Wording of the step 1 re-check correction and of the first step 4b register; withdrawn after the step 4b review, finding 3."
+      },
+      {
+        "value": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; 'always counted once' made a fixed rule by the owner on 2026-10-06."
       }
     ],
     "notes": [
       "A DOI identifies the cited paper, not where a record was extracted: a compilation and a copied extract can both carry it. Preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist.",
       "The step 1 answer file, its builder and README carry this wording since step 6 (owner's approval, 2026-10-05).",
-      "Rule 1 can only decide a possible duplicate: paired records otherwise cite the same paper."
+      "Rule 1 can only decide a possible duplicate: paired records otherwise cite the same paper.",
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
     ],
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
       "tests/test_eligibility.py::test_survivor_rule_one_a_source_other_than_mpea_survives_when_it_alone_carries_the_doi",
       "tests/test_eligibility.py::test_survivor_rule_three_the_lowest_row_within_one_source",
       "tests/test_eligibility.py::test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order"
@@ -2305,7 +2322,7 @@
     "key": "unresolved_duplicates",
     "name": "Possible duplicates that cannot be resolved",
     "state": "in_force",
-    "statement": "A possible duplicate is kept and counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis. When identity cannot be resolved (several candidates), none of the group's records enters the primary analysis; all of them enter the same sensitivity analysis.",
+    "statement": "A possible duplicate is kept and counted once in the primary analysis by the survivor rule (the plan may instead count both records), and counted separately in a sensitivity analysis. When identity cannot be resolved (several candidates), none of the group's records ever enters the primary analysis (a fixed rule); all of them are counted separately only in 'possible_duplicates_separate'.",
     "value": {
       "text": "counted once",
       "unit": null
@@ -2318,7 +2335,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2341,13 +2358,22 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "Step 4b wording; the ambiguous group added by the owner (2026-10-05, decision C)."
+      },
+      {
+        "value": "A possible duplicate is kept and counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis. When identity cannot be resolved (several candidates), none of the group's records enters the primary analysis; all of them enter the same sensitivity analysis.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording; the unresolved-identity rule made fixed by the owner on 2026-10-06."
       }
     ],
-    "notes": [],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+    ],
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
       "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
-      "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule"
+      "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set"
     ]
   },
   {
@@ -4187,7 +4213,7 @@
     "key": "conflicts_not_pooled",
     "name": "Conflicting reports are not pooled",
     "state": "in_force",
-    "statement": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and neither enters the primary analysis: code does not choose between them. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+    "statement": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and both never enter the primary analysis together: this is a fixed rule, not a plan default. By default neither enters the primary analysis; the only other choice a plan has is the survivor's value counted once. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
     "value": {
       "text": "neither in primary; survivor value in a sensitivity analysis",
       "unit": null
@@ -4200,7 +4226,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4217,12 +4243,22 @@
       ],
       "note": null
     },
-    "history": [],
-    "notes": [],
+    "history": [
+      {
+        "value": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and neither enters the primary analysis: code does not choose between them. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 6 wording (decision C); made a fixed rule by the owner on 2026-10-06 (the override to 'both enter' removed)."
+      }
+    ],
+    "notes": [
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+    ],
     "tests": [
-      "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
       "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
-      "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files"
+      "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
+      "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set"
     ]
   },
   {
@@ -4577,6 +4613,66 @@
     "tests": [
       "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+    ]
+  },
+  {
+    "key": "primary_set_invariants",
+    "name": "What no plan can ever do to the primary set",
+    "state": "in_force",
+    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) Both records of a conflict never enter: neither enters (the default), or the plan may choose the survivor's value counted once. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The only plan choices that remain: conflicts as in (2), and possible duplicates counted once (the default) or both counted.",
+    "value": {
+      "text": "six things no plan can do",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The primary set of every run, whoever writes its plan (the fixed reference plan now, the Planner from step 8).",
+    "reason": "Owner, 2026-10-06, after the step 6 review: the conflict rule was a plan default a plan could override; these are fixed rules, not defaults.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md (finding on the conflict policy) and the owner's decision of 2026-10-06 in docs/reviews/step06_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Only the named sensitivity analyses change (2) and (4): 'conflicts_survivor_value' and 'possible_duplicates_separate'.",
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:FLAG_RULE_CHOICES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:fixed_rule_problems"
+        },
+        {
+          "ref": "sql:a model-recalled record is never eligible"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.writes:constructed_unmarked"
+        }
+      ],
+      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…]; (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused."
+    },
+    "history": [],
+    "notes": [
+      "Shown on the assumptions page like every entry."
+    ],
+    "tests": [
+      "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
+      "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
+      "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
+      "tests/test_eligibility.py::test_the_fixed_rules_hold_in_every_set_the_plan_names",
+      "tests/test_data_model.py::test_a_model_recalled_record_is_stored_but_never_eligible",
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
+      "tests/test_plan.py::test_invalid_plans_are_refused",
+      "tests/test_plan.py::test_the_plan_choices_that_remain"
     ]
   }
 ]

@@ -27,6 +27,7 @@ from hypocurate.access.allowlist import PLAN_SCHEMA
 from hypocurate.access.fields import project
 from hypocurate.access.vocabulary import SENSITIVITY_KEYS
 from hypocurate.pipeline import profile as p
+from hypocurate.pipeline.eligibility import fixed_rule_problems
 
 PARTS = ("hypothesis_version", "variables", "scope", "model", "sufficiency", "fields_to_extract", "exclusion_rules",
          "eligibility_rules", "verdict_statement", "sensitivity_analyses", "profile", "rules")
@@ -155,6 +156,9 @@ def _check_template(c: dict) -> None:
         if key in seen:
             raise PlanError("each flag kind (and category) has one eligibility rule")
         seen.add(key)
+    problems = fixed_rule_problems(c["eligibility_rules"])
+    if problems:
+        raise PlanError("the plan breaks a fixed rule for the primary set: " + "; ".join(problems))
     keys = c["sensitivity_analyses"]
     if len(set(keys)) != len(keys) or not set(keys) <= SENSITIVITY_KEYS - {"removal_after_lock"}:
         raise PlanError("sensitivity analyses are named once each, from the vocabulary")
