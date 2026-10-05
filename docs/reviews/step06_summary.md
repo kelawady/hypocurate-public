@@ -1,6 +1,6 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed. Second confirmation (2026-10-06): one new problem (overlapping exact pairs resolved in id order); fixed, with tests that failed before. Third confirmation (2026-10-06): one problem (a plan could still map conflicts to "counted once" and admit one record of a conflict-connected group); fixed in validation, application and the freeze, with tests that failed before. **Owner's decision (2026-10-06): step 6 is merged without a further review round, on the strength of the regression tests and the green GitHub run on `d42b6f2` (run 37382439206).** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed. Second confirmation (2026-10-06): one new problem (overlapping exact pairs resolved in id order); fixed, with tests that failed before. Third confirmation (2026-10-06): one problem (a plan could still map conflicts to "counted once" and admit one record of a conflict-connected group); fixed in validation, application and the freeze, with tests that failed before. **Owner's decision (2026-10-06): step 6 is merged without a further review round, on the strength of the regression tests and the green GitHub run on `d42b6f2` (run 37382439206). Merged into `main` (`b6401ef`) and live, with migrations 0002 and 0003 applied to the live database (see "Live deployment").** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
@@ -175,6 +175,32 @@ The text is in `docs/reviews/step06_recheck_chatgpt.md`; the commits and diffs i
 **Reference numbers after these fixes:** recomputed; **none changed**, and the freeze fingerprint is unchanged too (`93c44b22…`). As the re-check expected: the reference sources have no shared measurement and no invalid value.
 
 **What these fixes do not do:** the result check covers the six invariants of `primary_set_invariants`; it does not re-derive every eligibility rule (that is the freeze's existing comparison of the stored decisions with what the locked rules produce). Paper identity from reference text: equal texts (after normalizing spaces and case) are the same paper; unequal texts are unknown, which can give a possible duplicate, never a pair (true of the code only since the confirmation fix).
+
+## Live deployment (2026-10-05, UTC)
+
+**Merge:** `step-06-eligibility` into `main` with `--no-ff` (`b6401ef`). The branch runs were green before the merge:
+- last code commit `d42b6f2`: https://github.com/kelawady/hypocurate/actions/runs/37382439206;
+- branch head `06ea828` (the owner's merge decision in this summary): https://github.com/kelawady/hypocurate/actions/runs/37383786777.
+
+Checked before merging (`git diff --name-only origin/main...step-06-eligibility`): **no `render.yaml`, workflow, Dockerfile, Compose or dependency change**. The only migrations are the two the owner approved, `0002_tag_starting_lists.py` and `0003_record_extraction.py`. The suite passed on `main` locally (909). `main`'s run was green: https://github.com/kelawady/hypocurate/actions/runs/37384272512 (started 22:43:33 UTC, passed 22:47:36 UTC). Times are UTC.
+
+| Check | How | Result |
+|---|---|---|
+| Live `/health` before the merge | `curl` | `version` `209febc…`, `schema` `0001`, at head |
+| Live `/health` during the deploy | `curl`, 22:48:04 UTC | `version` `209febc…`, `schema` `0003`, `at_head` false: the pre-deploy migration had run, and the old code was still serving |
+| Live `/health` after the deploy | `curl`, 22:48:25 UTC | `{"web":"ok","database":"ok","version":"b6401ef9324178726cc8a5379683f69656eb7c23","schema":{"revision":"0003","at_head":true}}` |
+| `/assumptions` signed out | `curl` | 303 to `/login` |
+| `/` and `/help` signed out | `curl` | 303 to `/login` |
+| `/login` | `curl` | 200 |
+| The deployed register | `git show b6401ef:hypocurate/assumptions.json` | 100 entries, including `primary_set_invariants`, `conflicts_not_pooled`, `sensitivity_one_change`, `constructed_test_runs`, `code_role_access`, `record_extraction_provenance`, `reference_numbers` and `tag_starting_lists` |
+
+The live database's schema revision (0003, at head) is read by `/health` from the live database itself. The service started on the new commit, which also shows that the deployed register (100 entries) passed validation at start-up. No Blueprint sync was expected, because `render.yaml` did not change.
+
+**Not checked by Claude Code** (the owner's to check):
+- **The tag lists on the live database.** No live database access or Render log access is available from the Codespace, and no public page shows them. Revision 0003 means migration 0002 completed. To see the rows, run in Render's database shell: `SELECT kind, count(*) FROM tag_value WHERE status = 'approved' GROUP BY kind;` (19 values in all).
+- **The signed-in `/assumptions` page.** Checking it needs the production password, which only the owner uses. Look for "What no plan can ever do to the primary set" and the reworded "Conflicting reports are not pooled".
+
+Nothing in the pipeline has a caller on the live site yet: no agent, no worker job, no source registered.
 
 ## What was built
 
