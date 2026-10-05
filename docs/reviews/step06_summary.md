@@ -1,6 +1,6 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. For a second re-check.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed, each with tests that failed before. Not merged.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
@@ -67,6 +67,32 @@ The owner accepted all six findings, decided that the primary set's handling of 
 
 **Reference numbers after the fixes:** recomputed with the same scripts; **none changed**. Records, alloys, groups, residual df, k, standard errors and p-values are identical for every set. The freeze fingerprint's value changed, because it is now computed from stable identities (`93c44b22…`, was `3440e972…`); it is not a reference number.
 
+## Confirmation review (ChatGPT, 2026-10-06) and fixes
+
+The text is in `docs/reviews/step06_confirm_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix3_packet.md`. Confirmed fixed: the concurrency item and duplicate rule entries. Partly fixed: the fixed rules and the freeze check (a mixed group lost a definite exact pair). New: unequal reference text was treated as proof of different papers, and the summary said otherwise. **Not safe to merge** until both are fixed; the owner asked for both, each with tests that fail on the code before it.
+
+| Item | Fix | New tests (failed before the fix) |
+|---|---|---|
+| Mixed groups lose definite relationships (A, B exact with the same DOI; C, a third source, possible): a plan counting possible duplicates both admitted the exact duplicate twice | Checks keeps every definite pairwise result inside a group as its own two-record flag (`exact_duplicate` or `values_disagree`) whenever the group's label does not state it. An exact pair is kept only when neither record has another exact match in the other's source; otherwise the two matches are themselves the ambiguity, and counting each pair once would merge on a guess. A conflict pair is always kept (it only excludes). A group with any possible link is now labelled possible, so a conflict is no longer imposed on records whose only links are possible. Inclusion applies definite relationships first, then the plan's possible-duplicate choice to what remains. | `test_a_mixed_group_keeps_its_definite_pairs`; `test_a_mixed_group_never_admits_an_exact_duplicate_twice` (default plan, the "both counted" choice and `possible_duplicates_separate`); `test_the_pipeline_never_admits_the_exact_duplicate_twice` (the reviewer's case through the real pipeline: MPEA, the extract and a Texas A&M workbook) |
+| The same loss for a conflict pair | The retained conflict pair stays out wherever conflicts are excluded; the third record follows the plan's possible-duplicate choice. | `test_a_mixed_group_keeps_its_definite_conflict_without_imposing_it_on_the_others`; `test_a_conflict_inside_a_mixed_group_stays_out_and_the_others_follow_the_plan`; `test_an_ambiguous_group_keeps_its_definite_exact_pair` |
+| The freeze check trusted group labels | `primary_set_problems` checks exact and conflict relationships pair by pair from the retained flags, so it can catch this case on its own. | `test_the_freeze_check_catches_the_exact_pair_with_eligibility_bypassed` (the eligibility safeguard switched off in the test: an exact pair treated as "counted separately"; the freeze refuses) |
+| Unequal reference text proved different papers | Only unequal DOIs prove different papers; equal DOIs or equal reference texts are the same paper; anything else is unknown. The summary's description (section above) now matches the code. | `test_unequal_reference_text_is_unknown_not_a_different_paper` (incl. a punctuation-only difference) |
+
+**Other places where a group-level label discarded a pairwise fact** (looked for, as asked):
+1. **A conflict-labelled group with an exact pair inside** (A and B exact, C conflicting with both): the exact pair was only implicit. Now kept as its own flag; it changes nothing in the primary set (all three are conflicts) and makes the freeze check see it.
+2. **A conflict label imposed on a record with only possible links** (C within the tolerance of two conflicting records): C was excluded as a conflict. Fixed by the labelling order (a possible link makes the group possible; the conflict pair is kept as its own flag).
+3. **Per-set flags** (`set_flags`) are built by the same function, so the fix applies to every sensitivity set.
+4. **Not changed, and why:**
+   - possible links inside an ambiguous group are not kept pairwise: the group never enters primary, and `possible_duplicates_separate` counts it separately by definition;
+   - non-unique exact pairs inside an ambiguous group are not kept (see the fix above);
+   - the unresolved-identity check uses the group label, which is the right level (it is a property of the group);
+   - the numbers compared were already kept per pair (`compared_values`, for audit).
+5. **The Critic (step 8)** will see the group flag and the retained pair flags. Whether it should be told which flags are group-level is for step 8.
+
+**The ordering "definite first" is an equivalent mutation today:** with one survivor order, counting a pair once and then the group once picks the same record as counting the group once; and the "both counted" choice is applied last in any case. It is kept because it states the owner's rule; no test can distinguish it now (mutation checks below).
+
+**Reference numbers and fingerprint after these fixes: none changed, and the freeze fingerprint is identical (`93c44b22…`).** The paper-identity change (item 3) could have changed them only through a new candidate pair between the two sources, since a Texas A&M record (no DOI) and an MPEA record would now be "unknown", not "different". It changed nothing because no Texas A&M alloy occurs in MPEA at all at 0.1 at.% (checked test-side: 0 records), so no pair between the sources reaches the paper test. On the reference run Checks still raises no flag.
+
 ## Re-check (ChatGPT, 2026-10-06) and fixes
 
 The text is in `docs/reviews/step06_recheck_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix2_packet.md`. Closed: findings 2 (subject to 1), 3, 4, 5 and 6. Left: three items, fixed as the owner asked (each with a test that failed on the code before it), plus the owner's addition:
@@ -74,7 +100,7 @@ The text is in `docs/reviews/step06_recheck_chatgpt.md`; the commits and diffs i
 | Item | Fix | New tests (failed before the fix) |
 |---|---|---|
 | 1. Inclusion or the freeze could read before Checks completed (empty per-set flags) and still pass the coverage check | The `set_flags` reader, in the same transaction under the run's lock that reads Inclusion's inputs, verifies that a completed Checks result exists and covers exactly the records and flags read; otherwise the read is refused (`checks_not_done`, `checks_not_current`) and Inclusion and the freeze log the refusal. A sensitivity set whose own flags are required (its same-alloy step or value statuses differ) and missing from the result is refused (`set_flags_missing`), never read as "no flags". The binding helpers moved to `pipeline/binding.py`, shared by the access layer and the write paths. | `test_the_reviewers_interleaving_is_refused` (Checks committed between Inclusion's read and write; the reviewer's controlled interleaving); `test_a_missing_required_per_set_flag_result_is_a_refusal`; `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` (added after the mutation checks: the read, not only the later write, refuses) |
-| 2a. Grouping changed paper identity (MPEA grouped by dataset stopped matching) | Paper identity for matching comes only from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. Grouping is used only for clustering. | `test_paper_identity_does_not_depend_on_the_grouping_setting` (the reviewer's case); `test_without_a_doi_the_normalized_paper_reference_identifies_the_paper` |
+| 2a. Grouping changed paper identity (MPEA grouped by dataset stopped matching) | Paper identity for matching comes only from the records' own normalized paper references: both DOIs known and equal is the same paper, unequal a different one; otherwise equal reference texts (spaces collapsed, case-folded) are the same paper; anything else is unknown. Grouping is used only for clustering. *(As corrected after the confirmation review: in the round-2 code, unequal reference texts counted as different papers, contrary to this summary; see the confirmation section.)* | `test_paper_identity_does_not_depend_on_the_grouping_setting` (the reviewer's case); `test_without_a_doi_the_normalized_paper_reference_identifies_the_paper` |
 | 2b. Another outcome disabled the tensile-below-yield check | Physical validity is checked on every record whatever the plan's outcome; Checks compares yield strength (`flags.COMPARED_OUTCOME`); validation refuses any outcome but yield strength (`eligibility.SUPPORTED_OUTCOMES`; new register entry `supported_outcomes`). | `test_physical_validity_does_not_depend_on_the_outcome_setting` (the reviewer's case); two new cases in `test_invalid_plans_are_refused` |
 | 3. The application-time guard kept the last of duplicate entries while the lookup uses the first | One shared lookup (`ordered_rules`, `lookup`) serves both the rules and the guard; duplicate entries are refused; every flag kind and category is checked as the lookup resolves it. | `test_the_application_time_guard_refuses_duplicate_or_shadowing_entries` (4 cases; 3 failed, the narrower-category case was already refused) |
 | **Owner's addition:** a check on the result, not only on the settings | At the freeze, `eligibility.primary_set_problems` checks the primary set itself against every item of `primary_set_invariants`, using the Checks flags (independent of the plan's grouping and outcome) and each record's kind and source; a failure refuses the freeze (`invariant_broken`) and is logged. Its constructed-source test reads the source definition itself, so that switching off the earlier guard does not switch it off. Register: the invariants are stated as enforced on the frozen set itself. | `tests/test_freeze_invariants.py` (15): each of the six invariants on the checker; what it allows; end to end, plans built to slip past settings validation (the guards switched off in the test): an exact duplicate twice, both records of a conflict, an invalid value, an unresolved-identity group, a constructed record in an unmarked run, and **the reviewer's two cases** (grouping by dataset; tensile strength as the outcome), each refused at the freeze and logged; a valid plan freezes |
@@ -83,7 +109,7 @@ The text is in `docs/reviews/step06_recheck_chatgpt.md`; the commits and diffs i
 
 **Reference numbers after these fixes:** recomputed; **none changed**, and the freeze fingerprint is unchanged too (`93c44b22…`). As the re-check expected: the reference sources have no shared measurement and no invalid value.
 
-**What these fixes do not do:** the result check covers the six invariants of `primary_set_invariants`; it does not re-derive every eligibility rule (that is the freeze's existing comparison of the stored decisions with what the locked rules produce). Paper identity from reference text is exact after normalizing spaces and case; two spellings of one reference that differ otherwise are "unknown", which can give a possible duplicate, never a pair.
+**What these fixes do not do:** the result check covers the six invariants of `primary_set_invariants`; it does not re-derive every eligibility rule (that is the freeze's existing comparison of the stored decisions with what the locked rules produce). Paper identity from reference text: equal texts (after normalizing spaces and case) are the same paper; unequal texts are unknown, which can give a possible duplicate, never a pair (true of the code only since the confirmation fix).
 
 ## What was built
 
@@ -291,13 +317,13 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (888, all passing; 245 new in step 6; tests changed listed below)
+## Tests (896, all passing; 253 new in step 6; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
 | `tests/test_plan.py` | 35 | Default and reference plans valid and equal to their projection; the reference plan's values; each default from its named setting; 19 kinds of invalid plan refused; the fingerprint; three tags. |
-| `tests/test_flags.py` | 21 | Invalid values; never within one source; tolerance boundaries (1.99% / 2.01%) on yield strength and grain size; known differences; unknown paper or condition; the same-alloy rule and the tolerance from the plan; 1:2, 2:2 and non-linked groups; conflict groups; a dataset cites itself; **flags unchanged when outcomes are replaced by arbitrary values that keep every pairwise and per-record relation, and with the plan's model and hypotheses removed**; import scan. |
-| `tests/test_eligibility.py` | 49 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
+| `tests/test_flags.py` | 25 | Invalid values; never within one source; tolerance boundaries (1.99% / 2.01%) on yield strength and grain size; known differences; unknown paper or condition; the same-alloy rule and the tolerance from the plan; 1:2, 2:2 and non-linked groups; conflict groups; a dataset cites itself; **flags unchanged when outcomes are replaced by arbitrary values that keep every pairwise and per-record relation, and with the plan's model and hypotheses removed**; import scan. |
+| `tests/test_eligibility.py` | 51 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
 | `tests/test_checkpoints.py` | 27 | The lock (plan, fingerprint, three tags in one transaction); second or changed lock, invalid plan, other version refused and logged; the lock waits for the run lock; **every write after `hc_write_lock`**; records stored after the lock with their extraction; **the guard at three points**; a marked run; changes between read and write refused (three steps); the freeze refuses decisions the rules do not produce; every write after the freeze refused and logged; counts and fingerprint; no dataset frozen; the same fingerprint on another database. |
 | `tests/test_controlled_duplicates_handling.py` | 50 | Every extract row against the answer file: flag, primary handling, survivor, sensitivity handling; rows 15–16 under tension and compression. |
 | `tests/test_reference_sets.py` | 6 | The primary set equals the reference selection without row 139; one decision per record (Texas A&M 21/72/1); no shared measurement; the freeze counts; **one change per sensitivity set**, on the reference run and on a marked run with duplicates and conflicts. |
@@ -305,6 +331,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 | `tests/test_migrations_step6.py` | 20 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
 | `tests/test_sensitivity_matching.py` | 6 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
 | `tests/test_freeze_invariants.py` | 15 | Re-check, owner's addition: the result check at the freeze, each invariant on the checker and end to end with plans built to slip past validation, including the reviewer's two cases. |
+| `tests/test_mixed_groups.py` | 2 | Confirmation: the reviewer's mixed group through the real pipeline (one of the exact pair enters, the third record follows the plan), and the freeze check refusing it with the eligibility safeguard bypassed. |
 | `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +3 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06); `primary_set_invariants` in one entry, shown on the page. |
 
 ### Tests changed (none weakened)
@@ -350,6 +377,12 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_flags.py::test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_outcome_field` is renamed `…_reads_only_the_rules_and_the_set_names`: Checks no longer reads the plan's outcome.
   - `test_access_code_roles.py::test_inclusion_receives_no_outcome_value` first shows the read refused without a completed Checks result, then completes Checks (a helper) before the projected-data search; the audited fields include the refused `set_flags` read.
   - `test_checkpoints.py`: the shadowed test renamed (above).
+
+- **The confirmation fixes (2026-10-06):**
+  - `test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict` expects the retained exact pair inside the conflict group (the fix).
+  - `test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting`: its second case now shows unequal DOIs as different papers and a missing DOI as unknown (a possible duplicate); it had asserted that unequal reference text gives no pair.
+  - `test_flags.py::test_without_a_doi_the_normalized_paper_reference_identifies_the_paper`: unequal reference texts now give a possible duplicate (unknown), where it asserted no pair.
+  - `test_flags.py::test_a_source_without_per_record_papers_is_compared_by_its_reference` is **replaced** by `test_a_source_without_dois_is_unknown_against_a_record_with_one`: its premise (unequal reference text proves a different paper) is what the confirmation removed.
 
 No test was removed.
 
@@ -433,14 +466,26 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 
 "`set_flags` read without verifying the Checks coverage" first survived: the write transaction's coverage check refused the same cases a moment later. `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` now shows the read itself refusing.
 
+**The confirmation round (2026-10-06)**, five mutations:
+
+| Removed or changed in the copy (confirmation fixes) | Failing tests |
+|---|---|
+| Definite pairs not kept in mixed groups | 9 |
+| Non-unique exact pairs kept (merging on a guess) | 1 |
+| Unequal reference text proves a different paper | 3 |
+| A conflict label imposed on the whole group | 2 |
+| Definite relationships not applied before the possible choice | 0: an equivalent mutation (see the confirmation section) |
+
 ### Suite results
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-888 passed in 226.25s                          (after the re-check fixes, 2026-10-06)
+896 passed in 218.80s                          (after the confirmation fixes, 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-888 passed in 234.14s
+896 passed in 224.33s
 ```
+
+After the re-check fixes: 888 passed locally and in the image.
 
 After the first review's fixes: 860 passed locally and in the image.
 
@@ -517,7 +562,14 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 7. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
 8. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
 
-## Questions for the second re-check
+## Questions for the confirmation of these fixes
+
+1. Can any plan still admit an exact duplicate twice, or both records of a conflict, through a mixed group (in the primary set or a sensitivity set), and does the freeze check catch it independently?
+2. Is keeping an exact pair only when neither record has another exact match in the other's source the right line between a definite pair and an ambiguity?
+3. Does paper identity now separate papers only on unequal DOIs, and is anything merged or separated on a guess?
+4. Is any claim stronger than the code supports?
+
+## Questions for the second re-check (answered in the confirmation)
 
 1. Are the three remaining items closed: the interleaving (verification in the reading transaction; missing per-set flags refused), the fixed rules through grouping and outcome, and duplicate rule entries at the second enforcement point?
 2. Does the result check at the freeze cover every item of `primary_set_invariants`, independently of the plan's grouping and outcome settings? Can any plan still reach a frozen primary set that breaks one of them?
