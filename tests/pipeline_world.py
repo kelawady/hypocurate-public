@@ -67,6 +67,23 @@ def mpea_row(formula, gs, ys, doi="10.1016/j.test.2026.001", test="T", temperatu
             "PROPERTY: UTS (MPa)": str(ys * 2), "REFERENCE: doi": doi}
 
 
+def tamu_xlsx(rows: list[dict]) -> bytes:
+    """A Texas A&M-layout workbook: the frozen sheet name and header, then rows given as
+    {column: value} (element columns default to 0)."""
+    import io
+    import openpyxl
+    from hypocurate.sources.adapters.tamu_fcc import ELEMENT_COLUMNS, HEADER, SHEET
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    ws.append(list(HEADER))
+    for r in rows:
+        ws.append([r.get(h, 0.0 if h in ELEMENT_COLUMNS else None) for h in HEADER])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
 def _val(engine, sql, **params):
     with engine.begin() as conn:
         result = conn.execute(text(sql), params)

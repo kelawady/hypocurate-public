@@ -24,10 +24,12 @@ Flags (owner, 2026-10-05):
     possible duplicate; beyond it → not a candidate (nothing says it is the same measurement).
   Candidate links form groups (connected components). A group with two or more records from
   one source, or one in which some pair is not linked, is ambiguous: `possible_duplicate`,
-  "several candidates" (nothing is paired on a guess); its definite conflicts, if any, get a
-  `values_disagree` flag of their own (review finding 4). Otherwise a group with any conflicting
-  pair is a conflict, else a possible duplicate if any link is possible, else an exact
-  duplicate. One flag per group, naming all its records (plus that conflict flag).
+  "several candidates" (nothing is paired on a guess). Otherwise a group with any possible link
+  is a possible duplicate, else a conflict if any pair conflicts, else an exact duplicate. One
+  flag per group, naming all its records. **Definite pairs are never lost to a group label**
+  (review finding 4; confirmation, 2026-10-06): every exact or conflicting pair whose kind the
+  group's label does not state gets its own two-record flag (an exact pair only when neither
+  record has another exact match in the other's source).
 - Relative difference: |a − b| / min(|a|, |b|) (register 'values_disagree_tolerance').
 - The numbers compared are stored with the flag for audit (`compared_values`) and never
   returned to the Critic (step 5).
@@ -90,14 +92,17 @@ def _reference(rec: Mapping) -> str | None:
 
 def same_paper(a: Mapping, b: Mapping) -> bool | None:
     """Whether two records cite the same paper, from their own normalized paper references only
-    (re-check finding 2a: never from the plan's grouping, which is for clustering): both DOIs
-    known, compare them; else both references known, compare them; else unknown (None)."""
+    (re-check finding 2a: never from the plan's grouping, which is for clustering). Only unequal
+    authoritative identifiers (DOIs, derived keys) prove different papers (confirmation, 2026-10-06):
+    - both DOIs known: equal is the same paper, unequal a different one;
+    - otherwise, equal reference texts (spaces collapsed, case-folded) are the same paper;
+    - anything else, unequal reference text included, is unknown (None)."""
     da, db = _doi(a), _doi(b)
     if da and db:
         return da == db
     ra, rb = _reference(a), _reference(b)
-    if ra and rb:
-        return ra == rb
+    if ra and rb and ra == rb:
+        return True
     return None
 
 
@@ -194,27 +199,44 @@ def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any], m: Matchin
         components[find(x)].append(x)
     source = {r["id"]: r["source"] for r in records}
     flags = []
+    identical = lambda ps: all(n["relative_difference"] == 0 and n["grain_size"][0] == n["grain_size"][1]
+                               for _, n in ps)
     for ids in sorted(sorted(c) for c in components.values()):
         pairs = {(a, b): links[(a, b)] for a, b in combinations(ids, 2) if (a, b) in links}
         compared = {f"{a}-{b}": {"link": kind, **numbers} for (a, b), (kind, numbers) in pairs.items()}
         sources = [source[i] for i in ids]
         kinds = {kind for kind, _ in pairs.values()}
+        category = "identical values" if identical(pairs.values()) else "within tolerance"
         if len(set(sources)) < len(sources) or len(pairs) < len(ids) * (len(ids) - 1) // 2:
-            flags.append(Flag("possible_duplicate", "several candidates", ids, compared))
-            # Review finding 4: a definite conflict inside an ambiguous group is kept as its own
-            # flag, so that a set that counts the group separately still excludes it.
-            conflicting = sorted({i for (a, b), (kind, _) in pairs.items() if kind == "conflict" for i in (a, b)})
-            if conflicting:
-                flags.append(Flag("values_disagree", "differ beyond tolerance", conflicting,
-                                  {k: v for k, v in compared.items() if v["link"] == "conflict"}))
+            group = Flag("possible_duplicate", "several candidates", ids, compared)
+        elif "possible" in kinds:
+            group = Flag("possible_duplicate", category, ids, compared)
         elif "conflict" in kinds:
-            flags.append(Flag("values_disagree", "differ beyond tolerance", ids, compared))
+            group = Flag("values_disagree", "differ beyond tolerance", ids, compared)
         else:
-            identical = all(n["relative_difference"] == 0 and n["grain_size"][0] == n["grain_size"][1]
-                            for _, n in pairs.values())
-            category = "identical values" if identical else "within tolerance"
-            flags.append(Flag("possible_duplicate" if "possible" in kinds else "exact_duplicate", category, ids,
-                              compared))
+            group = Flag("exact_duplicate", category, ids, compared)
+        flags.append(group)
+        # Confirmation (2026-10-06): the group label must not discard a definite pairwise fact.
+        # Every exact or conflicting pair whose kind the group's own label does not already state
+        # is kept as its own two-record flag, so that the fixed rules apply to it before the plan's
+        # possible-duplicate choice, and the freeze check can see it.
+        # An exact pair is definite only if neither record has another exact match in the other's
+        # source (rows within one source are separate measurements: two exact matches there are
+        # themselves the ambiguity, and counting each pair once would merge on a guess). A
+        # conflicting pair is always kept: it only ever excludes.
+        own = {"exact": "exact_duplicate", "conflict": "values_disagree"}
+        exact_to = defaultdict(set)
+        for (a, b), (kind, _) in pairs.items():
+            if kind == "exact":
+                exact_to[(a, source[b])].add(b)
+                exact_to[(b, source[a])].add(a)
+        for (a, b), (kind, numbers) in sorted(pairs.items()):
+            if kind == "exact" and (len(exact_to[(a, source[b])]) > 1 or len(exact_to[(b, source[a])]) > 1):
+                continue
+            if kind in own and group.kind != own[kind]:
+                pair_category = ("differ beyond tolerance" if kind == "conflict"
+                                 else "identical values" if identical([(kind, numbers)]) else "within tolerance")
+                flags.append(Flag(own[kind], pair_category, [a, b], {f"{a}-{b}": {"link": kind, **numbers}}))
     return flags
 
 

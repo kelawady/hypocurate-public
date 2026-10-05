@@ -223,6 +223,48 @@ def test_an_ambiguous_group_keeps_its_conflict_in_every_set():
     assert {i: survivor[i] for i in (1, 2, 3)} == {i: "identity_unresolved" for i in (1, 2, 3)}
 
 
+def _mixed(plan, full):
+    from hypocurate.pipeline.flags import raise_flags
+    return [{"id": n, "kind": f.kind, "category": f.category, "records": f.records}
+            for n, f in enumerate(raise_flags(plan, full), start=1)]
+
+
+def test_a_mixed_group_never_admits_an_exact_duplicate_twice():
+    """Confirmation finding 2, the reviewer's case: A and B exact, C possible (third source, no
+    paper identity), another grain size present. Definite relationships first (A-B counted once),
+    then the plan's possible-duplicate choice on what remains."""
+    from test_flags import rec
+    full = [rec(1, "mpea"), rec(2, "controlled_duplicates"), rec(3, "tamu_fcc", doi=None), rec(4, "mpea", gs=40.0)]
+    records = [cond(1, "mpea"), cond(2, "controlled_duplicates"), cond(3, "tamu_fcc", doi=False),
+               cond(4, "mpea", gs=40.0)]
+    flags = _mixed(PLAN, full)
+    both = copy.deepcopy(PLAN)  # the plan's choice: possible duplicates both counted
+    for e in both["eligibility_rules"]:
+        if e["flag_kind"] == "possible_duplicate" and e.get("category") is None:
+            e["rule"] = "in_scope"
+    got = decide(records, flags, both)
+    assert sorted(got[i] for i in (1, 2)) == ["duplicate_counted_once", "in_scope"]
+    assert got[3] == "in_scope"
+    default = decide(records, flags)  # possible counted once: one survivor of the three
+    assert sum(default[i] == "in_scope" for i in (1, 2, 3)) == 1
+    separate = decide(records, flags, key="possible_duplicates_separate")
+    assert sorted(separate[i] for i in (1, 2)) == ["duplicate_counted_once", "in_scope"] and separate[3] == "in_scope"
+
+
+def test_a_conflict_inside_a_mixed_group_stays_out_and_the_others_follow_the_plan():
+    from test_flags import rec
+    full = [rec(1, "mpea", ys=400.0), rec(2, "controlled_duplicates", ys=410.0), rec(3, "tamu_fcc", ys=405.0, doi=None),
+            rec(4, "mpea", gs=40.0)]
+    records = [cond(1, "mpea"), cond(2, "controlled_duplicates"), cond(3, "tamu_fcc", doi=False),
+               cond(4, "mpea", gs=40.0)]
+    flags = _mixed(PLAN, full)
+    for key in (el.PRIMARY, "possible_duplicates_separate"):
+        got = decide(records, flags, key=key)
+        assert (got[1], got[2], got[3]) == ("conflict_unresolved", "conflict_unresolved", "in_scope"), key
+    survivor = decide(records, flags, key="conflicts_survivor_value")
+    assert sum(survivor[i] == "in_scope" for i in (1, 2)) <= 1
+
+
 def test_identity_applies_only_among_records_that_passed_the_earlier_rules():
     """Extract rows 13–14 (owner, 2026-10-05): the extract record is 'scope not confirmed'
     (rule 5 before rule 7); its MPEA twin survives. With scope not confirmed included, the

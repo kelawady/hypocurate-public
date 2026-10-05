@@ -399,14 +399,18 @@
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_flag_is_the_answer_files",
       "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
-      "tests/test_flags.py::test_a_source_without_per_record_papers_is_compared_by_its_reference",
       "tests/test_flags.py::test_a_group_whose_records_are_not_all_linked_is_ambiguous",
       "tests/test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict",
       "tests/test_flags.py::test_a_known_difference_in_paper_or_conditions_means_no_pair",
+      "tests/test_flags.py::test_a_mixed_group_keeps_its_definite_conflict_without_imposing_it_on_the_others",
+      "tests/test_flags.py::test_a_mixed_group_keeps_its_definite_pairs",
+      "tests/test_flags.py::test_a_source_without_dois_is_unknown_against_a_record_with_one",
+      "tests/test_flags.py::test_an_ambiguous_group_keeps_its_definite_exact_pair",
       "tests/test_flags.py::test_an_unknown_paper_or_condition_gives_a_possible_duplicate_only_if_the_values_match",
       "tests/test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting",
       "tests/test_flags.py::test_rows_within_one_source_are_never_compared",
       "tests/test_flags.py::test_several_candidates_from_one_source_pair_nothing",
+      "tests/test_flags.py::test_unequal_reference_text_is_unknown_not_a_different_paper",
       "tests/test_flags.py::test_without_a_doi_the_normalized_paper_reference_identifies_the_paper"
     ],
     "history": [
@@ -429,7 +433,8 @@
       "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance).",
       "A record with a missing test condition is also 'scope not confirmed': Checks still raises the possible-duplicate flag, and Inclusion applies the scope rule before the duplicate rule (owner, 2026-10-05).",
       "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'.",
-      "A paper is identified from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. The plan's grouping is for clustering only and never changes paper identity (re-check finding 2a, 2026-10-06). Texas A&M records carry the dataset's reference and no DOI."
+      "A paper is identified from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. The plan's grouping is for clustering only and never changes paper identity (re-check finding 2a, 2026-10-06). Texas A&M records carry the dataset's reference and no DOI.",
+      "Confirmation (2026-10-06): only unequal DOIs prove different papers; unequal reference text alone is unknown. Inside a mixed group, every definite pair (exact, conflict) whose kind the group's label does not state is kept as its own flag; an exact pair only if neither record has another exact match in the other's source."
     ]
   },
   {
@@ -4212,12 +4217,16 @@
       "note": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Confirmation (2026-10-06): within the identity rule, definite relationships (exact duplicates, conflicts) are applied before the plan's possible-duplicate choice, which then applies to what remains."
+    ],
     "tests": [
-      "tests/test_eligibility.py::test_each_rule_on_its_own",
-      "tests/test_eligibility.py::test_rule_order",
-      "tests/test_eligibility.py::test_excluded_and_identity_come_before_the_grain_size_count",
+      "tests/test_eligibility.py::test_a_conflict_inside_a_mixed_group_stays_out_and_the_others_follow_the_plan",
+      "tests/test_eligibility.py::test_a_mixed_group_never_admits_an_exact_duplicate_twice",
       "tests/test_eligibility.py::test_duplicates_are_resolved_before_grain_sizes_are_counted",
+      "tests/test_eligibility.py::test_each_rule_on_its_own",
+      "tests/test_eligibility.py::test_excluded_and_identity_come_before_the_grain_size_count",
+      "tests/test_eligibility.py::test_rule_order",
       "tests/test_reference_sets.py::test_every_record_has_one_decision_with_its_rule"
     ]
   },
@@ -4694,7 +4703,8 @@
       }
     ],
     "notes": [
-      "Shown on the assumptions page like every entry."
+      "Shown on the assumptions page like every entry.",
+      "Confirmation (2026-10-06): the freeze check sees every retained pairwise exact or conflict result (two-record flags inside mixed groups), not only group labels."
     ],
     "tests": [
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
@@ -4713,6 +4723,8 @@
       "tests/test_freeze_invariants.py::test_each_invariant_is_checked_on_the_primary_set",
       "tests/test_freeze_invariants.py::test_the_reviewers_grouping_case_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_the_reviewers_outcome_case_is_refused_at_the_freeze",
+      "tests/test_mixed_groups.py::test_the_freeze_check_catches_the_exact_pair_with_eligibility_bypassed",
+      "tests/test_mixed_groups.py::test_the_pipeline_never_admits_the_exact_duplicate_twice",
       "tests/test_plan.py::test_invalid_plans_are_refused",
       "tests/test_plan.py::test_the_plan_choices_that_remain"
     ]
@@ -4786,7 +4798,7 @@
     "key": "fixed_policies_in_code",
     "name": "Policies fixed in code for every plan",
     "state": "in_force",
-    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: both DOIs, else both reference texts, else unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: only unequal DOIs prove different papers; equal DOIs, or equal reference texts, are the same paper; anything else, unequal reference text included, is unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
     "value": {
       "text": "eleven fixed policies",
       "unit": null
@@ -4831,6 +4843,12 @@
         "from": "2026-10-06",
         "to": "2026-10-06",
         "note": "Before the re-check (finding 2a)."
+      },
+      {
+        "value": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: both DOIs, else both reference texts, else unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the confirmation review (paper identity)."
       }
     ],
     "notes": [],

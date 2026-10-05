@@ -131,9 +131,11 @@ def test_a_group_with_one_conflicting_pair_is_a_conflict():
     plan = copy.deepcopy(PLAN)
     plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "tamu_fcc", "unit": "paper"},
                                  {"source": "controlled_duplicates", "unit": "paper"}]
-    # 1 and 2 agree; 3 reports the same measurement 2.25% higher: the whole group is a conflict.
+    # 1 and 2 agree; 3 reports the same measurement 2.25% higher: the whole group is a conflict,
+    # and the definite exact pair 1-2 is kept as its own flag (confirmation, 2026-10-06).
     got = kinds([rec(1, ys=400.0), rec(2, "controlled_duplicates", ys=400.0), rec(3, "tamu_fcc", ys=409.0)], plan)
-    assert got == [("values_disagree", "differ beyond tolerance", [1, 2, 3])]
+    assert got == [("values_disagree", "differ beyond tolerance", [1, 2, 3]),
+                   ("exact_duplicate", "identical values", [1, 2])]
     # A possible link (paper unknown on 2) and a conflicting pair (1, 3) in one group: a conflict.
     got = kinds([rec(1, ys=400.0), rec(2, "controlled_duplicates", ys=400.0, doi=None),
                  rec(3, "tamu_fcc", ys=440.0)], plan)
@@ -152,8 +154,10 @@ def test_paper_identity_does_not_depend_on_the_grouping_setting():
     assert kinds([rec(1), rec(2, "controlled_duplicates")], plan) == [("exact_duplicate", "identical values", [1, 2])]
     plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "tamu_fcc", "unit": "paper"},
                                  {"source": "controlled_duplicates", "unit": "paper"}]
-    assert kinds([rec(1, reference="Effect of annealing on CoCrFeMnNi"),
-                  rec(2, "tamu_fcc", doi=None, reference="Mulukutla et al. 2026")], plan) == []
+    # Whatever the grouping: unequal DOIs are different papers; a missing DOI is unknown.
+    assert kinds([rec(1), rec(2, "tamu_fcc", doi="10.5555/other")], plan) == []
+    assert kinds([rec(1), rec(2, "tamu_fcc", doi=None, reference="Mulukutla et al. 2026")], plan)[0][0] == \
+        "possible_duplicate"
 
 
 def test_without_a_doi_the_normalized_paper_reference_identifies_the_paper():
@@ -163,7 +167,8 @@ def test_without_a_doi_the_normalized_paper_reference_identifies_the_paper():
     same = rec(2, "controlled_duplicates", doi=None, reference="mulukutla, m. et al. (2026). dataset v1.1.0")
     other = rec(3, "controlled_duplicates", doi=None, reference="Another paper (2019)")
     assert kinds([a, same]) == [("exact_duplicate", "identical values", [1, 2])]
-    assert kinds([a, other]) == []
+    # Unequal reference text alone is unknown, not a different paper (confirmation, 2026-10-06).
+    assert kinds([a, other])[0][0] == "possible_duplicate"
     assert kinds([a, rec(4, "controlled_duplicates", doi=None)])[0][0] == "possible_duplicate"
 
 
@@ -175,13 +180,52 @@ def test_physical_validity_does_not_depend_on_the_outcome_setting():
     assert kinds([rec(1, uts=399.0)], plan) == [("invalid_value", "physically impossible", [1])]
 
 
-def test_a_source_without_per_record_papers_is_compared_by_its_reference():
+def test_a_mixed_group_keeps_its_definite_pairs():
+    """Confirmation, the reviewer's case: A and B cite the same DOI with identical values (exact);
+    C, from a third source, matches both but has no paper identity (possible). The group is a
+    possible duplicate, and the definite exact pair A-B is kept as its own flag."""
+    got = kinds([rec(1), rec(2, "controlled_duplicates"), rec(3, "tamu_fcc", doi=None)])
+    assert got == [("possible_duplicate", "identical values", [1, 2, 3]),
+                   ("exact_duplicate", "identical values", [1, 2])]
+
+
+def test_a_mixed_group_keeps_its_definite_conflict_without_imposing_it_on_the_others():
+    """A and B cite the same DOI and disagree (2.5%: a conflict); C has no paper identity and is
+    within the tolerance of both (possible). The conflict is kept for A-B only; C is a possible
+    duplicate, not part of a conflict."""
+    got = kinds([rec(1, ys=400.0), rec(2, "controlled_duplicates", ys=410.0), rec(3, "tamu_fcc", ys=405.0, doi=None)])
+    assert got == [("possible_duplicate", "within tolerance", [1, 2, 3]),
+                   ("values_disagree", "differ beyond tolerance", [1, 2])]
+
+
+def test_an_ambiguous_group_keeps_its_definite_exact_pair():
+    """A (MPEA) and B (extract) cite the same DOI with identical values; C (extract, no DOI) also
+    matches A: two candidates from one source, so ambiguous. The exact pair A-B is kept."""
+    got = kinds([rec(1), rec(2, "controlled_duplicates"), rec(3, "controlled_duplicates", doi=None, gs=10.1)])
+    assert got == [("possible_duplicate", "several candidates", [1, 2, 3]),
+                   ("exact_duplicate", "identical values", [1, 2])]
+
+
+def test_unequal_reference_text_is_unknown_not_a_different_paper():
+    """Confirmation, new issue: only unequal DOIs prove different papers. Unequal reference text
+    (one or both DOIs missing) is unknown, so matching values give a possible duplicate."""
+    a = rec(1, reference="Effect of annealing on CoCrFeMnNi")
+    b = rec(2, "tamu_fcc", doi=None, reference="Mulukutla et al. 2026")
+    assert kinds([a, b])[0][:2] == ("possible_duplicate", "identical values")
+    c = rec(3, "tamu_fcc", doi=None, reference="Effect of annealing on CoCrFeMnNi.")
+    d = rec(4, "controlled_duplicates", doi=None, reference="Effect of annealing on CoCrFeMnNi")
+    assert kinds([c, d])[0][0] == "possible_duplicate"  # punctuation differs: unknown, not different
+    assert kinds([rec(5), rec(6, "tamu_fcc", doi="10.5555/other")]) == []  # unequal DOIs: different papers
+
+
+def test_a_source_without_dois_is_unknown_against_a_record_with_one():
     """Texas A&M has no per-record paper: its records carry the dataset's reference and no DOI.
-    Against a record with a DOI and a title, the references differ, so they are never paired.
-    (Replaces 'a dataset source is its own paper', which came from the grouping setting until the
-    re-check, finding 2a.)"""
+    Against a record with a DOI and another reference, the paper is unknown, so matching values
+    give a possible duplicate, never an exact one. (Replaces the round-2 test that treated the
+    unequal reference text as a different paper; confirmation, 2026-10-06.)"""
     tamu = rec(2, "tamu_fcc", doi=None, reference="Mulukutla, M. et al. (2026). Revisiting Hall-Petch")
-    assert kinds([rec(1, reference="Effect of annealing on CoCrFeMnNi"), tamu]) == []
+    got = kinds([rec(1, reference="Effect of annealing on CoCrFeMnNi"), tamu])
+    assert got == [("possible_duplicate", "identical values", [1, 2])]
 
 
 def _world(seed):

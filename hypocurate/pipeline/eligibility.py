@@ -291,8 +291,12 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
             rules[r["id"]] = "excluded_by_rule"
     # 7, in a fixed order (review finding 4): unresolved identity, then conflicts, then counted once,
     # so that a record in an ambiguous group and in a conflict gets the first that applies.
+    # Within one rule, definite relationships (exact duplicates, conflicts) come before possible
+    # duplicates, so that the plan's possible-duplicate choice applies only to what remains
+    # (confirmation, 2026-10-06).
     order = {"identity_unresolved": 0, "conflict_unresolved": 1, "duplicate_counted_once": 2}
-    for f in sorted(flags, key=lambda f: (order.get(flag_rule(f, st), 3), f["id"])):
+    definite = ("exact_duplicate", "values_disagree")
+    for f in sorted(flags, key=lambda f: (order.get(flag_rule(f, st), 3), f["kind"] not in definite, f["id"])):
         rule = flag_rule(f, st)
         members = [rid for rid in f["records"] if rid in records and rid not in rules]
         if rule in ("identity_unresolved", "conflict_unresolved"):
@@ -345,7 +349,10 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
                          marked: bool) -> list[str]:
     """The result check of the freeze (owner, 2026-10-06; register 'primary_set_invariants'): what
     in the primary set itself breaks an invariant, whatever the plan said. `flags` are the Checks
-    flags (identity and validity independent of the plan's grouping and outcome); `records` gives
+    flags, including every retained pairwise exact or conflict result (two-record flags inside
+    mixed groups), so exact and conflict pairs are checked pair by pair, never through a group's
+    label (confirmation, 2026-10-06); identity and validity are independent of the plan's grouping
+    and outcome. `records` gives
     each member's kind and source; `marked` is the run's test mark. Empty if nothing."""
     from hypocurate.sources.versions import SOURCES
     out = []
