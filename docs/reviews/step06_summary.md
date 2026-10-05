@@ -1,6 +1,6 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed. Second confirmation (2026-10-06): one new problem (overlapping exact pairs resolved in id order); fixed, with tests that failed before. Not merged.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed. Second confirmation (2026-10-06): one new problem (overlapping exact pairs resolved in id order); fixed, with tests that failed before. Third confirmation (2026-10-06): one problem (a plan could still map conflicts to "counted once" and admit one record of a conflict-connected group); fixed in validation, application and the freeze, with tests that failed before. Not merged.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
@@ -50,7 +50,7 @@ The owner accepted all six findings, decided that the primary set's handling of 
 
 | Finding | Fix | New tests (failed before the fix) |
 |---|---|---|
-| **Owner's decision** (review: "conflict policy is a default, not an invariant") | `eligibility.FLAG_RULE_CHOICES`: each flag kind's allowed rules. Exact duplicate: counted once. Conflict: neither (default) or the survivor's value once. Invalid value: never. Ambiguous group: never (counted separately only in `possible_duplicates_separate`). Possible duplicate: counted once (default) or both. `plan.validate` refuses anything else at the lock, and `eligibility.settings` refuses it again. Register `primary_set_invariants` lists the six things no plan can do, with a test for each, and is shown on the assumptions page. | `test_no_plan_can_put_these_records_in_the_primary_set` (5 cases); eight new cases in `test_invalid_plans_are_refused` (13 failed in all); `test_the_fixed_rules_hold_in_every_set_the_plan_names` and `test_the_plan_choices_that_remain` are regressions (passed before) |
+| **Owner's decision** (review: "conflict policy is a default, not an invariant") | `eligibility.FLAG_RULE_CHOICES`: each flag kind's allowed rules. Exact duplicate: counted once. Conflict: neither, under every plan (as first built, this fix still let a plan choose the survivor's value; corrected in the third confirmation). Invalid value: never. Ambiguous group: never (counted separately only in `possible_duplicates_separate`). Possible duplicate: counted once (default) or both. `plan.validate` refuses anything else at the lock, and `eligibility.settings` refuses it again. Register `primary_set_invariants` lists the six things no plan can do, with a test for each, and is shown on the assumptions page. | `test_no_plan_can_put_these_records_in_the_primary_set` (5 cases); eight new cases in `test_invalid_plans_are_refused` (13 failed in all); `test_the_fixed_rules_hold_in_every_set_the_plan_names` and `test_the_plan_choices_that_remain` are regressions (passed before) |
 | 1. Checks skipped or stale | Checks run only when no chosen source is pending; storage refuses after Checks; the Checks result records its **binding** (a hash of the record collection by stable identity, and of its flags); Inclusion and the freeze refuse (`checks_not_done`, `checks_not_current`) unless it matches. | `test_skipping_checks_is_refused_at_inclusion_and_the_freeze`, `test_checks_wait_until_every_chosen_source_is_stored`, `test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze` (real conflicting rows 7–8; all 3 failed); `test_no_record_is_stored_after_checks` (added after the mutation checks) |
 | 2. Coarser alloy rule reuses primary flags | Checks computes, for each sensitivity set whose matching settings (same-alloy step, accepted value statuses, grouping) differ, its own duplicate, conflict and ambiguity flags, stored with its result as codes and ids. Inclusion reads them through a new field `set_flags`; each set applies its own flags, every other rule unchanged. | `test_the_coarser_same_alloy_rule_recomputes_the_duplicates` (the reviewer's example through the real pipeline; failed: 4 records where 2 are right); `test_every_other_set_keeps_the_primary_flags`; `test_the_one_change_rule_holds_with_recomputed_matching_flags` |
 | 3. Survivor depends on insertion order | The lock refuses a survivor order or a grouping that leaves out a chosen source (validation refuses empty lists); the final tie-breaker is (source, origin key, item index), never a database id; `record_conditions` carries that identity. | `test_the_survivor_does_not_depend_on_database_ids_or_insertion_order` (failed with an incomplete order); `test_the_lock_refuses_settings_that_leave_out_a_chosen_source` (4 failed) |
@@ -67,14 +67,46 @@ The owner accepted all six findings, decided that the primary set's handling of 
 
 **Reference numbers after the fixes:** recomputed with the same scripts; **none changed**. Records, alloys, groups, residual df, k, standard errors and p-values are identical for every set. The freeze fingerprint's value changed, because it is now computed from stable identities (`93c44b22…`, was `3440e972…`); it is not a reference number.
 
+## Third confirmation (ChatGPT, 2026-10-06) and fix
+
+The text is in `docs/reviews/step06_confirm3_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix5_packet.md`. Confirmed fixed: A, B, C order dependence (144 id and order combinations, identical), the survivor choice, the freeze's verification of exact chains, the shared-function test of the chain. **Problem:** a plan could still map `values_disagree` to `duplicate_counted_once`. With an exact chain A-B touching a conflict B-C, A entered primary, B and C were counted-once copies, and neither the rule guard nor the freeze check objected (the freeze refused only more than one record of a conflict group). **The owner's rule is fixed: no record connected to a definite conflict enters the primary set under any plan. A survivor is allowed only in the sensitivity set `conflicts_survivor_value`.**
+
+| Place | Fix | New or changed tests (failed before the fix) |
+|---|---|---|
+| Validation | `FLAG_RULE_CHOICES`: a conflict's only rule is `conflict_unresolved`. `plan.validate` refuses a plan mapping it to anything else at the lock, and `eligibility.settings` refuses it again. | `test_invalid_plans_are_refused` (new case: conflict → counted once); `test_no_plan_can_put_these_records_in_the_primary_set` (new case: conflict → counted once) |
+| Application | Rule 7 no longer reads the plan's rule for conflicts. Every connected group (exact chains and conflict pairs) that touches a definite conflict is `conflict_unresolved` in every set. The one exception is `conflicts_survivor_value`, through the named setting `eligibility.conflict_survivor_allowed(key)`, which is true for that key only. That set's one change is now this setting, not a rewritten plan rule. | `tests/test_conflict_policy.py`: **the reviewer's chain**, with validation bypassed, in two shapes Checks can produce: "one paper" (the group A, B, C flagged as a conflict, with the exact pair A-B kept) and "only through B" (A-B exact, B-C conflict, A-C only possible; A reaches the conflict only through B). In primary none of A, B, C enters; in `conflicts_survivor_value` exactly one does; in every other set none does (2 cases). Through the pipeline on the controlled extract's real conflicting rows 7–8 (marked run, validation bypassed): both `conflict_unresolved` in primary, MPEA's survivor in `conflicts_survivor_value`, and the freeze succeeds. |
+| Freeze check | `primary_set_problems` refuses **any** record of a group linked to a definite conflict, with the groups formed from Checks' flags (it refused only more than one). | `test_the_freeze_check_refuses_any_record_of_a_conflict_connected_group` (A alone, B alone, C alone, both shapes); `test_the_freeze_refuses_one_conflict_record_with_every_safeguard_bypassed` (the pipeline with validation **and** application bypassed: the MPEA record enters, the freeze refuses with `invariant_broken`, logged); `test_what_the_invariants_allow` (changed, below) |
+
+**The reviewer's chain through the adapters:** as in the second confirmation, a three-source chain cannot arise through the sprint 1 adapters (Texas A&M reports no test temperature). It is tested on the shared functions (`raise_flags`, `set_flags`, `all_sets`, `primary_set_problems`). The pipeline tests use the real conflicting pair, rows 7–8. A chain whose middle record is not fully linked to the third is labelled "several candidates" by Checks and excluded already (`identity_unresolved`). That is why the "only through B" shape needs the A-C possible link.
+
+**`conflicts_survivor_value` still works:** one survivor per conflict-connected group, by the survivor rule (`test_the_sensitivity_handling_is_the_answer_files` for rows 7–8, MPEA survives; the chain tests above). Every other rule is unchanged.
+
+**Other fixed rules enforced as "at most one" where the rule says "none"** (looked for, as asked):
+- **Conflicts:** the only case, in the freeze check and in the plan choice. Fixed above.
+- **Exact duplicates:** "at most one per chain" is the rule itself ("counted once": one survivor enters). Correct as it is.
+- **Already "none":**
+  - invalid values: any member is refused;
+  - unresolved-identity groups: any member;
+  - model-recalled records: any member;
+  - constructed records in an unmarked run: any member.
+  The application of each is "none" too: rule 2, rule 7 `identity_unresolved`, rule 1, and the guard.
+- **Possible duplicates:** a plan choice, not a fixed rule (counted once or both). Not affected.
+
+**Wording corrected:**
+- This summary: the first review's table, the second confirmation's description, the PRD correction 17.
+- The register: `primary_set_invariants` point (2) and its "plan choices"; `conflicts_not_pooled`, which said "by default". Both now state the rule as fixed, with the earlier wording in their history.
+- The code comments of `FLAG_RULE_CHOICES` and rule 7.
+
+**Reference numbers and fingerprint after this fix: none changed; the freeze fingerprint is identical (`93c44b22…`).** The reference run raises no flags.
+
 ## Second confirmation (ChatGPT, 2026-10-06) and fix
 
 The text is in `docs/reviews/step06_confirm2_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix4_packet.md`. Confirmed fixed: mixed groups, paper identity, non-unique exact matches, the "definite first" equivalence (for that change), the two label-over-pair fixes. **New problem:** overlapping exact pairs were resolved pair by pair in flag-id order, so the primary set depended on database ids. The reviewer's case: A (MPEA, DOI D), B (DOI D, reference Y), C (no DOI, reference Y); A-B exact, B-C exact, A-C possible; possible duplicates counted both. In one id order A and C survived, in another only A. Both passed the freeze check.
 
 | Item | Fix | New tests (failed before the fix) |
 |---|---|---|
-| Overlapping exact pairs | Rule 7 decides whole groups, never flag by flag. **(1)** Every pending record of an ambiguous group: `identity_unresolved`. **(2)** Records linked by a chain of exact pairs are one measurement, and a definite conflict links its records too. A connected group that touches a conflict follows the plan's conflict rule: neither (none of the chain and none of the conflicting records enters), or the survivor's value (one survivor). A group of exact duplicates only keeps exactly one survivor. **(3)** The plan's possible-duplicate choice on what remains, per connected possible group. Survivors come from the survivor rule, whose last tie-break is the source's stable identity (source, origin key, item index), never an id or an order. | `test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order` (all 6 id assignments × 3 orders; identical decisions in every set, fingerprint and freeze-check result; A survives, B and C counted once); `test_a_chain_touching_a_conflict_enters_with_none_of_its_records` |
-| The freeze check | `primary_set_problems` forms the chains itself from Checks' exact flags and allows at most one record per chain, and per group linked by a definite conflict. | `test_the_freeze_check_allows_at_most_one_record_per_chain` (A and C in, B out: no single pair is wholly inside) |
+| Overlapping exact pairs | Rule 7 decides whole groups, never flag by flag. **(1)** Every pending record of an ambiguous group: `identity_unresolved`. **(2)** Records linked by a chain of exact pairs are one measurement, and a definite conflict links its records too. A connected group that touches a conflict followed the plan's conflict rule: neither (none of the chain and none of the conflicting records enters), or the survivor's value (one survivor). (Superseded by the third confirmation: none of the group enters primary under any plan.) A group of exact duplicates only keeps exactly one survivor. **(3)** The plan's possible-duplicate choice on what remains, per connected possible group. Survivors come from the survivor rule, whose last tie-break is the source's stable identity (source, origin key, item index), never an id or an order. | `test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order` (all 6 id assignments × 3 orders; identical decisions in every set, fingerprint and freeze-check result; A survives, B and C counted once); `test_a_chain_touching_a_conflict_enters_with_none_of_its_records` |
+| The freeze check | `primary_set_problems` forms the chains itself from Checks' exact flags and allows at most one record per chain, and per group linked by a definite conflict. (Third confirmation: none of a conflict-linked group.) | `test_the_freeze_check_allows_at_most_one_record_per_chain` (A and C in, B out: no single pair is wholly inside) |
 | Permutation over the pipeline | — | `test_permuted_ids_and_insertion_order_give_the_same_frozen_result`, on the controlled extract (marked) and on the **real reference data**. Each source's records are stored shuffled, the sources in shuffled order, and unrelated records inserted first. Required: identical decisions for every record, identical membership of the primary set and every sensitivity set, identical per-set rules, identical fingerprint. Passes before and after the fix: these data have no overlapping exact pairs. |
 
 **The reviewer's case cannot arise through the sprint 1 adapters:** an exact pair needs known, equal test conditions on both sides, and Texas A&M reports no test temperature. So with only two MPEA-layout sources, no record can be exactly linked to two others. The case is tested on the same functions Checks, Inclusion and the freeze use (`raise_flags`, `set_flags`, `all_sets`, `primary_set_problems`, and `freeze_fingerprint`, factored out of the freeze unchanged for this). The pipeline permutation test covers what the adapters can produce.
@@ -348,7 +380,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (901, all passing; 258 new in step 6; tests changed listed below)
+## Tests (909, all passing; 266 new in step 6; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
@@ -363,6 +395,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 | `tests/test_sensitivity_matching.py` | 6 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
 | `tests/test_freeze_invariants.py` | 15 | Re-check, owner's addition: the result check at the freeze, each invariant on the checker and end to end with plans built to slip past validation, including the reviewer's two cases. |
 | `tests/test_mixed_groups.py` | 2 | Confirmation: the reviewer's mixed group through the real pipeline (one of the exact pair enters, the third record follows the plan), and the freeze check refusing it with the eligibility safeguard bypassed. |
+| `tests/test_conflict_policy.py` | 6 | Third confirmation: the reviewer's chain (two shapes) with the conflict mapped to counted once, in primary, in every set and at the freeze; the real conflicting rows 7–8 through the pipeline, and at the freeze with every safeguard bypassed. |
 | `tests/test_order_independence.py` | 5 | Second confirmation: the reviewer's chain with ids and order permuted; a chain touching a conflict; the chain-aware freeze check; the permutation test through the pipeline on the controlled extract and the real reference data. |
 | `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +3 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06); `primary_set_invariants` in one entry, shown on the page. |
 
@@ -415,6 +448,13 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting`: its second case now shows unequal DOIs as different papers and a missing DOI as unknown (a possible duplicate); it had asserted that unequal reference text gives no pair.
   - `test_flags.py::test_without_a_doi_the_normalized_paper_reference_identifies_the_paper`: unequal reference texts now give a possible duplicate (unknown), where it asserted no pair.
   - `test_flags.py::test_a_source_without_per_record_papers_is_compared_by_its_reference` is **replaced** by `test_a_source_without_dois_is_unknown_against_a_record_with_one`: its premise (unequal reference text proves a different paper) is what the confirmation removed.
+
+- **The third confirmation (2026-10-06): conflicts are no longer a plan choice** (the premise changed; each is stricter, not weaker):
+  - `test_plan.py::test_the_plan_choices_that_remain` no longer validates a plan mapping a conflict to counted once; that mapping is now an invalid-plan case in `test_invalid_plans_are_refused`. The possible-duplicate choice is still checked.
+  - `test_eligibility.py::test_each_setting_is_read_from_the_locked_plan`: the case that chose the survivor's value for a conflict is **replaced** by the remaining choice (a possible duplicate counted both ways, before `duplicate_counted_once`, after `in_scope`).
+  - `test_freeze_invariants.py::test_what_the_invariants_allow`: one record of a conflict pair alone in the set was allowed. It is now a problem.
+  - `test_freeze_invariants.py::test_both_records_of_a_conflict_are_refused_at_the_freeze` is renamed `test_a_conflict_admitted_past_every_guard_is_refused_at_the_freeze`. The application no longer reads a plan rule for conflicts, so bypassing validation alone no longer gets a conflict record into primary. The test now also bypasses the application (a survivor allowed in primary); the record that enters is refused at the freeze, as before.
+  - `test_assumptions.py::test_what_no_plan_can_do_to_the_primary_set_is_listed_in_one_entry` looks for the new wording of point (2), "No record connected to a definite conflict ever enters, under any plan", in place of "Both records of a conflict never enter".
 
 No test was removed.
 
@@ -498,6 +538,18 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 
 "`set_flags` read without verifying the Checks coverage" first survived: the write transaction's coverage check refused the same cases a moment later. `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` now shows the read itself refusing.
 
+**The third confirmation round (2026-10-06)**, five mutations (run on `test_conflict_policy.py`, `test_plan.py`, `test_eligibility.py`, `test_freeze_invariants.py`; the fourth on `test_conflict_policy.py` and `test_controlled_duplicates_handling.py`; the fifth on `test_conflict_policy.py`):
+
+| Removed or changed in the copy | Failing tests |
+|---|---|
+| Validation allows conflicts counted once again | 2 |
+| The application lets primary keep a conflict survivor | 5 |
+| The freeze check refuses only more than one conflict record | 4 |
+| `conflicts_survivor_value` loses its survivor | 4 |
+| Only records named by a conflict flag are excluded, not the exact-linked rest | 1 |
+
+The fifth first survived: the chain fixture gave A, B and C one DOI, so A was in the conflict flag itself. The "only through B" shape (A linked to the conflict only through B) was added and catches it.
+
 **The second confirmation round (2026-10-06)**, four mutations:
 
 | Removed or changed in the copy | Failing tests |
@@ -521,10 +573,12 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-901 passed in 278.36s                          (after the second confirmation's fix, 2026-10-06)
+909 passed in 259.67s                          (after the third confirmation's fix, 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-901 passed in 286.13s
+909 passed in 268.61s
 ```
+
+After the second confirmation's fix: 901 passed locally and in the image; GitHub Actions on `b20d2d9`: success.
 
 After the confirmation fixes: 896 passed locally and in the image; GitHub Actions on `8c9b062`: success (run 37374525357).
 
@@ -583,7 +637,7 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 14. **PRD 14.2:** refused changes after a checkpoint are rejected and logged by the write paths as well as the database.
 15. **PRD 2.1 / 10 (controlled extract):** runs that include constructed data are marked at dispatch, may complete, are labelled "test run: includes constructed data", and are excluded from aggregates and lists of real results.
 16. **PRD 18 (backlog; owner, 2026-10-06):** a database rule that refuses a constructed source's records in a run not marked as a test. In sprint 1 the guard is in code only.
-17. **PRD 5.3 (owner, 2026-10-06): fixed rules, not plan defaults.** "The defaults below apply unless the Planner sets a different rule before the lock" no longer holds for these: no plan, including one a model writes, can count an exact duplicate twice, admit both records of a conflict, a physically invalid value, an unresolved-identity group, a model-recalled record, or a constructed record in a run not marked as a test. A plan's only choices are: conflicts neither (default) or the survivor's value once; possible duplicates once (default) or both.
+17. **PRD 5.3 (owner, 2026-10-06): fixed rules, not plan defaults.** "The defaults below apply unless the Planner sets a different rule before the lock" no longer holds for these: no plan, including one a model writes, can count an exact duplicate twice, admit any record connected to a definite conflict, a physically invalid value, an unresolved-identity group, a model-recalled record, or a constructed record in a run not marked as a test. No record connected to a definite conflict enters, under any plan (third confirmation); a survivor's value is counted only in the sensitivity set `conflicts_survivor_value`. A plan's one choice: possible duplicates once (default) or both.
 18. **PRD 3 / 5.6 (order of the steps; review finding 1):** extraction finishes before Checks; the completed Checks result is bound to the exact records it covered; Inclusion and the freeze verify that binding.
 19. **PRD 5.7 / 5.8 / 14.1a (wording):** each "±" in the reference numbers is one standard error (cluster-robust, by group), not a confidence interval.
 
@@ -605,7 +659,14 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 7. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
 8. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
 
-## Questions for the confirmation of the second confirmation's fix
+## Questions for the confirmation of the third confirmation's fix
+
+1. Can any record connected to a definite conflict (directly, or through exact pairs) still reach the primary set: through validation, the application, or the freeze check?
+2. Does `conflicts_survivor_value` remain the only place a survivor's value is counted, and does it still change only that one thing?
+3. Is any other fixed rule enforced as "at most one" where it should be "none"?
+4. Is any claim stronger than the code supports?
+
+## Questions for the confirmation of the second confirmation's fix (answered in the third confirmation)
 
 1. Is any decision (primary set, sensitivity sets, survivors, fingerprint) still dependent on record ids, flag ids or insertion order?
 2. Is "a chain of exact pairs is one measurement; a chain touching a definite conflict is resolved as one group under the conflict rule" the right procedure, and does the freeze check verify it on the set itself?
