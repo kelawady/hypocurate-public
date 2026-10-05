@@ -132,6 +132,9 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
 - Registration reads only paths inside `data/` (checked after resolving `..` and links), and refuses a file whose SHA-256 differs from `data/manifest.json`, or a source already registered with different interpretation settings.
 - Registration writes no run or hypothesis version, so `hc_write_lock` does not apply. It locks the source row first (`SELECT … FOR UPDATE`) and runs in `run_transaction` (`hypocurate/db/retry.py`), which retries the whole transaction on `40P01` and `40001`.
 - An adapter reads a **sealed** version (`load_sealed_version` re-checks every file's bytes against the seal) and returns one record per data row in the format of `hypocurate/sources/record.py`. Every value is kept as reported, with its unit. Every harmonized value has a status: `converted`, `not_reported`, `not_convertible` (with the reason) or `assigned` (with the passage of the source's documentation that states it). Adapters never decide eligibility and never drop or correct a record.
+- A paper's group key is derived from its DOI (whitespace trimmed, a URL or `doi:` wrapper removed, ASCII case-folded); the DOI itself is kept as reported.
+- The alloy label (0.1 at.% rounding) is for display only. Records carry the full-precision composition; when two compositions count as the same alloy is a plan setting (step 6).
+- A CSV file with a quoting error or a row of the wrong length is refused as a whole, with the file, line and reason; no partial extraction is returned.
 - "Test connection" runs in a read-only transaction.
 - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
 - Not yet run on the live database: registering there is a later step and needs the owner.
