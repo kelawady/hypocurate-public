@@ -112,6 +112,82 @@ def test_the_lock_waits_for_the_run_lock(engine, monkeypatch):
     assert q(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid)[0][0] == 0
 
 
+def test_every_write_path_takes_the_run_lock_before_it_writes(engine):
+    """Locking protocol (step 3): in every transaction of the pipeline's write paths, each INSERT or
+    UPDATE comes after `hc_write_lock(p_run => …)`. Refusal rows in audit_log are the named
+    exception (written without the run lock)."""
+    from sqlalchemy import event
+    violations, state = [], {}
+
+    def on_begin(conn):
+        state[id(conn)] = False
+
+    def on_execute(conn, cursor, statement, parameters, context, executemany):
+        s = " ".join(statement.split()).upper()
+        if "HC_WRITE_LOCK(" in s:
+            state[id(conn)] = True
+        elif s.startswith(("INSERT", "UPDATE")) and not s.startswith("INSERT INTO AUDIT_LOG") \
+                and not state.get(id(conn), False):
+            violations.append(s[:80])
+
+    event.listen(engine, "begin", on_begin)
+    event.listen(engine, "before_cursor_execute", on_execute)
+    try:
+        rid = pw.dispatched_run(engine, sources=("tamu_fcc",))
+        violations.clear()  # the test's own dispatch is not a pipeline write path
+        checkpoints.lock_rules(engine, rid, reference_plan(pw.version_of(engine, rid)))
+        extract.store_records(engine, rid)
+        checks.run_checks(engine, rid)
+        inclusion.decide_run(engine, rid)
+        checkpoints.freeze_dataset(engine, rid)
+    finally:
+        event.remove(engine, "begin", on_begin)
+        event.remove(engine, "before_cursor_execute", on_execute)
+    assert violations == []
+    assert stage(engine, rid) == "analysis"
+
+
+def _between_read_and_write(monkeypatch, module, engine, change):
+    """Runs `change` after the step has read through its access object and before its write."""
+    original = module.write
+
+    def write(*args, **kwargs):
+        change()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "write", write)
+
+
+def _add_record(engine, rid, key):
+    version = q(engine, "SELECT source_version_id FROM run_source WHERE run_id = :r AND source_version_id IS NOT NULL",
+                r=rid)[0][0]
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO record (extraction_run_id, source_version_id, source_item_key, kind, harmonized, "
+                          "reported, extraction) VALUES (:r, :v, :k, 'measured', '{}', '{}', "
+                          "'{\"method\": \"adapter\", \"name\": \"x\", \"version\": \"1\"}')"),
+                     dict(r=rid, v=version, k=key))
+
+
+@pytest.mark.parametrize("step", ["checks", "inclusion", "freeze"])
+def test_a_change_between_a_steps_read_and_its_write_is_refused(engine, monkeypatch, step):
+    """Each step reads through its access object, then writes in a separate locked transaction
+    that re-checks by id what it read. A record added in between is refused as a change."""
+    rid = pw.locked_run(engine, sources=("tamu_fcc",))
+    extract.store_records(engine, rid)
+    if step != "checks":
+        checks.run_checks(engine, rid)
+    if step == "freeze":
+        inclusion.decide_run(engine, rid)
+    module, call, function = {"checks": (checks, checks.run_checks, "raise_flags"),
+                              "inclusion": (inclusion, inclusion.decide_run, "decide"),
+                              "freeze": (checkpoints, checkpoints.freeze_dataset, "freeze_dataset")}[step]
+    _between_read_and_write(monkeypatch, module, engine, lambda: _add_record(engine, rid, f"added-{step}"))
+    with pytest.raises(Refused) as refused:
+        call(engine, rid)
+    assert refused.value.code == "changed_since_read"
+    assert refusals(engine, rid)[-1][1:] == (function, "changed_since_read")
+
+
 # --- records, flags and decisions between the checkpoints ------------------------------------
 
 def test_records_are_stored_only_after_the_lock_with_how_they_were_extracted(engine):
