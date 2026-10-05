@@ -1,6 +1,6 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built, each with tests that failed on the code before it; for the re-check.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. For a second re-check.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
@@ -66,6 +66,24 @@ The owner accepted all six findings, decided that the primary set's handling of 
 - The plan names its hypothesis version by database id, so the freeze fingerprints of runs of different versions differ, by design.
 
 **Reference numbers after the fixes:** recomputed with the same scripts; **none changed**. Records, alloys, groups, residual df, k, standard errors and p-values are identical for every set. The freeze fingerprint's value changed, because it is now computed from stable identities (`93c44b22…`, was `3440e972…`); it is not a reference number.
+
+## Re-check (ChatGPT, 2026-10-06) and fixes
+
+The text is in `docs/reviews/step06_recheck_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix2_packet.md`. Closed: findings 2 (subject to 1), 3, 4, 5 and 6. Left: three items, fixed as the owner asked (each with a test that failed on the code before it), plus the owner's addition:
+
+| Item | Fix | New tests (failed before the fix) |
+|---|---|---|
+| 1. Inclusion or the freeze could read before Checks completed (empty per-set flags) and still pass the coverage check | The `set_flags` reader, in the same transaction under the run's lock that reads Inclusion's inputs, verifies that a completed Checks result exists and covers exactly the records and flags read; otherwise the read is refused (`checks_not_done`, `checks_not_current`) and Inclusion and the freeze log the refusal. A sensitivity set whose own flags are required (its same-alloy step or value statuses differ) and missing from the result is refused (`set_flags_missing`), never read as "no flags". The binding helpers moved to `pipeline/binding.py`, shared by the access layer and the write paths. | `test_the_reviewers_interleaving_is_refused` (Checks committed between Inclusion's read and write; the reviewer's controlled interleaving); `test_a_missing_required_per_set_flag_result_is_a_refusal`; `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` (added after the mutation checks: the read, not only the later write, refuses) |
+| 2a. Grouping changed paper identity (MPEA grouped by dataset stopped matching) | Paper identity for matching comes only from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. Grouping is used only for clustering. | `test_paper_identity_does_not_depend_on_the_grouping_setting` (the reviewer's case); `test_without_a_doi_the_normalized_paper_reference_identifies_the_paper` |
+| 2b. Another outcome disabled the tensile-below-yield check | Physical validity is checked on every record whatever the plan's outcome; Checks compares yield strength (`flags.COMPARED_OUTCOME`); validation refuses any outcome but yield strength (`eligibility.SUPPORTED_OUTCOMES`; new register entry `supported_outcomes`). | `test_physical_validity_does_not_depend_on_the_outcome_setting` (the reviewer's case); two new cases in `test_invalid_plans_are_refused` |
+| 3. The application-time guard kept the last of duplicate entries while the lookup uses the first | One shared lookup (`ordered_rules`, `lookup`) serves both the rules and the guard; duplicate entries are refused; every flag kind and category is checked as the lookup resolves it. | `test_the_application_time_guard_refuses_duplicate_or_shadowing_entries` (4 cases; 3 failed, the narrower-category case was already refused) |
+| **Owner's addition:** a check on the result, not only on the settings | At the freeze, `eligibility.primary_set_problems` checks the primary set itself against every item of `primary_set_invariants`, using the Checks flags (independent of the plan's grouping and outcome) and each record's kind and source; a failure refuses the freeze (`invariant_broken`) and is logged. Its constructed-source test reads the source definition itself, so that switching off the earlier guard does not switch it off. Register: the invariants are stated as enforced on the frozen set itself. | `tests/test_freeze_invariants.py` (15): each of the six invariants on the checker; what it allows; end to end, plans built to slip past settings validation (the guards switched off in the test): an exact duplicate twice, both records of a conflict, an invalid value, an unresolved-identity group, a constructed record in an unmarked run, and **the reviewer's two cases** (grouping by dataset; tensile strength as the outcome), each refused at the freeze and logged; a valid plan freezes |
+
+**Also in this round:** two parallel sessions had each added `test_no_record_is_stored_after_checks`; the second definition hid the first. The first is renamed `test_no_record_is_stored_even_when_checks_ran_early`, so both run; a scan of every test file finds no other duplicate name.
+
+**Reference numbers after these fixes:** recomputed; **none changed**, and the freeze fingerprint is unchanged too (`93c44b22…`). As the re-check expected: the reference sources have no shared measurement and no invalid value.
+
+**What these fixes do not do:** the result check covers the six invariants of `primary_set_invariants`; it does not re-derive every eligibility rule (that is the freeze's existing comparison of the stored decisions with what the locked rules produce). Paper identity from reference text is exact after normalizing spaces and case; two spellings of one reference that differ otherwise are "unknown", which can give a possible duplicate, never a pair.
 
 ## What was built
 
@@ -245,7 +263,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 
 ## Assumptions register
 
-99 entries: 96 in force, 2 open, 1 direction approved, after the owner's decisions and the review fixes of 2026-10-06. New on 2026-10-06: `primary_set_invariants`, `checks_bound_to_records`, `fixed_policies_in_code`, `reference_numbers`. Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
+100 entries: 97 in force, 2 open, 1 direction approved, after the owner's decisions, the review fixes and the re-check fixes of 2026-10-06. New on 2026-10-06: `primary_set_invariants`, `checks_bound_to_records`, `fixed_policies_in_code`, `reference_numbers`, `supported_outcomes`. Re-check changes (earlier wording in history): `primary_set_invariants` (enforced on the frozen set itself), `checks_bound_to_records` (verified in the reading transaction; missing per-set flags refused), `fixed_policies_in_code` (paper identity from the records' references, never the grouping; validity on every record), `conflict_pairing_rule` and `physical_validity_checks` (notes). Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
 
 **Applied in step 6, with named settings and tests:**
 - **Moved to "yes":** `tamu_test_temperature`, `tamu_microstructure`, `permitted_test_types`, `same_alloy_rule`, `values_disagree_tolerance`, `conflict_pairing_rule`, `tag_starting_lists`, `room_temperature_scope`, `fcc_microstructure_scope`, `grain_size_floor`, `alloy_eligibility`, `physical_validity_checks`, `sufficiency_options`, `duplicate_identity`, `duplicate_survivor_rule`, `unresolved_duplicates`, `scope_not_confirmed`, `assigned_value_statuses`, `controlled_extract_disabled`, `observation_unit`, `quasistatic_tests`.
@@ -273,19 +291,20 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (860, all passing; 217 new in step 6; tests changed listed below)
+## Tests (888, all passing; 245 new in step 6; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_plan.py` | 33 | Default and reference plans valid and equal to their projection; the reference plan's values; each default from its named setting; 19 kinds of invalid plan refused; the fingerprint; three tags. |
-| `tests/test_flags.py` | 18 | Invalid values; never within one source; tolerance boundaries (1.99% / 2.01%) on yield strength and grain size; known differences; unknown paper or condition; the same-alloy rule and the tolerance from the plan; 1:2, 2:2 and non-linked groups; conflict groups; a dataset cites itself; **flags unchanged when outcomes are replaced by arbitrary values that keep every pairwise and per-record relation, and with the plan's model and hypotheses removed**; import scan. |
-| `tests/test_eligibility.py` | 45 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
-| `tests/test_checkpoints.py` | 26 | The lock (plan, fingerprint, three tags in one transaction); second or changed lock, invalid plan, other version refused and logged; the lock waits for the run lock; **every write after `hc_write_lock`**; records stored after the lock with their extraction; **the guard at three points**; a marked run; changes between read and write refused (three steps); the freeze refuses decisions the rules do not produce; every write after the freeze refused and logged; counts and fingerprint; no dataset frozen; the same fingerprint on another database. |
+| `tests/test_plan.py` | 35 | Default and reference plans valid and equal to their projection; the reference plan's values; each default from its named setting; 19 kinds of invalid plan refused; the fingerprint; three tags. |
+| `tests/test_flags.py` | 21 | Invalid values; never within one source; tolerance boundaries (1.99% / 2.01%) on yield strength and grain size; known differences; unknown paper or condition; the same-alloy rule and the tolerance from the plan; 1:2, 2:2 and non-linked groups; conflict groups; a dataset cites itself; **flags unchanged when outcomes are replaced by arbitrary values that keep every pairwise and per-record relation, and with the plan's model and hypotheses removed**; import scan. |
+| `tests/test_eligibility.py` | 49 | Each rule; the order; **duplicates before grain sizes (1.79/1.8 µm)**; Texas A&M by decision and the source-only set; survivors incl. **non-MPEA survivors**; conflicts and ambiguous groups; identity only among records that passed the earlier rules; **each setting read from the plan** (12 settings); grouping from the plan; decisions ignore the profile; no profile import; counts. |
+| `tests/test_checkpoints.py` | 27 | The lock (plan, fingerprint, three tags in one transaction); second or changed lock, invalid plan, other version refused and logged; the lock waits for the run lock; **every write after `hc_write_lock`**; records stored after the lock with their extraction; **the guard at three points**; a marked run; changes between read and write refused (three steps); the freeze refuses decisions the rules do not produce; every write after the freeze refused and logged; counts and fingerprint; no dataset frozen; the same fingerprint on another database. |
 | `tests/test_controlled_duplicates_handling.py` | 50 | Every extract row against the answer file: flag, primary handling, survivor, sensitivity handling; rows 15–16 under tension and compression. |
 | `tests/test_reference_sets.py` | 6 | The primary set equals the reference selection without row 139; one decision per record (Texas A&M 21/72/1); no shared measurement; the freeze counts; **one change per sensitivity set**, on the reference run and on a marked run with duplicates and conflicts. |
 | `tests/test_access_code_roles.py` | 12 | The code lists; binds only at curation (five other stages); only code roles; an agent setting cannot bind as one; **Inclusion receives no planted outcome value** (Checks as positive control); `record_conditions` contents and hashes. |
 | `tests/test_migrations_step6.py` | 20 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
-| `tests/test_sensitivity_matching.py` | 3 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
+| `tests/test_sensitivity_matching.py` | 6 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
+| `tests/test_freeze_invariants.py` | 15 | Re-check, owner's addition: the result check at the freeze, each invariant on the checker and end to end with plans built to slip past validation, including the reviewer's two cases. |
 | `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +3 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06); `primary_set_invariants` in one entry, shown on the page. |
 
 ### Tests changed (none weakened)
@@ -324,6 +343,13 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test` marks the bypassed source searched before Checks (Checks now wait for every source); `test_a_change_after_the_decisions_were_read_is_refused_at_the_freeze` expects `checks_not_current`, which the freeze now finds first.
   - `test_assumptions.py`: `conflicts_not_pooled` is decided on 2026-10-06; new tests for `primary_set_invariants` (shown on the page).
   - `test_controlled_duplicates.py`: the pinned fingerprint and the explanation of rows 15–16.
+
+- **The re-check fixes (2026-10-06):**
+  - `test_flags.py::test_a_dataset_source_is_its_own_paper` is **replaced** by `test_a_source_without_per_record_papers_is_compared_by_its_reference`: its premise (paper identity from the grouping setting) is what finding 2a removed; the new test shows that Texas A&M records still never pair with a record citing another paper, now through their reference.
+  - `test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting`: its second case gives the MPEA record a reference, so that the two records' papers are known to differ.
+  - `test_flags.py::test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_outcome_field` is renamed `…_reads_only_the_rules_and_the_set_names`: Checks no longer reads the plan's outcome.
+  - `test_access_code_roles.py::test_inclusion_receives_no_outcome_value` first shows the read refused without a completed Checks result, then completes Checks (a helper) before the projected-data search; the audited fields include the refused `set_flags` read.
+  - `test_checkpoints.py`: the shadowed test renamed (above).
 
 No test was removed.
 
@@ -391,14 +417,32 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 - **"Freeze does not re-check its read":** its decision comparison caught the earlier scenario. The new tests change the run between each step's read and its write.
 - **"`record_conditions` carries the outcome value":** the first mutation was neutralised by the reader's second filter. The stronger mutation (both removed) fails three tests.
 
+**The re-check round (2026-10-06)**, nine mutations, each run alone (`PYTHONPATH`, the copy's import checked):
+
+| Removed or changed in the copy (re-check fixes) | Failing tests |
+|---|---|
+| `set_flags` read without verifying the Checks coverage | 1 (after the new test; see below) |
+| `set_flags` answers "no flags" without a Checks result | 2 |
+| A missing per-set flag result read as "no flags" | 1 |
+| The rule guard resolves the last entry, not the first | 35 |
+| The guard as before the re-check (dict of entries, no duplicate refusal) | 3 |
+| Paper identity ignores the reference text | 3 |
+| Tensile-below-yield checked only for the yield-strength outcome | 7 |
+| Validation accepts any outcome | 2 |
+| The freeze skips the result check | 7 |
+
+"`set_flags` read without verifying the Checks coverage" first survived: the write transaction's coverage check refused the same cases a moment later. `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` now shows the read itself refusing.
+
 ### Suite results
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-860 passed                                     (after the review fixes, 2026-10-06)
+888 passed in 226.25s                          (after the re-check fixes, 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-860 passed in 205.06s
+888 passed in 234.14s
 ```
+
+After the first review's fixes: 860 passed locally and in the image.
 
 Before the review: 816 passed locally and in the image.
 
@@ -473,7 +517,14 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 7. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
 8. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
 
-## Questions for the re-check
+## Questions for the second re-check
+
+1. Are the three remaining items closed: the interleaving (verification in the reading transaction; missing per-set flags refused), the fixed rules through grouping and outcome, and duplicate rule entries at the second enforcement point?
+2. Does the result check at the freeze cover every item of `primary_set_invariants`, independently of the plan's grouping and outcome settings? Can any plan still reach a frozen primary set that breaks one of them?
+3. Is paper identity from the records' own references (DOI, else reference text) sound, and is anything now merged or separated on a guess?
+4. Is any claim still stronger than the code supports?
+
+## Questions for the first re-check (answered in its text)
 
 1. Is each of the six findings closed, and do the new tests exercise the scenarios you reproduced?
 2. Does `primary_set_invariants` hold for every plan, including one a model writes (refused at the lock and again when the rules are applied)?
