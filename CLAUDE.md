@@ -44,6 +44,11 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 11. **Per-run calibration (PRD 5.10) is a flag, not a gate.** When inference cannot run, show "calibration unavailable" with the reason. Software correctness (pass/fail against an independent reference) is separate from calibration (a reported finding).
 12. **Every model call is recorded** with tokens and actual cost (`model_call`). Spending caps: $2 per run, $50 per month.
 13. **Wording:** outcomes are always stated "in the sources searched". Never write that data "do not exist".
+14. **Nothing a model controls ever receives SQL, a database connection or a file path.** Agents get data only as text built from an access object that the trusted dispatcher (`hypocurate.access.dispatch.bind`) bound to a run, role, stage and source. No code gives an agent a tool that runs SQL, opens files or executes code.
+
+## Threat model (owner, 2026-10-05)
+
+The access layer and its tests guard against **our own code** leaking data to a model. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL or file tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. The access layer is not a boundary against hostile code running in the same process, and the file guard is a tripwire against accidental file access, not a sandbox. The only construction-level guarantee about answer material is that the deployed image contains no `tests/` or `docs/`. Agents that execute code are in the backlog, with operating-system isolation as a precondition. Do not claim more than this anywhere.
 
 ## Environment
 
