@@ -258,6 +258,20 @@ def test_no_record_is_stored_after_checks(engine, monkeypatch):
     assert refusals(engine, rid)[-1][1:] == ("store_records", "checks_done")
 
 
+def test_no_record_is_stored_after_checks(engine):
+    """Storage refuses once a Checks result exists, even for a source still pending (a state the
+    pipeline does not reach, since Checks wait for every source; created here directly)."""
+    rid = pw.locked_run(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    extract.store_source(engine, rid, "mpea")
+    with engine.begin() as conn:
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=rid))
+        writes.code_stage(conn, rid, "checks", {}, {"binding": {}})
+    with pytest.raises(Refused) as refused:
+        extract.store_source(engine, rid, "controlled_duplicates")
+    assert refused.value.code == "checks_done"
+    assert refusals(engine, rid)[-1][1:] == ("store_records", "checks_done")
+
+
 def test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze(engine):
     """A conflicting copy added after Checks (by plain SQL: storage refuses it) is not covered by
     the Checks result, so Inclusion and the freeze refuse."""
