@@ -4,7 +4,8 @@ Records here are in the `records_full` format Checks receives through its access
 owner's rules (2026-10-05): duplicates and conflicts only between different sources; grain size
 within the tolerance to pair (a matching tolerance), yield strength within it for a duplicate
 and beyond it for a conflict; a group with several candidates from one source is ambiguous and
-nothing is paired on a guess. Checks uses only per-record and pairwise rules: no model, slope,
+nothing is paired on a guess. Checks uses per-record rules and pairwise comparisons that feed a
+whole-group classification: no model, slope,
 residual or plan hypothesis.
 """
 from __future__ import annotations
@@ -169,7 +170,7 @@ def _world(seed):
 
 
 @pytest.mark.parametrize("seed", range(5))
-def test_flags_use_only_pairwise_and_per_record_rules(seed):
+def test_flags_come_from_pairwise_comparisons_and_group_classification(seed):
     """Replacing every measurement's outcome by an arbitrary value (copies keep their ratio to it,
     tensile strength its ratio to yield strength) destroys any relation with grain size, but
     changes no pairwise or per-record relation: the flags are identical. So is removing the

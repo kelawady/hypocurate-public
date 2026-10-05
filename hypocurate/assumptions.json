@@ -1305,7 +1305,7 @@
     "tests": [
       "tests/test_eligibility.py::test_each_rule_on_its_own",
       "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
-      "tests/test_flags.py::test_flags_use_only_pairwise_and_per_record_rules",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
       "tests/test_flags.py::test_physically_impossible_values_are_flagged_per_record"
     ]
   },
@@ -4324,7 +4324,7 @@
     "key": "code_role_access",
     "name": "Inclusion and Checks read through access objects",
     "state": "in_force",
-    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds.",
+    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds.",
     "value": {
       "text": "Inclusion: plan, record conditions, flag kinds; Checks: plan, all values",
       "unit": null
@@ -4367,7 +4367,7 @@
       "tests/test_access_code_roles.py::test_only_code_roles_bind_without_an_agent_setting",
       "tests/test_access_code_roles.py::test_an_agent_setting_cannot_bind_as_a_code_role",
       "tests/test_access_code_roles.py::test_code_roles_do_not_bind_at_any_other_stage",
-      "tests/test_flags.py::test_flags_use_only_pairwise_and_per_record_rules"
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
     ]
   },
   {
@@ -4458,7 +4458,8 @@
     },
     "history": [],
     "notes": [
-      "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1."
+      "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1.",
+      "Step 6 review (2026-10-06), for a later step: a source whose definition is unknown to the code should fail closed (be treated as constructed, or refused), not pass the guard."
     ],
     "tests": [
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
@@ -4581,9 +4582,9 @@
     "key": "reference_numbers",
     "name": "Reference numbers of the fixed-plan test",
     "state": "in_force",
-    "statement": "Under the reference plan (tension only; Texas A&M room temperature and single-phase FCC assigned by decision): pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M alone 21 records, 9 alloys, one group, coefficient ≈ 1173 with no uncertainty and no verdict. The statistics module (step 7) must reproduce them independently.",
+    "statement": "Under the reference plan (tension only; Texas A&M room temperature and single-phase FCC assigned by decision): pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M alone 21 records, 9 alloys, one group, coefficient ≈ 1173 with no uncertainty and no verdict. Each ± is one standard error (cluster-robust, by group), not a confidence interval. The statistics module (step 7) must reproduce them independently.",
     "value": {
-      "text": "pooled 97 / 22 / 20 / 74, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA 76 / 13 / 19, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M 21 / 9 / 1, k ≈ 1173",
+      "text": "pooled 97 / 22 / 20 / 74, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA 76 / 13 / 19, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M 21 / 9 / 1, k ≈ 1173 (± one standard error)",
       "unit": "MPa·µm^½"
     },
     "category": "statistical",
@@ -4739,6 +4740,57 @@
       "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze",
       "tests/test_checkpoints.py::test_checks_wait_until_every_chosen_source_is_stored",
       "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze"
+    ]
+  },
+  {
+    "key": "fixed_policies_in_code",
+    "name": "Policies fixed in code for every plan",
+    "state": "in_force",
+    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (the DOI's derived key; a source grouped by dataset cites itself); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+    "value": {
+      "text": "eleven fixed policies",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What a plan can and cannot set.",
+    "reason": "Step 6 review: the claim 'every setting comes only from the plan' was broader than the code; it is narrowed to plan settings, and the fixed policies are listed.",
+    "evidence": [
+      "docs/reviews/step06_review_chatgpt.md, 'Locked settings and sensitivity names'; accepted by the owner on 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.flags:VALUE_STATUSES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:FLAG_RULE_CHOICES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:SENSITIVITY_CHANGES"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:CODE_ALLOWED"
+        }
+      ],
+      "note": "The meaning of each sensitivity key must stay stable, or be versioned with the domain profile."
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
     ]
   }
 ]

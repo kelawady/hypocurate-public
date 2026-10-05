@@ -153,7 +153,7 @@ inclusion.decide_run(engine, run_id)        # one rule per record; the primary a
 checkpoints.freeze_dataset(engine, run_id)  # counts and fingerprint; or "no dataset frozen"
 ```
 
-- **The plan** follows `PLAN_SCHEMA` exactly and holds every setting that affects eligibility or grouping. The default and reference plans take each value from the domain profile (`profile.py`); decision code reads settings only from the locked plan.
+- **The plan** follows `PLAN_SCHEMA` exactly and holds every plan setting that affects eligibility or grouping. The default and reference plans take each value from the domain profile (`profile.py`); decision code reads those settings only from the locked plan. Some policies are fixed in code for every plan (listed in `eligibility.py` and register entry `fixed_policies_in_code`), among them the rules no plan can change for the primary set (`primary_set_invariants`).
 - **Checks and Inclusion read through their own access objects** (`dispatch.bind_code`). Inclusion receives no outcome value.
 - **Every write** takes `hc_write_lock(p_run => …)` in `run_transaction`, re-checks by id what it read, and logs any refusal (`audit_log`, `detail.result` "rejected").
 - **Constructed test data** (the controlled extract) enter only a run marked `{"constructed_test_data": true}` in `experiment_flags` at dispatch.

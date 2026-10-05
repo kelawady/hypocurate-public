@@ -8,7 +8,8 @@ position relative to the tested relationship.
 
 **Not claimed:** that outcomes play no part at all. Checks receives every value and compares
 them to classify duplicates, conflicts and physically invalid records, and Inclusion acts on
-those flag kinds (`tests/test_checks.py` shows that Checks uses only pairwise and per-record
+those flag kinds (`tests/test_flags.py` shows that Checks uses per-record rules and pairwise
+comparisons that feed a whole-group classification
 rules).
 """
 from __future__ import annotations

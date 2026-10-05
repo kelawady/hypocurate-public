@@ -6,7 +6,7 @@ no free text. `validate` refuses content that its own projection would change (a
 key, a value outside a vocabulary, a number where a code belongs), content missing a part,
 and content that the sprint-1 template does not support.
 
-Every setting that affects which records are eligible or how they are grouped is in the
+Every plan setting that affects which records are eligible or how they are grouped is in the
 plan (`rules`, `scope`, `exclusion_rules`, `eligibility_rules`, `sufficiency`), and the
 plan records the domain profile its defaults came from (`profile`). The default and the
 reference plans are built from the domain profile (`hypocurate.pipeline.profile`), its one
@@ -14,6 +14,8 @@ named place for each default. Plans are fixed inputs in step 6; the Planner (ste
 same template.
 
 The fingerprint is the SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8).
+Some policies are fixed in code for every plan, not plan settings: see `eligibility.py`
+("Settings and fixed policies") and register entry 'fixed_policies_in_code'.
 """
 from __future__ import annotations
 

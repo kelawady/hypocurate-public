@@ -2,9 +2,12 @@
 
 Input: exactly what Checks' access object returns (`records_full`, the projected `plan`).
 Checks sees every value (PRD 4) and only raises flags; Inclusion decides what a flag means
-under the locked plan. **Only per-record and pairwise rules are used**: no model, slope,
-residual or hypothesis of the plan, so agreement with the relationship under test can never
-decide which records are credible (PRD 5.3). Every setting is read from the locked plan.
+under the locked plan. **Per-record rules (invalid values) and pairwise comparisons that feed a
+whole-group classification** (duplicate, conflict, ambiguous group); no model, slope, residual or
+hypothesis of the plan, so agreement with the relationship under test can never decide which
+records are credible (PRD 5.3). The matching settings are read from the locked plan; the fixed
+policies listed in `eligibility.py` (which conditions are compared, how a paper is identified,
+the ambiguity rule) are code.
 
 Flags (owner, 2026-10-05):
 - `invalid_value` / "physically impossible": tensile strength below yield strength, or a

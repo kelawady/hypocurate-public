@@ -1,8 +1,20 @@
 """Eligibility decisions under the locked plan (PRD 5.3; build step 6). Pure functions.
 
 Input: exactly what Inclusion's access object returns (`record_conditions`, `flags_kind`,
-the projected `plan`): no outcome value. **Every setting is read from the locked plan**
-(owner, 2026-10-05); this module imports nothing from the domain profile.
+the projected `plan`, each sensitivity set's own matching flags): no outcome value. This module
+imports nothing from the domain profile.
+
+**Settings and fixed policies** (step 6 review; owner, 2026-10-06). The plan's settings (scope,
+exclusion rules, eligibility rules within the fixed choices, `rules`, sufficiency) are read from
+the locked plan only, never from the domain profile. These are **fixed policies in code**, the
+same for every plan: which statuses carry a value; what counts as physically invalid (tensile
+strength below yield strength, grain size of zero or less); which test conditions are compared
+(test type and temperature); how a paper is identified (the DOI's derived key; a source grouped
+by dataset cites itself); the room-temperature band's name; the order of the rules; the
+ambiguity rule; the fixed rules for the primary set (register 'primary_set_invariants'); the
+structure of the survivor rule and its stable tie-breaker; the change each sensitivity key
+applies; and the code roles' field lists. Changing one is a code change with its register entry
+('fixed_policies_in_code').
 
 Each record gets one rule code, the first that applies (owner, 2026-10-05):
 

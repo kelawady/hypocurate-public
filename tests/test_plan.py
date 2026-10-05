@@ -1,4 +1,4 @@
-"""Step 6: the plan model (PRD 5.1). Plans follow PLAN_SCHEMA exactly; every setting that
+"""Step 6: the plan model (PRD 5.1). Plans follow PLAN_SCHEMA exactly; every plan setting that
 affects eligibility or grouping is a value of the plan; the default plan takes each value from
 the domain profile's named setting (owner, 2026-10-05)."""
 from __future__ import annotations

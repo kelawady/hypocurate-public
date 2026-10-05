@@ -1,7 +1,8 @@
 """Checks (code; PRD 4, 5.3; build step 6): raise the flags of a run's records.
 
 Reads through its own access object (`dispatch.bind_code(…, "checks")`: the locked plan and
-every stored value) once every chosen source is stored, computes the flags with `pipeline.flags` (per-record and pairwise rules
+every stored value) once every chosen source is stored, computes the flags with `pipeline.flags` (per-record rules, and pairwise comparisons that feed a
+whole-group classification
 only), then writes them in one transaction under the run's lock that re-checks the records by
 id. Checks never decides eligibility. Flags are raised once per run, before the freeze; the
 numbers compared are stored for audit and never returned to the Critic.

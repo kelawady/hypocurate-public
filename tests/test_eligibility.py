@@ -3,7 +3,7 @@
 Records here are in the `record_conditions` format Inclusion receives (no outcome value).
 Owner, 2026-10-05: one rule per record, the first that applies, in the order of the module
 docstring; duplicates are resolved before grain sizes are counted; a conflict and an ambiguous
-group enter the primary set with none of their records; every setting is read from the locked
+group enter the primary set with none of their records; every plan setting is read from the locked
 plan, never from the domain profile.
 """
 from __future__ import annotations
@@ -233,7 +233,7 @@ def test_identity_applies_only_among_records_that_passed_the_earlier_rules():
     assert decide(records, possible, key="scope_not_confirmed_included")[3] == "duplicate_counted_once"
 
 
-# --- every setting from the locked plan -----------------------------------------------------
+# --- every plan setting from the locked plan (fixed policies: eligibility.py) ------------------
 
 def _changed(path, value):
     plan = copy.deepcopy(PLAN)
