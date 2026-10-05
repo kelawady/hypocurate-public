@@ -1,32 +1,41 @@
 # Build step 5 — summary for review
 
-Date: 2026-10-05. Branch: `step-05-access`. **Status: built; awaiting the second-model review. Not merged.** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
+Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; awaiting the re-check. Not merged.** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
 
-The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
+The suite is the gate. This summary is for the second model's re-check (PRD 13.2), which uses `docs/reviews/checklist.md`. The review text is in `docs/reviews/step05_review_chatgpt.md`. It describes the state **after** the fixes; section "Second-model review and fixes" maps each finding to its fix.
 
-**Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3: append-only, writable in every run state). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
+**Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
 
-The owner approved the plan on 2026-10-05 after two questions, with four additions (A–D below), and made one change before the review: the Commentator on a run with no dataset frozen (section "The owner's change before the review").
+## The threat model (owner, 2026-10-05), and what step 5 does and does not claim
+
+The access layer and its tests guard against **our own code leaking data to a model**. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL or file tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. Agents that execute code go to the backlog, with operating-system isolation as a precondition. Recorded in CLAUDE.md (new rule 14 and a "Threat model" section) and in the register (`threat_model`).
+
+**Claims withdrawn.** The owner's earlier instruction "unreachable by construction" overreached, and the first build's summary and packet claimed too much from it. Corrected:
+- "tests/, docs/reviews/ and answer material are unreachable by construction" → the **file guard is a tripwire** against accidental file access by trusted code, not a sandbox. **The only construction-level guarantee is that the deployed image contains no `tests/` or `docs/`** (Dockerfile; `scripts/check_runtime_image.py` in CI).
+- "after installation every ctypes load, symbol lookup and foreign call is refused" → new library loads and foreign calls raise events the hook refuses, but preloaded `ctypes` still reads memory directly (`from_address`, tested). The review reports `string_at` working in its setup; in our runs it was refused (it raises the call event). Either way it is no barrier to code that tries.
+- "a refusal is committed before the error is raised, so the row survives" → still true for policy refusals; failures are now logged too, and **durable logging in the database is not unconditional** (fallback: the process log).
+- "the planted value appears in no role's complete input" → the **projected-data test** shows that the planted values are not copied into the *data* a blinded role is given; it does not test the model request, and the blinded views disclose some things by design (section "Accepted disclosures").
+- "pipeline code reaches data only through the access layer" (a static import scan) → removed; it was vacuous. The guarantee is the dispatcher design plus CLAUDE.md rule 14, for trusted code.
 
 ## What was built
 
 | Path | What it is |
 |---|---|
-| `hypocurate/assumptions.json` | First commit, on its own: the owner's decision on `conflict_pairing_rule` (below). Later: ten entries for this step's defaults; `same_alloy_rule` partly applied. |
-| `hypocurate/access/allowlist.py` | **The access contract, in one named place**: roles, stages, the field catalogue with a description of each field, `ALLOWED[role][stage]`, the outcome fields, the category fields, the condition-summary fields, the named source fields and the named plan parts. Its docstring states the single-run scope. |
-| `hypocurate/access/stage.py` | `actual_stage`: the run's stage, read from the database inside the access transaction. |
-| `hypocurate/access/fields.py` | One read function per field. Each builds its output from named keys only and reads only the run's own rows. |
-| `hypocurate/access/layer.py` | `Access(engine, run_id, role, stage, source_key=None)` and its one method `get(field)`. The write protocol and the audit row (below). |
-| `hypocurate/access/inputs.py` | `role_input(access)`: a role's complete input at its stage (every listed field, read through the access object). Step 8 builds prompts from this and answers tool calls through the same object. |
-| `hypocurate/access/errors.py` | `AccessDenied` (role, stage, field, reason). |
-| `hypocurate/access/file_guard.py`, `guarded.py` | The approved input files of pipeline code (below). |
-| `hypocurate/access/guard_probe.py` | Probes run inside a guarded process (reads, lists, writes, templates, database, certificates, subprocess, ctypes, registration, a role's input). Used by the tests; available for a deploy-time self-check. |
-| `hypocurate/sources/normalize.py` | `SAME_ALLOY_DECIMALS = 1` and `same_alloy_key`: the owner's same-alloy rule, used by the gap report's condition summaries. |
-| `hypocurate/sources/versions.py` | `read_definition_files` refuses to run in a guarded process (registration reads `data/`). |
-| `scripts/check_runtime_image.py` | `REQUIRED` gains the eight access modules. |
-| `README.md` | Status line; an "Access layer" section. |
-| `tests/access_world.py` | Builds runs at every stage with planted values (below). |
-| `tests/test_access_layer.py`, `test_access_planted.py`, `test_access_files.py` | 41, 11 and 19 tests (below). |
+| `hypocurate/assumptions.json` | The owner's pairing-rule decision (first commit). Entries for this step's defaults and the review's decisions (section "Assumptions register"). |
+| `hypocurate/access/allowlist.py` | The access contract in one place: threat model, roles, stages, field catalogue, `ALLOWED[role][stage]`, outcome fields, condition-summary fields, named source fields, **`PLAN_SCHEMA`** and `POWER_SCHEMA` (nested), **`ACCEPTED_DISCLOSURES`**. |
+| `hypocurate/access/vocabulary.py` | **Controlled vocabularies** (category values; codes our own code writes), the marker `unrecognized`, unrecognized counts, DOI syntax. |
+| `hypocurate/access/context.py` | **`AccessContext`**: immutable (frozen, slots): run, role, stage, source, agent setting. |
+| `hypocurate/access/dispatch.py` | **`bind(engine, run_id, agent_setting_id, source_key=None)`**: the only way to obtain an access object. |
+| `hypocurate/access/layer.py` | `Access` (no public constructor; immutable): `get(field)` and `read_all()`; the transaction, the audit rows, denial and failure codes, failure rows and the process-log fallback. |
+| `hypocurate/access/fields.py` | One reader per field, built from named keys, vocabularies and the plan schema. |
+| `hypocurate/access/stage.py`, `inputs.py`, `errors.py` | The stage from the database; `role_input` (one snapshot); `AccessDenied` and `AccessFailed`. |
+| `hypocurate/access/file_guard.py`, `guarded.py`, `guard_probe.py` | The tripwire, its guarded process, and probes; refusals reported and logged. |
+| `hypocurate/sources/connection.py` | "Test connection" reports unrecognized category counts per field. |
+| `hypocurate/sources/normalize.py`, `versions.py` | `same_alloy_key`; registration refuses to run under the guard. |
+| `CLAUDE.md` | Rule 14 and the threat model. |
+| `README.md`, `scripts/check_runtime_image.py` | The access section, rewritten; the image must contain the access modules. |
+| `tests/access_world.py`, `tests/access_testing.py` | Runs at every stage with planted values (now also inside every allowed field) and recorded agent settings; the tests' only way to build an access object outside the dispatcher. |
+| `tests/test_access_layer.py`, `test_access_projected.py`, `test_access_dispatch.py`, `test_access_files.py` | 44, 13, 18 and 20 tests. |
 
 ## Register update: the conflict pairing rule (owner, 2026-10-05)
 
@@ -51,7 +60,7 @@ On a run that ended with no dataset frozen, the Commentator receives only what t
 **Additions at approval:**
 - **A. Single-run scope**, stated in `allowlist.py` and tested with a value planted in other runs.
 - **B. `sources_meta` is a fixed set of named plain fields**, tested with a value planted in the source's free text.
-- **C. File guard scope**: which entry points install it; it cannot be installed in a process that later needs those paths; templates, the database driver and the certificate bundle work under it; one private scratch directory; writes elsewhere refused.
+- **C. File guard scope**: which entry points install it; it cannot be installed in a process that later needs those paths; templates, the database driver and the certificate bundle work under it; one private scratch directory; writes elsewhere refused. (After the review: a tripwire, not a sandbox; see below.)
 - **D. Audit-log volume** in the storage estimate (section "Audit-log volume").
 
 ## The allow-list (role × stage × fields)
@@ -73,102 +82,171 @@ Stages are read from the database on every call:
 | Analyst | analysis | `claim`, `domain`, `sources_meta`, `plan`, `records_full`, `decisions`, `flags_full`, `results`, `coverage`, `stage_outputs`, `run_cost` |
 | Analyst | closed_without_freeze | `claim`, `domain`, `sources_meta`, `plan`, `coverage`, `stored_record_counts`, `decisions`, `flags_kind`, `condition_summaries` |
 | Commentator | final | the Analyst's `analysis` fields |
-| Commentator | final_without_freeze | the Analyst's `closed_without_freeze` fields, plus `gap_report` (the output of the run's Analyst stages) and `outcome` (status, outcome, verdict, exploratory). No outcome values, no row-level records. |
+| Commentator | final_without_freeze | the Analyst's `closed_without_freeze` fields, plus `gap_report` and `outcome` |
 | any | any other stage | nothing |
 
-What each field contains is in `FIELDS` (allowlist.py). In brief:
-- `claim`: query number, version, text, and whether it is a narrower question (a yes/no only; nothing of the original run).
-- `sources_meta`: key, name, source type, kind of data, licence, grouping unit, fields available. Name and licence are text, set from the code's source definitions (`SOURCES`), not from source content. The address and the version label are never included.
-- `record_counts` (Planner): per chosen source, computed by code from its sealed version through its adapter (records are stored only after the rules lock): the number of records, per field the count of each status, and per value of each category field the count of records.
-- **Outcome fields**, withheld wherever outcomes are withheld: yield strength and its spread, tensile strength, hardness and its spread. The Planner does not know before the lock which one its plan will choose, so all are treated as outcomes.
-- `plan`: the plan's **named parts** (PRD 5.1) only; any other key is withheld. Its list of fields to extract keeps only names of the common fields, for every role.
-- `tag_values` and `domain` are reference lists, not run data: approved tag values (never proposed ones, never the run that proposed them), and the run's confirmed domain.
+**The blinded views** are the Planner's, the Critic's, the gap report's and the Commentator's without a freeze. In them:
+- **category values** (test type, temperature band, phase class, microstructure, processing method) come from fixed vocabularies, else `unrecognized`. The stored value is unchanged. Unrecognized values are counted per field and source (never shown) in "test connection" and in the run's `coverage`;
+- **codes** (flag kinds and categories, eligibility rules, analysis-set and sensitivity keys) come from fixed vocabularies, else `unrecognized`;
+- the **Critic's record view** has no paper title and no origin key. It has the DOI only if it has DOI syntax, and an alloy label derived by code from the composition;
+- the **plan** is projected recursively by `PLAN_SCHEMA`: named keys at every level, vocabulary leaves (else the marker), numbers, integers, field names and units. There are no free-text leaves. `power_assumptions` goes through `POWER_SCHEMA`;
+- **coverage** carries codes and counts only, with no failure text;
+- **`sources_meta`**: name, licence and fields available come from the code's `SOURCES`; type, kind of data and grouping unit come from the sealed version the run recorded. Nothing comes from the mutable source registry.
 
-**Single-run scope.** Every other field reads only the run's own rows and the sealed source versions the run recorded at dispatch. Nothing reaches a role from the original run of a narrower question (its records, results, coefficient, stage outputs, commentary) or from earlier runs of the same hypothesis.
+**Outcome fields**, withheld wherever outcomes are withheld: yield strength and its spread, tensile strength, hardness and its spread.
+
+**Single-run scope.** Every field reads only the run's own rows and the sealed source versions the run recorded. `domain` and `tag_values` (approved values only) are reference lists.
+
+### Accepted disclosures (register `accepted_disclosures`; `ACCEPTED_DISCLOSURES`)
+
+The blinding claim is limited to this: no outcome value is copied into a blinded view from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. The blinded views still disclose, by design:
+1. counts by field status (for example how many yield strengths a source reports or cannot read);
+2. flag kinds and categories (for example that two values differ beyond the tolerance);
+3. condition summaries, which reveal an exact grain size or temperature when a group has one record;
+4. compositions and the alloy labels derived from them;
+5. DOIs with DOI syntax, which may contain digits (tested);
+6. text written or approved by people: the claim, approved tag values, and source names and licences in code;
+7. numbers in the locked plan (thresholds, minimums), written before any record exists;
+8. the Analyst's gap report, passed to the Commentator on a run with no dataset frozen;
+9. timing of calls and the existence of refusals. **Timing is not protected.**
 
 ## Points in PRD 4 that were unclear or contradictory, and how they are resolved
 
 1. **The Critic "sees sources" but never outcome values**, and the source files contain the outcome values: resolved by decision 1 (descriptions, never content).
 2. **The Analyst writes the gap report** (PRD 3, step 8), but **sees data only "after the dataset freeze"** (PRD 4, 5.6), which an insufficient run never reaches: resolved by decision 2.
-3. **Fields the PRD does not assign**: the plan for the Critic (not given); tag lists for the Planner (given: approved values); search coverage (Analyst, Commentator); text handed between stages (Analyst, Commentator only); tokens and cost (Analyst, Commentator); eligibility decisions for the Critic (not given); the domain for the Curator (not given); the agent's instruction text (no field: it is configuration, not data).
+3. **Fields the PRD does not assign**: the plan for the Critic (not given); tag lists for the Planner (given: approved values); search coverage (Analyst; Commentator); text handed between stages (Analyst after the freeze, Commentator after a freeze; the Commentator without a freeze gets only the Analyst's gap report); tokens and cost (Analyst, Commentator after a freeze); eligibility decisions for the Critic (not given); the domain for the Curator (not given); the agent's instruction text (no field: it is configuration, not data; it is part of the model request that step 8 must test).
 4. **The table lists Inclusion and Checks, which are code**: they get access objects in the steps that build them (6, 7), so their reads are logged too. Not built now.
 5. **The experiment flag that may relax the contract** (PRD 4): not built. `test_experiment_flags_relax_nothing` shows that flags on a run change no list. **Backlog** (PRD 18).
 6. **"Roles that can add or remove records never see outcome values"** sits awkwardly with the Curator, which reads source content and extracts records. It has no say over inclusion; whether its extraction is complete is a step 8 question (with step 4's note that adapters, which are code, extract tabular sources).
 7. **The Planner's counts**: computed by code from the sealed sources (records are stored only after the lock); every property field is treated as an outcome.
 8. **A possible self-wait**: the audit row is a write to the run, so an access call takes the run's lock. Code must never call the access layer while holding the same run's lock. A 5-second lock timeout turns that into an error instead of a hang.
-9. **The plan's structure is step 6's**: step 5 fixes the plan's top-level names from PRD 5.1 and reads only those.
+9. **The plan's structure**: after the review, step 5 defines the plan's whole nested schema (`PLAN_SCHEMA`, owner 2026-10-05); step 6's plan model must follow it.
 
-## How the access layer works
+## How an access object is obtained and used
 
-Each `Access.get(field)` is one `run_transaction` (retried on `40P01` and `40001`):
-1. `SET LOCAL lock_timeout = 5000`, then `SELECT hc_write_lock(p_run => …)`. This is the locking protocol of step 3, because the audit row is a write to the run. It also fixes the stage until commit.
-2. The run's actual stage (`stage.actual_stage`).
-3. The checks, in order: the role and the declared stage are known; the declared stage equals the actual one; the field is on the role's list at that stage.
-4. The read, by the field's function. That function may itself refuse: the Curator asking for a source its run did not record, or giving none.
-5. One `audit_log` row: role, declared stage, field, allowed or denied. Its `detail` holds the actual stage, the Curator's source and the reason, never a value.
-6. Commit. A refusal raises `AccessDenied` only **after** the commit, so the denied row survives the rejection and any rollback by the caller. The object owns its engine and never takes the caller's connection.
+**The dispatcher** (`dispatch.bind`), called by trusted orchestration (steps 8, 9) for one agent call:
+- it takes a run and the **agent setting** being invoked, never a role;
+- the **role** is the one recorded for that setting in the run's `run_agent_setting` rows. A setting not recorded for the run is refused (`setting_not_recorded`);
+- the **stage** is read from the database;
+- a **source** is accepted only for the Curator, and only if the run has a `run_source` row with a version for it. Otherwise `no_source`, `source_not_recorded` or `source_not_for_role`;
+- every bind is logged (function `bind`).
 
-An unknown run raises the database's error from `hc_write_lock`, and no audit row is written, because there is no run to log against.
+**The result** is an `Access` around an immutable `AccessContext`:
+- `Access()` without the dispatcher's token raises `TypeError`;
+- its attributes cannot be set;
+- every read uses the captured context once (review: "concurrent mutation of run_id").
 
-## The approved input files of pipeline code (step 1 open item 4; addition C)
+The tests build contexts the dispatcher would never produce (unknown roles, stale stages) with `tests/access_testing.py`, which no package code imports.
 
-**Mechanism.** Three layers:
-1. **No path in the access layer.** Pipeline code gets source data only as the sealed bytes of the source versions its run recorded: `source_content` for the Curator, and the adapters behind `record_counts`. These go through `load_sealed_version`, which re-checks every file against the seal. The access layer has no function that takes a path, and a static test checks this.
-2. **A guarded process for every pipeline run.** `run_guarded("hypocurate.<module>:<function>", payload)` (`guarded.py`) runs the target in a fresh `python -m hypocurate.access.guarded` process. That process:
-   - removes the repository root from its import path, imports the modules in `PRELOADED` and installs the guard (`file_guard.install`), which is an **irreversible** Python audit hook;
-   - from then on may **read** only the Python installation (standard library, installed packages, including the certificate bundle) and the package's own code directory;
-   - may **write** only in its private scratch directory;
-   - is refused everything else with `PermissionError`: the repository root, `tests/`, `docs/` (so `docs/reviews/`) and `data/`, read or listed, by `open`, `io.open`, `pathlib`, `os.open`, `os.listdir` and `os.scandir`;
-   - is refused relative paths, because the hook cannot see a `dir_fd`;
-   - is refused starting another program (`subprocess`, `os.system`, `exec`, `spawn`, `fork`) and native code through `ctypes`.
-3. **The deployed image** holds no `tests/` or `docs/` at all (step 2, checked in CI).
+**One read is one transaction** (`run_transaction`):
+1. `SET LOCAL lock_timeout`; check that the run exists; `hc_write_lock(p_run => …)`;
+2. the actual stage;
+3. the policy checks per field;
+4. the reads;
+5. one audit row per field;
+6. commit; then return, or raise `AccessDenied`.
 
-**The scratch directory.**
-- The parent creates it (`hc-run-*`, mode 0700, in the system temporary directory) and removes it when the child ends, however the child ends.
-- In the child, `TMPDIR`, `MPLCONFIGDIR` and `XDG_CACHE_HOME` point to it, and so does the working directory.
-- `install()` accepts only a fresh, empty, private `hc-run-*` directory directly in the system temporary directory, so a bad scratch path cannot open up anything else (tested with `tests/`, `data/`, the repository root, a shared, a non-empty and a wrongly named directory).
+`role_input` reads **every field of the role in this one transaction**: one snapshot, with every audit row in the same transaction (tested via `xmin`). Holding the run's lock, the stage and the rows cannot change until commit: writers to the run follow the same protocol and wait. Isolation is READ COMMITTED on purpose. A REPEATABLE READ snapshot would be taken *before* the lock wait, so it could miss a checkpoint committed meanwhile.
 
-**Which entry points install it.** Only `python -m hypocurate.access.guarded`, through `run_guarded`.
-- `install()` refuses to run in any other process.
-- A static test checks that `install(` is called only in `guarded.py` and `addaudithook` only in `file_guard.py`.
-- The pipeline's entry points (the command line's run command in step 8, the worker's run of a claimed job in step 9) must call `run_guarded`.
-- **Not guarded:** the web service, the migrations, the command line's `sources` commands (registration reads `data/`; it also refuses explicitly under the guard), and the test process.
-- Because the guard lives only in a process created for one run, it can never be installed in a process that later needs those paths.
+**Real concurrent checkpoint transitions** (review): a rules lock and a freeze are each committed by a transaction holding the run's lock, while a read waits on it. After commit, the waiting Planner and Critic are refused with `stage_mismatch`, and the Analyst's post-freeze read succeeds.
 
-**The database driver is imported before the guard (my decision, for the owner's attention).**
-- psycopg imports `ctypes`. Importing `ctypes` loads the process's own symbols (`dlopen(None)`), and the guard refuses that, so the database probe failed under the full guard.
-- **No refusal was weakened.** The guarded process imports psycopg before installing the guard (`PRELOADED = ("psycopg",)`). After installation, every `ctypes` load, symbol lookup and foreign call is still refused (tested), and reading the Python installation is allowed anyway.
-- No ctypes function is called while connecting (checked with an audit trace).
-- **For step 7:** a library that imports `ctypes` after the guard is installed (the plotting library may) is refused. Adding it to `PRELOADED` needs the owner's approval; this is stated in the register entry.
+## Logging: denials and failures
 
-**Limits.**
-- An audit hook sees what Python code opens. Files that C libraries open themselves are not seen: libpq's configuration, OpenSSL's certificate store.
-- Native code could bypass the hook entirely, which is why `ctypes` is refused.
-- It is an in-process guard, not an operating-system sandbox.
+| `detail.result` | When | Code (`detail.code`) |
+|---|---|---|
+| `allowed` | a delivered read | — |
+| `denied` (`AccessDenied`) | a policy refusal | `not_on_list`, `stage_mismatch`, `unknown_role`, `unknown_stage`, `no_source`, `source_not_recorded`, `source_not_for_role`, `setting_not_recorded`, `empty_list` |
+| `failed` (`AccessFailed`) | the read could not be done | `unknown_run`, `lock_timeout`, `reader_error` (with the error's class name only), `database_error`, `file_guard` |
+
+- **Only validated, bounded strings are logged.** A role, stage or field that is not one of ours is logged as `invalid`, with its length. Reasons are fixed texts per code, and error messages carry only validated strings.
+- **Failure rows are a named exception to the locking protocol** (owner's answer to question 1; register `audit_failure_rows_without_run_lock`). They are written in their own transaction without `hc_write_lock`: there is no run to lock, or the lock is what failed. An `audit_log` insert takes only a key-share lock on the run, which never conflicts with the protocol's lock. For an unknown run, `run_id` is NULL and the requested id is in `detail`. The lock-timeout test checks that the failure row is written *while the other transaction still holds the lock*.
+- **File-guard refusals** are written by the child as one bounded line each on standard error. `run_guarded(..., audit=(engine, run_id))` copies them into `audit_log` as failures (at most 100 per run, then a count), or to the process log when no run is given.
+- **Fallback:** a failure row the database cannot take goes to the process log (logger `hypocurate.access`, one JSON line). Durable database logging is therefore not unconditional.
+- **`role_input` is never silently empty.** A role with no field at its stage gets `AccessDenied` (`empty_list`), logged.
+
+## The file guard: a tripwire (review finding 1)
+
+**What it does.** Each pipeline run executes in `python -m hypocurate.access.guarded` (`run_guarded`). There, an audit hook refuses, with `PermissionError`, what trusted code should never do by mistake:
+- reading or listing outside the Python installation and the package's code (so the repository root, `tests/`, `docs/`, `data/`);
+- writing outside the run's private scratch directory;
+- relative paths;
+- starting other programs;
+- loading new native libraries.
+
+Each refusal is logged (above). Templates, the database driver, the certificate bundle and the scratch directory work under it (tested). Registration refuses to run under it.
+
+**What it does not do.** Python's documentation warns that audit hooks are not suitable for implementing a sandbox (`sys.addaudithook`; PEP 578). Code in the guarded process can get around it in several ways:
+- an already-open descriptor can still be read;
+- the guard's state can be edited;
+- preloaded `ctypes` reads memory directly (tested as a documented limit);
+- sockets and the database (with the process's credentials) are open;
+- the child inherits its environment, and startup hooks run before the guard;
+- checking a path and then opening it is not atomic.
+
+So it catches our accidents, which is what the threat model needs. **The construction-level guarantee is the deployed image without `tests/` and `docs/`.**
+
+Unchanged from the first build:
+- the scratch directory: created and removed by the parent; `hc-run-*`, 0700, empty, directly in the system temporary directory;
+- `install()` runs only in the guarded process, and only `guarded.py` calls it;
+- the database driver is preloaded.
+
+**Backlog:** agents that execute code, with operating-system isolation (a separate user, filesystem and network namespace, or a container) as a precondition.
+
+## Second-model review and fixes (ChatGPT, 2026-10-05)
+
+The owner accepted all six findings and decided the threat model; the fixes were planned, approved (with one question and an addition) and built.
+
+| Finding | Fix | Tests |
+|---|---|---|
+| 1. The file guard is bypassable | Described everywhere as a tripwire, with Python's warning and the limits (code, README, register `pipeline_file_guard`, this summary). Block list not extended. The image guarantee stated. Refusals logged. | `test_preloaded_ctypes_still_works_a_documented_limit`; `test_no_other_program_and_no_new_native_library` (renamed: it tests new library loads); `test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log` |
+| 2. Database access bypasses the contract; caller-chosen, mutable context | Threat model (only trusted code; nothing a model controls receives SQL, a connection or a path). The immutable `AccessContext`, created only by `dispatch.bind` from the run's agent settings and `run_source` rows. No public constructor. | `test_bind_reads_the_role_from_…`, `test_bind_refuses_a_setting_or_source_…`, `test_bind_logs_an_unknown_run_…`, `test_an_access_object_has_no_public_constructor_and_cannot_be_changed` |
+| 3. Outcome-bearing text through approved fields | Vocabularies for category values and codes; no title or origin key for the Critic; DOI syntax; the plan projected recursively; no failure text in coverage; codes for eligibility rules. Accepted disclosures listed, and the blinding claim narrowed. **Values planted inside every allowed field.** | `test_access_projected.py` (13); `test_the_plan_is_projected_by_its_named_parts`; `test_record_metadata_…`; `test_flags_kind_has_no_numbers`; `test_the_gap_report_input_has_codes_not_failure_text`; `test_vocabularies_mark_what_they_do_not_know`; `test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure` |
+| 4. `sources_meta` provenance | From the code's definitions and the run's sealed version. | `test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry` (name, licence, properties, grouping unit and kind of data edited after dispatch) |
+| 5. Denials not always logged | Denied and failed logged apart, with codes; failure rows (named exception); process-log fallback; file-guard refusals; `role_input` never empty; bounded strings. | `test_a_readers_error_is_a_logged_failure`, `test_an_unknown_run_is_a_logged_failure`, `test_when_the_database_is_unavailable_the_process_log_is_the_fallback`, `test_role_input_is_never_silently_empty`, `test_only_validated_bounded_strings_are_logged`; the lock-timeout test now expects a failure row |
+| 6. Not the complete model input | Renamed the **projected-data test**; its docstring states what it does not cover. **Step 8 acceptance requirement:** test the actual outbound model request, including instructions, message history, tool errors and retry prompts. | — |
+| Checkpoints, snapshot, weak tests | Real concurrent rules-lock and freeze tests; `role_input` in one transaction; the static import scan removed. | `test_a_rules_lock_committed_while_a_read_waits_closes_the_planner`, `test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_analyst`, `test_a_roles_whole_input_is_read_in_one_transaction` |
+
+**The owner's addition (unrecognized counts).** Per run and per source, how many values of each category field were unrecognized (counts only) appears in "test connection" and in the run's `coverage`, so a source with unfamiliar labels is noticed. The frozen MPEA and Texas A&M sources have none (tested). Adding a value to a vocabulary is a register change needing the owner's approval.
 
 ## Requirements carried from earlier steps
 
 | Requirement | How |
 |---|---|
-| Step 1 open item 4, step 2 deviation 5, step 4 open item 4: an explicit list of approved input files; `tests/` and `docs/reviews/` outside it | The section above. The approved inputs are the sealed source versions recorded for the run; everything else on disk is unreachable in the guarded process. |
-| Step 3 open item 3: every write path calls `hc_write_lock` first and retries on `40P01` / `40001` | The access layer's only write is the audit row. Each call is one `run_transaction` whose first statements are `SET LOCAL lock_timeout` and `hc_write_lock(p_run => …)`. Tested by a held lock (timeout, and waiting then succeeding), a spy on `run_transaction`, and a source-order check. |
-| Step 3 stated limitation: rejected attempts are logged by the access layer | Denied rows are committed before `AccessDenied` is raised; tested against the caller's rollback. |
-| Step 3 note: `flag.compared_values` is never returned to the Critic | `flags_kind`; the planted test covers it. |
+| Step 1 open item 4, step 2 deviation 5, step 4 open item 4: approved input files; `tests/` and `docs/reviews/` outside them | Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer (no path-taking function). A tripwire catches accidental file access in the guarded process. The construction-level guarantee is the deployed image without `tests/` and `docs/`. "By construction" in development is withdrawn (threat model). |
+| Step 3 open item 3: `hc_write_lock` first, `run_transaction` | Every access transaction and every bind: `SET LOCAL lock_timeout`, run exists, `hc_write_lock(p_run => …)`, all in `run_transaction`. **Exception:** failure rows (named, owner-approved, in the register). |
+| Step 3 stated limitation: rejected attempts logged by the access layer | Policy denials committed before the error; failures in their own transaction or the process log. |
+| `flag.compared_values` never returned to the Critic | `flags_kind`; projected-data test. |
 
 ## Assumptions register
 
-- **Ten new entries** (all in force, decided 2026-10-05, applied "yes", each with named settings and regression tests): `access_allow_lists`, `outcome_fields_withheld`, `critic_metadata_without_numbers`, `gap_report_condition_summaries`, `source_meta_fields`, `plan_named_parts`, `access_stage_from_database`, `access_lock_timeout`, `no_experiment_relaxation`, `pipeline_file_guard`.
-- Decided by: the owner for the decisions and additions; otherwise "step 5 (owner's approval of the plan)".
-- **`same_alloy_rule`: not yet → partly** (step 6). Done: the gap report's condition summaries group records by alloy under the rule (`same_alloy_key`, `SAME_ALLOY_DECIMALS = 1`). Pending: the plan setting that applies it to the analysis.
-- 79 entries: 78 in force, 0 open, 1 direction approved (calibration noise levels); 22 scientific entries not reviewed by an expert.
+86 entries: 85 in force, 0 open, 1 direction approved; 22 scientific entries not reviewed by an expert.
+- **New after the review** (decided by the owner, 2026-10-05):
+  - `threat_model`;
+  - `access_context_dispatcher`;
+  - `access_logging`;
+  - `audit_failure_rows_without_run_lock` (the named exception to the locking protocol);
+  - `category_vocabularies`;
+  - `code_vocabularies`;
+  - `accepted_disclosures`.
+- **Rewritten**, with the first build's wording kept in each entry's history:
+  - `pipeline_file_guard` (a tripwire);
+  - `critic_metadata_without_numbers`;
+  - `source_meta_fields`;
+  - `plan_named_parts` (now "The plan's schema", `PLAN_SCHEMA`; step 6 must follow it).
+- **From the first build:**
+  - `access_allow_lists`, `outcome_fields_withheld`, `gap_report_condition_summaries`, `access_stage_from_database`, `access_lock_timeout`, `no_experiment_relaxation`;
+  - `same_alloy_rule` partly applied;
+  - `conflict_pairing_rule` decided.
+- The named regression tests follow the renamed test file (`test_access_projected.py`).
 
-## Tests (620, all passing; 76 new; four register tests changed)
+## Tests (639, all passing; 95 new in step 5; four register tests changed)
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_access_layer.py` | 44 | **The allow-list** equals the owner's table, field for field; every listed field has a reader; no outcome-bearing field is listed for the Planner, the Critic or the gap report. **The full matrix**: every role × every field at each of the eight run states (queued, failed and the six stages). An allowed field gives one allowed audit row; every other request raises `AccessDenied` and gives exactly one denied row with the reason. **Queued and failed runs** give nothing to anyone. **`role_input`** reads each listed field once, through the access object. **A denied row survives** the rejection and the caller's rollback (checked from a fresh connection). The Planner and the Critic asking for outcomes are denied and logged (criterion 14.2), and audit rows never hold a value. Unknown roles, stages and fields are denied and logged. **Both sides of each checkpoint**: the declared stage is checked against the database; the rules lock closes the Planner and opens the Curator and the Critic; the freeze closes the Curator and the Critic and opens the Analyst; ending without a freeze opens only the gap report input; completion, without a freeze or after one, closes the Analyst and opens the Commentator's list for that case; the Commentator without a freeze gets exactly the gap-report input, the Analyst's gap report and the outcome. Experiment flags relax nothing. **Field contents**: named source fields only (and only the chosen source); the Curator reads only its own source, and its input has no claim text, no hypotheses and no direction token; no inclusion field for the Curator; record metadata has no number; flags have no numbers; the plan by its named parts; approved tag values only; counts from the sealed source; condition summaries are ranges and counts of conditions only; the same-alloy key. **The write protocol**: a held run lock makes a call time out with nothing logged, or wait and then succeed; every call runs in `run_transaction`; `hc_write_lock` comes before anything else. **Static checks**: pipeline code imports no database, source or file API; the access layer has no path-taking function; the guard is installed in one place. |
-| `tests/test_access_planted.py` | 13 | **Planted values** (yield strength 48213.579, tensile strength 57104.263, hardness 36912.847) are stored in the source file, the records (as harmonized values, as reported, inside a "not a number" reason), a flag's numbers, a Curator stage's input, output, reasoning and tool calls, a model instruction, a proposed tag value, the source's address and version label, and the plan (a non-allowed entry in its list of fields, and an unnamed key). They appear in **no encoding** (list in the file's docstring: rounded, separated, scientific, GPa/ksi/psi, IEEE bytes, base64, hex, URL; at least five characters) in the complete input of the **Planner**, the **Critic**, the **gap-report Analyst** or the **Commentator on a run with no dataset frozen** (whose input does hold the gap report and the outcome). **Positive control**: the detector finds them in the Analyst's input after the freeze. **Addition B**: the source's free text reaches neither the Planner nor the Critic. **Addition A**: a different value (59324.681), in the original run of the narrower question (records, coefficient, stage output, commentary) and in an earlier, failed run of the same hypothesis (records, stage output), appears in no role's complete input at any of the six stages. |
-| `tests/test_access_files.py` | 19 | In real guarded processes: answer files, builder, review documents, frozen data, `CLAUDE.md` and `README.md` cannot be read in any of four ways. The repository root and the answer directories cannot be listed. Relative paths are refused. The Python installation and the package can be read. Writes outside the scratch directory are refused (package, site-packages, repository root, `tests/`, system temporary directory); the test uses unique names and removes anything created. A library can use the scratch directory (0700, the working directory), which is removed afterwards. No subprocess, `os.system` or `ctypes`. **Templates render, the database driver connects, and an HTTPS client loads its certificate bundle.** Registration refuses to run. A role's complete input is identical inside and outside the guard. The guard cannot be installed in the test process; `run_guarded` runs only package code; the test process is not guarded; six bad scratch directories are refused. |
+| `tests/test_access_layer.py` | 44 | The allow-list equals the owner's table; the full role × stage × field matrix at eight run states, with denial codes; queued and failed runs give nothing; a denied row survives the caller's rollback; outcome requests by the Planner and the Critic denied and logged; unknown roles, stages and fields are logged as `invalid`; both sides of each checkpoint; completion with and without a freeze; experiment flags relax nothing; field contents (named source fields, registry edits ignored, the Curator's own source and no direction of the claim, record metadata, flags, the projected plan, approved tags, counts with unrecognized counts, condition summaries, same-alloy key); the lock (timeout with a failure row, waiting, `run_transaction`, order of statements); no path-taking function; the guard installed in one place. |
+| `tests/test_access_projected.py` | 13 | The **projected-data test**: planted values (in discarded fields and inside every allowed field) are absent from the projected input of the Planner, the Critic, the gap-report Analyst and the Commentator without a freeze, in the encodings listed in its docstring. Positive control. Source free text. Another run's value in no role's input at six stages. **Its docstring states what it does not cover.** |
+| `tests/test_access_dispatch.py` | 18 | The dispatcher (role from settings, refusals, unknown run, no public constructor, immutability); logging (reader error, unknown run, database unavailable → process log, `role_input` never empty, bounded strings, file-guard refusals for a run or in the process log); one transaction per input; concurrent rules lock and freeze; vocabularies; the DOI disclosure; no unrecognized value in the frozen sources; unrecognized counts in coverage and test connection; codes, not failure text, in the gap report. |
+| `tests/test_access_files.py` | 20 | The tripwire in real guarded processes: reads, listings, relative paths, writes and programs refused; what is needed works; the documented `ctypes` limit; registration refused; a role's input identical inside and outside (through the dispatcher); scratch directories; the guard not installable elsewhere. Its docstring says what it does not show. |
 
 ### Tests changed (none weakened)
 
@@ -182,98 +260,113 @@ The owner's pairing-rule decision removed the register's only open entry. The sa
 - `PARTLY` in `tests/test_assumptions.py` gains it, so the partly-applied checks cover one more entry;
 - `test_the_owners_eight_decisions_are_recorded_as_decided` now expects "partly" for it, through `PARTLY`, with its step unchanged (6).
 
+**After the review** (none weakened):
+- **Removed:** `test_pipeline_code_reaches_data_only_through_the_access_layer` (the static import scan), because the review found it vacuous. Nothing replaces it as a claim; the dispatcher tests cover the binding.
+- **Renamed:**
+  - `tests/test_access_planted.py` → `tests/test_access_projected.py`, and its leak tests `test_no_planted_value_in_…` → `test_no_projected_planted_value_in_…`;
+  - `test_no_other_program_and_no_native_code` → `test_no_other_program_and_no_new_native_library`.
+- **Changed by the new design, assertions kept or strengthened:**
+  - the matrix and the unknown-input tests now assert the fixed codes and the `invalid` placeholders;
+  - stage-mismatch tests match the fixed reason instead of the old message text;
+  - the lock-timeout test expects `AccessFailed` and a failure row, where it used to expect no row;
+  - the record-metadata, flags, plan, record-counts and `sources_meta` tests expect the new projections (two chosen sources in the world now);
+  - the Curator's foreign source is now `controlled_duplicates`, because the world chooses `tamu_fcc`.
+
 ### The safeguard tests fail when the safeguard is removed
 
-Each change was made in a scratch copy of the branch (`git archive`), and only the named test files were run, importing the copy (`PYTHONPATH`). The copy was then discarded. These checks were run on the first build, before the owner's change; the change adds no new safeguard mechanism (one more stage and list, covered by the matrix and the planted test).
+Each change was made in a scratch copy, and the named test files were run importing the copy (`PYTHONPATH`).
+
+**Review fixes:**
 
 | Removed or changed in the copy | Result |
 |---|---|
-| The allow-list check | 16 tests fail (the matrix at all seven states, the survivor test, the audit-value test, the planted tests…) |
-| The declared-stage check alone | 1 test fails (`test_a_declared_stage_is_checked_against_the_database`). The allow-list is still applied at the stage read from the database, so nothing more leaks. |
-| The stage taken from the caller (both checks) | 7 tests fail: every checkpoint test, and queued and failed runs |
-| The refusal raised inside the transaction (its row rolled back) | 11 tests fail, including the survivor test and the matrix |
-| `hc_write_lock` replaced by a plain read | the 3 lock tests fail |
-| The Critic's record metadata given the harmonized values | 2 fail, including the Critic's planted test |
-| The Critic's flags given the numbers compared | 3 fail, including both planted tests |
-| The plan's content passed whole | 2 fail, including the gap-report planted test |
-| Yield strength added to the condition summaries | 2 fail, including the gap-report planted test |
-| Records read without the run filter | 4 fail: the Critic's and the gap report's planted tests, other runs at analysis and final |
-| Stage outputs read without the run filter | 2 fail (other runs at analysis and final) |
-| The address added to `sources_meta` | 5 fail (named fields, and all four planted inputs) |
-| The guard's hook not added | 5 file tests fail (reads, listing, relative paths, writes, programs) |
-| The scratch directory not checked | 7 fail (six bad directories, and writes) |
-| The database driver not preloaded | the database and role-input tests under the guard fail |
+| Vocabularies pass every value | 8 tests fail, including the projected-data tests of the Critic, the gap report and the Commentator |
+| The paper title back in the Critic's view | 2 fail |
+| The plan projected one level only | 3 fail |
+| `sources_meta` name from the registry | 1 fails (the registry test) |
+| `bind` reads the role from any agent setting, not the run's | 1 fails |
+| Failure rows not written | 6 fail |
+| One transaction per field instead of one per input | 1 fails |
+| Coverage keeps the failure text | 4 fail |
+| Eligibility rules passed raw | 3 fail |
+| Flag kinds passed raw | 4 fail |
 
-**Incident during these checks.** With the hook removed, the old write test really wrote a one-byte file into the shared virtual environment's `site-packages` and one into `/tmp`. I removed both. The test was then changed to use unique names and to remove anything created before asserting (commit "the guard's write test uses unique names and always cleans up"). Four leftover scratch directories from the first version of the runner, which cleaned up in the child, were also removed. No file of the repository was affected.
+**First build** (run on the first build, before the review, and not repeated since): the allow-list check (16 fail), the stage taken from the caller (7), the refusal inside the transaction (11), `hc_write_lock` (3), the projections and run filters (2–5 each), the guard's hook (5), the scratch check (7), the preload (the guarded database and role-input tests).
 
 ### Suite results
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-620 passed in 110.42s
+639 passed in 125.99s
 $ docker compose run --rm test                 (the test image, rebuilt)
-620 passed in 117.77s
+639 passed in 131.23s
 ```
 
-GitHub Actions, commit `81f5003` (the last code change: the owner's change before the review): success; "Run the suite in the test image": 620 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37321733673
-First build, commit `72355e6`: success, 615 passed, runtime image OK. https://github.com/kelawady/hypocurate/actions/runs/37319439565
-The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
+GitHub Actions, commit `2c639be` (the review fixes, last code change): success; "Run the suite in the test image": 639 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37327512637
+Earlier: first build `72355e6` (615 passed, https://github.com/kelawady/hypocurate/actions/runs/37319439565); the owner's change before the review `81f5003` (620 passed, https://github.com/kelawady/hypocurate/actions/runs/37321733673).
 
 ## Audit-log volume (addition D)
 
-Measured: 7 rows (the Curator's and the Critic's complete inputs and one refusal) take 923 bytes of row data: about **130 bytes a row, at most about 190**. With the row header and the two index entries, about **200 bytes a row**.
+Measured on the first build: about **130 bytes of data a row**, about **200 bytes** with the header and two index entries. After the review there is also one `bind` row per agent call.
 
-| Reads per run | Rows | Size |
+| Per run | Rows | Size |
 |---|---|---|
-| Each role reads its complete input once (Planner 5, Curator 3 per source × 2, Critic 3, Analyst 11, Commentator 11) | 36 | about 7 KB |
-| With agent tool calls and refusals (step 8), say | 500 | about 100 KB |
+| Each role reads its complete input once (5 + 3 × 2 + 3 + 11 + 11 field rows, plus about 6 binds) | about 42 | about 8 KB |
+| With agent tool calls, refusals and failures (step 8), say | 500 | about 100 KB |
 
-The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchanged: the audit log adds at most about 2%. To be measured on real runs in step 8, with the rest of the estimate.
+The step 3 estimate of **4–6 MB per run** is unchanged (the audit log adds at most about 2%); to be measured in step 8.
 
-## Deviations from the approved plan
+## Deviations from the approved plans
 
-1. **The parent creates and removes the scratch directory**, not the child. In the child, `shutil.rmtree` works through relative paths against a directory handle, which the guard refuses by design. The parent's `finally` also cleans up after a crashed child.
-2. **The database driver is preloaded** before the guard (above). No refusal changed.
-3. **The scratch directory is validated** by `install()`. This is an addition: a bad path would have opened writes elsewhere.
-4. **The plan's list of fields to extract is filtered for every role**, not only the Curator. The first planted run found the planted value in the gap report's `plan`, because I had planted it in that list.
-5. **`guard_probe.py` is in the package**, not in `tests/`. A guarded process imports only package code, and `tests/` is unreachable under the guard by design.
-6. **The first access commit (`432cb35`) does not pass the suite alone**: its static test expects `guarded.py`, which comes in the next commit. The branch head passes.
+1. **The first build's own deviations stand:**
+   - the parent owns the scratch directory;
+   - the database driver is preloaded;
+   - the scratch directory is validated;
+   - `guard_probe.py` is in the package;
+   - the first access commit (`432cb35`) does not pass alone.
+2. **`string_at`.** The review's example of preloaded `ctypes` working (`string_at`) was refused in our runs, because it raises the call event the hook refuses. The documented-limit test uses direct memory access (`from_address`) instead, which does work.
+3. **Isolation stays READ COMMITTED** for the one-transaction input. REPEATABLE READ would take the snapshot before the lock wait (above).
+4. **Two chosen sources in the test world.** The world now chooses `tamu_fcc` too (with a placeholder file and a failed search carrying planted failure text), so that coverage text could be planted.
+5. **The `git mv` rename of the test file** went into the review commit (staged before it), with its content unchanged; the edits are in the fix commit.
 
 ## PRD corrections and clarifications for the next PRD update
 
-1. **PRD 4 (Critic):** "sources" means source descriptions (named fields), never source content. The Critic receives no measured number of any field.
+1. **PRD 4 (Critic):** "sources" means source descriptions, never source content. The Critic receives no measured number, no paper title and no origin key; categories come from vocabularies.
 2. **PRD 3 step 8 and PRD 4 (Analyst):** on a run that ends with no dataset frozen, the Analyst writing the gap report gets everything except outcomes, plus code-computed condition summaries.
 3. **PRD 4 (Commentator):** on a run completed with no dataset frozen, the Commentator receives only the gap-report input, the Analyst's gap report and the run's outcome.
 4. **PRD 4 (table):** Inclusion and Checks are code; their reads go through access objects from steps 6 and 7.
 5. **PRD 4 (relaxation flag):** not in sprint 1; to the backlog (PRD 18).
-6. **PRD 4 (stages):** the stages are read from the database: before the lock, curation, analysis, closed without freeze, final, final without freeze; queued and failed runs give nothing.
-7. **PRD 4 (implementation):** every read is one transaction that takes the run's lock, and a refusal is committed before the error is raised.
-8. **PRD 6 (worker):** each pipeline run executes in a guarded process (`run_guarded`) that can read only the Python installation and the package, and write only in its own scratch directory.
+6. **PRD 4 (threat model, new):** the access contract guards against our own code leaking data to a text-only model. Blinding is limited as in "Accepted disclosures". Timing is not protected.
+7. **PRD 4 (implementation):** access objects come only from a dispatcher that binds run, role (from the recorded agent settings), stage and source. Every read is one transaction that takes the run's lock. Denials and failures are logged apart, with the process log as fallback.
+8. **PRD 4 (testing requirement):** the data test covers the projected input; the complete model request is tested in step 8.
+9. **PRD 5.1 (plan):** the plan's content follows `PLAN_SCHEMA`.
+10. **PRD 6 (worker):** each pipeline run executes in a guarded process (a tripwire against accidental file access).
+11. **PRD 18 (backlog):** agents that execute code, with operating-system isolation as a precondition.
 
 ## Open items
 
 1. **Step 6:**
-   - the plan model stores its content under `PLAN_KEYS` and projects each part from named keys; today the named parts other than the field list are passed as written at the lock;
+   - the plan model stores its content in `PLAN_SCHEMA`;
+   - flags, eligibility rules and sensitivity keys use the code vocabularies;
    - Inclusion and Checks read through access objects;
-   - `same_alloy_rule` applied as a plan setting;
-   - the pairing rule applied.
-2. **Step 7:** if the plotting library imports `ctypes`, adding it to `PRELOADED` needs the owner's approval and a second-model review (a guard change). Inclusion of statistics reads in the access layer.
-3. **Step 8:**
-   - agents receive only `role_input` and the same access object;
-   - the command line's run command calls `run_guarded`;
-   - how the Curator relates to tabular sources (adapters extract them);
+   - `same_alloy_rule` and the pairing rule applied.
+2. **Step 7:** if the plotting library imports `ctypes`, adding it to `PRELOADED` needs the owner's approval and a second-model review.
+3. **Step 8 acceptance requirements:**
+   - **test the actual outbound model request**: instructions, message history, tool errors, retry prompts, attachments;
+   - agents receive only text built from `role_input` and reads through an access object from `dispatch.bind`, and no tool that runs SQL, opens files or executes code;
+   - the command line's run command calls `run_guarded(..., audit=…)`;
+   - the Curator and tabular sources;
    - measure the audit volume.
-4. **Step 9:** the worker runs each claimed run through `run_guarded`; never calls the access layer while holding a run's lock.
-5. **The Commentator on an insufficient run**: closed by the owner's change before the review (above).
-6. **Category values and paper references** reach the Critic as the source gives them (text from the source). They are metadata the owner approved, but they are source text.
-7. **Backlog (PRD 18):** the experiment flag that relaxes the access contract.
-8. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
+4. **Step 9:** the worker binds through `dispatch.bind` and runs each run through `run_guarded`. It never calls the access layer while holding a run's lock.
+5. **Category values and DOIs** reach the blinded views as the vocabularies and DOI syntax allow. New labels from a new source show as `unrecognized` until the owner adds them.
+6. **Backlog:** the relaxation flag; agents that execute code (operating-system isolation first).
+7. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
 
-## Questions for the reviewer
+## Questions for the re-check
 
-1. Can any role reach an outcome value through a field on its list, in a form the planted test would not catch?
-2. Is the guarded process's read set (the Python installation and the package) narrow enough? Is preloading the database driver sound?
-3. Is the order inside an access call (lock, stage, checks, read, audit row, commit, then raise) right, and is anything read before the stage is fixed?
-4. Are the stage boundaries right, in particular `closed_without_freeze` read from the run-level calibration row?
-5. Do the four changed register tests keep everything they checked before?
+1. Is each finding closed within the owner's threat model, and is every claim in this summary, the code and the register now no stronger than the code supports?
+2. Do the blinded views copy any stored outcome value into a role's data through a path the projected-data test would not catch?
+3. Is the named exception for failure rows sound (no wait, no deadlock), and is anything still unlogged?
+4. Is the dispatcher's binding complete for steps 8 and 9 (role from settings, stage from the database, source from `run_source`)?
+5. Are the accepted disclosures complete?

@@ -1,31 +1,23 @@
-# Build step 5 — review packet for the second model
+# Build step 5 — re-check packet for the second model
 
-Date: 2026-10-05. Branch: `step-05-access`. Code reviewed: commit `81f5003` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 620 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37321733673.
+Date: 2026-10-05. Branch: `step-05-access`. Code reviewed: commit `2c639be` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 639 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37327512637.
 
 Generated from the files on disk by a script, so every file below is quoted exactly.
 
 ## How to use this packet
 
-You are reviewing **step 5 of HypoCurate (PRD Section 15): the access layer**, built before any agent. It has four parts:
-- per-role, per-stage **allowed-field lists** (`hypocurate/access/allowlist.py`);
-- an **access object** through which every agent read goes, which logs every read and every refusal in `audit_log`;
-- the **tests for criterion 14.2**, including the planted-value test;
-- a **file guard**: pipeline runs execute in a separate process that cannot read `tests/`, `docs/`, `data/` or the repository root.
+**This packet is for the re-check after your first review** (`docs/reviews/step05_review_chatgpt.md`, section 11). The owner accepted all six findings and made a **threat-model decision** that scopes the fixes: the access layer and its tests guard against *our own code* leaking data to a model; agents are language models that return text only, never execute code and never receive SQL or file tools; only trusted, reviewed code runs; a trusted dispatcher binds each agent call to a run, role, stage and source. "Unreachable by construction" is withdrawn; the file guard is a tripwire, and the deployed image without `tests/` and `docs/` is the only construction-level guarantee. Agents that execute code go to the backlog, with operating-system isolation as a precondition.
 
-The step starts with a register update: the owner decided the conflict pairing rule. Before this review the owner made one change: on a run completed with no dataset frozen, the Commentator receives only the gap-report input, the Analyst's gap report and the run's outcome (summary, "The owner's change before the review").
+The summary's sections "The threat model …", "Second-model review and fixes" and "Accepted disclosures" map each finding to its fix and list the claims withdrawn.
 
-Not in this step: any agent, model call, eligibility or duplicate decision, statistics, screen or migration. No change to `render.yaml`, workflows, the Dockerfile, Compose or dependencies.
+Your review is advice; the test suite is the gate. Please return a dated findings file: for each finding, closed, partly closed or open, and any new finding.
 
-Your review is advice; the test suite is the gate. Please return a dated findings file. Each finding will be accepted (and fixed with a regression test) or rejected with a one-line reason.
-
-Use the fixed checklist in section 2, answering each item yes, no or not applicable, with a reason for every "no". For this step the most relevant questions are:
-- **Can any role reach an outcome value it should not see?** In particular the Planner (before the rules lock), the Critic (between the lock and the freeze), the Analyst writing a gap report (a run that ended with no dataset frozen) and the Commentator on a run completed with no dataset frozen. Check every field on their lists (`fields.py`), including text that comes from the source (category values, paper references, source names).
-- **Is the planted-value test strong enough?** Where the values are planted (`tests/access_world.py`), the encodings searched (`tests/test_access_planted.py`), and the positive control.
-- **Stages and checkpoints**: the stage is read from the database on every call; is any boundary wrong, and is anything read before the stage is fixed?
-- **The audit log**: is every refusal logged in a transaction that survives it, and does any audit row hold a value?
-- **The file guard**: is the read set (the Python installation and the package) narrow enough? Can pipeline code reach answer material another way? Is preloading the database driver sound (summary, "The database driver is imported before the guard")? Are the stated limits complete?
-- **Single-run scope** (owner's addition A): can anything from another run reach a role?
-- The "Questions for the reviewer" at the end of the summary.
+Please check in particular:
+- **Within the threat model**, is each finding closed, and is every claim in the summary, the code docstrings, the README, CLAUDE.md and the register no stronger than the code supports?
+- **The blinded views** (Planner, Critic, gap report, Commentator without a freeze): vocabularies, the recursive plan projection, provenance of `sources_meta`, codes instead of text. Is any stored outcome value still copied into a role's data? Are the accepted disclosures complete?
+- **The dispatcher and the immutable context**: is the binding complete for steps 8 and 9?
+- **Logging**: denial vs failure, the named exception (failure rows without the run lock), the process-log fallback, bounded strings. Is anything still unlogged?
+- **Snapshot and checkpoints**: one transaction per role input under the run's lock (READ COMMITTED on purpose); the concurrent transition tests.
 
 ## Contents
 
@@ -39,15 +31,20 @@ Use the fixed checklist in section 2, answering each item yes, no or not applica
 8. Tests: new files (full text)
 9. Tests: changes to `tests/test_assumptions.py` (diff)
 10. README (diff)
+11. The first review (`docs/reviews/step05_review_chatgpt.md`)
 
 ## Files added, modified or deleted since `main` (`2229df3`, the step 4b live record)
 
 ```
+M	CLAUDE.md
 M	README.md
+A	docs/reviews/step05_review_chatgpt.md
 A	docs/reviews/step05_review_packet.md
 A	docs/reviews/step05_summary.md
 M	hypocurate/access/__init__.py
 A	hypocurate/access/allowlist.py
+A	hypocurate/access/context.py
+A	hypocurate/access/dispatch.py
 A	hypocurate/access/errors.py
 A	hypocurate/access/fields.py
 A	hypocurate/access/file_guard.py
@@ -56,17 +53,24 @@ A	hypocurate/access/guarded.py
 A	hypocurate/access/inputs.py
 A	hypocurate/access/layer.py
 A	hypocurate/access/stage.py
+A	hypocurate/access/vocabulary.py
 M	hypocurate/assumptions.json
+M	hypocurate/sources/connection.py
 M	hypocurate/sources/normalize.py
 M	hypocurate/sources/versions.py
 M	scripts/check_runtime_image.py
+A	tests/access_testing.py
 A	tests/access_world.py
+A	tests/test_access_dispatch.py
 A	tests/test_access_files.py
 A	tests/test_access_layer.py
-A	tests/test_access_planted.py
+A	tests/test_access_projected.py
 M	tests/test_assumptions.py
 ```
 ```
+2c639be Step 5 review fixes: dispatcher, vocabularies, logging, tripwire
+07e7067 Step 5 review: the second model's findings; the owner's threat model in CLAUDE.md
+b70558b Step 5 summary and review packet: the owner's change before the review
 81f5003 Step 5: the Commentator on a run with no dataset frozen (owner, 2026-10-05)
 74054a4 Step 5 summary: the suite through Compose (615 passed)
 abd07dc Step 5 summary and review packet
@@ -85,33 +89,42 @@ abd07dc Step 5 summary and review packet
 ````markdown
 # Build step 5 — summary for review
 
-Date: 2026-10-05. Branch: `step-05-access`. **Status: built; awaiting the second-model review. Not merged.** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
+Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; awaiting the re-check. Not merged.** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
 
-The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
+The suite is the gate. This summary is for the second model's re-check (PRD 13.2), which uses `docs/reviews/checklist.md`. The review text is in `docs/reviews/step05_review_chatgpt.md`. It describes the state **after** the fixes; section "Second-model review and fixes" maps each finding to its fix.
 
-**Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3: append-only, writable in every run state). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
+**Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
 
-The owner approved the plan on 2026-10-05 after two questions, with four additions (A–D below), and made one change before the review: the Commentator on a run with no dataset frozen (section "The owner's change before the review").
+## The threat model (owner, 2026-10-05), and what step 5 does and does not claim
+
+The access layer and its tests guard against **our own code leaking data to a model**. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL or file tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. Agents that execute code go to the backlog, with operating-system isolation as a precondition. Recorded in CLAUDE.md (new rule 14 and a "Threat model" section) and in the register (`threat_model`).
+
+**Claims withdrawn.** The owner's earlier instruction "unreachable by construction" overreached, and the first build's summary and packet claimed too much from it. Corrected:
+- "tests/, docs/reviews/ and answer material are unreachable by construction" → the **file guard is a tripwire** against accidental file access by trusted code, not a sandbox. **The only construction-level guarantee is that the deployed image contains no `tests/` or `docs/`** (Dockerfile; `scripts/check_runtime_image.py` in CI).
+- "after installation every ctypes load, symbol lookup and foreign call is refused" → new library loads and foreign calls raise events the hook refuses, but preloaded `ctypes` still reads memory directly (`from_address`, tested). The review reports `string_at` working in its setup; in our runs it was refused (it raises the call event). Either way it is no barrier to code that tries.
+- "a refusal is committed before the error is raised, so the row survives" → still true for policy refusals; failures are now logged too, and **durable logging in the database is not unconditional** (fallback: the process log).
+- "the planted value appears in no role's complete input" → the **projected-data test** shows that the planted values are not copied into the *data* a blinded role is given; it does not test the model request, and the blinded views disclose some things by design (section "Accepted disclosures").
+- "pipeline code reaches data only through the access layer" (a static import scan) → removed; it was vacuous. The guarantee is the dispatcher design plus CLAUDE.md rule 14, for trusted code.
 
 ## What was built
 
 | Path | What it is |
 |---|---|
-| `hypocurate/assumptions.json` | First commit, on its own: the owner's decision on `conflict_pairing_rule` (below). Later: ten entries for this step's defaults; `same_alloy_rule` partly applied. |
-| `hypocurate/access/allowlist.py` | **The access contract, in one named place**: roles, stages, the field catalogue with a description of each field, `ALLOWED[role][stage]`, the outcome fields, the category fields, the condition-summary fields, the named source fields and the named plan parts. Its docstring states the single-run scope. |
-| `hypocurate/access/stage.py` | `actual_stage`: the run's stage, read from the database inside the access transaction. |
-| `hypocurate/access/fields.py` | One read function per field. Each builds its output from named keys only and reads only the run's own rows. |
-| `hypocurate/access/layer.py` | `Access(engine, run_id, role, stage, source_key=None)` and its one method `get(field)`. The write protocol and the audit row (below). |
-| `hypocurate/access/inputs.py` | `role_input(access)`: a role's complete input at its stage (every listed field, read through the access object). Step 8 builds prompts from this and answers tool calls through the same object. |
-| `hypocurate/access/errors.py` | `AccessDenied` (role, stage, field, reason). |
-| `hypocurate/access/file_guard.py`, `guarded.py` | The approved input files of pipeline code (below). |
-| `hypocurate/access/guard_probe.py` | Probes run inside a guarded process (reads, lists, writes, templates, database, certificates, subprocess, ctypes, registration, a role's input). Used by the tests; available for a deploy-time self-check. |
-| `hypocurate/sources/normalize.py` | `SAME_ALLOY_DECIMALS = 1` and `same_alloy_key`: the owner's same-alloy rule, used by the gap report's condition summaries. |
-| `hypocurate/sources/versions.py` | `read_definition_files` refuses to run in a guarded process (registration reads `data/`). |
-| `scripts/check_runtime_image.py` | `REQUIRED` gains the eight access modules. |
-| `README.md` | Status line; an "Access layer" section. |
-| `tests/access_world.py` | Builds runs at every stage with planted values (below). |
-| `tests/test_access_layer.py`, `test_access_planted.py`, `test_access_files.py` | 41, 11 and 19 tests (below). |
+| `hypocurate/assumptions.json` | The owner's pairing-rule decision (first commit). Entries for this step's defaults and the review's decisions (section "Assumptions register"). |
+| `hypocurate/access/allowlist.py` | The access contract in one place: threat model, roles, stages, field catalogue, `ALLOWED[role][stage]`, outcome fields, condition-summary fields, named source fields, **`PLAN_SCHEMA`** and `POWER_SCHEMA` (nested), **`ACCEPTED_DISCLOSURES`**. |
+| `hypocurate/access/vocabulary.py` | **Controlled vocabularies** (category values; codes our own code writes), the marker `unrecognized`, unrecognized counts, DOI syntax. |
+| `hypocurate/access/context.py` | **`AccessContext`**: immutable (frozen, slots): run, role, stage, source, agent setting. |
+| `hypocurate/access/dispatch.py` | **`bind(engine, run_id, agent_setting_id, source_key=None)`**: the only way to obtain an access object. |
+| `hypocurate/access/layer.py` | `Access` (no public constructor; immutable): `get(field)` and `read_all()`; the transaction, the audit rows, denial and failure codes, failure rows and the process-log fallback. |
+| `hypocurate/access/fields.py` | One reader per field, built from named keys, vocabularies and the plan schema. |
+| `hypocurate/access/stage.py`, `inputs.py`, `errors.py` | The stage from the database; `role_input` (one snapshot); `AccessDenied` and `AccessFailed`. |
+| `hypocurate/access/file_guard.py`, `guarded.py`, `guard_probe.py` | The tripwire, its guarded process, and probes; refusals reported and logged. |
+| `hypocurate/sources/connection.py` | "Test connection" reports unrecognized category counts per field. |
+| `hypocurate/sources/normalize.py`, `versions.py` | `same_alloy_key`; registration refuses to run under the guard. |
+| `CLAUDE.md` | Rule 14 and the threat model. |
+| `README.md`, `scripts/check_runtime_image.py` | The access section, rewritten; the image must contain the access modules. |
+| `tests/access_world.py`, `tests/access_testing.py` | Runs at every stage with planted values (now also inside every allowed field) and recorded agent settings; the tests' only way to build an access object outside the dispatcher. |
+| `tests/test_access_layer.py`, `test_access_projected.py`, `test_access_dispatch.py`, `test_access_files.py` | 44, 13, 18 and 20 tests. |
 
 ## Register update: the conflict pairing rule (owner, 2026-10-05)
 
@@ -136,7 +149,7 @@ On a run that ended with no dataset frozen, the Commentator receives only what t
 **Additions at approval:**
 - **A. Single-run scope**, stated in `allowlist.py` and tested with a value planted in other runs.
 - **B. `sources_meta` is a fixed set of named plain fields**, tested with a value planted in the source's free text.
-- **C. File guard scope**: which entry points install it; it cannot be installed in a process that later needs those paths; templates, the database driver and the certificate bundle work under it; one private scratch directory; writes elsewhere refused.
+- **C. File guard scope**: which entry points install it; it cannot be installed in a process that later needs those paths; templates, the database driver and the certificate bundle work under it; one private scratch directory; writes elsewhere refused. (After the review: a tripwire, not a sandbox; see below.)
 - **D. Audit-log volume** in the storage estimate (section "Audit-log volume").
 
 ## The allow-list (role × stage × fields)
@@ -158,102 +171,171 @@ Stages are read from the database on every call:
 | Analyst | analysis | `claim`, `domain`, `sources_meta`, `plan`, `records_full`, `decisions`, `flags_full`, `results`, `coverage`, `stage_outputs`, `run_cost` |
 | Analyst | closed_without_freeze | `claim`, `domain`, `sources_meta`, `plan`, `coverage`, `stored_record_counts`, `decisions`, `flags_kind`, `condition_summaries` |
 | Commentator | final | the Analyst's `analysis` fields |
-| Commentator | final_without_freeze | the Analyst's `closed_without_freeze` fields, plus `gap_report` (the output of the run's Analyst stages) and `outcome` (status, outcome, verdict, exploratory). No outcome values, no row-level records. |
+| Commentator | final_without_freeze | the Analyst's `closed_without_freeze` fields, plus `gap_report` and `outcome` |
 | any | any other stage | nothing |
 
-What each field contains is in `FIELDS` (allowlist.py). In brief:
-- `claim`: query number, version, text, and whether it is a narrower question (a yes/no only; nothing of the original run).
-- `sources_meta`: key, name, source type, kind of data, licence, grouping unit, fields available. Name and licence are text, set from the code's source definitions (`SOURCES`), not from source content. The address and the version label are never included.
-- `record_counts` (Planner): per chosen source, computed by code from its sealed version through its adapter (records are stored only after the rules lock): the number of records, per field the count of each status, and per value of each category field the count of records.
-- **Outcome fields**, withheld wherever outcomes are withheld: yield strength and its spread, tensile strength, hardness and its spread. The Planner does not know before the lock which one its plan will choose, so all are treated as outcomes.
-- `plan`: the plan's **named parts** (PRD 5.1) only; any other key is withheld. Its list of fields to extract keeps only names of the common fields, for every role.
-- `tag_values` and `domain` are reference lists, not run data: approved tag values (never proposed ones, never the run that proposed them), and the run's confirmed domain.
+**The blinded views** are the Planner's, the Critic's, the gap report's and the Commentator's without a freeze. In them:
+- **category values** (test type, temperature band, phase class, microstructure, processing method) come from fixed vocabularies, else `unrecognized`. The stored value is unchanged. Unrecognized values are counted per field and source (never shown) in "test connection" and in the run's `coverage`;
+- **codes** (flag kinds and categories, eligibility rules, analysis-set and sensitivity keys) come from fixed vocabularies, else `unrecognized`;
+- the **Critic's record view** has no paper title and no origin key. It has the DOI only if it has DOI syntax, and an alloy label derived by code from the composition;
+- the **plan** is projected recursively by `PLAN_SCHEMA`: named keys at every level, vocabulary leaves (else the marker), numbers, integers, field names and units. There are no free-text leaves. `power_assumptions` goes through `POWER_SCHEMA`;
+- **coverage** carries codes and counts only, with no failure text;
+- **`sources_meta`**: name, licence and fields available come from the code's `SOURCES`; type, kind of data and grouping unit come from the sealed version the run recorded. Nothing comes from the mutable source registry.
 
-**Single-run scope.** Every other field reads only the run's own rows and the sealed source versions the run recorded at dispatch. Nothing reaches a role from the original run of a narrower question (its records, results, coefficient, stage outputs, commentary) or from earlier runs of the same hypothesis.
+**Outcome fields**, withheld wherever outcomes are withheld: yield strength and its spread, tensile strength, hardness and its spread.
+
+**Single-run scope.** Every field reads only the run's own rows and the sealed source versions the run recorded. `domain` and `tag_values` (approved values only) are reference lists.
+
+### Accepted disclosures (register `accepted_disclosures`; `ACCEPTED_DISCLOSURES`)
+
+The blinding claim is limited to this: no outcome value is copied into a blinded view from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. The blinded views still disclose, by design:
+1. counts by field status (for example how many yield strengths a source reports or cannot read);
+2. flag kinds and categories (for example that two values differ beyond the tolerance);
+3. condition summaries, which reveal an exact grain size or temperature when a group has one record;
+4. compositions and the alloy labels derived from them;
+5. DOIs with DOI syntax, which may contain digits (tested);
+6. text written or approved by people: the claim, approved tag values, and source names and licences in code;
+7. numbers in the locked plan (thresholds, minimums), written before any record exists;
+8. the Analyst's gap report, passed to the Commentator on a run with no dataset frozen;
+9. timing of calls and the existence of refusals. **Timing is not protected.**
 
 ## Points in PRD 4 that were unclear or contradictory, and how they are resolved
 
 1. **The Critic "sees sources" but never outcome values**, and the source files contain the outcome values: resolved by decision 1 (descriptions, never content).
 2. **The Analyst writes the gap report** (PRD 3, step 8), but **sees data only "after the dataset freeze"** (PRD 4, 5.6), which an insufficient run never reaches: resolved by decision 2.
-3. **Fields the PRD does not assign**: the plan for the Critic (not given); tag lists for the Planner (given: approved values); search coverage (Analyst, Commentator); text handed between stages (Analyst, Commentator only); tokens and cost (Analyst, Commentator); eligibility decisions for the Critic (not given); the domain for the Curator (not given); the agent's instruction text (no field: it is configuration, not data).
+3. **Fields the PRD does not assign**: the plan for the Critic (not given); tag lists for the Planner (given: approved values); search coverage (Analyst; Commentator); text handed between stages (Analyst after the freeze, Commentator after a freeze; the Commentator without a freeze gets only the Analyst's gap report); tokens and cost (Analyst, Commentator after a freeze); eligibility decisions for the Critic (not given); the domain for the Curator (not given); the agent's instruction text (no field: it is configuration, not data; it is part of the model request that step 8 must test).
 4. **The table lists Inclusion and Checks, which are code**: they get access objects in the steps that build them (6, 7), so their reads are logged too. Not built now.
 5. **The experiment flag that may relax the contract** (PRD 4): not built. `test_experiment_flags_relax_nothing` shows that flags on a run change no list. **Backlog** (PRD 18).
 6. **"Roles that can add or remove records never see outcome values"** sits awkwardly with the Curator, which reads source content and extracts records. It has no say over inclusion; whether its extraction is complete is a step 8 question (with step 4's note that adapters, which are code, extract tabular sources).
 7. **The Planner's counts**: computed by code from the sealed sources (records are stored only after the lock); every property field is treated as an outcome.
 8. **A possible self-wait**: the audit row is a write to the run, so an access call takes the run's lock. Code must never call the access layer while holding the same run's lock. A 5-second lock timeout turns that into an error instead of a hang.
-9. **The plan's structure is step 6's**: step 5 fixes the plan's top-level names from PRD 5.1 and reads only those.
+9. **The plan's structure**: after the review, step 5 defines the plan's whole nested schema (`PLAN_SCHEMA`, owner 2026-10-05); step 6's plan model must follow it.
 
-## How the access layer works
+## How an access object is obtained and used
 
-Each `Access.get(field)` is one `run_transaction` (retried on `40P01` and `40001`):
-1. `SET LOCAL lock_timeout = 5000`, then `SELECT hc_write_lock(p_run => …)`. This is the locking protocol of step 3, because the audit row is a write to the run. It also fixes the stage until commit.
-2. The run's actual stage (`stage.actual_stage`).
-3. The checks, in order: the role and the declared stage are known; the declared stage equals the actual one; the field is on the role's list at that stage.
-4. The read, by the field's function. That function may itself refuse: the Curator asking for a source its run did not record, or giving none.
-5. One `audit_log` row: role, declared stage, field, allowed or denied. Its `detail` holds the actual stage, the Curator's source and the reason, never a value.
-6. Commit. A refusal raises `AccessDenied` only **after** the commit, so the denied row survives the rejection and any rollback by the caller. The object owns its engine and never takes the caller's connection.
+**The dispatcher** (`dispatch.bind`), called by trusted orchestration (steps 8, 9) for one agent call:
+- it takes a run and the **agent setting** being invoked, never a role;
+- the **role** is the one recorded for that setting in the run's `run_agent_setting` rows. A setting not recorded for the run is refused (`setting_not_recorded`);
+- the **stage** is read from the database;
+- a **source** is accepted only for the Curator, and only if the run has a `run_source` row with a version for it. Otherwise `no_source`, `source_not_recorded` or `source_not_for_role`;
+- every bind is logged (function `bind`).
 
-An unknown run raises the database's error from `hc_write_lock`, and no audit row is written, because there is no run to log against.
+**The result** is an `Access` around an immutable `AccessContext`:
+- `Access()` without the dispatcher's token raises `TypeError`;
+- its attributes cannot be set;
+- every read uses the captured context once (review: "concurrent mutation of run_id").
 
-## The approved input files of pipeline code (step 1 open item 4; addition C)
+The tests build contexts the dispatcher would never produce (unknown roles, stale stages) with `tests/access_testing.py`, which no package code imports.
 
-**Mechanism.** Three layers:
-1. **No path in the access layer.** Pipeline code gets source data only as the sealed bytes of the source versions its run recorded: `source_content` for the Curator, and the adapters behind `record_counts`. These go through `load_sealed_version`, which re-checks every file against the seal. The access layer has no function that takes a path, and a static test checks this.
-2. **A guarded process for every pipeline run.** `run_guarded("hypocurate.<module>:<function>", payload)` (`guarded.py`) runs the target in a fresh `python -m hypocurate.access.guarded` process. That process:
-   - removes the repository root from its import path, imports the modules in `PRELOADED` and installs the guard (`file_guard.install`), which is an **irreversible** Python audit hook;
-   - from then on may **read** only the Python installation (standard library, installed packages, including the certificate bundle) and the package's own code directory;
-   - may **write** only in its private scratch directory;
-   - is refused everything else with `PermissionError`: the repository root, `tests/`, `docs/` (so `docs/reviews/`) and `data/`, read or listed, by `open`, `io.open`, `pathlib`, `os.open`, `os.listdir` and `os.scandir`;
-   - is refused relative paths, because the hook cannot see a `dir_fd`;
-   - is refused starting another program (`subprocess`, `os.system`, `exec`, `spawn`, `fork`) and native code through `ctypes`.
-3. **The deployed image** holds no `tests/` or `docs/` at all (step 2, checked in CI).
+**One read is one transaction** (`run_transaction`):
+1. `SET LOCAL lock_timeout`; check that the run exists; `hc_write_lock(p_run => …)`;
+2. the actual stage;
+3. the policy checks per field;
+4. the reads;
+5. one audit row per field;
+6. commit; then return, or raise `AccessDenied`.
 
-**The scratch directory.**
-- The parent creates it (`hc-run-*`, mode 0700, in the system temporary directory) and removes it when the child ends, however the child ends.
-- In the child, `TMPDIR`, `MPLCONFIGDIR` and `XDG_CACHE_HOME` point to it, and so does the working directory.
-- `install()` accepts only a fresh, empty, private `hc-run-*` directory directly in the system temporary directory, so a bad scratch path cannot open up anything else (tested with `tests/`, `data/`, the repository root, a shared, a non-empty and a wrongly named directory).
+`role_input` reads **every field of the role in this one transaction**: one snapshot, with every audit row in the same transaction (tested via `xmin`). Holding the run's lock, the stage and the rows cannot change until commit: writers to the run follow the same protocol and wait. Isolation is READ COMMITTED on purpose. A REPEATABLE READ snapshot would be taken *before* the lock wait, so it could miss a checkpoint committed meanwhile.
 
-**Which entry points install it.** Only `python -m hypocurate.access.guarded`, through `run_guarded`.
-- `install()` refuses to run in any other process.
-- A static test checks that `install(` is called only in `guarded.py` and `addaudithook` only in `file_guard.py`.
-- The pipeline's entry points (the command line's run command in step 8, the worker's run of a claimed job in step 9) must call `run_guarded`.
-- **Not guarded:** the web service, the migrations, the command line's `sources` commands (registration reads `data/`; it also refuses explicitly under the guard), and the test process.
-- Because the guard lives only in a process created for one run, it can never be installed in a process that later needs those paths.
+**Real concurrent checkpoint transitions** (review): a rules lock and a freeze are each committed by a transaction holding the run's lock, while a read waits on it. After commit, the waiting Planner and Critic are refused with `stage_mismatch`, and the Analyst's post-freeze read succeeds.
 
-**The database driver is imported before the guard (my decision, for the owner's attention).**
-- psycopg imports `ctypes`. Importing `ctypes` loads the process's own symbols (`dlopen(None)`), and the guard refuses that, so the database probe failed under the full guard.
-- **No refusal was weakened.** The guarded process imports psycopg before installing the guard (`PRELOADED = ("psycopg",)`). After installation, every `ctypes` load, symbol lookup and foreign call is still refused (tested), and reading the Python installation is allowed anyway.
-- No ctypes function is called while connecting (checked with an audit trace).
-- **For step 7:** a library that imports `ctypes` after the guard is installed (the plotting library may) is refused. Adding it to `PRELOADED` needs the owner's approval; this is stated in the register entry.
+## Logging: denials and failures
 
-**Limits.**
-- An audit hook sees what Python code opens. Files that C libraries open themselves are not seen: libpq's configuration, OpenSSL's certificate store.
-- Native code could bypass the hook entirely, which is why `ctypes` is refused.
-- It is an in-process guard, not an operating-system sandbox.
+| `detail.result` | When | Code (`detail.code`) |
+|---|---|---|
+| `allowed` | a delivered read | — |
+| `denied` (`AccessDenied`) | a policy refusal | `not_on_list`, `stage_mismatch`, `unknown_role`, `unknown_stage`, `no_source`, `source_not_recorded`, `source_not_for_role`, `setting_not_recorded`, `empty_list` |
+| `failed` (`AccessFailed`) | the read could not be done | `unknown_run`, `lock_timeout`, `reader_error` (with the error's class name only), `database_error`, `file_guard` |
+
+- **Only validated, bounded strings are logged.** A role, stage or field that is not one of ours is logged as `invalid`, with its length. Reasons are fixed texts per code, and error messages carry only validated strings.
+- **Failure rows are a named exception to the locking protocol** (owner's answer to question 1; register `audit_failure_rows_without_run_lock`). They are written in their own transaction without `hc_write_lock`: there is no run to lock, or the lock is what failed. An `audit_log` insert takes only a key-share lock on the run, which never conflicts with the protocol's lock. For an unknown run, `run_id` is NULL and the requested id is in `detail`. The lock-timeout test checks that the failure row is written *while the other transaction still holds the lock*.
+- **File-guard refusals** are written by the child as one bounded line each on standard error. `run_guarded(..., audit=(engine, run_id))` copies them into `audit_log` as failures (at most 100 per run, then a count), or to the process log when no run is given.
+- **Fallback:** a failure row the database cannot take goes to the process log (logger `hypocurate.access`, one JSON line). Durable database logging is therefore not unconditional.
+- **`role_input` is never silently empty.** A role with no field at its stage gets `AccessDenied` (`empty_list`), logged.
+
+## The file guard: a tripwire (review finding 1)
+
+**What it does.** Each pipeline run executes in `python -m hypocurate.access.guarded` (`run_guarded`). There, an audit hook refuses, with `PermissionError`, what trusted code should never do by mistake:
+- reading or listing outside the Python installation and the package's code (so the repository root, `tests/`, `docs/`, `data/`);
+- writing outside the run's private scratch directory;
+- relative paths;
+- starting other programs;
+- loading new native libraries.
+
+Each refusal is logged (above). Templates, the database driver, the certificate bundle and the scratch directory work under it (tested). Registration refuses to run under it.
+
+**What it does not do.** Python's documentation warns that audit hooks are not suitable for implementing a sandbox (`sys.addaudithook`; PEP 578). Code in the guarded process can get around it in several ways:
+- an already-open descriptor can still be read;
+- the guard's state can be edited;
+- preloaded `ctypes` reads memory directly (tested as a documented limit);
+- sockets and the database (with the process's credentials) are open;
+- the child inherits its environment, and startup hooks run before the guard;
+- checking a path and then opening it is not atomic.
+
+So it catches our accidents, which is what the threat model needs. **The construction-level guarantee is the deployed image without `tests/` and `docs/`.**
+
+Unchanged from the first build:
+- the scratch directory: created and removed by the parent; `hc-run-*`, 0700, empty, directly in the system temporary directory;
+- `install()` runs only in the guarded process, and only `guarded.py` calls it;
+- the database driver is preloaded.
+
+**Backlog:** agents that execute code, with operating-system isolation (a separate user, filesystem and network namespace, or a container) as a precondition.
+
+## Second-model review and fixes (ChatGPT, 2026-10-05)
+
+The owner accepted all six findings and decided the threat model; the fixes were planned, approved (with one question and an addition) and built.
+
+| Finding | Fix | Tests |
+|---|---|---|
+| 1. The file guard is bypassable | Described everywhere as a tripwire, with Python's warning and the limits (code, README, register `pipeline_file_guard`, this summary). Block list not extended. The image guarantee stated. Refusals logged. | `test_preloaded_ctypes_still_works_a_documented_limit`; `test_no_other_program_and_no_new_native_library` (renamed: it tests new library loads); `test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log` |
+| 2. Database access bypasses the contract; caller-chosen, mutable context | Threat model (only trusted code; nothing a model controls receives SQL, a connection or a path). The immutable `AccessContext`, created only by `dispatch.bind` from the run's agent settings and `run_source` rows. No public constructor. | `test_bind_reads_the_role_from_…`, `test_bind_refuses_a_setting_or_source_…`, `test_bind_logs_an_unknown_run_…`, `test_an_access_object_has_no_public_constructor_and_cannot_be_changed` |
+| 3. Outcome-bearing text through approved fields | Vocabularies for category values and codes; no title or origin key for the Critic; DOI syntax; the plan projected recursively; no failure text in coverage; codes for eligibility rules. Accepted disclosures listed, and the blinding claim narrowed. **Values planted inside every allowed field.** | `test_access_projected.py` (13); `test_the_plan_is_projected_by_its_named_parts`; `test_record_metadata_…`; `test_flags_kind_has_no_numbers`; `test_the_gap_report_input_has_codes_not_failure_text`; `test_vocabularies_mark_what_they_do_not_know`; `test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure` |
+| 4. `sources_meta` provenance | From the code's definitions and the run's sealed version. | `test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry` (name, licence, properties, grouping unit and kind of data edited after dispatch) |
+| 5. Denials not always logged | Denied and failed logged apart, with codes; failure rows (named exception); process-log fallback; file-guard refusals; `role_input` never empty; bounded strings. | `test_a_readers_error_is_a_logged_failure`, `test_an_unknown_run_is_a_logged_failure`, `test_when_the_database_is_unavailable_the_process_log_is_the_fallback`, `test_role_input_is_never_silently_empty`, `test_only_validated_bounded_strings_are_logged`; the lock-timeout test now expects a failure row |
+| 6. Not the complete model input | Renamed the **projected-data test**; its docstring states what it does not cover. **Step 8 acceptance requirement:** test the actual outbound model request, including instructions, message history, tool errors and retry prompts. | — |
+| Checkpoints, snapshot, weak tests | Real concurrent rules-lock and freeze tests; `role_input` in one transaction; the static import scan removed. | `test_a_rules_lock_committed_while_a_read_waits_closes_the_planner`, `test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_analyst`, `test_a_roles_whole_input_is_read_in_one_transaction` |
+
+**The owner's addition (unrecognized counts).** Per run and per source, how many values of each category field were unrecognized (counts only) appears in "test connection" and in the run's `coverage`, so a source with unfamiliar labels is noticed. The frozen MPEA and Texas A&M sources have none (tested). Adding a value to a vocabulary is a register change needing the owner's approval.
 
 ## Requirements carried from earlier steps
 
 | Requirement | How |
 |---|---|
-| Step 1 open item 4, step 2 deviation 5, step 4 open item 4: an explicit list of approved input files; `tests/` and `docs/reviews/` outside it | The section above. The approved inputs are the sealed source versions recorded for the run; everything else on disk is unreachable in the guarded process. |
-| Step 3 open item 3: every write path calls `hc_write_lock` first and retries on `40P01` / `40001` | The access layer's only write is the audit row. Each call is one `run_transaction` whose first statements are `SET LOCAL lock_timeout` and `hc_write_lock(p_run => …)`. Tested by a held lock (timeout, and waiting then succeeding), a spy on `run_transaction`, and a source-order check. |
-| Step 3 stated limitation: rejected attempts are logged by the access layer | Denied rows are committed before `AccessDenied` is raised; tested against the caller's rollback. |
-| Step 3 note: `flag.compared_values` is never returned to the Critic | `flags_kind`; the planted test covers it. |
+| Step 1 open item 4, step 2 deviation 5, step 4 open item 4: approved input files; `tests/` and `docs/reviews/` outside them | Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer (no path-taking function). A tripwire catches accidental file access in the guarded process. The construction-level guarantee is the deployed image without `tests/` and `docs/`. "By construction" in development is withdrawn (threat model). |
+| Step 3 open item 3: `hc_write_lock` first, `run_transaction` | Every access transaction and every bind: `SET LOCAL lock_timeout`, run exists, `hc_write_lock(p_run => …)`, all in `run_transaction`. **Exception:** failure rows (named, owner-approved, in the register). |
+| Step 3 stated limitation: rejected attempts logged by the access layer | Policy denials committed before the error; failures in their own transaction or the process log. |
+| `flag.compared_values` never returned to the Critic | `flags_kind`; projected-data test. |
 
 ## Assumptions register
 
-- **Ten new entries** (all in force, decided 2026-10-05, applied "yes", each with named settings and regression tests): `access_allow_lists`, `outcome_fields_withheld`, `critic_metadata_without_numbers`, `gap_report_condition_summaries`, `source_meta_fields`, `plan_named_parts`, `access_stage_from_database`, `access_lock_timeout`, `no_experiment_relaxation`, `pipeline_file_guard`.
-- Decided by: the owner for the decisions and additions; otherwise "step 5 (owner's approval of the plan)".
-- **`same_alloy_rule`: not yet → partly** (step 6). Done: the gap report's condition summaries group records by alloy under the rule (`same_alloy_key`, `SAME_ALLOY_DECIMALS = 1`). Pending: the plan setting that applies it to the analysis.
-- 79 entries: 78 in force, 0 open, 1 direction approved (calibration noise levels); 22 scientific entries not reviewed by an expert.
+86 entries: 85 in force, 0 open, 1 direction approved; 22 scientific entries not reviewed by an expert.
+- **New after the review** (decided by the owner, 2026-10-05):
+  - `threat_model`;
+  - `access_context_dispatcher`;
+  - `access_logging`;
+  - `audit_failure_rows_without_run_lock` (the named exception to the locking protocol);
+  - `category_vocabularies`;
+  - `code_vocabularies`;
+  - `accepted_disclosures`.
+- **Rewritten**, with the first build's wording kept in each entry's history:
+  - `pipeline_file_guard` (a tripwire);
+  - `critic_metadata_without_numbers`;
+  - `source_meta_fields`;
+  - `plan_named_parts` (now "The plan's schema", `PLAN_SCHEMA`; step 6 must follow it).
+- **From the first build:**
+  - `access_allow_lists`, `outcome_fields_withheld`, `gap_report_condition_summaries`, `access_stage_from_database`, `access_lock_timeout`, `no_experiment_relaxation`;
+  - `same_alloy_rule` partly applied;
+  - `conflict_pairing_rule` decided.
+- The named regression tests follow the renamed test file (`test_access_projected.py`).
 
-## Tests (620, all passing; 76 new; four register tests changed)
+## Tests (639, all passing; 95 new in step 5; four register tests changed)
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_access_layer.py` | 44 | **The allow-list** equals the owner's table, field for field; every listed field has a reader; no outcome-bearing field is listed for the Planner, the Critic or the gap report. **The full matrix**: every role × every field at each of the eight run states (queued, failed and the six stages). An allowed field gives one allowed audit row; every other request raises `AccessDenied` and gives exactly one denied row with the reason. **Queued and failed runs** give nothing to anyone. **`role_input`** reads each listed field once, through the access object. **A denied row survives** the rejection and the caller's rollback (checked from a fresh connection). The Planner and the Critic asking for outcomes are denied and logged (criterion 14.2), and audit rows never hold a value. Unknown roles, stages and fields are denied and logged. **Both sides of each checkpoint**: the declared stage is checked against the database; the rules lock closes the Planner and opens the Curator and the Critic; the freeze closes the Curator and the Critic and opens the Analyst; ending without a freeze opens only the gap report input; completion, without a freeze or after one, closes the Analyst and opens the Commentator's list for that case; the Commentator without a freeze gets exactly the gap-report input, the Analyst's gap report and the outcome. Experiment flags relax nothing. **Field contents**: named source fields only (and only the chosen source); the Curator reads only its own source, and its input has no claim text, no hypotheses and no direction token; no inclusion field for the Curator; record metadata has no number; flags have no numbers; the plan by its named parts; approved tag values only; counts from the sealed source; condition summaries are ranges and counts of conditions only; the same-alloy key. **The write protocol**: a held run lock makes a call time out with nothing logged, or wait and then succeed; every call runs in `run_transaction`; `hc_write_lock` comes before anything else. **Static checks**: pipeline code imports no database, source or file API; the access layer has no path-taking function; the guard is installed in one place. |
-| `tests/test_access_planted.py` | 13 | **Planted values** (yield strength 48213.579, tensile strength 57104.263, hardness 36912.847) are stored in the source file, the records (as harmonized values, as reported, inside a "not a number" reason), a flag's numbers, a Curator stage's input, output, reasoning and tool calls, a model instruction, a proposed tag value, the source's address and version label, and the plan (a non-allowed entry in its list of fields, and an unnamed key). They appear in **no encoding** (list in the file's docstring: rounded, separated, scientific, GPa/ksi/psi, IEEE bytes, base64, hex, URL; at least five characters) in the complete input of the **Planner**, the **Critic**, the **gap-report Analyst** or the **Commentator on a run with no dataset frozen** (whose input does hold the gap report and the outcome). **Positive control**: the detector finds them in the Analyst's input after the freeze. **Addition B**: the source's free text reaches neither the Planner nor the Critic. **Addition A**: a different value (59324.681), in the original run of the narrower question (records, coefficient, stage output, commentary) and in an earlier, failed run of the same hypothesis (records, stage output), appears in no role's complete input at any of the six stages. |
-| `tests/test_access_files.py` | 19 | In real guarded processes: answer files, builder, review documents, frozen data, `CLAUDE.md` and `README.md` cannot be read in any of four ways. The repository root and the answer directories cannot be listed. Relative paths are refused. The Python installation and the package can be read. Writes outside the scratch directory are refused (package, site-packages, repository root, `tests/`, system temporary directory); the test uses unique names and removes anything created. A library can use the scratch directory (0700, the working directory), which is removed afterwards. No subprocess, `os.system` or `ctypes`. **Templates render, the database driver connects, and an HTTPS client loads its certificate bundle.** Registration refuses to run. A role's complete input is identical inside and outside the guard. The guard cannot be installed in the test process; `run_guarded` runs only package code; the test process is not guarded; six bad scratch directories are refused. |
+| `tests/test_access_layer.py` | 44 | The allow-list equals the owner's table; the full role × stage × field matrix at eight run states, with denial codes; queued and failed runs give nothing; a denied row survives the caller's rollback; outcome requests by the Planner and the Critic denied and logged; unknown roles, stages and fields are logged as `invalid`; both sides of each checkpoint; completion with and without a freeze; experiment flags relax nothing; field contents (named source fields, registry edits ignored, the Curator's own source and no direction of the claim, record metadata, flags, the projected plan, approved tags, counts with unrecognized counts, condition summaries, same-alloy key); the lock (timeout with a failure row, waiting, `run_transaction`, order of statements); no path-taking function; the guard installed in one place. |
+| `tests/test_access_projected.py` | 13 | The **projected-data test**: planted values (in discarded fields and inside every allowed field) are absent from the projected input of the Planner, the Critic, the gap-report Analyst and the Commentator without a freeze, in the encodings listed in its docstring. Positive control. Source free text. Another run's value in no role's input at six stages. **Its docstring states what it does not cover.** |
+| `tests/test_access_dispatch.py` | 18 | The dispatcher (role from settings, refusals, unknown run, no public constructor, immutability); logging (reader error, unknown run, database unavailable → process log, `role_input` never empty, bounded strings, file-guard refusals for a run or in the process log); one transaction per input; concurrent rules lock and freeze; vocabularies; the DOI disclosure; no unrecognized value in the frozen sources; unrecognized counts in coverage and test connection; codes, not failure text, in the gap report. |
+| `tests/test_access_files.py` | 20 | The tripwire in real guarded processes: reads, listings, relative paths, writes and programs refused; what is needed works; the documented `ctypes` limit; registration refused; a role's input identical inside and outside (through the dispatcher); scratch directories; the guard not installable elsewhere. Its docstring says what it does not show. |
 
 ### Tests changed (none weakened)
 
@@ -267,101 +349,116 @@ The owner's pairing-rule decision removed the register's only open entry. The sa
 - `PARTLY` in `tests/test_assumptions.py` gains it, so the partly-applied checks cover one more entry;
 - `test_the_owners_eight_decisions_are_recorded_as_decided` now expects "partly" for it, through `PARTLY`, with its step unchanged (6).
 
+**After the review** (none weakened):
+- **Removed:** `test_pipeline_code_reaches_data_only_through_the_access_layer` (the static import scan), because the review found it vacuous. Nothing replaces it as a claim; the dispatcher tests cover the binding.
+- **Renamed:**
+  - `tests/test_access_planted.py` → `tests/test_access_projected.py`, and its leak tests `test_no_planted_value_in_…` → `test_no_projected_planted_value_in_…`;
+  - `test_no_other_program_and_no_native_code` → `test_no_other_program_and_no_new_native_library`.
+- **Changed by the new design, assertions kept or strengthened:**
+  - the matrix and the unknown-input tests now assert the fixed codes and the `invalid` placeholders;
+  - stage-mismatch tests match the fixed reason instead of the old message text;
+  - the lock-timeout test expects `AccessFailed` and a failure row, where it used to expect no row;
+  - the record-metadata, flags, plan, record-counts and `sources_meta` tests expect the new projections (two chosen sources in the world now);
+  - the Curator's foreign source is now `controlled_duplicates`, because the world chooses `tamu_fcc`.
+
 ### The safeguard tests fail when the safeguard is removed
 
-Each change was made in a scratch copy of the branch (`git archive`), and only the named test files were run, importing the copy (`PYTHONPATH`). The copy was then discarded. These checks were run on the first build, before the owner's change; the change adds no new safeguard mechanism (one more stage and list, covered by the matrix and the planted test).
+Each change was made in a scratch copy, and the named test files were run importing the copy (`PYTHONPATH`).
+
+**Review fixes:**
 
 | Removed or changed in the copy | Result |
 |---|---|
-| The allow-list check | 16 tests fail (the matrix at all seven states, the survivor test, the audit-value test, the planted tests…) |
-| The declared-stage check alone | 1 test fails (`test_a_declared_stage_is_checked_against_the_database`). The allow-list is still applied at the stage read from the database, so nothing more leaks. |
-| The stage taken from the caller (both checks) | 7 tests fail: every checkpoint test, and queued and failed runs |
-| The refusal raised inside the transaction (its row rolled back) | 11 tests fail, including the survivor test and the matrix |
-| `hc_write_lock` replaced by a plain read | the 3 lock tests fail |
-| The Critic's record metadata given the harmonized values | 2 fail, including the Critic's planted test |
-| The Critic's flags given the numbers compared | 3 fail, including both planted tests |
-| The plan's content passed whole | 2 fail, including the gap-report planted test |
-| Yield strength added to the condition summaries | 2 fail, including the gap-report planted test |
-| Records read without the run filter | 4 fail: the Critic's and the gap report's planted tests, other runs at analysis and final |
-| Stage outputs read without the run filter | 2 fail (other runs at analysis and final) |
-| The address added to `sources_meta` | 5 fail (named fields, and all four planted inputs) |
-| The guard's hook not added | 5 file tests fail (reads, listing, relative paths, writes, programs) |
-| The scratch directory not checked | 7 fail (six bad directories, and writes) |
-| The database driver not preloaded | the database and role-input tests under the guard fail |
+| Vocabularies pass every value | 8 tests fail, including the projected-data tests of the Critic, the gap report and the Commentator |
+| The paper title back in the Critic's view | 2 fail |
+| The plan projected one level only | 3 fail |
+| `sources_meta` name from the registry | 1 fails (the registry test) |
+| `bind` reads the role from any agent setting, not the run's | 1 fails |
+| Failure rows not written | 6 fail |
+| One transaction per field instead of one per input | 1 fails |
+| Coverage keeps the failure text | 4 fail |
+| Eligibility rules passed raw | 3 fail |
+| Flag kinds passed raw | 4 fail |
 
-**Incident during these checks.** With the hook removed, the old write test really wrote a one-byte file into the shared virtual environment's `site-packages` and one into `/tmp`. I removed both. The test was then changed to use unique names and to remove anything created before asserting (commit "the guard's write test uses unique names and always cleans up"). Four leftover scratch directories from the first version of the runner, which cleaned up in the child, were also removed. No file of the repository was affected.
+**First build** (run on the first build, before the review, and not repeated since): the allow-list check (16 fail), the stage taken from the caller (7), the refusal inside the transaction (11), `hc_write_lock` (3), the projections and run filters (2–5 each), the guard's hook (5), the scratch check (7), the preload (the guarded database and role-input tests).
 
 ### Suite results
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-620 passed in 110.42s
+639 passed in 125.99s
 $ docker compose run --rm test                 (the test image, rebuilt)
-620 passed in 117.77s
+639 passed in 131.23s
 ```
 
-GitHub Actions, commit `81f5003` (the last code change: the owner's change before the review): success; "Run the suite in the test image": 620 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37321733673
-First build, commit `72355e6`: success, 615 passed, runtime image OK. https://github.com/kelawady/hypocurate/actions/runs/37319439565
-The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
+GitHub Actions, commit `2c639be` (the review fixes, last code change): success; "Run the suite in the test image": 639 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37327512637
+Earlier: first build `72355e6` (615 passed, https://github.com/kelawady/hypocurate/actions/runs/37319439565); the owner's change before the review `81f5003` (620 passed, https://github.com/kelawady/hypocurate/actions/runs/37321733673).
 
 ## Audit-log volume (addition D)
 
-Measured: 7 rows (the Curator's and the Critic's complete inputs and one refusal) take 923 bytes of row data: about **130 bytes a row, at most about 190**. With the row header and the two index entries, about **200 bytes a row**.
+Measured on the first build: about **130 bytes of data a row**, about **200 bytes** with the header and two index entries. After the review there is also one `bind` row per agent call.
 
-| Reads per run | Rows | Size |
+| Per run | Rows | Size |
 |---|---|---|
-| Each role reads its complete input once (Planner 5, Curator 3 per source × 2, Critic 3, Analyst 11, Commentator 11) | 36 | about 7 KB |
-| With agent tool calls and refusals (step 8), say | 500 | about 100 KB |
+| Each role reads its complete input once (5 + 3 × 2 + 3 + 11 + 11 field rows, plus about 6 binds) | about 42 | about 8 KB |
+| With agent tool calls, refusals and failures (step 8), say | 500 | about 100 KB |
 
-The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchanged: the audit log adds at most about 2%. To be measured on real runs in step 8, with the rest of the estimate.
+The step 3 estimate of **4–6 MB per run** is unchanged (the audit log adds at most about 2%); to be measured in step 8.
 
-## Deviations from the approved plan
+## Deviations from the approved plans
 
-1. **The parent creates and removes the scratch directory**, not the child. In the child, `shutil.rmtree` works through relative paths against a directory handle, which the guard refuses by design. The parent's `finally` also cleans up after a crashed child.
-2. **The database driver is preloaded** before the guard (above). No refusal changed.
-3. **The scratch directory is validated** by `install()`. This is an addition: a bad path would have opened writes elsewhere.
-4. **The plan's list of fields to extract is filtered for every role**, not only the Curator. The first planted run found the planted value in the gap report's `plan`, because I had planted it in that list.
-5. **`guard_probe.py` is in the package**, not in `tests/`. A guarded process imports only package code, and `tests/` is unreachable under the guard by design.
-6. **The first access commit (`432cb35`) does not pass the suite alone**: its static test expects `guarded.py`, which comes in the next commit. The branch head passes.
+1. **The first build's own deviations stand:**
+   - the parent owns the scratch directory;
+   - the database driver is preloaded;
+   - the scratch directory is validated;
+   - `guard_probe.py` is in the package;
+   - the first access commit (`432cb35`) does not pass alone.
+2. **`string_at`.** The review's example of preloaded `ctypes` working (`string_at`) was refused in our runs, because it raises the call event the hook refuses. The documented-limit test uses direct memory access (`from_address`) instead, which does work.
+3. **Isolation stays READ COMMITTED** for the one-transaction input. REPEATABLE READ would take the snapshot before the lock wait (above).
+4. **Two chosen sources in the test world.** The world now chooses `tamu_fcc` too (with a placeholder file and a failed search carrying planted failure text), so that coverage text could be planted.
+5. **The `git mv` rename of the test file** went into the review commit (staged before it), with its content unchanged; the edits are in the fix commit.
 
 ## PRD corrections and clarifications for the next PRD update
 
-1. **PRD 4 (Critic):** "sources" means source descriptions (named fields), never source content. The Critic receives no measured number of any field.
+1. **PRD 4 (Critic):** "sources" means source descriptions, never source content. The Critic receives no measured number, no paper title and no origin key; categories come from vocabularies.
 2. **PRD 3 step 8 and PRD 4 (Analyst):** on a run that ends with no dataset frozen, the Analyst writing the gap report gets everything except outcomes, plus code-computed condition summaries.
 3. **PRD 4 (Commentator):** on a run completed with no dataset frozen, the Commentator receives only the gap-report input, the Analyst's gap report and the run's outcome.
 4. **PRD 4 (table):** Inclusion and Checks are code; their reads go through access objects from steps 6 and 7.
 5. **PRD 4 (relaxation flag):** not in sprint 1; to the backlog (PRD 18).
-6. **PRD 4 (stages):** the stages are read from the database: before the lock, curation, analysis, closed without freeze, final, final without freeze; queued and failed runs give nothing.
-7. **PRD 4 (implementation):** every read is one transaction that takes the run's lock, and a refusal is committed before the error is raised.
-8. **PRD 6 (worker):** each pipeline run executes in a guarded process (`run_guarded`) that can read only the Python installation and the package, and write only in its own scratch directory.
+6. **PRD 4 (threat model, new):** the access contract guards against our own code leaking data to a text-only model. Blinding is limited as in "Accepted disclosures". Timing is not protected.
+7. **PRD 4 (implementation):** access objects come only from a dispatcher that binds run, role (from the recorded agent settings), stage and source. Every read is one transaction that takes the run's lock. Denials and failures are logged apart, with the process log as fallback.
+8. **PRD 4 (testing requirement):** the data test covers the projected input; the complete model request is tested in step 8.
+9. **PRD 5.1 (plan):** the plan's content follows `PLAN_SCHEMA`.
+10. **PRD 6 (worker):** each pipeline run executes in a guarded process (a tripwire against accidental file access).
+11. **PRD 18 (backlog):** agents that execute code, with operating-system isolation as a precondition.
 
 ## Open items
 
 1. **Step 6:**
-   - the plan model stores its content under `PLAN_KEYS` and projects each part from named keys; today the named parts other than the field list are passed as written at the lock;
+   - the plan model stores its content in `PLAN_SCHEMA`;
+   - flags, eligibility rules and sensitivity keys use the code vocabularies;
    - Inclusion and Checks read through access objects;
-   - `same_alloy_rule` applied as a plan setting;
-   - the pairing rule applied.
-2. **Step 7:** if the plotting library imports `ctypes`, adding it to `PRELOADED` needs the owner's approval and a second-model review (a guard change). Inclusion of statistics reads in the access layer.
-3. **Step 8:**
-   - agents receive only `role_input` and the same access object;
-   - the command line's run command calls `run_guarded`;
-   - how the Curator relates to tabular sources (adapters extract them);
+   - `same_alloy_rule` and the pairing rule applied.
+2. **Step 7:** if the plotting library imports `ctypes`, adding it to `PRELOADED` needs the owner's approval and a second-model review.
+3. **Step 8 acceptance requirements:**
+   - **test the actual outbound model request**: instructions, message history, tool errors, retry prompts, attachments;
+   - agents receive only text built from `role_input` and reads through an access object from `dispatch.bind`, and no tool that runs SQL, opens files or executes code;
+   - the command line's run command calls `run_guarded(..., audit=…)`;
+   - the Curator and tabular sources;
    - measure the audit volume.
-4. **Step 9:** the worker runs each claimed run through `run_guarded`; never calls the access layer while holding a run's lock.
-5. **The Commentator on an insufficient run**: closed by the owner's change before the review (above).
-6. **Category values and paper references** reach the Critic as the source gives them (text from the source). They are metadata the owner approved, but they are source text.
-7. **Backlog (PRD 18):** the experiment flag that relaxes the access contract.
-8. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
+4. **Step 9:** the worker binds through `dispatch.bind` and runs each run through `run_guarded`. It never calls the access layer while holding a run's lock.
+5. **Category values and DOIs** reach the blinded views as the vocabularies and DOI syntax allow. New labels from a new source show as `unrecognized` until the owner adds them.
+6. **Backlog:** the relaxation flag; agents that execute code (operating-system isolation first).
+7. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
 
-## Questions for the reviewer
+## Questions for the re-check
 
-1. Can any role reach an outcome value through a field on its list, in a form the planted test would not catch?
-2. Is the guarded process's read set (the Python installation and the package) narrow enough? Is preloading the database driver sound?
-3. Is the order inside an access call (lock, stage, checks, read, audit row, commit, then raise) right, and is anything read before the stage is fixed?
-4. Are the stage boundaries right, in particular `closed_without_freeze` read from the run-level calibration row?
-5. Do the four changed register tests keep everything they checked before?
+1. Is each finding closed within the owner's threat model, and is every claim in this summary, the code and the register now no stronger than the code supports?
+2. Do the blinded views copy any stored outcome value into a role's data through a path the projected-data test would not catch?
+3. Is the named exception for failure rows sound (no wait, no deadlock), and is anything still unlogged?
+4. Is the dispatcher's binding complete for steps 8 and 9 (role from settings, stage from the database, source from `run_source`)?
+5. Are the accepted disclosures complete?
 ````
 
 ## 2. Reviewer checklist
@@ -527,6 +624,11 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 11. **Per-run calibration (PRD 5.10) is a flag, not a gate.** When inference cannot run, show "calibration unavailable" with the reason. Software correctness (pass/fail against an independent reference) is separate from calibration (a reported finding).
 12. **Every model call is recorded** with tokens and actual cost (`model_call`). Spending caps: $2 per run, $50 per month.
 13. **Wording:** outcomes are always stated "in the sources searched". Never write that data "do not exist".
+14. **Nothing a model controls ever receives SQL, a database connection or a file path.** Agents get data only as text built from an access object that the trusted dispatcher (`hypocurate.access.dispatch.bind`) bound to a run, role, stage and source. No code gives an agent a tool that runs SQL, opens files or executes code.
+
+## Threat model (owner, 2026-10-05)
+
+The access layer and its tests guard against **our own code** leaking data to a model. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL or file tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. The access layer is not a boundary against hostile code running in the same process, and the file guard is a tripwire against accidental file access, not a sandbox. The only construction-level guarantee about answer material is that the deployed image contains no `tests/` or `docs/`. Agents that execute code are in the backlog, with operating-system isolation as a precondition. Do not claim more than this anywhere.
 
 ## Environment
 
@@ -658,17 +760,22 @@ When only part of a claim can be tested, the Planner may propose a narrower ques
 ```python
 """The data-access layer: role and stage objects, the audit log, AccessDenied (step 5).
 
-- `allowlist`: the allowed fields per role and stage (the access contract, PRD 4);
-- `layer.Access`: the access object every agent read goes through; logs every read;
-- `inputs.role_input`: a role's complete input at its stage;
-- `file_guard` and `guarded`: the approved input files of pipeline code, enforced in the
-  process that runs a pipeline.
+- `allowlist`: the allowed fields per role and stage (the access contract, PRD 4), the
+  threat model, the plan schema and the accepted disclosures;
+- `vocabulary`: the controlled vocabularies of the blinded views;
+- `dispatch.bind`: the only way to obtain an access object, for one agent call;
+- `layer.Access`: the access object every agent read goes through; logs every read,
+  denial and failure;
+- `inputs.role_input`: a role's complete input at its stage, in one snapshot;
+- `file_guard` and `guarded`: a tripwire against accidental file access by pipeline code
+  (not a sandbox).
 """
-from hypocurate.access.errors import AccessDenied
+from hypocurate.access.dispatch import bind
+from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.inputs import role_input
 from hypocurate.access.layer import Access
 
-__all__ = ["Access", "AccessDenied", "role_input"]
+__all__ = ["Access", "AccessDenied", "AccessFailed", "bind", "role_input"]
 ```
 
 ### `hypocurate/access/allowlist.py`
@@ -676,9 +783,23 @@ __all__ = ["Access", "AccessDenied", "role_input"]
 ```python
 """The allowed fields per role and stage (PRD 4). The one named place for the access contract.
 
+**Threat model** (owner, 2026-10-05; register entry 'threat_model'). The access layer and
+its tests guard against *our own code* leaking data to a model. In sprint 1 agents are
+language models that return text only: they never execute code and never receive SQL, a
+database connection, a file path or any tool other than reads through an access object.
+Only trusted, reviewed code runs, and a trusted dispatcher (`dispatch.bind`) binds each
+agent call to a run, role, stage and source. The access layer is **not** a boundary
+against hostile code running in the same process: such code could use the database
+credentials directly. Agents that execute code are in the backlog, with operating-system
+isolation as a precondition.
+
 Allowed fields, not blocked fields: a role receives exactly the fields listed for it at
 the run's stage, and nothing else. Each field is built from named keys only
-(`hypocurate.access.fields`), never by copying a row and removing what is forbidden.
+(`hypocurate.access.fields`), never by copying a row and removing what is forbidden. Text
+in the blinded views (the Planner, the Critic, the gap report and the Commentator without
+a freeze) comes from fixed vocabularies (`vocabulary.py`) or is replaced by a marker; the
+plan is projected recursively by `PLAN_SCHEMA`. What these views still disclose by design
+is listed in `ACCEPTED_DISCLOSURES`; timing is not protected.
 
 **Single-run scope** (owner, 2026-10-05). Every field reads only the rows of the access
 object's own run, and the sealed source versions that run recorded at dispatch. No field
@@ -688,16 +809,18 @@ hypothesis. Two fields are reference lists, not run data: `domain` (the run's co
 domain) and `tag_values` (the approved values of the fixed tag lists, without the run that
 proposed them).
 
-Stages are read from the database on every call (`hypocurate.access.stage`), never taken
-from the caller. A role that is not listed for a stage receives nothing at that stage; a
-queued or failed run gives nothing to anyone. There is no general unlock at a checkpoint,
-and no experiment flag relaxes this contract (sprint 1; PRD 4's relaxation flag is in the
-backlog).
+Stages are read from the database on every call (`hypocurate.access.stage`). A role that is
+not listed for a stage receives nothing at that stage; a queued or failed run gives
+nothing to anyone. There is no general unlock at a checkpoint, and no experiment flag
+relaxes this contract (sprint 1; PRD 4's relaxation flag is in the backlog).
 """
 from __future__ import annotations
 
 from types import MappingProxyType
 from typing import Mapping
+
+from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_KINDS, PHASE_CLASSES,
+                                          PROCESSING_METHODS, SENSITIVITY_KEYS, TEMPERATURE_BANDS, TEST_TYPES)
 
 ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 
@@ -710,25 +833,32 @@ STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze"
 FIELDS = MappingProxyType({
     "claim": "The claim in words: query number, version number, text, and whether it is a narrower question.",
     "domain": "The run's confirmed domain: key, name and profile.",
-    "sources_meta": "The run's chosen sources, as fixed named plain fields only (SOURCE_META_FIELDS).",
+    "sources_meta": "The run's chosen sources, as fixed named plain fields (SOURCE_META_FIELDS): name, licence "
+                    "and fields available from the code's source definitions; type, kind of data and grouping "
+                    "unit from the sealed version the run recorded.",
     "tag_values": "The approved values of the fixed tag lists: kind and value.",
     "record_counts": "Per chosen source, computed by code from its sealed version: the number of records, "
                      "per field the count of each status, and per value of each non-outcome category field "
                      "the count of records.",
     "plan_fields_to_extract": "From the locked plan, the list of fields to extract, and nothing else.",
     "source_content": "The sealed files of the one source the Curator reads, as recorded for the run.",
-    "record_metadata": "Per stored record: id, source, origin key, alloy label and composition, paper "
-                       "reference and DOI, each field's status, and the non-outcome category values. "
-                       "No measured number of any field.",
-    "flags_kind": "Per flag: id, kind, category and record ids. Never the numbers compared.",
-    "plan": "The locked plan: its named parts (PLAN_KEYS), fingerprint, lock time, data-sufficiency "
-            "option and minimums, sensitivity analyses and power assumptions.",
+    "record_metadata": "Per stored record: id, source, item index, kind, alloy label and composition, DOI "
+                       "(DOI syntax only), each field's status, and the non-outcome category values from "
+                       "their vocabularies. No measured number of any field, no paper title, no origin key.",
+    "flags_kind": "Per flag: id, kind and category (from their vocabularies) and record ids. Never the numbers "
+                  "compared.",
+    "plan": "The locked plan, projected recursively by PLAN_SCHEMA; its fingerprint, lock time, "
+            "data-sufficiency option and minimums, sensitivity analyses (vocabulary) and power assumptions "
+            "(POWER_SCHEMA).",
     "records_full": "Per stored record: every stored field, including outcome values and values as reported.",
-    "decisions": "Eligibility decisions (record, eligible, rule) and the named analysis sets.",
+    "decisions": "Eligibility decisions (record, eligible, rule code) and the named analysis sets (keys from "
+                 "the vocabulary).",
     "flags_full": "Per flag: kind, category, record ids, the numbers compared, the Critic's class and reason.",
     "results": "The run's status, outcome, verdict and exploratory label; the dataset freeze; analysis "
                "results; calibration results.",
-    "coverage": "Per source: search status and kind of nothing found; the run's search coverage lists.",
+    "coverage": "Per source: search status, kind of nothing found, and how many category values of each field "
+                "were unrecognized in the run's records (counts only); the run's search coverage lists. "
+                "No failure text.",
     "stage_outputs": "Every stage of the run: input, output, reasoning, tool calls and model.",
     "run_cost": "Tokens and cost of the run, in total and per stage.",
     "stored_record_counts": "Per source, computed by code from the run's stored records: the number of "
@@ -784,40 +914,300 @@ def allowed(role: str, stage: str) -> frozenset[str]:
 OUTCOME_FIELDS = frozenset({"yield_strength", "yield_strength_sd", "ultimate_tensile_strength",
                             "hardness", "hardness_sd"})
 
-# Fields whose values are categories (text from a fixed or source vocabulary), shown to the
-# Critic and counted for the Planner and the gap report.
-CATEGORY_FIELDS = ("test_type", "test_temperature_band", "phase_class", "microstructure", "processing_method")
+# CATEGORY_FIELDS (from `vocabulary`): fields whose values are categories, shown to the Critic
+# and counted for the Planner and the gap report, always through their vocabularies.
 
 # The non-outcome measured conditions summarized for the gap report (owner, 2026-10-05).
 CONDITION_RANGE_FIELDS = ("grain_size", "test_temperature")
 CONDITION_COUNT_FIELDS = ("test_type", "phase_class")
 
-# sources_meta: a fixed set of named plain fields (owner, 2026-10-05). Free text such as
-# the address or the version label never reaches a role through this field.
+# sources_meta: a fixed set of named plain fields (owner, 2026-10-05). Name, licence and
+# fields available come from the code's definitions (`SOURCES`); interpretation settings
+# from the run's sealed version. The source registry's text (address, labels, edits after
+# dispatch) never reaches a role through this field.
 SOURCE_META_FIELDS = ("key", "name", "source_type", "data_kind", "licence", "grouping_unit",
                       "fields_available")
 
-# The named parts of a plan (PRD 5.1). The plan model (step 6) stores its content under
-# these keys; any other key in a plan's content is withheld from every role.
-PLAN_KEYS = ("claim", "hypothesis_version", "variables", "scope", "model", "sufficiency",
-             "fields_to_extract", "exclusion_rules", "eligibility_rules", "verdict_statement",
-             "sensitivity_analyses")
+# The plan, projected recursively (owner, 2026-10-05: defined in step 5; step 6's plan model
+# must follow it). A schema is a dict of named keys; a leaf is "number", "integer",
+# "field" (a common field name), "unit", or a vocabulary (a frozenset); ("list", schema) is
+# a list. Unknown keys are dropped; a leaf that does not fit becomes the marker (vocabulary,
+# field, unit) or is dropped (number, integer). There is no free-text leaf. PRD 5.1's
+# "claim in words" is not part of the projection: roles that may see it get the `claim`
+# field.
+ALLOY_CLASSES = frozenset({"multi-principal-element (high-entropy) alloy", "steel", "aluminium alloy",
+                           "titanium alloy", "nickel alloy", "copper alloy", "magnesium alloy", "other"})
+EXCLUSION_RULES = frozenset({"grain_size_range", "temperature_range", "phase", "test_type"})
+MODELS = frozenset({"hall_petch_alloy_intercepts"})
+TRANSFORMATIONS = frozenset({"inverse_square_root"})
+HYPOTHESES_NULL = frozenset({"k <= 0"})
+HYPOTHESES_ALTERNATIVE = frozenset({"k > 0"})
+VERDICT_STATEMENTS = frozenset({"pooled_test_gives_verdict"})
+SUFFICIENCY_OPTIONS = frozenset({"fixed_minimum", "use_available"})
+POWER_METHODS = frozenset({"information_only"})
+CATEGORY_VALUES = TEST_TYPES | TEMPERATURE_BANDS | PHASE_CLASSES | PROCESSING_METHODS
+
+PLAN_SCHEMA = MappingProxyType({
+    "hypothesis_version": "integer",
+    "variables": {"outcome": {"field": "field", "unit": "unit"},
+                  "predictor": {"field": "field", "unit": "unit", "transformation": TRANSFORMATIONS}},
+    "scope": {"alloy_class": ("list", ALLOY_CLASSES), "temperature_band": ("list", TEMPERATURE_BANDS),
+              "test_type": ("list", TEST_TYPES), "phase_class": ("list", PHASE_CLASSES)},
+    "model": {"name": MODELS, "null": HYPOTHESES_NULL, "alternative": HYPOTHESES_ALTERNATIVE, "alpha": "number"},
+    "sufficiency": {"option": SUFFICIENCY_OPTIONS, "min_records": "integer", "min_alloys": "integer",
+                    "min_groups": "integer", "min_resid_df": "integer"},
+    "fields_to_extract": ("list", "field"),
+    "exclusion_rules": ("list", {"rule": EXCLUSION_RULES, "min": "number", "max": "number",
+                                 "values": ("list", CATEGORY_VALUES)}),
+    "eligibility_rules": ("list", {"flag_kind": FLAG_KINDS, "rule": ELIGIBILITY_RULES}),
+    "verdict_statement": VERDICT_STATEMENTS,
+    "sensitivity_analyses": ("list", SENSITIVITY_KEYS),
+})
+POWER_SCHEMA = MappingProxyType({"method": POWER_METHODS, "within_paper_similarity": "number",
+                                 "smallest_effect": "number", "scatter": "number"})
+
+# What the blinded views still disclose, by design (owner, 2026-10-05; register entry
+# 'accepted_disclosures'). The blinding claim is limited to: no outcome value is copied
+# into these views from a stored outcome field, a value as reported, a flag's numbers, a
+# stage's text, or text outside a vocabulary.
+ACCEPTED_DISCLOSURES = (
+    "counts by field status (for example how many yield strengths a source reports or cannot read)",
+    "flag kinds and categories (for example that two values differ beyond the tolerance)",
+    "condition summaries, which reveal an exact grain size or temperature when a group has one record",
+    "compositions and alloy labels derived from them",
+    "DOIs with DOI syntax, which may contain digits",
+    "text written or approved by people: the claim, the approved tag values, source names and licences in code",
+    "numbers in the locked plan (thresholds, minimums), written before any record exists",
+    "the Analyst's gap report, passed to the Commentator on a run with no dataset frozen",
+    "timing of calls and the existence of refusals",
+)
+```
+
+### `hypocurate/access/vocabulary.py`
+
+```python
+"""Controlled vocabularies of the access layer (step 5 review, finding 3; owner, 2026-10-05).
+
+Text that reaches a role through a blinded view (the Planner, the Critic, the gap report)
+comes from a fixed vocabulary, or is replaced by the marker `UNRECOGNIZED`. The stored
+value is never changed. Unrecognized values are counted per field (never shown), so that
+a source with unfamiliar labels is noticed (owner's addition, 2026-10-05).
+
+Adding a value to a vocabulary is a register change that needs the owner's approval
+(entries 'category_vocabularies' and 'code_vocabularies').
+
+This module imports nothing from the database or the sources, so any module may use it.
+"""
+from __future__ import annotations
+
+import re
+from collections import Counter
+from typing import Any, Iterable, Mapping
+
+UNRECOGNIZED = "unrecognized"
+
+# The record fields whose values are categories.
+CATEGORY_FIELDS = ("test_type", "test_temperature_band", "phase_class", "microstructure", "processing_method")
+
+# --- Category values of records (built from the frozen sources' actual values) ----------
+
+TEST_TYPES = frozenset({"tension", "compression"})
+TEMPERATURE_BANDS = frozenset({"room temperature", "cryogenic", "elevated"})
+PHASE_CLASSES = frozenset({"FCC", "BCC", "other"})
+# A microstructure is one or more of these tokens joined by "+" (covers all 40 MPEA values).
+MICROSTRUCTURE_TOKENS = frozenset({"FCC", "BCC", "B2", "HCP", "L12", "Laves", "Sec.", "Other"})
+PROCESSING_METHODS = frozenset({"CAST", "WROUGHT", "ANNEAL", "POWDER", "OTHER"})
+
+CATEGORY_VOCABULARIES: Mapping[str, frozenset[str]] = {
+    "test_type": TEST_TYPES, "test_temperature_band": TEMPERATURE_BANDS, "phase_class": PHASE_CLASSES,
+    "processing_method": PROCESSING_METHODS,
+}
+
+
+def category(field: str, value: Any) -> str:
+    """A category value as a blinded view shows it: itself if it is in the field's
+    vocabulary, otherwise `UNRECOGNIZED`."""
+    if not isinstance(value, str):
+        return UNRECOGNIZED
+    if field == "microstructure":
+        tokens = value.split("+")
+        return value if tokens and all(t in MICROSTRUCTURE_TOKENS for t in tokens) else UNRECOGNIZED
+    return value if value in CATEGORY_VOCABULARIES.get(field, frozenset()) else UNRECOGNIZED
+
+
+def unrecognized_counts(values: Iterable[tuple[str, Any]]) -> dict[str, int]:
+    """How many values of each field are unrecognized: counts only, never the values."""
+    counts = Counter(f for f, v in values if category(f, v) == UNRECOGNIZED)
+    return dict(sorted(counts.items()))
+
+
+# --- Codes written by our own code (steps 6 and 7 must use these) ------------------------
+
+FLAG_KINDS = frozenset({"exact_duplicate", "possible_duplicate", "values_disagree", "out_of_scope",
+                        "scope_not_confirmed", "invalid_value", "model_recalled"})
+FLAG_CATEGORIES = frozenset({"identical values", "differ beyond tolerance", "within tolerance",
+                             "outside scope", "scope not confirmed", "physically impossible"})
+ELIGIBILITY_RULES = frozenset({"in_scope", "out_of_scope", "scope_not_confirmed", "invalid_value",
+                               "duplicate_counted_once", "model_recalled", "single_grain_size",
+                               "excluded_by_rule"})
+SENSITIVITY_KEYS = frozenset({"tension_and_compression", "six_batches_as_groups", "same_alloy_1_at_pct",
+                              "source_only_assignments", "possible_duplicates_separate",
+                              "scope_not_confirmed_included", "removal_after_lock"})
+ANALYSIS_SET_KEYS = frozenset({"primary"}) | SENSITIVITY_KEYS
+
+
+def code(value: Any, vocabulary: frozenset[str]) -> str:
+    return value if isinstance(value, str) and value in vocabulary else UNRECOGNIZED
+
+
+DOI = re.compile(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]{1,200}")
+
+
+def doi(value: Any) -> str | None:
+    """A DOI if it has DOI syntax (surrounding spaces ignored), None if absent, else the marker.
+    A DOI may contain digits: an accepted disclosure (register 'accepted_disclosures')."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return value.strip() if isinstance(value, str) and DOI.fullmatch(value.strip()) else UNRECOGNIZED
+```
+
+### `hypocurate/access/context.py`
+
+```python
+"""The access context: what one agent call may read, captured once (step 5 review, finding 2).
+
+Immutable. Created only by the trusted dispatcher (`dispatch.bind`), which reads the role from
+the run's recorded agent settings, the stage from the database, and checks a Curator's source
+against the run's `run_source` rows. Every read of an access object uses this one context.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class AccessContext:
+    run_id: int
+    role: str
+    stage: str
+    source_key: str | None = None
+    agent_setting_id: int | None = None
+```
+
+### `hypocurate/access/dispatch.py`
+
+```python
+"""The trusted dispatcher: the only way to obtain an access object (step 5 review, finding 2).
+
+`bind(engine, run_id, agent_setting_id, source_key=None)` is called by trusted orchestration
+code (steps 8 and 9) for one agent call. It never takes a role, a stage or a run chosen by
+anything a model controls:
+- the **role** is read from the run's recorded agent settings (`run_agent_setting`): the
+  setting being invoked must be recorded for this run, and its role is the one recorded;
+- the **stage** is read from the database;
+- a **source** is bound only for the Curator, and must be one of the run's `run_source` rows
+  with a recorded version.
+The result is an `Access` around an immutable `AccessContext`. The binding itself is
+logged (function "bind"): allowed, denied with its code, or failed. Every later read checks
+again that the run is still at the bound stage.
+
+Nothing a model controls ever receives SQL, a database connection or a file path (CLAUDE.md):
+agents get text built from `role_input` and from reads through this object only.
+"""
+from __future__ import annotations
+
+from sqlalchemy import Connection, Engine, bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import DBAPIError
+
+from hypocurate.access.context import AccessContext
+from hypocurate.access.errors import AccessDenied, AccessFailed
+from hypocurate.access.layer import (_AUDIT, _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, DENIALS, Access, _detail, _row,
+                                     bounded_source, log_failure)
+from hypocurate.access.stage import actual_stage
+from hypocurate.db.retry import run_transaction, sqlstate
+
+UNBOUND = "invalid"  # the role logged for a binding refused before a role is known
+
+
+def bind(engine: Engine, run_id: int, agent_setting_id: int, source_key: str | None = None,
+         lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS) -> Access:
+    """An access object for one agent call, or AccessDenied / AccessFailed (logged)."""
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or not isinstance(agent_setting_id, int):
+        raise TypeError("bind takes an integer run id and an integer agent setting id")
+    probe = AccessContext(run_id, UNBOUND, UNBOUND, source_key, agent_setting_id)
+
+    def transaction(conn: Connection):
+        conn.execute(text(f"SET LOCAL lock_timeout = {int(lock_timeout_ms)}"))
+        if not conn.execute(text("SELECT EXISTS (SELECT 1 FROM run WHERE id = :r)"), dict(r=run_id)).scalar_one():
+            return ("unknown_run", None)
+        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id)).scalar_one()
+        stage = actual_stage(conn, run_id, status)
+        role = conn.execute(text("SELECT role FROM run_agent_setting WHERE run_id = :r AND agent_setting_id = :a"),
+                            dict(r=run_id, a=agent_setting_id)).scalar_one_or_none()
+        ctx = AccessContext(run_id, role or UNBOUND, stage, source_key, agent_setting_id)
+        code = None
+        if role is None:
+            code = "setting_not_recorded"
+        elif role != "curator" and source_key is not None:
+            code = "source_not_for_role"
+        elif role == "curator" and source_key is None:
+            code = "no_source"
+        elif role == "curator" and not conn.execute(text(
+                "SELECT EXISTS (SELECT 1 FROM run_source rs JOIN source s ON s.id = rs.source_id "
+                "WHERE rs.run_id = :r AND s.key = :k AND rs.source_version_id IS NOT NULL)"),
+                dict(r=run_id, k=source_key)).scalar_one():
+            code = "source_not_recorded"
+        extra = {"agent_setting": agent_setting_id}
+        result = "denied" if code else "allowed"
+        conn.execute(_AUDIT, _row(ctx, run_id, "bind", code is None, _detail(ctx, result, code, stage, **extra)))
+        return (result, code, ctx)
+
+    try:
+        outcome = run_transaction(engine, transaction)
+    except DBAPIError as error:
+        code = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
+        log_failure(engine, probe, "bind", code, agent_setting=agent_setting_id)
+        raise AccessFailed(UNBOUND, UNBOUND, "bind", code) from error
+    if outcome[0] == "unknown_run":
+        log_failure(engine, probe, "bind", "unknown_run", run_known=False, agent_setting=agent_setting_id)
+        raise AccessFailed(UNBOUND, UNBOUND, "bind", "unknown_run")
+    result, code, ctx = outcome
+    if result == "denied":
+        raise AccessDenied(ctx.role, ctx.stage, "bind", code, DENIALS[code])
+    return Access(engine, ctx, lock_timeout_ms=lock_timeout_ms, _trusted=_TRUSTED)
+
+
+__all__ = ["bind", "bounded_source"]
 ```
 
 ### `hypocurate/access/errors.py`
 
 ```python
-"""The one error the access layer raises for a refused read (PRD 4)."""
+"""The errors of the access layer (PRD 4).
+
+`AccessDenied`: a policy refusal (the field is not on the role's list at the run's stage, the
+stage has changed, the source is not the run's). `AccessFailed`: the read could not be done
+(unknown run, lock timeout, a reader's error, the database unavailable). Both are logged
+before they are raised (`layer.py`); their messages hold only validated, bounded strings.
+"""
 from __future__ import annotations
 
 
 class AccessDenied(Exception):
-    """A role asked for a field it may not receive at the run's stage, or claimed a stage
-    the run is not in. The refusal is already in the audit log when this is raised."""
+    """A policy refusal, already in the audit log (or the process log) when raised."""
 
-    def __init__(self, role: str, stage: str, field: str, reason: str):
-        self.role, self.stage, self.field, self.reason = role, stage, field, reason
-        super().__init__(f"access denied: {role} at {stage} asked for {field!r}: {reason}")
+    def __init__(self, role: str, stage: str, field: str, code: str, reason: str):
+        self.role, self.stage, self.field, self.code, self.reason = role, stage, field, code, reason
+        super().__init__(f"access denied: {role} at {stage} asked for {field}: {reason}")
+
+
+class AccessFailed(Exception):
+    """An access failure, already in the audit log (or the process log) when raised."""
+
+    def __init__(self, role: str, stage: str, field: str, code: str):
+        self.role, self.stage, self.field, self.code = role, stage, field, code
+        super().__init__(f"access failed: {role} at {stage} asking for {field}: {code}")
 ```
 
 ### `hypocurate/access/stage.py`
@@ -858,103 +1248,248 @@ def actual_stage(conn: Connection, run_id: int, status: str) -> str:
 ### `hypocurate/access/layer.py`
 
 ```python
-"""The access object: one per role, stage and run (PRD 4).
+"""The access object: what one agent call may read from one run (PRD 4).
 
-Every read an agent's code path makes goes through `Access.get(field)`. Each call is one
-transaction (`run_transaction`, retried on 40P01 / 40001), in this order:
+Created only by the trusted dispatcher (`dispatch.bind`), around an immutable
+`AccessContext` captured once. There is no public constructor that takes a caller-chosen
+run, role, stage or source (tests use their own helper). Every read goes through `get`
+(one field) or `read_all` (the role's complete input, used by `inputs.role_input`).
 
-1. `SET LOCAL lock_timeout`, then `hc_write_lock(p_run => run)`: the locking protocol of
-   step 3 (the audit row is a write to the run), which also fixes the run's stage until
-   commit;
-2. the run's actual stage, read from the database (`stage.actual_stage`);
-3. the checks: the declared stage equals the actual one, and the field is on the role's
-   list for that stage (`allowlist.allowed`);
-4. the read, by the field's function (`fields.READERS`), which may still refuse;
-5. one `audit_log` row: role, declared stage, field, allowed or denied, and in `detail`
-   the actual stage and the reason, never a value;
-6. commit.
+**One read is one transaction** (`run_transaction`, retried on 40P01 / 40001):
+1. `SET LOCAL lock_timeout`; check that the run exists; `hc_write_lock(p_run => …)`: the
+   locking protocol of step 3 (the audit rows are writes to the run). Holding the run's lock,
+   the stage and the rows read cannot change until commit: writers to the run follow the
+   same protocol and wait. So `read_all` is one snapshot of the role's whole input;
+2. the run's actual stage (`stage.actual_stage`);
+3. the policy checks per field: known role and stage, the context's stage equals the actual
+   one, the field is on the role's list;
+4. the reads (`fields.READERS`); a reader may refuse (a policy denial with its code);
+5. the audit rows: one per field, `allowed` true for a delivered read, false for a denial;
+6. commit, and only then return or raise `AccessDenied`. A refusal therefore survives any
+   rollback by the caller.
 
-A refusal writes its denied row and commits, and only then raises `AccessDenied`, so the
-row survives the rejection: it is never inside a transaction the caller could roll back.
-The object owns its engine and never accepts the caller's connection.
+**Denial and failure are logged apart.** `detail.result` is "allowed", "denied" (a policy
+refusal; `AccessDenied`) or "failed" (an access failure; `AccessFailed`): an unknown run, a
+lock timeout, a reader's error, the database unavailable, a file-guard refusal
+(`guarded.run_guarded`). `detail.code` is a fixed code. Only validated, bounded strings are
+logged: a role, stage or field that is not one of ours is logged as "invalid" with its
+length; a run id must be an integer.
 
-**Never call the access layer while holding a run's lock** (a write transaction that has
-called `hc_write_lock` for the same run): the access transaction would wait for it. The
-lock timeout turns that wait into an error instead of a hang.
+**Failure rows are a named exception to the locking protocol** (owner, 2026-10-05; register
+entry 'audit_failure_rows_without_run_lock'): they are written in their own short
+transaction *without* `hc_write_lock`, because there is no run to lock (unknown run) or the
+lock is what failed (timeout). An `audit_log` insert takes only a key-share lock on the run,
+which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an
+unknown run, `run_id` is NULL and the requested id is in `detail`.
+
+**Fallback.** If a failure row cannot be written (the database is unavailable), the event
+goes to the process log (logger `hypocurate.access`, one bounded JSON line). Durable logging
+in the database is therefore not unconditional.
+
+**Never call the access layer while holding the same run's lock**: the call would wait for
+it, and fails after the lock timeout (logged as a failure).
 """
 from __future__ import annotations
 
-from typing import Any
+import json
+import logging
+import re
+from typing import Any, Iterable
 
 from sqlalchemy import Connection, Engine, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import DBAPIError
 
-from hypocurate.access.allowlist import ROLES, STAGES, allowed
-from hypocurate.access.errors import AccessDenied
-from hypocurate.access.fields import READERS, Context, Refused
+from hypocurate.access.allowlist import FIELDS, ROLES, STAGES, allowed
+from hypocurate.access.context import AccessContext
+from hypocurate.access.errors import AccessDenied, AccessFailed
+from hypocurate.access.fields import READERS, Refused
 from hypocurate.access.stage import actual_stage
-from hypocurate.db.retry import run_transaction
+from hypocurate.db.retry import RETRYABLE_SQLSTATES, run_transaction, sqlstate
 
 # How long an access call waits for a run's lock before failing (milliseconds).
 ACCESS_LOCK_TIMEOUT_MS = 5000
 
+LOG = logging.getLogger("hypocurate.access")
+
+# Fixed codes and their fixed reasons: nothing a caller passes is copied into a reason.
+DENIALS = {
+    "unknown_role": "the role is not one of the five roles",
+    "unknown_stage": "the stage is not one of the access stages",
+    "stage_mismatch": "the run is no longer at the stage this access was bound to",
+    "not_on_list": "the field is not on the role's list at the run's stage",
+    "no_source": "the Curator reads one named source; none was bound",
+    "source_not_recorded": "the source is not recorded for this run",
+    "source_not_for_role": "only the Curator is bound to a source",
+    "setting_not_recorded": "the agent setting is not recorded for this run",
+    "empty_list": "the role has no field at this stage",
+}
+FAILURES = ("unknown_run", "lock_timeout", "reader_error", "database_error", "file_guard")
+FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}
+_SOURCE_KEY = re.compile(r"[a-z][a-z0-9_]{0,40}")
+
 _AUDIT = text("INSERT INTO audit_log (run_id, role, stage, function, allowed, detail) "
               "VALUES (:r, :role, :stage, :field, :allowed, :detail)").bindparams(bindparam("detail", type_=JSONB))
+_TRUSTED = object()  # held by dispatch.bind (and the tests' helper); not a public constructor
+
+
+def bounded(value: Any, valid: Iterable[str]) -> str:
+    """`value` if it is one of ours, else "invalid"."""
+    return value if isinstance(value, str) and value in valid else "invalid"
+
+
+def bounded_source(value: Any) -> str | None:
+    if value is None:
+        return None
+    return value if isinstance(value, str) and _SOURCE_KEY.fullmatch(value) else "invalid"
+
+
+def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | None = None, **extra) -> dict:
+    d: dict[str, Any] = {"result": result}
+    if code is not None:
+        d["code"] = code
+    if actual is not None:
+        d["actual_stage"] = actual
+    if ctx.source_key is not None:
+        d["source"] = bounded_source(ctx.source_key)
+    for name, raw, valid in (("role", ctx.role, ROLES), ("stage", ctx.stage, STAGES)):
+        if bounded(raw, valid) == "invalid" and raw != "invalid":
+            d[f"given_{name}_length"] = len(raw) if isinstance(raw, str) else -1
+    d.update(extra)
+    return d
+
+
+def _row(ctx: AccessContext, run_id: int | None, function: str, allowed_: bool, detail: dict) -> dict:
+    return dict(r=run_id, role=bounded(ctx.role, ROLES), stage=bounded(ctx.stage, STAGES),
+                field=bounded(function, FUNCTIONS), allowed=allowed_, detail=detail)
+
+
+def log_failure(engine: Engine, ctx: AccessContext, function: str, code: str, run_known: bool = True,
+                **extra) -> None:
+    """One failure row, in its own transaction, without the run lock (the named exception);
+    the process log if the database cannot take it."""
+    run_id = ctx.run_id if run_known else None
+    detail = _detail(ctx, "failed", code, **extra)
+    if not run_known:
+        detail["requested_run"] = int(ctx.run_id)
+    try:
+        run_transaction(engine, lambda conn: conn.execute(_AUDIT, _row(ctx, run_id, function, False, detail)))
+    except Exception as error:  # the database is unavailable: the process log is the fallback
+        LOG.error(json.dumps({"audit_fallback": _row(ctx, run_id, function, False, detail),
+                              "error": type(error).__name__}, sort_keys=True))
+
+
+class _ReaderError(Exception):
+    def __init__(self, field: str, error: BaseException):
+        self.field, self.error_class = field, type(error).__name__
+        super().__init__(field)
 
 
 class Access:
-    """What one role may read from one run at one stage."""
+    """What one role may read from one run at one stage. Immutable; see the module docstring."""
 
-    def __init__(self, engine: Engine, run_id: int, role: str, stage: str, source_key: str | None = None,
-                 lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS):
-        self._engine = engine
-        self.run_id = int(run_id)
-        self.role = role
-        self.stage = stage
-        self.source_key = source_key
-        self._lock_timeout_ms = int(lock_timeout_ms)
+    __slots__ = ("_engine", "_context", "_lock_timeout_ms")
+
+    def __init__(self, engine: Engine, context: AccessContext, *, lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS,
+                 _trusted: object = None):
+        if _trusted is not _TRUSTED:
+            raise TypeError("an access object is created only by hypocurate.access.dispatch.bind")
+        if not isinstance(context, AccessContext) or not isinstance(context.run_id, int):
+            raise TypeError("an access object needs an AccessContext with an integer run id")
+        object.__setattr__(self, "_engine", engine)
+        object.__setattr__(self, "_context", context)
+        object.__setattr__(self, "_lock_timeout_ms", int(lock_timeout_ms))
+
+    def __setattr__(self, name, value):
+        raise AttributeError("an access object is immutable")
+
+    @property
+    def context(self) -> AccessContext:
+        return self._context
 
     def __repr__(self) -> str:
-        return f"Access(run={self.run_id}, role={self.role!r}, stage={self.stage!r})"
+        c = self._context
+        return f"Access(run={c.run_id}, role={bounded(c.role, ROLES)!r}, stage={bounded(c.stage, STAGES)!r})"
 
     def get(self, field: str) -> Any:
-        """The field's content, or AccessDenied (already logged)."""
-        outcome = run_transaction(self._engine, lambda conn: self._call(conn, field))
-        if outcome[0] == "denied":
-            raise AccessDenied(self.role, self.stage, field, outcome[1])
+        """One field, or AccessDenied / AccessFailed (already logged)."""
+        return self._read(field, (field,))[field]
+
+    def read_all(self) -> dict[str, Any]:
+        """Every field on the role's list at its stage, in one transaction (one snapshot).
+        Never empty: a role with no field at its stage gets AccessDenied (logged)."""
+        ctx = self._context
+        return self._read("role_input", tuple(sorted(allowed(ctx.role, ctx.stage))))
+
+    def _read(self, function: str, fields: tuple) -> dict[str, Any]:
+        ctx, engine = self._context, self._engine
+        name = bounded(function if fields != (function,) else fields[0], FUNCTIONS)
+        try:
+            outcome = run_transaction(engine, lambda conn: self._transaction(conn, ctx, function, fields))
+        except _ReaderError as error:
+            log_failure(engine, ctx, error.field, "reader_error", error_class=error.error_class)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(error.field, FUNCTIONS),
+                               "reader_error") from error.__cause__
+        except DBAPIError as error:
+            code = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
+            log_failure(engine, ctx, name, code)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, code) from error
+        kind = outcome[0]
+        if kind == "unknown_run":
+            log_failure(engine, ctx, name, "unknown_run", run_known=False)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, "unknown_run")
+        if kind == "denied":
+            field, code = outcome[1]
+            raise AccessDenied(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(field, FUNCTIONS),
+                               code, DENIALS[code])
         return outcome[1]
 
-    def _call(self, conn: Connection, field: str) -> tuple[str, Any]:
+    def _transaction(self, conn: Connection, ctx: AccessContext, function: str, fields: tuple) -> tuple:
         conn.execute(text(f"SET LOCAL lock_timeout = {self._lock_timeout_ms}"))
-        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=self.run_id)).scalar_one()
-        actual = actual_stage(conn, self.run_id, status)
-        reason = self._refusal(field, actual)
-        if reason is None:
-            try:
-                value = READERS[field](conn, Context(self.run_id, self.role, self.source_key))
-            except Refused as refused:
-                reason = str(refused)
-        detail: dict[str, Any] = {"actual_stage": actual}
-        if self.source_key is not None:
-            detail["source"] = self.source_key
-        if reason is not None:
-            detail["reason"] = reason
-        conn.execute(_AUDIT, dict(r=self.run_id, role=self.role, stage=self.stage, field=field,
-                                  allowed=reason is None, detail=detail))
-        return ("denied", reason) if reason is not None else ("allowed", value)
+        if not conn.execute(text("SELECT EXISTS (SELECT 1 FROM run WHERE id = :r)"), dict(r=ctx.run_id)).scalar_one():
+            return ("unknown_run",)
+        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=ctx.run_id)).scalar_one()
+        actual = actual_stage(conn, ctx.run_id, status)
+        if not fields:  # role_input with nothing on the list: never an empty input
+            code = ("unknown_role" if ctx.role not in ROLES else "unknown_stage" if ctx.stage not in STAGES
+                    else "empty_list")
+            conn.execute(_AUDIT, _row(ctx, ctx.run_id, "role_input", False, _detail(ctx, "denied", code, actual)))
+            return ("denied", ("role_input", code))
+        values, denied = {}, []
+        for field in fields:
+            code = _policy(ctx, field, actual)
+            if code is None:
+                try:
+                    values[field] = READERS[field](conn, ctx)
+                except Refused as refused:
+                    code = refused.code
+                except DBAPIError as error:
+                    if sqlstate(error) in RETRYABLE_SQLSTATES:
+                        raise
+                    raise _ReaderError(field, error) from error
+                except Exception as error:
+                    raise _ReaderError(field, error) from error
+            if code is not None:
+                denied.append((field, code))
+        if denied:  # nothing is delivered; each refused field is logged
+            for field, code in denied:
+                conn.execute(_AUDIT, _row(ctx, ctx.run_id, field, False, _detail(ctx, "denied", code, actual)))
+            return ("denied", denied[0])
+        for field in fields:
+            conn.execute(_AUDIT, _row(ctx, ctx.run_id, field, True, _detail(ctx, "allowed", None, actual)))
+        return ("allowed", values)
 
-    def _refusal(self, field: str, actual: str) -> str | None:
-        if self.role not in ROLES:
-            return f"unknown role {self.role!r}"
-        if self.stage not in STAGES:
-            return f"unknown stage {self.stage!r}"
-        if self.stage != actual:
-            return f"the run is at stage {actual!r}, not {self.stage!r}"
-        if field not in allowed(self.role, actual):
-            return f"{field!r} is not on the {self.role}'s list at stage {actual!r}"
-        if field not in READERS:  # listed but not implemented: never silently empty
-            return f"no reader for {field!r}"
-        return None
+
+def _policy(ctx: AccessContext, field: str, actual: str) -> str | None:
+    if ctx.role not in ROLES:
+        return "unknown_role"
+    if ctx.stage not in STAGES:
+        return "unknown_stage"
+    if ctx.stage != actual:
+        return "stage_mismatch"
+    if field not in allowed(ctx.role, actual) or field not in READERS:
+        return "not_on_list"
+    return None
 ```
 
 ### `hypocurate/access/fields.py`
@@ -969,6 +1504,12 @@ inside its transaction, after the run is locked and the role's field is checked.
 
 Stored records carry their fields in the common record format of step 4
 (`CommonRecord.to_json()`): `harmonized` maps a field name to {value, unit, status, ...}.
+
+Blinded views (the fields listed for the Planner, the Critic, the gap report and the
+Commentator without a freeze) carry text only from vocabularies (`vocabulary.py`) or the
+marker "unrecognized"; the plan is projected recursively by `PLAN_SCHEMA`. The post-freeze
+fields (`records_full`, `flags_full`, `results`, `stage_outputs`, `run_cost`) return the stored
+rows of the run: after the freeze the Analyst and the Commentator may see outcomes.
 """
 from __future__ import annotations
 
@@ -981,26 +1522,26 @@ from typing import Any, Callable, Iterable, Mapping
 
 from sqlalchemy import Connection, text
 
+from hypocurate.access import vocabulary as vocab
 from hypocurate.access.allowlist import (CATEGORY_FIELDS, CONDITION_COUNT_FIELDS, CONDITION_RANGE_FIELDS,
-                                         PLAN_KEYS, SOURCE_META_FIELDS)
+                                         PLAN_SCHEMA, POWER_SCHEMA, SOURCE_META_FIELDS)
+from hypocurate.access.context import AccessContext as Context
 from hypocurate.sources import adapters
-from hypocurate.sources.normalize import same_alloy_key
+from hypocurate.sources.normalize import alloy_label, same_alloy_key
 from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, AdapterError
-from hypocurate.sources.versions import UnsealedVersion, load_sealed_version
+from hypocurate.sources.versions import SOURCES, UnsealedVersion, load_sealed_version
 
 HAS_VALUE = ("converted", "assigned")
+UNITS = frozenset(u for u in HARMONIZED_FIELDS.values() if u)
 
 
 class Refused(Exception):
     """A field function refuses this read (for example a Curator asking for a source its
-    run did not record). The layer logs it as denied and raises AccessDenied."""
+    run did not record). The layer logs it as a denial with this code."""
 
-
-@dataclass(frozen=True)
-class Context:
-    run_id: int
-    role: str
-    source_key: str | None  # the Curator's one source
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
 
 
 def _plain(v: Any) -> Any:
@@ -1019,10 +1560,11 @@ def _rows(conn: Connection, sql: str, **params) -> list:
 # --- Shared readers -----------------------------------------------------------------
 
 def _chosen_sources(conn: Connection, ctx: Context) -> list:
-    """The run's chosen sources (a version recorded at dispatch), in key order."""
-    return _rows(conn, "SELECT s.key, s.name, s.source_type, s.data_kind, s.licence, s.grouping_unit, "
-                       "s.properties_covered, rs.source_version_id FROM run_source rs "
-                       "JOIN source s ON s.id = rs.source_id "
+    """The run's chosen sources (a version recorded at dispatch), in key order, with the
+    interpretation settings of that sealed version (never the mutable source row's)."""
+    return _rows(conn, "SELECT s.key, sv.source_type, sv.data_kind, sv.grouping_unit, rs.source_version_id "
+                       "FROM run_source rs JOIN source s ON s.id = rs.source_id "
+                       "JOIN source_version sv ON sv.id = rs.source_version_id "
                        "WHERE rs.run_id = :r AND rs.source_version_id IS NOT NULL ORDER BY s.key", r=ctx.run_id)
 
 
@@ -1051,11 +1593,18 @@ def _number(entry: Any) -> float | None:
     return None
 
 
-def _category(entry: Any) -> str | None:
-    """A category field's value, only if it has a value status and is text."""
-    if _status(entry) in HAS_VALUE and isinstance(entry.get("value"), str):
-        return entry["value"]
+def _category(field: str, entry: Any) -> str | None:
+    """A category field's value through its vocabulary (or the marker), only if it has a
+    value status; None otherwise."""
+    if _status(entry) in HAS_VALUE:
+        return vocab.category(field, entry.get("value"))
     return None
+
+
+def _unrecognized(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Per category field, how many values are unrecognized (counts only)."""
+    return vocab.unrecognized_counts((f, h.get(f, {}).get("value")) for h in harmonized_rows
+                                     for f in CATEGORY_FIELDS if _status(h.get(f)) in HAS_VALUE)
 
 
 def _composition(entry: Any) -> dict[str, float] | None:
@@ -1073,7 +1622,9 @@ def _composition(entry: Any) -> dict[str, float] | None:
 
 
 def _counts(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict:
-    """Counts by field status and by category value. Never a value of a non-category field."""
+    """Counts by field status and by category value (through the vocabularies), and the
+    unrecognized counts. Never a value of a non-category field."""
+    harmonized_rows = list(harmonized_rows)
     n = 0
     by_status = {f: Counter() for f in HARMONIZED_FIELDS}
     by_category = {f: Counter() for f in CATEGORY_FIELDS}
@@ -1082,12 +1633,13 @@ def _counts(harmonized_rows: Iterable[Mapping[str, Any]]) -> dict:
         for f in HARMONIZED_FIELDS:
             by_status[f][_status(h.get(f)) or "missing"] += 1
         for f in CATEGORY_FIELDS:
-            value = _category(h.get(f))
+            value = _category(f, h.get(f))
             if value is not None:
                 by_category[f][value] += 1
     return {"n_records": n,
             "by_status": {f: dict(sorted(c.items())) for f, c in by_status.items()},
-            "by_category": {f: dict(sorted(c.items())) for f, c in by_category.items()}}
+            "by_category": {f: dict(sorted(c.items())) for f, c in by_category.items()},
+            "unrecognized": _unrecognized(harmonized_rows)}
 
 
 # --- The fields ---------------------------------------------------------------------
@@ -1107,13 +1659,19 @@ def domain(conn: Connection, ctx: Context) -> dict:
 
 
 def sources_meta(conn: Connection, ctx: Context) -> list[dict]:
+    """Name, licence and fields available from the code's source definitions; interpretation
+    settings from the sealed version the run recorded. The source registry's text never."""
     out = []
     for row in _chosen_sources(conn, ctx):
         if ctx.role == "curator" and row.key != ctx.source_key:
             continue
-        values = {"key": row.key, "name": row.name, "source_type": row.source_type, "data_kind": row.data_kind,
-                  "licence": row.licence, "grouping_unit": row.grouping_unit,
-                  "fields_available": [f for f in row.properties_covered if f in HARMONIZED_FIELDS]}
+        d = SOURCES.get(row.key)
+        values = {"key": row.key,
+                  "name": d.name if d else vocab.UNRECOGNIZED,
+                  "source_type": row.source_type, "data_kind": row.data_kind,
+                  "licence": d.licence if d else vocab.UNRECOGNIZED,
+                  "grouping_unit": row.grouping_unit,
+                  "fields_available": [f for f in d.properties_covered if f in HARMONIZED_FIELDS] if d else []}
         out.append({k: values[k] for k in SOURCE_META_FIELDS})
     return out
 
@@ -1138,46 +1696,74 @@ def record_counts(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
-def _fields_to_extract(content: Any) -> list[str]:
-    """The plan's list of fields to extract: only names of the common fields, in order;
-    anything else in the list is withheld."""
-    listed = content.get("fields_to_extract") if isinstance(content, Mapping) else None
-    out: list[str] = []
-    for f in listed if isinstance(listed, list) else []:
-        if isinstance(f, str) and f in HARMONIZED_FIELDS and f not in out:
-            out.append(f)
-    return out
+def project(value: Any, schema: Any) -> Any:
+    """`value` projected by `schema` (allowlist.PLAN_SCHEMA): named keys only, recursively;
+    vocabulary leaves give the value or the marker; number, integer, field and unit leaves
+    give the value or nothing. Returns None for nothing."""
+    if isinstance(schema, Mapping):
+        if not isinstance(value, Mapping):
+            return None
+        out = {}
+        for key, sub in schema.items():
+            if key in value:
+                p = project(value[key], sub)
+                if p is not None:
+                    out[key] = p
+        return out
+    if isinstance(schema, tuple) and schema[0] == "list":
+        if not isinstance(value, list):
+            return None
+        return [p for p in (project(v, schema[1]) for v in value) if p is not None]
+    if isinstance(schema, frozenset):
+        return vocab.code(value, schema)
+    if isinstance(value, bool):
+        return None
+    if schema == "number":
+        return float(value) if isinstance(value, (int, float)) and math.isfinite(value) else None
+    if schema == "integer":
+        return value if isinstance(value, int) else None
+    if schema == "field":
+        return value if isinstance(value, str) and value in HARMONIZED_FIELDS else None
+    if schema == "unit":
+        return value if isinstance(value, str) and value in UNITS else None
+    raise ValueError(f"unknown schema leaf {schema!r}")
 
 
 def plan_fields_to_extract(conn: Connection, ctx: Context) -> list[str]:
-    return _fields_to_extract(_rows(conn, "SELECT content FROM plan WHERE run_id = :r", r=ctx.run_id)[0].content)
+    """Only names of the common fields, in order, without repeats."""
+    content = _rows(conn, "SELECT content FROM plan WHERE run_id = :r", r=ctx.run_id)[0].content
+    listed = project(content, PLAN_SCHEMA).get("fields_to_extract", []) if isinstance(content, Mapping) else []
+    return list(dict.fromkeys(listed))
 
 
 def source_content(conn: Connection, ctx: Context) -> dict:
     """The sealed files of the Curator's one source, from the version its run recorded."""
     if ctx.source_key is None:
-        raise Refused("the Curator reads one named source; none was given")
+        raise Refused("no_source")
     vid = conn.execute(text(
         "SELECT rs.source_version_id FROM run_source rs JOIN source s ON s.id = rs.source_id "
         "WHERE rs.run_id = :r AND s.key = :k AND rs.source_version_id IS NOT NULL"),
         dict(r=ctx.run_id, k=ctx.source_key)).scalar_one_or_none()
     if vid is None:
-        raise Refused(f"source {ctx.source_key!r} is not recorded for this run")
+        raise Refused("source_not_recorded")
     version = load_sealed_version(conn, vid)
     return {"source": ctx.source_key, "files": dict(version.files)}
 
 
 def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
-    """No measured number of any field (owner, 2026-10-05): statuses, categories, identity."""
+    """No measured number of any field (owner, 2026-10-05): statuses, categories from their
+    vocabularies, identity. No paper title and no origin key (step 5 review, finding 3)."""
     out = []
     for r in _stored_records(conn, ctx):
         h = r.harmonized if isinstance(r.harmonized, Mapping) else {}
+        composition = _composition(h.get("composition"))
         out.append({
-            "id": r.id, "source": r.source, "origin": r.source_item_key, "item_index": r.item_index,
-            "kind": r.kind, "alloy": r.alloy, "composition": _composition(h.get("composition")),
-            "paper_reference": r.paper_reference, "paper_doi": r.paper_doi,
+            "id": r.id, "source": r.source, "item_index": r.item_index, "kind": r.kind,
+            # The label is derived by code from the composition, never taken from the source.
+            "alloy": alloy_label(composition) if composition else None,
+            "composition": composition, "paper_doi": vocab.doi(r.paper_doi),
             "status": {f: _status(h.get(f)) for f in HARMONIZED_FIELDS},
-            "categories": {f: _category(h.get(f)) for f in CATEGORY_FIELDS},
+            "categories": {f: _category(f, h.get(f)) for f in CATEGORY_FIELDS},
         })
     return out
 
@@ -1194,7 +1780,8 @@ def _flag_records(conn: Connection, ctx: Context) -> dict[int, list[int]]:
 def flags_kind(conn: Connection, ctx: Context) -> list[dict]:
     """Kind, category and records only: never the numbers compared (PRD 4)."""
     records = _flag_records(conn, ctx)
-    return [{"id": f.id, "kind": f.kind, "category": f.category, "records": records.get(f.id, [])}
+    return [{"id": f.id, "kind": vocab.code(f.kind, vocab.FLAG_KINDS),
+             "category": vocab.code(f.category, vocab.FLAG_CATEGORIES), "records": records.get(f.id, [])}
             for f in _rows(conn, "SELECT id, kind, category FROM flag WHERE run_id = :r ORDER BY id", r=ctx.run_id)]
 
 
@@ -1212,19 +1799,13 @@ def plan(conn: Connection, ctx: Context) -> dict:
     p = _rows(conn, "SELECT content, fingerprint, locked_at, sufficiency_option, min_records, min_alloys, "
                     "min_groups, min_resid_df, sensitivity_analysis_keys, power_assumptions "
                     "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
-    content = p.content if isinstance(p.content, Mapping) else {}
-    # The named parts as written at the rules lock; the field list as the Curator gets it.
-    # (The structure of the other parts is step 6's plan model, which projects each part.)
-    named = {k: content[k] for k in PLAN_KEYS if k in content}
-    if "fields_to_extract" in named:
-        named["fields_to_extract"] = _fields_to_extract(content)
-    return {"content": named,
+    return {"content": project(p.content, PLAN_SCHEMA) or {},
             "fingerprint": p.fingerprint, "locked_at": _plain(p.locked_at),
             "sufficiency_option": p.sufficiency_option,
             "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
                          "resid_df": p.min_resid_df},
-            "sensitivity_analyses": list(p.sensitivity_analysis_keys),
-            "power_assumptions": p.power_assumptions}
+            "sensitivity_analyses": [vocab.code(k, vocab.SENSITIVITY_KEYS) for k in p.sensitivity_analysis_keys],
+            "power_assumptions": project(p.power_assumptions, POWER_SCHEMA)}
 
 
 def records_full(conn: Connection, ctx: Context) -> list[dict]:
@@ -1240,10 +1821,12 @@ def decisions(conn: Connection, ctx: Context) -> dict:
     for key, record_id in _rows(conn, "SELECT a.key, asr.record_id FROM analysis_set a "
                                       "LEFT JOIN analysis_set_record asr ON asr.analysis_set_id = a.id "
                                       "WHERE a.run_id = :r ORDER BY a.key, asr.record_id", r=ctx.run_id):
+        key = vocab.code(key, vocab.ANALYSIS_SET_KEYS)
         sets.setdefault(key, [])
         if record_id is not None:
             sets[key].append(record_id)
-    return {"records": [{"record": rec, "eligible": eligible, "rule": rule} for rec, eligible, rule in _rows(
+    return {"records": [{"record": rec, "eligible": eligible, "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
+                        for rec, eligible, rule in _rows(
                 conn, "SELECT record_id, eligible, rule FROM run_record WHERE run_id = :r ORDER BY record_id",
                 r=ctx.run_id)],
             "sets": sets}
@@ -1269,9 +1852,15 @@ def results(conn: Connection, ctx: Context) -> dict:
 
 
 def coverage(conn: Connection, ctx: Context) -> dict:
-    per_source = [{"source": key, "search_status": st, "nothing_found": nf, "failure_reason": fr}
-                  for key, st, nf, fr in _rows(
-                      conn, "SELECT s.key, rs.search_status, rs.nothing_found, rs.failure_reason FROM run_source rs "
+    """Codes and counts only: no failure text (step 5 review, finding 3). `unrecognized`: per
+    source, how many category values of the run's records were unrecognized (owner, 2026-10-05)."""
+    by_source: dict[str, list] = {}
+    for r in _stored_records(conn, ctx):
+        by_source.setdefault(r.source, []).append(r.harmonized if isinstance(r.harmonized, Mapping) else {})
+    per_source = [{"source": key, "search_status": st, "nothing_found": nf,
+                   "unrecognized": _unrecognized(by_source.get(key, []))}
+                  for key, st, nf in _rows(
+                      conn, "SELECT s.key, rs.search_status, rs.nothing_found FROM run_source rs "
                             "JOIN source s ON s.id = rs.source_id WHERE rs.run_id = :r ORDER BY s.key", r=ctx.run_id)]
     view = _rows(conn, "SELECT * FROM run_search_coverage WHERE run_id = :r", r=ctx.run_id)[0]
     return {"sources": per_source,
@@ -1305,7 +1894,7 @@ def _summary(harmonized_rows: list[Mapping[str, Any]]) -> dict:
         values = [v for v in (_number(h.get(f)) for h in harmonized_rows) if v is not None]
         out[f] = {"n": len(values), "min": min(values) if values else None, "max": max(values) if values else None}
     for f in CONDITION_COUNT_FIELDS:
-        out[f] = dict(sorted(Counter(v for v in (_category(h.get(f)) for h in harmonized_rows)
+        out[f] = dict(sorted(Counter(v for v in (_category(f, h.get(f)) for h in harmonized_rows)
                                      if v is not None).items()))
     return out
 
@@ -1349,61 +1938,76 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
 ### `hypocurate/access/inputs.py`
 
 ```python
-"""A role's complete input at its stage (PRD 4, testing requirement).
+"""A role's complete input at its stage, as data (PRD 4, testing requirement).
 
-`role_input` reads every field on the role's list through the role's access object; it is
-everything that role can receive at that stage. The agents (step 8) build their prompts
-and answer their tool calls from this and from the same access object only, so the access
-tests on this input cover what an agent sees. Fields take no parameters, so the complete
-input is one read of each listed field.
+`role_input(access)` reads every field on the role's list in one transaction: one snapshot.
+It never returns an empty input: a role with no field at its stage gets AccessDenied
+(logged). The agents (step 8) build their prompts from this and answer their tool calls
+through the same access object. This is the **projected data** a role receives; the actual
+outbound model request (instructions, message history, tool errors, retry prompts) is a step 8
+acceptance requirement to test.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from hypocurate.access.allowlist import allowed
 from hypocurate.access.layer import Access
 
 
 def role_input(access: Access) -> dict[str, Any]:
-    """Every field `access.role` may receive at `access.stage`, read through `access`.
-    Raises AccessDenied (logged) if the run is not at that stage."""
-    return {field: access.get(field) for field in sorted(allowed(access.role, access.stage))}
+    return access.read_all()
 ```
 
 ### `hypocurate/access/file_guard.py`
 
 ```python
-"""The approved input files of pipeline code (step 1 open item 4; step 5).
+"""A tripwire against accidental file access by pipeline code (step 5; review finding 1).
 
-Pipeline code reads source data only as the sealed bytes of the source versions its run
-recorded, through the access layer (`fields.source_content`, `fields.record_counts`); the
-access layer has no function that takes a file path. This module makes everything else on
-disk unreachable in the process that runs a pipeline, by construction:
+**What it is.** In the process that runs one pipeline run (`guarded.run_guarded`), a Python
+audit hook (`sys.addaudithook`) refuses, with `PermissionError`, what *trusted, reviewed*
+pipeline code should never do by mistake:
+- reading or listing anything outside the Python installation (standard library, installed
+  packages, the certificate bundle) and the `hypocurate` package's code: so the repository
+  root, `tests/`, `docs/` (including `docs/reviews/`) and `data/`;
+- writing anywhere but the run's private scratch directory;
+- relative paths;
+- starting another program (`subprocess`, `os.system`, `exec`, `spawn`, `fork`) and loading a
+  new native library through `ctypes`.
+Each refusal is written as one bounded line to the process's standard error, and the parent
+copies it into the audit log as a failure (code `file_guard`) when it knows the run.
 
-- `install()` adds a Python audit hook, which cannot be removed once added. From then on
-  the process may **read** only the Python installation (standard library and installed
-  packages, including the certificate bundle) and the `hypocurate` package's own code
-  directory, and may **write** only in its private scratch directory. Everything else is
-  refused with `PermissionError`: in particular the repository root, `tests/`, `docs/`
-  (and so `docs/reviews/`) and `data/`. Relative paths are refused (the hook cannot see a
-  `dir_fd` they may be relative to). Starting another program (`subprocess`, `os.system`,
-  `exec`, `spawn`, `fork`) and loading native code through `ctypes` are refused.
-- It is installed only in a process started for one pipeline run, by
-  `python -m hypocurate.access.guarded` (`guarded.run_guarded`), which exits when the run
-  ends. `install()` refuses to run in any other process, so the guard can never be
-  installed in a process that later needs those paths: the web service, the migrations,
-  the command line's `sources` commands (registration reads `data/`) and the test process
-  never install it.
+**What it is not.** Python's own documentation warns that audit hooks are not suitable for
+implementing a sandbox, because code in the same process can bypass them
+(https://docs.python.org/3/library/sys.html#sys.addaudithook; PEP 578). In particular, as the
+step 5 review showed:
+- a file descriptor that is already open can still be read;
+- the guard's own state can be changed from inside the process;
+- `ctypes`, once imported (the database driver imports it before the guard is installed),
+  can still read and write process memory directly (`from_address`; tested). Foreign calls
+  raise an audit event the hook refuses (`string_at` was refused in our runs, though the
+  review reports it working in its setup), but that is no barrier to code that tries;
+- sockets, and so the database with the credentials the process has, are not restricted;
+- the child inherits its environment, and startup hooks or modules imported before the guard
+  run unguarded;
+- checking a path and then opening it is not atomic.
+So it catches accidents by our own code; it does not stop code that tries to get around it.
+That is enough under the threat model (owner, 2026-10-05; CLAUDE.md, register 'threat_model'):
+agents return text only and never execute code, and only trusted code runs. Agents that
+execute code are in the backlog, with operating-system isolation as a precondition.
 
-Limit: an audit hook sees what Python code opens. Files that C libraries open themselves
-(libpq's configuration, OpenSSL's certificate store) are not seen, and native code could
-bypass the hook entirely, which is why loading native code through `ctypes` is refused.
-It is an in-process guard, not an operating-system sandbox. The deployed image holds no
-`tests/` or `docs/` at all (step 2, checked in CI).
+**The one construction-level guarantee** about answer material is the deployed image: it
+contains no `tests/` and no `docs/` (Dockerfile; checked in CI by `scripts/check_runtime_image.py`).
+In development the files exist on disk, and only this tripwire stands in the way of an
+accidental read.
+
+`install()` runs only in the process started by `python -m hypocurate.access.guarded`, once,
+with a private scratch directory; it refuses to run in any other process, so the web service,
+the migrations, the `sources` commands (registration reads `data/`) and the tests are never
+guarded.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import sys
@@ -1463,8 +2067,21 @@ def _resolve(path) -> str | None:
     return os.path.realpath(path)
 
 
-def _refuse(what: str) -> None:
-    raise PermissionError(f"file guard: {what} is outside the approved inputs of pipeline code")
+REPORT_PREFIX = "HCGUARD "  # one line per refusal on standard error, read by guarded.run_guarded
+
+
+def _printable(value: str, limit: int = 200) -> str:
+    return "".join(c if c.isprintable() else "?" for c in value[:limit])
+
+
+def _refuse(what: str, event: str = "open") -> None:
+    message = f"file guard: {what} is outside the approved inputs of pipeline code"
+    try:  # no audit event is raised by writing to an already-open stream
+        sys.stderr.write(REPORT_PREFIX + json.dumps({"event": _printable(event, 40), "what": _printable(what)}) + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+    raise PermissionError(message)
 
 
 def _check_path(path, writing: bool) -> None:
@@ -1472,11 +2089,11 @@ def _check_path(path, writing: bool) -> None:
         return
     real = _resolve(path)
     if real is None:
-        _refuse(f"relative path {os.fsdecode(path)!r}")
+        _refuse(f"relative path {os.fsdecode(path)!r}", "relative_path")
     scratch = _state["scratch"]
     allowed = _inside(real, (scratch,)) if writing else _inside(real, _state["read_roots"] + (scratch,))
     if not allowed:
-        _refuse(f"{'writing' if writing else 'reading'} {real}")
+        _refuse(f"{'writing' if writing else 'reading'} {real}", "write" if writing else "read")
 
 
 def _hook(event: str, args: tuple) -> None:
@@ -1491,7 +2108,7 @@ def _hook(event: str, args: tuple) -> None:
             if isinstance(a, (str, bytes, os.PathLike)):
                 _check_path(a, writing=True)
     elif event in REFUSED_EVENTS:
-        _refuse(f"{event}")
+        _refuse(f"{event}", event)
 
 
 def check_scratch(scratch: str) -> None:
@@ -1524,9 +2141,9 @@ def install(scratch: str) -> None:
 ### `hypocurate/access/guarded.py`
 
 ```python
-"""Runs pipeline code in a fresh process under the file guard (`file_guard`).
+"""Runs pipeline code in a fresh process under the file guard's tripwire (`file_guard`).
 
-`run_guarded("hypocurate.module:function", payload)` starts
+`run_guarded("hypocurate.module:function", payload, audit=(engine, run_id))` starts
 `python -m hypocurate.access.guarded`, sends it the target and a JSON payload, and returns
 the target's JSON result. The child:
 
@@ -1536,14 +2153,19 @@ the target's JSON result. The child:
    plotting library in step 7); its working directory is the scratch directory;
 2. removes the repository root from its import path (the `hypocurate` package is already
    imported and keeps its own path), and imports the modules in `PRELOADED`;
-3. installs the guard, irreversibly;
+3. installs the guard;
 4. imports the target, which must be inside the `hypocurate` package, calls it with the
    payload, writes the result to its standard output and exits.
 
-This is the only place that installs the guard. The pipeline's entry points (the command
-line's run command, step 8; the worker's run of a claimed job, step 9) run each pipeline
-run through `run_guarded`. The web service, the migrations, the `sources` commands and
-the test process do not.
+The guard's refusals come back on the child's standard error; the parent copies each into
+the audit log as a failure (code `file_guard`) for the run given in `audit`, or to the
+process log if no run is given or the database cannot take it.
+
+This is a tripwire against *accidental* file access by trusted code, not a sandbox (see
+`file_guard`). This is the only place that installs it. The pipeline's entry points (the
+command line's run command, step 8; the worker's run of a claimed job, step 9) run each
+pipeline run through `run_guarded`. The web service, the migrations, the `sources` commands
+and the test process do not.
 """
 from __future__ import annotations
 
@@ -1571,9 +2193,36 @@ class GuardedRunError(Exception):
     """The guarded process failed; the message is its error."""
 
 
+MAX_REPORTED = 100  # refusals copied into the audit log per run; the rest are counted
+
+
+def _report_refusals(stderr: str, audit) -> None:
+    """Copies the guard's refusal lines into the audit log (or the process log)."""
+    from hypocurate.access.context import AccessContext
+    from hypocurate.access.layer import LOG, log_failure
+    reports = []
+    for line in stderr.splitlines():
+        if line.startswith(file_guard.REPORT_PREFIX):
+            try:
+                r = json.loads(line[len(file_guard.REPORT_PREFIX):])
+                reports.append({"event": str(r.get("event", ""))[:40], "what": str(r.get("what", ""))[:200]})
+            except ValueError:
+                reports.append({"event": "unreadable", "what": ""})
+    for i, r in enumerate(reports[:MAX_REPORTED]):
+        extra = dict(r, **({"more": len(reports) - MAX_REPORTED} if i == MAX_REPORTED - 1
+                           and len(reports) > MAX_REPORTED else {}))
+        if audit is None:
+            LOG.warning(json.dumps({"file_guard": extra}, sort_keys=True))
+        else:
+            engine, run_id = audit
+            log_failure(engine, AccessContext(int(run_id), "invalid", "invalid"), "guarded_run", "file_guard",
+                        **extra)
+
+
 def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = None,
-                timeout: float | None = None) -> Any:
-    """Runs `target(payload)` in a guarded child process and returns its JSON result."""
+                timeout: float | None = None, audit=None) -> Any:
+    """Runs `target(payload)` in a guarded child process and returns its JSON result.
+    `audit`: (engine, run_id), where the guard's refusals are logged as failures."""
     if not target.startswith("hypocurate.") or ":" not in target:
         raise ValueError(f"target {target!r} must be 'hypocurate.<module>:<function>'")
     # mode 0700, in the system temporary directory; removed here, whatever the child does
@@ -1585,6 +2234,7 @@ def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = N
                                    env=env if env is not None else dict(os.environ))
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+    _report_refusals(completed.stderr, audit)
     lines = completed.stdout.strip().splitlines()
     try:
         answer = json.loads(lines[-1])
@@ -1632,8 +2282,9 @@ if __name__ == "__main__":
 """Checks of the file guard from inside a guarded process (`guarded.run_guarded`).
 
 `probe(actions)` performs each action and reports "ok", or "refused: ..." when the guard
-refused it. It is how the tests (and, later, a deploy-time self-check) show what pipeline
-code can and cannot reach. It reads nothing it reports beyond a byte count.
+refused it. It is how the tests (and, later, a deploy-time self-check) show what the
+tripwire catches. It reads nothing it reports beyond a byte count. It does not show that
+the guard cannot be bypassed: it cannot be, by design (see `file_guard`).
 """
 from __future__ import annotations
 
@@ -1734,6 +2385,21 @@ def _ctypes(_: Any) -> str:
     return "ok"
 
 
+def _ctypes_string_at(_: Any) -> str:
+    """Calls through preloaded ctypes functions (string_at) raise the call event the guard refuses."""
+    import ctypes
+    return f"ok {ctypes.string_at(ctypes.c_char_p(b'x'), 1)!r}"
+
+
+def _ctypes_from_address(_: Any) -> str:
+    """A documented limit of the tripwire: ctypes, once imported before the guard (by the database
+    driver), can still read process memory directly (`from_address`); only new library loads and
+    foreign calls are refused."""
+    import ctypes
+    buffer = ctypes.create_string_buffer(b"x")
+    return f"ok {ctypes.c_char.from_address(ctypes.addressof(buffer)).value!r}"
+
+
 def _register(_: Any) -> str:
     from hypocurate.sources.versions import SOURCES, read_definition_files
     read_definition_files(SOURCES["mpea"])
@@ -1741,13 +2407,14 @@ def _register(_: Any) -> str:
 
 
 def _role_input(action: dict) -> str:
-    """A role's complete input, built through the access layer inside the guarded process."""
+    """A role's complete input, built through the dispatcher and the access layer inside the
+    guarded process."""
     import base64
     import json
-    from hypocurate.access import Access, role_input
+    from hypocurate.access import bind, role_input
     from hypocurate.db.engine import make_engine
     engine = make_engine(os.environ["DATABASE_URL"])
-    access = Access(engine, action["run"], action["role"], action["stage"], source_key=action.get("source"))
+    access = bind(engine, action["run"], action["agent_setting"], source_key=action.get("source"))
     out = json.dumps(role_input(access), sort_keys=True,
                      default=lambda b: base64.b64encode(b).decode() if isinstance(b, bytes) else str(b))
     engine.dispose()
@@ -1759,7 +2426,9 @@ ACTIONS: dict[str, Callable[[dict], str]] = {
     "list": lambda a: _list(a["path"], a.get("how", "listdir")),
     "write": lambda a: _write(a["path"]),
     "write_scratch": _write_scratch, "scratch": _scratch, "render": _render, "database": _database, "certificates": _certificates,
-    "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "register": _register,
+    "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "ctypes_string_at": _ctypes_string_at,
+    "ctypes_from_address": _ctypes_from_address,
+    "register": _register,
     "role_input": _role_input,
 }
 
@@ -1829,14 +2498,73 @@ index 2b2b5a1..bfd0861 100644
      source_dir = safe_path_within(data_dir, definition.directory)
 ```
 
+### `hypocurate/sources/connection.py`
+
+```diff
+diff --git a/hypocurate/sources/connection.py b/hypocurate/sources/connection.py
+index 2742cf9..50571dc 100644
+--- a/hypocurate/sources/connection.py
++++ b/hypocurate/sources/connection.py
+@@ -2,7 +2,11 @@
+ 
+ Loads the latest sealed version of a source, reads it with its adapter, and returns the
+ first few records in the common record format, with counts. It only reads: the
+-transaction is READ ONLY, so it cannot write to the database."""
++transaction is READ ONLY, so it cannot write to the database.
++
++It also reports, per category field, how many values are not in the access layer's
++vocabularies (counts only, never the values), so a source with unfamiliar labels is noticed
++(owner, 2026-10-05). Adding a value to a vocabulary is a register change."""
+ from __future__ import annotations
+ 
+ from collections import Counter
+@@ -10,6 +14,7 @@ from dataclasses import dataclass
+ 
+ from sqlalchemy import Engine, text
+ 
++from hypocurate.access import vocabulary
+ from hypocurate.sources import adapters
+ from hypocurate.sources.record import CommonRecord
+ from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
+@@ -25,12 +30,14 @@ class ConnectionReport:
+     blank_rows: int
+     status_counts: dict[str, int]  # harmonized values by status, over all records read
+     sample: tuple[CommonRecord, ...]
++    unrecognized: dict[str, int]  # per category field, values outside its vocabulary (counts only)
+ 
+     def to_json(self) -> dict:
+         return {
+             "source_key": self.source_key, "version_id": self.version_id, "version_label": self.version_label,
+             "fingerprint": self.fingerprint, "records_read": self.records_read, "blank_rows": self.blank_rows,
+-            "status_counts": self.status_counts, "sample": [r.to_json() for r in self.sample],
++            "status_counts": self.status_counts, "unrecognized": self.unrecognized,
++            "sample": [r.to_json() for r in self.sample],
+         }
+ 
+ 
+@@ -43,8 +50,11 @@ def test_connection(engine: Engine, key: str, n: int = 5) -> ConnectionReport:
+         conn.rollback()
+     result = adapters.read(version)
+     counts = Counter(v.status for r in result.records for v in r.harmonized.values())
++    unrecognized = vocabulary.unrecognized_counts(
++        (f, r.harmonized[f].value) for r in result.records for f in vocabulary.CATEGORY_FIELDS
++        if r.harmonized[f].status in ("converted", "assigned"))
+     return ConnectionReport(key, version.id, version.label, version.fingerprint, len(result.records),
+-                            len(result.blank_rows), dict(sorted(counts.items())), result.records[:n])
++                            len(result.blank_rows), dict(sorted(counts.items())), result.records[:n], unrecognized)
+ 
+ 
+ test_connection.__test__ = False  # a function, not a pytest test
+```
+
 ### `scripts/check_runtime_image.py`
 
 ```diff
 diff --git a/scripts/check_runtime_image.py b/scripts/check_runtime_image.py
-index f4f02a5..0d6d95c 100644
+index f4f02a5..6a5b4dd 100644
 --- a/scripts/check_runtime_image.py
 +++ b/scripts/check_runtime_image.py
-@@ -28,7 +28,11 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
+@@ -28,7 +28,12 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
              "data/controlled_duplicates/extract.csv",
              # Step 4b: the assumptions register and its page.
              "hypocurate/assumptions.json", "hypocurate/assumptions.py",
@@ -1845,9 +2573,30 @@ index f4f02a5..0d6d95c 100644
 +            # Step 5: the access layer and the guarded process that pipeline runs use.
 +            "hypocurate/access/allowlist.py", "hypocurate/access/layer.py", "hypocurate/access/fields.py",
 +            "hypocurate/access/stage.py", "hypocurate/access/inputs.py", "hypocurate/access/file_guard.py",
-+            "hypocurate/access/guarded.py", "hypocurate/access/guard_probe.py"]
++            "hypocurate/access/guarded.py", "hypocurate/access/guard_probe.py", "hypocurate/access/vocabulary.py",
++            "hypocurate/access/context.py", "hypocurate/access/dispatch.py"]
  FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
  FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
+```
+
+### `CLAUDE.md`
+
+```diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d3fa37c..dc4b0ce 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -44,6 +44,11 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
+ 11. **Per-run calibration (PRD 5.10) is a flag, not a gate.** When inference cannot run, show "calibration unavailable" with the reason. Software correctness (pass/fail against an independent reference) is separate from calibration (a reported finding).
+ 12. **Every model call is recorded** with tokens and actual cost (`model_call`). Spending caps: $2 per run, $50 per month.
+ 13. **Wording:** outcomes are always stated "in the sources searched". Never write that data "do not exist".
++14. **Nothing a model controls ever receives SQL, a database connection or a file path.** Agents get data only as text built from an access object that the trusted dispatcher (`hypocurate.access.dispatch.bind`) bound to a run, role, stage and source. No code gives an agent a tool that runs SQL, opens files or executes code.
++
++## Threat model (owner, 2026-10-05)
++
++The access layer and its tests guard against **our own code** leaking data to a model. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL or file tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. The access layer is not a boundary against hostile code running in the same process, and the file guard is a tripwire against accidental file access, not a sandbox. The only construction-level guarantee about answer material is that the deployed image contains no `tests/` or `docs/`. Agents that execute code are in the backlog, with operating-system isolation as a precondition. Do not claim more than this anywhere.
+ 
+ ## Environment
 ```
 
 
@@ -1855,7 +2604,7 @@ index f4f02a5..0d6d95c 100644
 
 ```diff
 diff --git a/hypocurate/assumptions.json b/hypocurate/assumptions.json
-index ffd104d..3825d1a 100644
+index ffd104d..49dcbc8 100644
 --- a/hypocurate/assumptions.json
 +++ b/hypocurate/assumptions.json
 @@ -166,7 +166,15 @@
@@ -1959,7 +2708,7 @@ index ffd104d..3825d1a 100644
      ]
    },
    {
-@@ -2816,5 +2839,529 @@
+@@ -2816,5 +2839,957 @@
      "history": [],
      "notes": [],
      "tests": []
@@ -2035,9 +2784,9 @@ index ffd104d..3825d1a 100644
 +    "tests": [
 +      "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
 +      "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
-+      "tests/test_access_planted.py::test_nothing_from_another_run_reaches_any_role",
++      "tests/test_access_projected.py::test_nothing_from_another_run_reaches_any_role",
 +      "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
-+      "tests/test_access_planted.py::test_no_planted_value_in_the_commentators_input_without_a_freeze"
++      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze"
 +    ]
 +  },
 +  {
@@ -2085,23 +2834,24 @@ index ffd104d..3825d1a 100644
 +    "notes": [],
 +    "tests": [
 +      "tests/test_access_layer.py::test_record_counts_are_counts_from_the_sealed_source",
-+      "tests/test_access_planted.py::test_no_planted_value_in_the_planners_complete_input"
++      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_planners_complete_input"
 +    ]
 +  },
 +  {
 +    "key": "critic_metadata_without_numbers",
 +    "name": "What the Critic sees about records",
 +    "state": "in_force",
-+    "statement": "The Critic sees source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field, not grain size and not temperature. Flags: kind, category and record ids, never the numbers compared.",
++    "statement": "The Critic sees source descriptions, never source content. Per record: id, source, item index, kind, alloy label (derived by code from the composition) and composition, DOI (DOI syntax only, else 'unrecognized'), each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method) from their vocabularies, else 'unrecognized'. No measured number of any field, no paper title, no origin key. Flags: kind and category from their vocabularies, and record ids; never the numbers compared.",
 +    "value": {
-+      "text": "metadata, statuses and categories; no measured numbers",
++      "text": "metadata, statuses and vocabulary categories; no measured numbers, no titles, no origin keys",
 +      "unit": null
 +    },
 +    "category": "data_handling",
 +    "affects": "The Critic's classification of flags (step 8).",
 +    "reason": "PRD 4: the Critic is told the kind of flag, never the numbers compared; and the source files contain the outcome values.",
 +    "evidence": [
-+      "Owner's answer to step 5 question 1, 2026-10-05."
++      "Owner's answer to step 5 question 1, 2026-10-05.",
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
 +    ],
 +    "decided": {
 +      "by": "owner (Khalid El-Awady)",
@@ -2129,14 +2879,22 @@ index ffd104d..3825d1a 100644
 +      ],
 +      "note": null
 +    },
-+    "history": [],
++    "history": [
++      {
++        "value": "The Critic sees source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field, not grain size and not temperature. Flags: kind, category and record ids, never the numbers compared.",
++        "from": "2026-10-05",
++        "to": "2026-10-05",
++        "note": "Step 5 first build; changed after the second-model review."
++      }
++    ],
 +    "notes": [
 +      "Category values and paper references are the source's text, shown as the source gives them."
 +    ],
 +    "tests": [
 +      "tests/test_access_layer.py::test_record_metadata_carries_no_number_but_identity_and_composition",
 +      "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
-+      "tests/test_access_planted.py::test_no_planted_value_in_the_critics_complete_input"
++      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
++      "tests/test_access_dispatch.py::test_vocabularies_mark_what_they_do_not_know"
 +    ]
 +  },
 +  {
@@ -2190,7 +2948,7 @@ index ffd104d..3825d1a 100644
 +    ],
 +    "tests": [
 +      "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
-+      "tests/test_access_planted.py::test_no_planted_value_in_the_gap_report_input",
++      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_gap_report_input",
 +      "tests/test_access_layer.py::test_ending_without_a_freeze_opens_only_the_gap_report_input"
 +    ]
 +  },
@@ -2198,16 +2956,17 @@ index ffd104d..3825d1a 100644
 +    "key": "source_meta_fields",
 +    "name": "What a role sees about a source",
 +    "state": "in_force",
-+    "statement": "A source is described by a fixed set of named plain fields: key, name, type, kind of data, licence, grouping unit and fields available. Free text such as the address, the version label or notes never reaches the Planner or the Critic.",
++    "statement": "A source is described by a fixed set of named plain fields: key; name, licence and fields available from the code's source definitions (SOURCES); source type, kind of data and grouping unit from the sealed version the run recorded. Nothing from the mutable source registry (address, edited name, licence, properties or settings) reaches a role; editing the registry after dispatch changes nothing for that run.",
 +    "value": {
-+      "text": "key, name, source_type, data_kind, licence, grouping_unit, fields_available",
++      "text": "key; name, licence, fields available (code); type, kind, grouping unit (sealed version)",
 +      "unit": null
 +    },
 +    "category": "data_handling",
 +    "affects": "The source descriptions every role receives.",
 +    "reason": "Free text could carry anything, including an outcome value.",
 +    "evidence": [
-+      "Owner's addition B at the approval of the step 5 plan, 2026-10-05."
++      "Owner's addition B at the approval of the step 5 plan, 2026-10-05.",
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
 +    ],
 +    "decided": {
 +      "by": "owner (Khalid El-Awady)",
@@ -2237,32 +2996,41 @@ index ffd104d..3825d1a 100644
 +      ],
 +      "note": null
 +    },
-+    "history": [],
++    "history": [
++      {
++        "value": "A source is described by a fixed set of named plain fields: key, name, type, kind of data, licence, grouping unit and fields available. Free text such as the address, the version label or notes never reaches the Planner or the Critic.",
++        "from": "2026-10-05",
++        "to": "2026-10-05",
++        "note": "Step 5 first build; changed after the second-model review."
++      }
++    ],
 +    "notes": [
 +      "Name and licence are text; they are set from the code's source definitions (SOURCES in hypocurate/sources/versions.py), not from source content."
 +    ],
 +    "tests": [
 +      "tests/test_access_layer.py::test_sources_meta_is_exactly_the_named_plain_fields",
-+      "tests/test_access_planted.py::test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic"
++      "tests/test_access_projected.py::test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic",
++      "tests/test_access_layer.py::test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry"
 +    ]
 +  },
 +  {
 +    "key": "plan_named_parts",
-+    "name": "The named parts of a plan",
++    "name": "The plan's schema",
 +    "state": "in_force",
-+    "statement": "A plan's content is read only under its named parts (PRD 5.1): claim, hypothesis version, variables, scope, model, sufficiency, fields to extract, exclusion rules, eligibility rules, verdict statement, sensitivity analyses. Any other key is withheld from every role. The list of fields to extract keeps only names of the common fields.",
++    "statement": "A plan's content is read only through PLAN_SCHEMA, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped. Power assumptions likewise through POWER_SCHEMA, and the sensitivity keys through their vocabulary. Defined in step 5 (owner, 2026-10-05); the plan model of step 6 must follow it.",
 +    "value": {
-+      "text": "the eleven named parts of PRD 5.1",
++      "text": "PLAN_SCHEMA (nested, named keys and vocabulary leaves)",
 +      "unit": null
 +    },
 +    "category": "data_handling",
 +    "affects": "What any role receives of a plan; the plan model (step 6) stores its content under these names.",
 +    "reason": "Allowed fields, not blocked fields (PRD 4).",
 +    "evidence": [
-+      "PRD 5.1; step 5 plan, point 9 (approved by the owner, 2026-10-05)."
++      "PRD 5.1; step 5 plan, point 9 (approved by the owner, 2026-10-05).",
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
 +    ],
 +    "decided": {
-+      "by": "step 5 (owner's approval of the plan)",
++      "by": "owner (Khalid El-Awady)",
 +      "date": "2026-10-05"
 +    },
 +    "expert_review": {
@@ -2275,27 +3043,24 @@ index ffd104d..3825d1a 100644
 +      "status": "yes",
 +      "settings": [
 +        {
-+          "ref": "python:hypocurate.access.allowlist:PLAN_KEYS",
-+          "equals": [
-+            "claim",
-+            "hypothesis_version",
-+            "variables",
-+            "scope",
-+            "model",
-+            "sufficiency",
-+            "fields_to_extract",
-+            "exclusion_rules",
-+            "eligibility_rules",
-+            "verdict_statement",
-+            "sensitivity_analyses"
-+          ]
++          "ref": "python:hypocurate.access.allowlist:PLAN_SCHEMA"
++        },
++        {
++          "ref": "python:hypocurate.access.allowlist:POWER_SCHEMA"
 +        }
 +      ],
 +      "note": null
 +    },
-+    "history": [],
++    "history": [
++      {
++        "value": "A plan's content is read only under its named parts (PRD 5.1): claim, hypothesis version, variables, scope, model, sufficiency, fields to extract, exclusion rules, eligibility rules, verdict statement, sensitivity analyses. Any other key is withheld from every role. The list of fields to extract keeps only names of the common fields.",
++        "from": "2026-10-05",
++        "to": "2026-10-05",
++        "note": "Step 5 first build; changed after the second-model review."
++      }
++    ],
 +    "notes": [
-+      "The parts other than the field list are passed as written at the rules lock; step 6 defines their structure and must project each part from named keys too."
++      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval."
 +    ],
 +    "tests": [
 +      "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
@@ -2433,16 +3198,17 @@ index ffd104d..3825d1a 100644
 +    "key": "pipeline_file_guard",
 +    "name": "Approved input files of pipeline code",
 +    "state": "in_force",
-+    "statement": "A pipeline run executes in a fresh process (python -m hypocurate.access.guarded) under an irreversible guard: it may read only the Python installation and the package's code, and write only in a private scratch directory (an empty, 0700 hc-run-* directory in the system temporary directory, removed afterwards). tests/, docs/, data/ and the repository root cannot be read or listed; other programs and native code through ctypes are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. The database driver is imported before the guard is installed.",
++    "statement": "A tripwire against accidental file access by trusted pipeline code, not a sandbox. Each pipeline run executes in a fresh process (python -m hypocurate.access.guarded) where a Python audit hook refuses reading or listing anything outside the Python installation and the package's code, writing outside a private scratch directory, relative paths, other programs and new native libraries; each refusal is logged (audit log as a failure, or the process log). It does not stop code that tries to get around it: Python warns that audit hooks are unsuitable for a sandbox, and open descriptors, the guard's own state, preloaded ctypes (direct memory access), sockets and the database are not restricted. The only construction-level guarantee is that the deployed image contains no tests/ or docs/.",
 +    "value": {
-+      "text": "read: Python installation and package code; write: private scratch directory only",
++      "text": "tripwire: reads limited to the Python installation and package code; writes to a private scratch directory",
 +      "unit": null
 +    },
 +    "category": "operational",
 +    "affects": "Every pipeline run (the command line's run command, step 8; the worker, step 9).",
-+    "reason": "Answer material and review documents must be unreachable by construction, not by convention (step 1 open item 4).",
++    "reason": "Answer material and review documents should not be reached by accident (step 1 open item 4). The owner's first instruction asked for 'unreachable by construction'; after the step 5 review the owner scoped this to a tripwire against our own mistakes, with the deployed image (no tests/, no docs/) as the only construction-level guarantee.",
 +    "evidence": [
-+      "Step 1 summary, open item 4; step 5 plan and owner's addition C, 2026-10-05."
++      "Step 1 summary, open item 4; step 5 plan and owner's addition C, 2026-10-05.",
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
 +    ],
 +    "decided": {
 +      "by": "owner (Khalid El-Awady)",
@@ -2474,9 +3240,17 @@ index ffd104d..3825d1a 100644
 +      ],
 +      "note": null
 +    },
-+    "history": [],
++    "history": [
++      {
++        "value": "A pipeline run executes in a fresh process (python -m hypocurate.access.guarded) under an irreversible guard: it may read only the Python installation and the package's code, and write only in a private scratch directory (an empty, 0700 hc-run-* directory in the system temporary directory, removed afterwards). tests/, docs/, data/ and the repository root cannot be read or listed; other programs and native code through ctypes are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. The database driver is imported before the guard is installed.",
++        "from": "2026-10-05",
++        "to": "2026-10-05",
++        "note": "Step 5 first build; changed after the second-model review."
++      }
++    ],
 +    "notes": [
-+      "Limit: an audit hook sees what Python code opens; files that C libraries open themselves (libpq, OpenSSL) are not seen. It is an in-process guard, not an operating-system sandbox.",
++      "Python documentation, sys.addaudithook and PEP 578: audit hooks are not suitable for implementing a sandbox.",
++      "Sufficient under the threat model (entry 'threat_model'): only trusted code runs; agents return text only.",
 +      "A library that imports ctypes after the guard is installed is refused; such a library (for example the plotting library, step 7) must be added to PRELOADED with the owner's approval."
 +    ],
 +    "tests": [
@@ -2485,7 +3259,410 @@ index ffd104d..3825d1a 100644
 +      "tests/test_access_files.py::test_templates_database_and_certificates_work_under_the_guard",
 +      "tests/test_access_files.py::test_source_registration_cannot_run_under_the_guard",
 +      "tests/test_access_files.py::test_the_guarded_process_refuses_a_scratch_directory_that_would_open_anything_else",
-+      "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place"
++      "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place",
++      "tests/test_access_files.py::test_preloaded_ctypes_still_works_a_documented_limit",
++      "tests/test_access_dispatch.py::test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log",
++      "tests/test_check_runtime_image.py::test_clean_image_passes"
++    ]
++  },
++  {
++    "key": "threat_model",
++    "name": "Threat model of the access layer",
++    "state": "in_force",
++    "statement": "The access layer and its tests guard against our own code leaking data to a model. In sprint 1 agents are language models that return text only: they never execute code and never receive SQL, a database connection, a file path or other tools. Only trusted, reviewed code runs, and a trusted dispatcher binds each agent call to a run, role, stage and source. The access layer is not a boundary against hostile code in the same process. Agents that execute code are in the backlog, with operating-system isolation as a precondition.",
++    "value": {
++      "text": "own mistakes; text-only agents; trusted code",
++      "unit": null
++    },
++    "category": "operational",
++    "affects": "What the access layer and the file guard claim, and what step 8 may give an agent.",
++    "reason": "The step 5 review showed that an in-process guard cannot contain code that tries to get around it; the owner scoped the guarantees to our own mistakes.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "file:CLAUDE.md:Nothing a model controls ever receives SQL, a database connection or a file path"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [
++      "The owner's earlier instruction 'unreachable by construction' overreached; every claim that followed from it is corrected (step 5 summary)."
++    ],
++    "tests": [
++      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed",
++      "tests/test_access_dispatch.py::test_bind_reads_the_role_from_the_runs_agent_settings_and_the_stage_from_the_database"
++    ]
++  },
++  {
++    "key": "access_context_dispatcher",
++    "name": "Access objects come only from the dispatcher",
++    "state": "in_force",
++    "statement": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
++    "value": {
++      "text": "dispatch.bind only",
++      "unit": null
++    },
++    "category": "operational",
++    "affects": "Every agent read (steps 8 and 9).",
++    "reason": "Review finding 2: caller-chosen, mutable role, run, stage and source could be misused by our own code.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.dispatch:bind"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [],
++    "tests": [
++      "tests/test_access_dispatch.py::test_bind_refuses_a_setting_or_source_the_run_did_not_record",
++      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed"
++    ]
++  },
++  {
++    "key": "access_logging",
++    "name": "What the audit log records, and its fallback",
++    "state": "in_force",
++    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional.",
++    "value": {
++      "text": "allowed / denied / failed; process log as fallback",
++      "unit": null
++    },
++    "category": "operational",
++    "affects": "The audit log of every run (PRD 14.2).",
++    "reason": "Review finding 5.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.layer:FAILURES",
++          "equals": [
++            "unknown_run",
++            "lock_timeout",
++            "reader_error",
++            "database_error",
++            "file_guard"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.layer:DENIALS"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [],
++    "tests": [
++      "tests/test_access_dispatch.py::test_a_readers_error_is_a_logged_failure",
++      "tests/test_access_dispatch.py::test_an_unknown_run_is_a_logged_failure",
++      "tests/test_access_dispatch.py::test_when_the_database_is_unavailable_the_process_log_is_the_fallback",
++      "tests/test_access_dispatch.py::test_role_input_is_never_silently_empty",
++      "tests/test_access_dispatch.py::test_only_validated_bounded_strings_are_logged",
++      "tests/test_access_dispatch.py::test_a_roles_whole_input_is_read_in_one_transaction"
++    ]
++  },
++  {
++    "key": "audit_failure_rows_without_run_lock",
++    "name": "Failure rows: a named exception to the locking protocol",
++    "state": "in_force",
++    "statement": "Audit rows for access failures (unknown run, lock timeout, reader or database error, file-guard refusal) are written in their own short transaction without hc_write_lock: there is no run to lock, or the lock is what failed. An audit_log insert takes only a key-share lock on the run, which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an unknown run, run_id is NULL and the requested id is in the detail.",
++    "value": {
++      "text": "failure rows without hc_write_lock",
++      "unit": null
++    },
++    "category": "operational",
++    "affects": "The locking protocol of step 3 (every other write path still calls hc_write_lock first).",
++    "reason": "A failure must be logged even when the run's lock cannot be taken.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.layer:log_failure"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [
++      "Owner's answer to the fix-plan question 1, 2026-10-05: option (a)."
++    ],
++    "tests": [
++      "tests/test_access_layer.py::test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hanging",
++      "tests/test_access_dispatch.py::test_bind_logs_an_unknown_run_as_a_failure_with_no_run"
++    ]
++  },
++  {
++    "key": "category_vocabularies",
++    "name": "Vocabularies of category values in blinded views",
++    "state": "in_force",
++    "statement": "Category values shown to the Planner, the Critic and in gap reports come from fixed vocabularies; any other value is shown as 'unrecognized' (the stored value is unchanged). Test type: tension, compression. Temperature band: room temperature, cryogenic, elevated. Phase class: FCC, BCC, other. Microstructure: '+'-joined tokens from FCC, BCC, B2, HCP, L12, Laves, Sec., Other. Processing method: CAST, WROUGHT, ANNEAL, POWDER, OTHER. Unrecognized values are counted per field (never shown) in test connection and in the run's coverage. Adding a value is a register change needing the owner's approval.",
++    "value": {
++      "text": "five vocabularies; marker 'unrecognized'",
++      "unit": null
++    },
++    "category": "data_handling",
++    "affects": "What source text the Planner, the Critic and the gap report can receive.",
++    "reason": "Review finding 3: free text in category fields could carry outcome values. Built from the frozen sources' actual values (no value of either source is unrecognized).",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.vocabulary:TEST_TYPES",
++          "equals": [
++            "compression",
++            "tension"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:TEMPERATURE_BANDS",
++          "equals": [
++            "cryogenic",
++            "elevated",
++            "room temperature"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:PHASE_CLASSES",
++          "equals": [
++            "BCC",
++            "FCC",
++            "other"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:MICROSTRUCTURE_TOKENS",
++          "equals": [
++            "B2",
++            "BCC",
++            "FCC",
++            "HCP",
++            "L12",
++            "Laves",
++            "Other",
++            "Sec."
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:PROCESSING_METHODS",
++          "equals": [
++            "ANNEAL",
++            "CAST",
++            "OTHER",
++            "POWDER",
++            "WROUGHT"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:UNRECOGNIZED",
++          "equals": "unrecognized"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [
++      "Owner's approval of the vocabularies and of the unrecognized counts, 2026-10-05."
++    ],
++    "tests": [
++      "tests/test_access_dispatch.py::test_vocabularies_mark_what_they_do_not_know",
++      "tests/test_access_dispatch.py::test_the_frozen_sources_have_no_unrecognized_category_value",
++      "tests/test_access_dispatch.py::test_unrecognized_values_are_counted_in_coverage_and_test_connection"
++    ]
++  },
++  {
++    "key": "code_vocabularies",
++    "name": "Vocabularies of codes our own code writes",
++    "state": "in_force",
++    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 must write these codes. Adding one is a register change needing the owner's approval.",
++    "value": {
++      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys",
++      "unit": null
++    },
++    "category": "data_handling",
++    "affects": "Flags (step 6), eligibility decisions (step 6), sensitivity analyses (step 7) as roles see them.",
++    "reason": "Review finding 3: stored codes are text and could carry anything.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.vocabulary:FLAG_KINDS",
++          "equals": [
++            "exact_duplicate",
++            "invalid_value",
++            "model_recalled",
++            "out_of_scope",
++            "possible_duplicate",
++            "scope_not_confirmed",
++            "values_disagree"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:FLAG_CATEGORIES",
++          "equals": [
++            "differ beyond tolerance",
++            "identical values",
++            "outside scope",
++            "physically impossible",
++            "scope not confirmed",
++            "within tolerance"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:ELIGIBILITY_RULES",
++          "equals": [
++            "duplicate_counted_once",
++            "excluded_by_rule",
++            "in_scope",
++            "invalid_value",
++            "model_recalled",
++            "out_of_scope",
++            "scope_not_confirmed",
++            "single_grain_size"
++          ]
++        },
++        {
++          "ref": "python:hypocurate.access.vocabulary:SENSITIVITY_KEYS",
++          "equals": [
++            "possible_duplicates_separate",
++            "removal_after_lock",
++            "same_alloy_1_at_pct",
++            "scope_not_confirmed_included",
++            "six_batches_as_groups",
++            "source_only_assignments",
++            "tension_and_compression"
++          ]
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [],
++    "tests": [
++      "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
++      "tests/test_access_dispatch.py::test_the_gap_report_input_has_codes_not_failure_text"
++    ]
++  },
++  {
++    "key": "accepted_disclosures",
++    "name": "What the blinded views disclose by design",
++    "state": "in_force",
++    "statement": "The blinding of the Planner, the Critic, the gap report and the Commentator without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; the Analyst's gap report passed to the Commentator; timing and the existence of refusals. Timing is not protected.",
++    "value": {
++      "text": "the nine disclosures in ACCEPTED_DISCLOSURES",
++      "unit": null
++    },
++    "category": "data_handling",
++    "affects": "The claim made for blinding (PRD 4) in every document.",
++    "reason": "Review finding 3 and its note on counts and timing: these follow from the approved contract; 'no row-level value can be inferred' would be false.",
++    "evidence": [
++      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-05"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.access.allowlist:ACCEPTED_DISCLOSURES"
++        }
++      ],
++      "note": null
++    },
++    "history": [],
++    "notes": [],
++    "tests": [
++      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
++      "tests/test_access_dispatch.py::test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure"
 +    ]
    }
  ]
@@ -2509,6 +3686,12 @@ source's free-text address and version label, and in an unnamed key of the plan.
 OTHER: a different value in other runs: the original run of the narrower question (its
 records, coefficient, stage outputs and commentary) and an earlier, failed run of the same
 hypothesis version (its records and stage outputs).
+
+Inside allowed fields (step 5 review, finding 3), PLANTED is also in: category cells
+(microstructure, processing method, phase class), the paper title, the DOI, every kind of
+plan leaf and the power assumptions, an eligibility rule, a failed source's failure text, a
+flag's kind and category, and the source registry's licence and properties edited after
+dispatch.
 
 GAP_REPORT: the text of the Analyst's gap report, on runs that end with no dataset frozen.
 
@@ -2540,6 +3723,9 @@ GAP_REPORT = "Insufficient in the sources searched: grain size is missing for mo
 
 YS, UTS, HV = "PROPERTY: YS (MPa)", "PROPERTY: UTS (MPa)", "PROPERTY: HV"
 GS, TT, TYPE = "PROPERTY: grain size ($\\mu$m)", "PROPERTY: Test temperature ($^\\circ$C)", "PROPERTY: Type of test"
+MICRO, PROCESS, PHASE = "PROPERTY: Microstructure", "PROPERTY: Processing method", "PROPERTY: BCC/FCC/other"
+TITLE, DOI = "REFERENCE: title", "REFERENCE: doi"
+ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 
 
 def mpea_rows(n: int) -> tuple[list[str], list[dict]]:
@@ -2561,6 +3747,12 @@ def planted_csv(value_ys=PLANTED["yield_strength"], value_uts=PLANTED["ultimate_
         r[TYPE], r[TT] = "T", "25.0"
         r[GS] = f"{12.5 + i}"
         planted.append(r)
+    # Planted inside fields the blinded views do show: category cells, the title, the DOI.
+    planted[0][MICRO] = f"FCC; yield strength {value_ys} MPa"
+    planted[0][PROCESS] = f"CAST {value_ys}"
+    planted[0][PHASE] = f"FCC {value_ys}"
+    planted[0][TITLE] = f"Yield strength of {value_ys} MPa in CoCrNi"
+    planted[0][DOI] = f"doi {value_ys}"
     unreadable = dict(rows[0])
     unreadable[YS] = f"{value_ys} MPa"  # the adapter keeps it as 'not a number: ...'
     planted.append(unreadable)
@@ -2590,6 +3782,7 @@ class AccessWorld:
     earlier_run: int  # an earlier run of the same hypothesis version
     records: list[int] = field(default_factory=list)
     flags: list[int] = field(default_factory=list)
+    settings: dict = field(default_factory=dict)  # role -> agent setting id recorded for the run
 
 
 def add_planted_version(w: World, key="mpea", content: bytes | None = None, label="v-planted") -> int:
@@ -2640,13 +3833,26 @@ def stage(w: World, run: int, name: str, role: str, payload: str, attempt=1) -> 
 
 
 def lock(w: World, run: int) -> None:
-    content = {"claim": DIRECTION, "model": {"alternative": f"k > 0 ({DIRECTION})"},
-               "fields_to_extract": ["grain_size", "yield_strength", "composition", DIRECTION,
-                                     repr(PLANTED["yield_strength"]), PLANTED["yield_strength"]],
-               "scope": {"phase_class": "FCC"},
-               "unnamed_key": {"planted": PLANTED["yield_strength"]}}
+    ys = PLANTED["yield_strength"]
+    # Planted in every kind of plan leaf; the projection keeps only named keys, vocabulary
+    # values (else the marker), numbers and field names.
+    content = {"claim": DIRECTION,
+               "variables": {"outcome": {"field": "yield_strength", "unit": f"{ys} MPa", "note": f"{ys}"},
+                             "predictor": {"field": "grain_size", "unit": "µm", "transformation": f"x^{ys}"}},
+               "model": {"name": "hall_petch_alloy_intercepts", "null": "k <= 0",
+                         "alternative": f"k > 0 ({DIRECTION}, {ys})", "alpha": 0.05, "comment": f"{ys}"},
+               "scope": {"phase_class": ["FCC", f"FCC {ys}"], "alloy_class": [f"{ys}"], "free": f"{ys}"},
+               "fields_to_extract": ["grain_size", "yield_strength", "composition", DIRECTION, repr(ys), ys],
+               "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1, "note": f"{ys}"},
+                                   {"rule": f"ys above {ys}", "values": ["tension", f"{ys}"]}],
+               "eligibility_rules": [{"flag_kind": "values_disagree", "rule": f"keep {ys}"}],
+               "verdict_statement": f"supported if {ys}",
+               "sensitivity_analyses": ["tension_and_compression", f"drop {ys}"],
+               "unnamed_key": {"planted": ys}}
     sql(w, "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
-           "min_groups, min_resid_df) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1)", r=run, j_c=content, fp=FP)
+           "min_groups, min_resid_df, power_assumptions) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1, :j_p)",
+        r=run, j_c=content, fp=FP, j_p={"method": "information_only", "scatter": 60.0, "note": f"{ys}",
+                                         "smallest_effect": f"{ys}"})
 
 
 def original_run(w: World) -> int:
@@ -2678,8 +3884,9 @@ def build(engine, stage_name: str) -> AccessWorld:
     # B: planted values in the source's free text: the version label and the address.
     add_planted_version(w, label=f"label {PLANTED['yield_strength']}")
     sql(w, "UPDATE source SET address = :a WHERE key = 'mpea'", a=f"https://example.org/{PLANTED['yield_strength']}")
-    sql(w, "INSERT INTO agent_setting (role, version, instruction, model) VALUES ('planner', 1, :i, 'model-a')",
-        i=f"remember {PLANTED['yield_strength']}")
+    settings = {"planner": val(w, "INSERT INTO agent_setting (role, version, instruction, model) "
+                                  "VALUES ('planner', 1, :i, 'model-a') RETURNING id",
+                               i=f"remember {PLANTED['yield_strength']}")}
     sql(w, "INSERT INTO tag_value (kind, value, status, decided_at) "
            "VALUES ('property', 'yield strength', 'approved', now())")
     sql(w, "INSERT INTO tag_value (kind, value, status) VALUES ('property', :v, 'proposed')",
@@ -2688,17 +3895,29 @@ def build(engine, stage_name: str) -> AccessWorld:
     h = w.hypothesis(narrower_of=original)
     vid = val(w, "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id) "
                  "VALUES (:h, 1, :t, :d) RETURNING id", h=h, t=DIRECTION, d=w.domain["grain_size_strengthening"])
-    w.run_sql("INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=w.source["mpea"])
+    for key in ("mpea", "tamu_fcc"):
+        w.run_sql("INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=w.source[key])
     w.submit(vid)
     w.confirm(vid)
     w.dispatch_version(vid)
-    earlier = w.running(vid=vid, sources=("mpea",))
+    earlier = w.running(vid=vid, sources=("mpea", "tamu_fcc"))
     w.lock(earlier)
     store_value_records(w, earlier, OTHER)
     stage(w, earlier, "curator", "curator", f"saw {OTHER}")
     w.fail(earlier)
-    rid = w.run(vid=vid, sources=("mpea",))
+    rid = w.run(vid=vid, sources=("mpea", "tamu_fcc"))
     world = AccessWorld(w, rid, original, earlier)
+    # Dispatch records the agent setting of each role (the dispatcher reads roles from here).
+    for role in ROLES:
+        sid = settings.get(role) or val(w, "INSERT INTO agent_setting (role, version, instruction, model) "
+                                           "VALUES (:o, 1, 'instruction', 'model-a') RETURNING id", o=role)
+        settings[role] = sid
+        sql(w, "INSERT INTO run_agent_setting (run_id, role, agent_setting_id) VALUES (:r, :o, :a)",
+            r=rid, o=role, a=sid)
+    world.settings = settings
+    # Edits to the source registry after dispatch must change nothing for this run.
+    sql(w, "UPDATE source SET licence = :l, properties_covered = :p WHERE key = 'mpea'",
+        l=f"licence {PLANTED['yield_strength']}", p=["yield_strength", f"{PLANTED['yield_strength']}"])
     if stage_name == "queued":
         return world
     w.start(rid)
@@ -2709,6 +3928,8 @@ def build(engine, stage_name: str) -> AccessWorld:
         return world
     lock(w, rid)
     w.search(rid, "mpea")
+    w.search(rid, "tamu_fcc", status="failed", nothing_found="failed_search",
+             reason=f"timed out after reading {PLANTED['yield_strength']}")
     world.records = store_records(w, rid)
     planted = [r for r in world.records
                if val(w, "SELECT harmonized->'yield_strength'->>'value' FROM record WHERE id = :r", r=r)
@@ -2719,11 +3940,13 @@ def build(engine, stage_name: str) -> AccessWorld:
     for rec in planted[:2]:
         sql(w, "INSERT INTO flag_record VALUES (:f, :r)", f=fid, r=rec)
     world.flags.append(fid)
+    world.flags.append(val(w, "INSERT INTO flag (run_id, kind, category) VALUES (:r, :k, :c) RETURNING id", r=rid,
+                           k=f"kind {PLANTED['yield_strength']}", c=f"differ by {PLANTED['yield_strength']}"))
     stage(w, rid, "curator", "curator", f"extracted yield strength {PLANTED['yield_strength']} MPa")
     if stage_name == "curation":
         return world
-    for rec in world.records:
-        w.decide(rid, rec)
+    for i, rec in enumerate(world.records):
+        w.decide(rid, rec, rule=f"kept at {PLANTED['yield_strength']}" if i == 0 else "in_scope")
     if stage_name in ("closed_without_freeze", "final_without_freeze"):
         sql(w, "INSERT INTO calibration_result (run_id, status, reason) VALUES (:r, 'unavailable', 'no_dataset_frozen')",
             r=rid)
@@ -2741,6 +3964,26 @@ def build(engine, stage_name: str) -> AccessWorld:
             w.complete(rid, "partly_sufficient")
         return world
     raise ValueError(stage_name)
+```
+
+### `tests/access_testing.py`
+
+```python
+"""Test-only construction of access objects (step 5 review, finding 2).
+
+Outside the tests, an access object comes only from the trusted dispatcher
+(`hypocurate.access.dispatch.bind`), which reads the role from the run's recorded agent
+settings and the stage from the database. The tests also need contexts the dispatcher would
+never produce (an unknown role, a stale or wrong stage, a source the run did not record), to
+show that every read still refuses them. They use this helper, which no package code imports.
+"""
+from hypocurate.access.context import AccessContext
+from hypocurate.access.layer import _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, Access
+
+
+def access_for(engine, run_id, role, stage, source_key=None, lock_timeout_ms=ACCESS_LOCK_TIMEOUT_MS):
+    return Access(engine, AccessContext(run_id, role, stage, source_key), lock_timeout_ms=lock_timeout_ms,
+                  _trusted=_TRUSTED)
 ```
 
 ### `tests/test_access_layer.py`
@@ -2763,11 +4006,11 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
-
 import access_world as aw
-from hypocurate.access import Access, AccessDenied, allowlist, layer, role_input
-from hypocurate.access.allowlist import ALLOWED, FIELDS, PLAN_KEYS, ROLES, SOURCE_META_FIELDS, STAGES, allowed
+from access_testing import access_for
+from hypocurate.access import Access, AccessDenied, AccessFailed, allowlist, bind, layer, role_input
+from hypocurate.access import vocabulary
+from hypocurate.access.allowlist import ALLOWED, FIELDS, ROLES, SOURCE_META_FIELDS, STAGES, allowed
 from hypocurate.access.fields import READERS
 from hypocurate.db.engine import make_engine
 from hypocurate.sources.record import HARMONIZED_FIELDS
@@ -2791,7 +4034,7 @@ def engine(migrated_database):
 def access(engine, world, role, stage, **kw):
     if role == "curator" and "source_key" not in kw:
         kw["source_key"] = "mpea"
-    return Access(engine, world.run, role, stage, **kw)
+    return access_for(engine, world.run, role, stage, **kw)
 
 
 def audit(engine, run=None):
@@ -2855,13 +4098,15 @@ def test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged(engine, w
                 a.get(field)
                 rows = audit(engine, world.run)[before:]
                 assert [(r.role, r.stage, r.function, r.allowed) for r in rows] == [(role, stage, field, True)]
-                assert rows[0].detail == {"actual_stage": stage, **({"source": "mpea"} if role == "curator" else {})}
+                assert rows[0].detail == {"result": "allowed", "actual_stage": stage,
+                                          **({"source": "mpea"} if role == "curator" else {})}
             else:
                 with pytest.raises(AccessDenied):
                     a.get(field)
                 rows = audit(engine, world.run)[before:]
                 assert [(r.role, r.stage, r.function, r.allowed) for r in rows] == [(role, stage, field, False)]
-                assert rows[0].detail["actual_stage"] == stage and "not on the" in rows[0].detail["reason"]
+                assert rows[0].detail["actual_stage"] == stage
+                assert rows[0].detail["result"] == "denied" and rows[0].detail["code"] == "not_on_list"
 
 
 @pytest.mark.parametrize("world_stage", ["queued", "failed"])
@@ -2931,18 +4176,21 @@ def test_unknown_roles_stages_and_fields_are_denied_and_logged(engine):
     for role, stage, field in (("judge", "before_lock", "claim"), ("planner", "anytime", "claim"),
                                ("planner", "before_lock", "everything")):
         with pytest.raises(AccessDenied):
-            Access(engine, world.run, role, stage).get(field)
-    rows = [(r.role, r.stage, r.function, r.allowed) for r in audit(engine, world.run)]
-    assert rows == [("judge", "before_lock", "claim", False), ("planner", "anytime", "claim", False),
-                    ("planner", "before_lock", "everything", False)]
+            access_for(engine, world.run, role, stage).get(field)
+    rows = [(r.role, r.stage, r.function, r.allowed, r.detail["code"]) for r in audit(engine, world.run)]
+    # Only validated strings are logged: anything not ours is "invalid" (with its length).
+    assert rows == [("invalid", "before_lock", "claim", False, "unknown_role"),
+                    ("planner", "invalid", "claim", False, "unknown_stage"),
+                    ("planner", "before_lock", "invalid", False, "not_on_list")]
 
 
 # --- Stages are read from the database; both sides of each checkpoint ------------------------
 
 def test_a_declared_stage_is_checked_against_the_database(engine):
     world = aw.build(engine, "before_lock")
-    with pytest.raises(AccessDenied, match="the run is at stage 'before_lock', not 'curation'"):
+    with pytest.raises(AccessDenied) as denied:
         access(engine, world, "critic", "curation").get("sources_meta")
+    assert denied.value.code == "stage_mismatch"
 
 
 def test_the_rules_lock_changes_what_each_role_may_see(engine):
@@ -2955,7 +4203,7 @@ def test_the_rules_lock_changes_what_each_role_may_see(engine):
         with pytest.raises(AccessDenied):
             a.get(field)
     aw.lock(world.w, world.run)
-    with pytest.raises(AccessDenied, match="at stage 'curation'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         planner.get("claim")
     assert critic.get("record_metadata") == []
     assert curator.get("plan_fields_to_extract") == ["grain_size", "yield_strength", "composition"]
@@ -2976,7 +4224,7 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
         w.add(primary, rec)
     w.freeze(world.run, len(world.records))
     for a, field in ((critic, "flags_kind"), (curator, "sources_meta")):
-        with pytest.raises(AccessDenied, match="at stage 'analysis'"):
+        with pytest.raises(AccessDenied, match="no longer at the stage"):
             a.get(field)
     assert len(analyst.get("records_full")) == len(world.records)
 
@@ -3006,11 +4254,11 @@ def test_completion_without_a_freeze_moves_access_to_the_commentator_only(engine
         commentator.get("outcome")
     assert gap.get("claim")
     world.w.complete(world.run, "insufficient")
-    with pytest.raises(AccessDenied, match="at stage 'final_without_freeze'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         gap.get("claim")
     assert commentator.get("outcome") == {"status": "completed", "outcome": "insufficient", "verdict": None,
                                           "exploratory": False}
-    with pytest.raises(AccessDenied, match="at stage 'final_without_freeze', not 'final'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         access(engine, world, "commentator", "final").get("results")
 
 
@@ -3022,7 +4270,7 @@ def test_completion_after_a_freeze_moves_access_to_the_commentator_only(engine):
         commentator.get("results")
     assert analyst.get("results")
     world.w.complete(world.run, "partly_sufficient")
-    with pytest.raises(AccessDenied, match="at stage 'final'"):
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
         analyst.get("results")
     assert commentator.get("results")["run"]["outcome"] == "partly_sufficient"
 
@@ -3055,7 +4303,7 @@ def test_experiment_flags_relax_nothing(engine):
     assert w.val("SELECT experiment_flags->>'access' FROM run WHERE id = :r", r=flagged) == "all"
     for field in sorted(set(FIELDS) - allowed("planner", "before_lock")):
         with pytest.raises(AccessDenied):
-            Access(engine, flagged, "planner", "before_lock").get(field)
+            access_for(engine, flagged, "planner", "before_lock").get(field)
 
 
 # --- What each field contains -----------------------------------------------------------
@@ -3065,20 +4313,34 @@ def test_sources_meta_is_exactly_the_named_plain_fields(engine):
     got = access(engine, world, "critic", "curation").get("sources_meta")
     assert SOURCE_META_FIELDS == ("key", "name", "source_type", "data_kind", "licence", "grouping_unit",
                                   "fields_available")
-    assert [list(s) for s in got] == [list(SOURCE_META_FIELDS)]
-    assert got[0]["key"] == "mpea"  # the chosen source only: tamu_fcc was not selected for this run
+    assert [list(s) for s in got] == [list(SOURCE_META_FIELDS)] * 2
+    assert [s["key"] for s in got] == ["mpea", "tamu_fcc"]  # the chosen sources only
+
+
+def test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registry(engine):
+    """Review finding 4: editing the source registry after dispatch changes nothing for the run
+    (the world has already changed the licence and properties; here also the name and the
+    interpretation settings)."""
+    from hypocurate.sources.versions import SOURCES
+    world = aw.build(engine, "curation")
+    aw.sql(world.w, "UPDATE source SET name = 'renamed', grouping_unit = 'dataset', data_kind = 'computed' "
+                    "WHERE key = 'mpea'")
+    mpea = access(engine, world, "critic", "curation").get("sources_meta")[0]
+    d = SOURCES["mpea"]
+    assert mpea == {"key": "mpea", "name": d.name, "source_type": "uploaded_table", "data_kind": "measured",
+                    "licence": d.licence, "grouping_unit": "paper", "fields_available": list(d.properties_covered)}
 
 
 def test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim(engine):
     world = aw.build(engine, "curation")
     got = role_input(access(engine, world, "curator", "curation"))
     assert got["plan_fields_to_extract"] == ["grain_size", "yield_strength", "composition"]
-    assert [s["key"] for s in got["sources_meta"]] == ["mpea"]
+    assert [s["key"] for s in got["sources_meta"]] == ["mpea"]  # its own source only
     assert list(got["source_content"]["files"]) == ["mpea_planted.csv"]
     without_files = json.dumps({k: v for k, v in got.items() if k != "source_content"})
     assert "ZQXDIR" not in without_files and "rises" not in without_files and "k > 0" not in without_files
     assert b"ZQXDIR" not in got["source_content"]["files"]["mpea_planted.csv"]
-    other = access(engine, world, "curator", "curation", source_key="tamu_fcc")
+    other = access(engine, world, "curator", "curation", source_key="controlled_duplicates")
     assert other.get("sources_meta") == []
     with pytest.raises(AccessDenied, match="not recorded for this run"):
         other.get("source_content")
@@ -3097,29 +4359,44 @@ def test_record_metadata_carries_no_number_but_identity_and_composition(engine):
     got = access(engine, world, "critic", "curation").get("record_metadata")
     assert len(got) == len(world.records)
     for r in got:
-        assert set(r) == {"id", "source", "origin", "item_index", "kind", "alloy", "composition", "paper_reference",
-                          "paper_doi", "status", "categories"}
+        assert set(r) == {"id", "source", "item_index", "kind", "alloy", "composition", "paper_doi", "status",
+                          "categories"}  # no origin key, no paper title (review finding 3)
         assert set(r["status"]) == set(HARMONIZED_FIELDS)
         assert set(r["status"].values()) <= {"converted", "not_reported", "not_convertible", "assigned", None}
-        assert all(v is None or isinstance(v, str) for v in r["categories"].values())
+        for f, v in r["categories"].items():
+            assert v is None or v == "unrecognized" or vocabulary.category(f, v) == v, (f, v)
     planted = [r for r in got if r["status"]["yield_strength"] == "not_convertible"]
     assert len(planted) == 1  # the unreadable cell: its reason (which quotes it) is withheld
+    marked = [r for r in got if r["categories"]["microstructure"] == "unrecognized"]
+    assert len(marked) == 1 and marked[0]["categories"]["processing_method"] == "unrecognized"
+    assert marked[0]["categories"]["phase_class"] == "unrecognized" and marked[0]["paper_doi"] == "unrecognized"
 
 
 def test_flags_kind_has_no_numbers(engine):
     world = aw.build(engine, "curation")
     got = access(engine, world, "critic", "curation").get("flags_kind")
     assert got == [{"id": world.flags[0], "kind": "values_disagree", "category": "differ beyond tolerance",
-                    "records": got[0]["records"]}]
+                    "records": got[0]["records"]},
+                   {"id": world.flags[1], "kind": "unrecognized", "category": "unrecognized", "records": []}]
     assert len(got[0]["records"]) == 2
 
 
 def test_the_plan_is_projected_by_its_named_parts(engine):
     world = aw.build(engine, "analysis")
     got = access(engine, world, "analyst", "analysis").get("plan")
-    assert set(got["content"]) <= set(PLAN_KEYS) and "unnamed_key" not in got["content"]
-    assert got["content"]["fields_to_extract"] == ["grain_size", "yield_strength", "composition"]
+    u = "unrecognized"
+    assert got["content"] == {
+        "variables": {"outcome": {"field": "yield_strength"},
+                      "predictor": {"field": "grain_size", "unit": "µm", "transformation": u}},
+        "model": {"name": "hall_petch_alloy_intercepts", "null": "k <= 0", "alternative": u, "alpha": 0.05},
+        "scope": {"phase_class": ["FCC", u], "alloy_class": [u]},
+        "fields_to_extract": ["grain_size", "yield_strength", "composition"],
+        "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}, {"rule": u, "values": ["tension", u]}],
+        "eligibility_rules": [{"flag_kind": "values_disagree", "rule": u}],
+        "verdict_statement": u,
+        "sensitivity_analyses": ["tension_and_compression", u]}
     assert got["minimums"] == {"records": 4, "alloys": 1, "groups": 2, "resid_df": 1}
+    assert got["power_assumptions"] == {"method": "information_only", "scatter": 60.0}
 
 
 def test_tag_values_are_the_approved_lists_only(engine):
@@ -3131,12 +4408,15 @@ def test_tag_values_are_the_approved_lists_only(engine):
 def test_record_counts_are_counts_from_the_sealed_source(engine):
     world = aw.build(engine, "before_lock")
     got = access(engine, world, "planner", "before_lock").get("record_counts")
-    assert [c["source"] for c in got] == ["mpea"] and got[0]["readable"]
+    assert [c["source"] for c in got] == ["mpea", "tamu_fcc"] and got[0]["readable"]
+    assert got[1] == {"source": "tamu_fcc", "readable": False}  # the world's placeholder file
     c = got[0]
     assert c["n_records"] == 8  # four real rows and four planted ones
     assert c["by_status"]["yield_strength"] == {"converted": 7, "not_convertible": 1}
     assert c["by_category"]["test_type"]["tension"] >= 3
     assert set(c["by_category"]) == set(allowlist.CATEGORY_FIELDS)
+    assert c["unrecognized"] == {"microstructure": 1, "phase_class": 1, "processing_method": 1}
+    assert c["by_category"]["microstructure"]["unrecognized"] == 1
     assert not set(c["by_category"]) & allowlist.OUTCOME_FIELDS
 
 
@@ -3165,12 +4445,16 @@ def test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hangin
     with holder.connect() as conn:
         tx = conn.begin()
         conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
-        with pytest.raises(OperationalError, match="lock timeout"):
-            Access(engine, world.run, "critic", "curation", lock_timeout_ms=300).get("flags_kind")
+        with pytest.raises(AccessFailed) as failed:
+            access_for(engine, world.run, "critic", "curation", lock_timeout_ms=300).get("flags_kind")
+        # The failure row is written while the lock is still held (named exception: no run lock).
+        rows = audit(engine, world.run)[before:]
         tx.rollback()
     holder.dispose()
-    assert len(audit(engine, world.run)) == before  # nothing was read, nothing logged
-    assert Access(engine, world.run, "critic", "curation").get("flags_kind")
+    assert failed.value.code == "lock_timeout"
+    assert [(r.function, r.allowed, r.detail["result"], r.detail["code"]) for r in rows] == [
+        ("flags_kind", False, "failed", "lock_timeout")]
+    assert access_for(engine, world.run, "critic", "curation").get("flags_kind")
     assert layer.ACCESS_LOCK_TIMEOUT_MS == 5000
 
 
@@ -3182,7 +4466,7 @@ def test_an_access_call_waits_for_a_writer_holding_the_run_lock(engine):
         tx = conn.begin()
         conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
         reader = threading.Thread(target=lambda: result.update(
-            got=Access(engine, world.run, "critic", "curation").get("flags_kind")))
+            got=access_for(engine, world.run, "critic", "curation").get("flags_kind")))
         reader.start()
         waiting = False
         for _ in range(100):
@@ -3210,7 +4494,7 @@ def test_every_access_call_runs_in_run_transaction(engine, monkeypatch):
         return real(e, fn, *args, **kwargs)
 
     monkeypatch.setattr(layer, "run_transaction", spy)
-    a = Access(engine, world.run, "critic", "curation")
+    a = access_for(engine, world.run, "critic", "curation")
     a.get("flags_kind")
     with pytest.raises(AccessDenied):
         a.get("records_full")
@@ -3219,11 +4503,12 @@ def test_every_access_call_runs_in_run_transaction(engine, monkeypatch):
 
 def test_the_access_transaction_calls_hc_write_lock_before_anything_else():
     src = Path(layer.__file__).read_text()
-    body = src[src.index("def _call"):src.index("def _refusal")]
+    body = src[src.index("def _transaction"):src.index("def _policy")]
     statements = [line.strip() for line in body.splitlines() if "conn.execute" in line or "actual_stage(" in line]
     assert "SET LOCAL lock_timeout" in statements[0]
-    assert "hc_write_lock(p_run => :r)" in statements[1]
-    assert "actual_stage(" in statements[2]
+    assert "FROM run WHERE id = :r" in statements[1]  # does the run exist (else a failure row)
+    assert "hc_write_lock(p_run => :r)" in statements[2]
+    assert "actual_stage(" in statements[3]
 
 
 # --- Static checks: one way in -------------------------------------------------------------
@@ -3247,24 +4532,13 @@ def _imports(tree: ast.AST) -> set[str]:
     return out
 
 
-def test_pipeline_code_reaches_data_only_through_the_access_layer():
-    """Agents and the pipeline (steps 6-8) import no database, source or file API."""
-    forbidden = ("sqlalchemy", "psycopg", "hypocurate.db", "hypocurate.sources.versions",
-                 "hypocurate.sources.adapters", "pathlib", "io", "shutil", "glob")
-    for path in sorted((REPO / "hypocurate" / "pipeline").rglob("*.py")):
-        tree = ast.parse(path.read_text())
-        bad = {m for m in _imports(tree) if any(m == f or m.startswith(f + ".") for f in forbidden)}
-        assert not bad, f"{path}: {bad}"
-        assert "open" not in _calls(tree), path
-
-
 def test_the_access_layer_has_no_function_that_takes_a_path():
-    for name in ("allowlist", "errors", "fields", "inputs", "layer", "stage"):
+    for name in ("allowlist", "context", "dispatch", "errors", "fields", "inputs", "layer", "stage", "vocabulary"):
         tree = ast.parse((REPO / "hypocurate" / "access" / f"{name}.py").read_text())
         assert not {"open", "read_bytes", "read_text", "Path", "listdir", "scandir"} & set(_calls(tree)), name
         assert not {"pathlib", "io", "glob", "shutil"} & _imports(tree), name
-    assert list(Access.__init__.__code__.co_varnames[:7]) == [
-        "self", "engine", "run_id", "role", "stage", "source_key", "lock_timeout_ms"]
+    assert list(Access.__init__.__code__.co_varnames[:5]) == ["self", "engine", "context", "lock_timeout_ms",
+                                                              "_trusted"]
 
 
 def test_the_guard_is_installed_in_one_place():
@@ -3287,30 +4561,47 @@ def test_condition_summaries_group_alloys_by_the_same_alloy_rule():
     assert same_alloy_key({"Fe": 50.06, "Ni": 49.94}) == "Fe 50.1 Ni 49.9"
 ```
 
-### `tests/test_access_planted.py`
+### `tests/test_access_projected.py`
 
 ```python
-"""Step 5: the planted-value test (PRD 4 testing requirement; criterion 14.2, second point).
+"""Step 5: the projected-data test (PRD 4 testing requirement; criterion 14.2, second point).
+
+Formerly "the planted-value test"; renamed after the step 5 review (finding 6), because it
+tests the **data a role is given** (`role_input`, built through the real dispatcher), not the
+complete model request.
 
 Distinctive outcome values are planted everywhere the main run stores them
-(`access_world`). None may appear, in any encoding we can reasonably anticipate, anywhere
-in the complete input of the Planner (before the rules lock), the Critic (between the lock
-and the freeze) or the Analyst writing a gap report (a run that ended with no dataset
-frozen; owner, 2026-10-05). A positive control shows the detector finds the values where
-they are allowed (the Analyst after the freeze).
+(`access_world`): in discarded fields (stored outcomes, values as reported, reasons, flag
+numbers, stage text, model instructions, proposed tags, the source's address and label) and
+**inside the fields the blinded views do show** (category cells, the paper title, the DOI,
+every kind of plan leaf, power assumptions, eligibility rules, a failure text, flag kinds and
+categories, the source registry's licence and properties edited after dispatch). None may
+appear in the projected input of the Planner (before the rules lock), the Critic (between the
+lock and the freeze), the Analyst writing a gap report, or the Commentator on a run that ended
+with no dataset frozen. A positive control shows the detector finds the values where they are
+allowed (the Analyst after the freeze).
 
 Single-run scope (owner's addition A): a different value, planted in the original run of
 the narrower question and in an earlier run of the same hypothesis, appears in no role's
-complete input at any stage.
+projected input at any stage.
 
-What "any encoding" covers: the value's decimal text at full precision and rounded to 2, 1
-and 0 decimals; its integer part; thousands separators (comma, space, thin space) and a
-decimal comma; scientific notation at several precisions; `g` formats; the value in GPa,
-ksi and psi; `float.hex`; the IEEE-754 bytes (both byte orders) in hex and base64; the
-decimal text in base64, hex and URL encoding. Only encodings of at least five characters
-are searched, so that short fragments (for example "48.2") cannot match unrelated text by
-chance. The input is searched as JSON (keys and values, with and without ASCII escapes),
-as its Python repr, and case-insensitively.
+**What this test does not cover** (review finding 6):
+- the actual outbound model request: agent instructions, message history, tool errors, retry
+  prompts, attachments, anything step 8 adds (a **step 8 acceptance requirement**);
+- values split across fields, spelled out in words, transformed arbitrarily or compressed;
+- what counts, flag kinds and condition summaries reveal by design, and timing (register
+  entry 'accepted_disclosures');
+- human-written text the views pass on (the claim, approved tag values): a person who writes an
+  outcome value there discloses it.
+A longer list of encodings cannot prove the absence of leakage; it catches our own mistakes.
+
+Encodings searched: the value's decimal text at full precision and rounded to 2, 1 and 0
+decimals; its integer part; thousands separators (comma, space, thin space) and a decimal
+comma; scientific notation at several precisions; `g` formats; GPa, ksi and psi; `float.hex`;
+the IEEE-754 bytes (both byte orders) in hex and base64; the decimal text in base64, hex and
+URL encoding. Only encodings of at least five characters are searched, so short fragments
+cannot match unrelated text by chance. The input is searched as JSON (keys and values, with
+and without ASCII escapes), as its Python repr, and case-insensitively.
 """
 from __future__ import annotations
 
@@ -3323,7 +4614,7 @@ import pytest
 from sqlalchemy import text
 
 import access_world as aw
-from hypocurate.access import Access, role_input
+from hypocurate.access import bind, role_input
 from hypocurate.access.allowlist import ROLES, allowed
 from hypocurate.db.engine import make_engine
 
@@ -3373,8 +4664,12 @@ def engine(migrated_database):
     e.dispose()
 
 
-def inputs_of(engine, world, role, stage):
-    return role_input(Access(engine, world.run, role, stage, source_key="mpea" if role == "curator" else None))
+def inputs_of(engine, world, role, stage=None):
+    """The role's projected input, through the real dispatcher (role from the run's agent
+    settings, stage from the database). `stage` is only checked."""
+    access = bind(engine, world.run, world.settings[role], source_key="mpea" if role == "curator" else None)
+    assert stage is None or access.context.stage == stage
+    return role_input(access)
 
 
 def test_the_encodings_catch_the_value_where_it_is_allowed(engine):
@@ -3393,7 +4688,7 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
     """The test is not vacuous: the values are in the source file, the records (harmonized,
     as reported, in a reason), the flag's numbers, the stage outputs, a model instruction,
     a proposed tag value, and the source's free text."""
-    world = aw.build(engine, "curation")
+    world = aw.build(engine, "closed_without_freeze")
     ys = repr(aw.PLANTED["yield_strength"])
     with engine.connect() as conn:
         def count(sql):
@@ -3404,6 +4699,15 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
         assert count("SELECT count(*) FROM record WHERE reported::text LIKE :v") == 4
         assert count("SELECT count(*) FROM record WHERE harmonized->'yield_strength'->>'reason' LIKE :v") == 1
         assert count("SELECT count(*) FROM flag WHERE compared_values::text LIKE :v") == 1
+        assert count("SELECT count(*) FROM flag WHERE kind LIKE :v AND category LIKE :v") == 1
+        assert count("SELECT count(*) FROM record WHERE paper_reference LIKE :v AND paper_doi LIKE :v") == 1
+        assert count("SELECT count(*) FROM record WHERE harmonized->'microstructure'->>'value' LIKE :v "
+                     "AND harmonized->'processing_method'->>'value' LIKE :v "
+                     "AND harmonized->'phase_class'->>'value' LIKE :v") == 1
+        assert count("SELECT count(*) FROM run_record WHERE rule LIKE :v") == 1
+        assert count("SELECT count(*) FROM run_source WHERE failure_reason LIKE :v") == 1
+        assert count("SELECT count(*) FROM plan WHERE power_assumptions::text LIKE :v") == 1
+        assert count("SELECT count(*) FROM source WHERE licence LIKE :v") == 1
         assert count("SELECT count(*) FROM stage_result WHERE output::text LIKE :v AND reasoning LIKE :v "
                      "AND tool_calls::text LIKE :v AND input::text LIKE :v") == 1
         assert count("SELECT count(*) FROM agent_setting WHERE instruction LIKE :v") == 1
@@ -3413,7 +4717,7 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
         assert count("SELECT count(*) FROM plan WHERE content::text LIKE :v") == 1
 
 
-def test_no_planted_value_in_the_planners_complete_input(engine):
+def test_no_projected_planted_value_in_the_planners_complete_input(engine):
     world = aw.build(engine, "before_lock")
     got = inputs_of(engine, world, "planner", "before_lock")
     assert set(got) == allowed("planner", "before_lock")
@@ -3421,7 +4725,7 @@ def test_no_planted_value_in_the_planners_complete_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_critics_complete_input(engine):
+def test_no_projected_planted_value_in_the_critics_complete_input(engine):
     world = aw.build(engine, "curation")
     got = inputs_of(engine, world, "critic", "curation")
     assert set(got) == allowed("critic", "curation")
@@ -3429,7 +4733,7 @@ def test_no_planted_value_in_the_critics_complete_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_gap_report_input(engine):
+def test_no_projected_planted_value_in_the_gap_report_input(engine):
     world = aw.build(engine, "closed_without_freeze")
     got = inputs_of(engine, world, "analyst", "closed_without_freeze")
     assert set(got) == allowed("analyst", "closed_without_freeze")
@@ -3437,7 +4741,7 @@ def test_no_planted_value_in_the_gap_report_input(engine):
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_planted_value_in_the_commentators_input_without_a_freeze(engine):
+def test_no_projected_planted_value_in_the_commentators_input_without_a_freeze(engine):
     """Owner, 2026-10-05: on a run that ended with no dataset frozen, the Commentator gets only the
     gap-report input, the Analyst's gap report and the run's outcome."""
     world = aw.build(engine, "final_without_freeze")
@@ -3453,9 +4757,10 @@ def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engi
     """Owner's addition B: the address and version label hold the planted value; sources_meta
     is a fixed set of named plain fields."""
     world = aw.build(engine, "before_lock")
-    meta = Access(engine, world.run, "planner", "before_lock").get("sources_meta")
+    meta = bind(engine, world.run, world.settings["planner"]).get("sources_meta")
     assert leaks(meta, aw.PLANTED.values()) == []
     assert "example.org" not in json.dumps(meta) and "label" not in json.dumps(meta)
+    assert "licence 4" not in json.dumps(meta)  # the registry's licence, edited after dispatch
 
 
 @pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final",
@@ -3489,19 +4794,328 @@ def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
         assert inputs_of(engine, world, "planner", "before_lock")["claim"]["narrower_question"] is True
 ```
 
+### `tests/test_access_dispatch.py`
+
+```python
+"""Step 5 review fixes: the trusted dispatcher, the immutable context, logging of denials and
+failures, one snapshot per input, real concurrent checkpoint transitions, and the
+vocabularies with their unrecognized counts.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+
+import pytest
+from sqlalchemy import text
+
+import access_world as aw
+from access_testing import access_for
+from hypocurate.access import Access, AccessDenied, AccessFailed, bind, layer, role_input, vocabulary
+from hypocurate.access.allowlist import allowed
+from hypocurate.access.context import AccessContext
+from hypocurate.access.guarded import run_guarded
+from hypocurate.db.engine import make_engine
+from hypocurate.sources import connection
+
+
+@pytest.fixture
+def engine(migrated_database):
+    e = make_engine(migrated_database)
+    e.test_url = migrated_database
+    yield e
+    e.dispose()
+
+
+def audit(engine, run=None, null_run=False):
+    where = "WHERE run_id IS NULL " if null_run else ("WHERE run_id = :r " if run else "")
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT role, stage, function, allowed, detail FROM audit_log " + where
+                                 + "ORDER BY id"), dict(r=run)).all()
+
+
+# --- The dispatcher -------------------------------------------------------------------------
+
+def test_bind_reads_the_role_from_the_runs_agent_settings_and_the_stage_from_the_database(engine):
+    world = aw.build(engine, "curation")
+    for role in ("critic", "analyst", "planner"):
+        a = bind(engine, world.run, world.settings[role])
+        assert a.context == AccessContext(world.run, role, "curation", None, world.settings[role])
+    curator = bind(engine, world.run, world.settings["curator"], source_key="mpea")
+    assert curator.context.role == "curator" and curator.context.source_key == "mpea"
+    assert role_input(bind(engine, world.run, world.settings["critic"]))["flags_kind"]
+    binds = [r for r in audit(engine, world.run) if r.function == "bind"]
+    assert len(binds) == 5 and all(r.allowed and r.detail["result"] == "allowed" for r in binds)
+
+
+def test_bind_refuses_a_setting_or_source_the_run_did_not_record(engine):
+    world = aw.build(engine, "curation")
+    stray = aw.val(world.w, "INSERT INTO agent_setting (role, version, instruction, model) "
+                            "VALUES ('analyst', 2, 'x', 'model-a') RETURNING id")
+    cases = [(dict(agent_setting_id=stray), "setting_not_recorded"),
+             (dict(agent_setting_id=world.settings["curator"]), "no_source"),
+             (dict(agent_setting_id=world.settings["curator"], source_key="controlled_duplicates"),
+              "source_not_recorded"),
+             (dict(agent_setting_id=world.settings["critic"], source_key="mpea"), "source_not_for_role")]
+    for kw, code in cases:
+        with pytest.raises(AccessDenied) as denied:
+            bind(engine, world.run, **kw)
+        assert denied.value.code == code
+    rows = [(r.function, r.allowed, r.detail["result"], r.detail["code"]) for r in audit(engine, world.run)
+            if r.function == "bind"]
+    assert rows == [("bind", False, "denied", code) for _, code in cases]
+
+
+def test_bind_logs_an_unknown_run_as_a_failure_with_no_run(engine):
+    aw.build(engine, "before_lock")
+    with pytest.raises(AccessFailed) as failed:
+        bind(engine, 999999, 1)
+    assert failed.value.code == "unknown_run"
+    rows = audit(engine, null_run=True)
+    assert [(r.function, r.detail["result"], r.detail["code"], r.detail["requested_run"]) for r in rows] == [
+        ("bind", "failed", "unknown_run", 999999)]
+
+
+def test_an_access_object_has_no_public_constructor_and_cannot_be_changed(engine):
+    world = aw.build(engine, "before_lock")
+    with pytest.raises(TypeError, match="only by hypocurate.access.dispatch.bind"):
+        Access(engine, AccessContext(world.run, "analyst", "analysis"))
+    a = bind(engine, world.run, world.settings["planner"])
+    with pytest.raises(AttributeError):
+        a._context = AccessContext(world.original_run, "analyst", "final")
+    with pytest.raises(AttributeError):
+        a.context.run_id = world.original_run
+    with pytest.raises(TypeError):
+        bind(engine, str(world.run), world.settings["planner"])
+
+
+# --- Denials and failures are logged apart ---------------------------------------------------
+
+def test_a_readers_error_is_a_logged_failure(engine, monkeypatch):
+    world = aw.build(engine, "curation")
+
+    def broken(conn, ctx):
+        raise ValueError("something with 48213.579 inside")
+
+    monkeypatch.setitem(layer.READERS, "flags_kind", broken)
+    with pytest.raises(AccessFailed) as failed:
+        access_for(engine, world.run, "critic", "curation").get("flags_kind")
+    assert failed.value.code == "reader_error" and "48213" not in str(failed.value)
+    row = audit(engine, world.run)[-1]
+    assert (row.function, row.allowed, row.detail) == (
+        "flags_kind", False, {"result": "failed", "code": "reader_error", "error_class": "ValueError"})
+
+
+def test_an_unknown_run_is_a_logged_failure(engine):
+    aw.build(engine, "before_lock")
+    with pytest.raises(AccessFailed) as failed:
+        access_for(engine, 424242, "planner", "before_lock").get("claim")
+    assert failed.value.code == "unknown_run"
+    assert audit(engine, null_run=True)[-1].detail == {"result": "failed", "code": "unknown_run",
+                                                      "requested_run": 424242}
+
+
+def test_when_the_database_is_unavailable_the_process_log_is_the_fallback(caplog):
+    down = make_engine("postgresql://nobody@127.0.0.1:1/none")
+    with caplog.at_level(logging.ERROR, logger="hypocurate.access"):
+        with pytest.raises(AccessFailed) as failed:
+            access_for(down, 7, "planner", "before_lock").get("claim")
+    assert failed.value.code == "database_error"
+    assert any('"audit_fallback"' in r.getMessage() and '"database_error"' in r.getMessage() for r in caplog.records)
+
+
+def test_role_input_is_never_silently_empty(engine):
+    world = aw.build(engine, "curation")
+    with pytest.raises(AccessDenied) as denied:
+        role_input(access_for(engine, world.run, "planner", "curation"))
+    assert denied.value.code == "empty_list"
+    row = audit(engine, world.run)[-1]
+    assert (row.function, row.allowed, row.detail["code"]) == ("role_input", False, "empty_list")
+
+
+def test_only_validated_bounded_strings_are_logged(engine):
+    world = aw.build(engine, "before_lock")
+    long_role = "planner-" + "48213.579" * 500
+    for kw in (dict(role=long_role, stage="before_lock"), dict(role="planner", stage=long_role)):
+        with pytest.raises(AccessDenied) as denied:
+            access_for(engine, world.run, **kw).get("claim")
+        assert "48213" not in str(denied.value)
+    with pytest.raises(AccessDenied) as denied:
+        access_for(engine, world.run, "planner", "before_lock").get("x" * 9000)
+    assert "xxx" not in str(denied.value)
+    rows = audit(engine, world.run)
+    assert [(r.role, r.stage, r.function) for r in rows] == [("invalid", "before_lock", "claim"),
+                                                            ("planner", "invalid", "claim"),
+                                                            ("planner", "before_lock", "invalid")]
+    assert rows[0].detail["given_role_length"] == len(long_role)
+    assert all(len(str(r)) < 400 for r in rows)
+
+
+def test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log(engine, caplog):
+    world = aw.build(engine, "before_lock")
+    target = str(aw.REPO / "tests" / "fixtures" / "controlled_duplicates" / "truth.csv")
+    run_guarded("hypocurate.access.guard_probe:probe", [{"op": "read", "path": target}], timeout=60,
+                audit=(engine, world.run))
+    row = audit(engine, world.run)[-1]
+    assert (row.function, row.allowed, row.detail["result"], row.detail["code"], row.detail["event"]) == (
+        "guarded_run", False, "failed", "file_guard", "read")
+    assert "truth.csv" in row.detail["what"]
+    with caplog.at_level(logging.WARNING, logger="hypocurate.access"):
+        run_guarded("hypocurate.access.guard_probe:probe", [{"op": "read", "path": target}], timeout=60)
+    assert any('"file_guard"' in r.getMessage() for r in caplog.records)
+
+
+# --- One snapshot; real concurrent checkpoint transitions -------------------------------------
+
+def test_a_roles_whole_input_is_read_in_one_transaction(engine):
+    world = aw.build(engine, "curation")
+    role_input(bind(engine, world.run, world.settings["critic"]))
+    with engine.connect() as conn:
+        txns = conn.execute(text("SELECT DISTINCT xmin::text FROM audit_log WHERE run_id = :r AND function <> 'bind'"),
+                            dict(r=world.run)).all()
+    assert len(txns) == 1
+
+
+def _waiting(engine) -> bool:
+    with engine.connect() as probe:
+        return probe.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                                  "AND wait_event_type = 'Lock' AND query LIKE '%hc_write_lock%'")).scalar() > 0
+
+
+def _race(engine, url, read, transition):
+    """`transition(conn)` runs in a transaction that holds the run's lock; `read()` starts in a
+    thread and must wait; the transition commits; the read then sees the new stage."""
+    holder = make_engine(url)
+    out = {}
+    with holder.connect() as conn:
+        tx = conn.begin()
+        transition(conn)
+        t = threading.Thread(target=lambda: out.update(result=_outcome(read)))
+        t.start()
+        for _ in range(100):
+            if _waiting(engine):
+                break
+            time.sleep(0.05)
+        assert _waiting(engine) and "result" not in out
+        tx.commit()
+        t.join(10)
+    holder.dispose()
+    return out["result"]
+
+
+def _outcome(read):
+    try:
+        return ("allowed", read())
+    except AccessDenied as denied:
+        return ("denied", denied.code)
+
+
+def test_a_rules_lock_committed_while_a_read_waits_closes_the_planner(engine):
+    world = aw.build(engine, "before_lock")
+    planner = bind(engine, world.run, world.settings["planner"])
+
+    def rules_lock(conn):
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
+        conn.execute(text("INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, "
+                          "min_alloys, min_groups, min_resid_df) VALUES (:r, '{}', :fp, 'fixed_minimum', 4, 1, 2, 1)"),
+                     dict(r=world.run, fp=aw.FP))
+
+    assert _race(engine, engine.test_url, lambda: role_input(planner), rules_lock) == ("denied", "stage_mismatch")
+
+
+def test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_analyst(engine):
+    world = aw.build(engine, "curation")
+    w = world.w
+    critic = bind(engine, world.run, world.settings["critic"])
+    primary = w.analysis_set(world.run)
+    for rec in world.records:
+        w.decide(world.run, rec)
+        w.add(primary, rec)
+
+    def freeze(conn):
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
+        conn.execute(text("INSERT INTO run_snapshot (run_id, fingerprint, n_records) VALUES (:r, :fp, :n)"),
+                     dict(r=world.run, fp=aw.FP, n=len(world.records)))
+
+    assert _race(engine, engine.test_url, lambda: critic.get("flags_kind"), freeze) == ("denied", "stage_mismatch")
+    analyst = access_for(engine, world.run, "analyst", "analysis")
+    kind, got = _outcome(lambda: analyst.get("records_full"))
+    assert kind == "allowed" and len(got) == len(world.records)
+
+
+# --- Vocabularies and unrecognized counts -------------------------------------------------------
+
+def test_vocabularies_mark_what_they_do_not_know():
+    assert vocabulary.category("microstructure", "FCC+BCC+Sec.") == "FCC+BCC+Sec."
+    assert vocabulary.category("microstructure", "FCC; yield strength 48213.579 MPa") == "unrecognized"
+    assert vocabulary.category("phase_class", "fcc") == "unrecognized"
+    assert vocabulary.category("test_type", None) == "unrecognized"
+    assert vocabulary.code("primary", vocabulary.ANALYSIS_SET_KEYS) == "primary"
+    assert vocabulary.code("drop 48213.579", vocabulary.SENSITIVITY_KEYS) == "unrecognized"
+    assert vocabulary.unrecognized_counts([("phase_class", "FCC"), ("phase_class", "x"), ("microstructure", "y")]) \
+        == {"microstructure": 1, "phase_class": 1}
+
+
+def test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure():
+    """Register 'accepted_disclosures': a syntactically valid DOI may contain digits."""
+    assert vocabulary.doi(" 10.1038/ncomms10602") == "10.1038/ncomms10602"
+    assert vocabulary.doi("10.1234/48213.579") == "10.1234/48213.579"
+    assert vocabulary.doi("doi 48213.579") == "unrecognized"
+    assert vocabulary.doi("") is None
+
+
+def test_the_frozen_sources_have_no_unrecognized_category_value():
+    from source_helpers import sealed_from_disk
+    from hypocurate.sources import adapters
+    for key in ("mpea", "tamu_fcc"):
+        recs = adapters.read(sealed_from_disk(key)).records
+        values = [(f, r.harmonized[f].value) for r in recs for f in vocabulary.CATEGORY_FIELDS
+                  if r.harmonized[f].status in ("converted", "assigned")]
+        assert vocabulary.unrecognized_counts(values) == {}, key
+
+
+def test_unrecognized_values_are_counted_in_coverage_and_test_connection(engine):
+    """Owner, 2026-10-05: counts only, per run and per source, never the values."""
+    world = aw.build(engine, "analysis")
+    cov = access_for(engine, world.run, "analyst", "analysis").get("coverage")
+    assert cov["sources"][0] == {"source": "mpea", "search_status": "searched", "nothing_found": None,
+                                 "unrecognized": {"microstructure": 1, "phase_class": 1, "processing_method": 1}}
+    assert cov["sources"][1]["unrecognized"] == {} and "failure_reason" not in cov["sources"][1]
+    report = connection.test_connection(engine, "mpea", n=1).to_json()  # the planted version is the latest
+    assert report["unrecognized"] == {"microstructure": 1, "phase_class": 1, "processing_method": 1}
+    assert "48213" not in str(report["unrecognized"])
+
+
+def test_the_gap_report_input_has_codes_not_failure_text(engine):
+    world = aw.build(engine, "closed_without_freeze")
+    got = role_input(bind(engine, world.run, world.settings["analyst"]))
+    assert got["coverage"]["sources"][1]["search_status"] == "failed"
+    assert set(got["coverage"]["sources"][1]) == {"source", "search_status", "nothing_found", "unrecognized"}
+    rules = {d["rule"] for d in got["decisions"]["records"]}
+    assert rules == {"in_scope", "unrecognized"}
+    assert set(allowed("analyst", "closed_without_freeze")) == set(got)
+```
+
 ### `tests/test_access_files.py`
 
 ```python
-"""Step 5: the approved input files of pipeline code (`hypocurate.access.file_guard`).
+"""Step 5: the file guard, a tripwire against accidental file access by trusted pipeline code.
 
 Each test starts real guarded processes (`run_guarded`) and probes them from inside
-(`hypocurate.access.guard_probe`). Under the guard: answer material (`tests/`), review
-documents (`docs/reviews/`), the frozen files (`data/`) and the repository root cannot be
-read or listed, by any of Python's ways of opening a file; writes outside the private
-scratch directory are refused; no other program can be started and no native code loaded.
-The things pipeline code needs still work: the web templates render, the database driver
-connects, an HTTPS client loads its certificate bundle, a library can write its cache in
-the scratch directory, and a role's complete input is built through the access layer.
+(`hypocurate.access.guard_probe`). The tests show what the tripwire catches when our own code
+makes a mistake: reading or listing answer material (`tests/`), review documents
+(`docs/reviews/`), the frozen files (`data/`) or the repository root, by any of Python's usual
+ways of opening a file; writing outside the private scratch directory; starting another
+program; loading a new native library. They also show that what pipeline code needs still
+works (templates, the database driver, the certificate bundle, the scratch directory, a role's
+input through the dispatcher).
+
+They do **not** show that the guard cannot be bypassed: it can, by code that tries (an open
+descriptor, the guard's own state, preloaded ctypes; see `file_guard` and Python's warning on
+audit hooks). `test_preloaded_ctypes_still_works_a_documented_limit` records one such limit.
+The construction-level guarantee is the deployed image without `tests/` and `docs/`
+(`tests/test_check_runtime_image.py`).
 """
 from __future__ import annotations
 
@@ -3518,7 +5132,7 @@ import sqlalchemy
 import pytest
 
 import access_world as aw
-from hypocurate.access import Access, file_guard, role_input
+from hypocurate.access import bind, file_guard, role_input
 from hypocurate.access.guarded import GuardedRunError, run_guarded
 from hypocurate.db.engine import make_engine
 
@@ -3594,7 +5208,7 @@ def test_a_library_can_use_the_private_scratch_directory_which_is_removed_afterw
     assert not Path(path).exists()
 
 
-def test_no_other_program_and_no_native_code():
+def test_no_other_program_and_no_new_native_library():
     results = probe([{"op": "subprocess"}, {"op": "system"}, {"op": "ctypes"}])
     assert results[0] == "refused: file guard: subprocess.Popen is outside the approved inputs of pipeline code"
     assert results[1] == "refused: file guard: os.system is outside the approved inputs of pipeline code"
@@ -3607,6 +5221,13 @@ def test_templates_database_and_certificates_work_under_the_guard(migrated_datab
     assert results == ["ok True", "ok True", "ok True"]
 
 
+def test_preloaded_ctypes_still_works_a_documented_limit():
+    """Review finding 1: ctypes imported before the guard can still read process memory directly.
+    (A foreign call such as string_at raises the call event, which the tripwire refuses here.)"""
+    assert probe([{"op": "ctypes_from_address"}, {"op": "ctypes_string_at"}]) == [
+        "ok b'x'", "refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code"]
+
+
 def test_source_registration_cannot_run_under_the_guard():
     result, = probe([{"op": "register"}])
     assert result == ("error: RegistrationError: source registration reads data/ and cannot run in a guarded "
@@ -3616,9 +5237,9 @@ def test_source_registration_cannot_run_under_the_guard():
 def test_a_roles_complete_input_is_the_same_inside_the_guard(migrated_database):
     engine = make_engine(migrated_database)
     world = aw.build(engine, "before_lock")
-    expected = role_input(Access(engine, world.run, "planner", "before_lock"))
+    expected = role_input(bind(engine, world.run, world.settings["planner"]))
     engine.dispose()
-    got, = probe([{"op": "role_input", "run": world.run, "role": "planner", "stage": "before_lock"}],
+    got, = probe([{"op": "role_input", "run": world.run, "agent_setting": world.settings["planner"]}],
                  migrated_database)
     assert json.loads(got) == json.loads(json.dumps(expected, sort_keys=True))
 
@@ -3766,7 +5387,7 @@ index 4b2f0cf..f8ffe4c 100644
 
 ````diff
 diff --git a/README.md b/README.md
-index 107172c..abacef3 100644
+index 107172c..25f56a0 100644
 --- a/README.md
 +++ b/README.md
 @@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
@@ -3778,24 +5399,88 @@ index 107172c..abacef3 100644
  
  ## Set up secrets (once)
  
-@@ -138,3 +138,19 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
+@@ -138,3 +138,20 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
  - "Test connection" runs in a read-only transaction.
  - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
  - Not yet run on the live database: registering there is a later step and needs the owner.
 +
 +## Access layer
 +
-+Every agent reads data only through an access object built for its role, its stage and one run (`hypocurate/access/`; PRD 4). There is no agent yet (step 8).
++Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8).
 +
 +```python
-+from hypocurate.access import Access, AccessDenied, role_input
-+critic = Access(engine, run_id, "critic", "curation")
-+critic.get("flags_kind")        # kind, category and record ids; never the numbers compared
-+role_input(critic)              # everything the Critic may receive at this stage
++from hypocurate.access import bind, role_input
++critic = bind(engine, run_id, agent_setting_id)   # role from the run's recorded agent settings
++role_input(critic)                                 # everything the Critic may receive, in one snapshot
 +```
 +
-+- **Allowed fields, not blocked fields.** `hypocurate/access/allowlist.py` lists the fields each role may receive at each stage; anything else raises `AccessDenied`. Each field is built from named keys only (`fields.py`). Every field reads only the run's own rows.
-+- **Stages come from the database**, on every call: before the rules lock, curation, analysis (after the freeze), closed without a freeze (gap report), final (completed after a freeze) and final without a freeze (completed with none; the Commentator then gets only the gap-report input, the Analyst's gap report and the run's outcome). Queued and failed runs give nothing.
-+- **Every read and every refusal is logged** in `audit_log` (role, stage, field, allowed or denied, and the reason; never a value). Each call is one `run_transaction` that calls `hc_write_lock(p_run => …)` first. A refusal is committed before `AccessDenied` is raised, so the row survives it. Never call the access layer while holding the same run's lock: the call would wait, and fails after 5 seconds.
-+- **Pipeline runs execute in a guarded process.** `run_guarded("hypocurate.<module>:<function>", payload)` starts `python -m hypocurate.access.guarded`, which installs an irreversible audit hook: it may read only the Python installation and the package's code, and write only in a private scratch directory (`TMPDIR`, `MPLCONFIGDIR` and `XDG_CACHE_HOME` point at it). `tests/`, `docs/`, `data/` and the repository root cannot be read or listed; other programs and `ctypes` are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. Source registration refuses to run in that process. The web service, the migrations, the `sources` commands and the tests are not guarded. The hook sees what Python code opens, not what C libraries open themselves; it is not an operating-system sandbox.
++- **Threat model** (CLAUDE.md): the access layer guards against *our own code* leaking data to a model. Agents return text only and never receive SQL, a connection or a file path; only trusted code runs. It is not a boundary against hostile code in the same process.
++- **The dispatcher** (`dispatch.bind`) is the only way to get an access object. It reads the role from the run's agent settings and the stage from the database, and accepts a source only for the Curator and only if the run recorded it. The context is immutable.
++- **Allowed fields, not blocked fields.** `allowlist.py` lists the fields each role may receive at each stage. In the blinded views (Planner, Critic, gap report, Commentator without a freeze) text comes from fixed vocabularies (`vocabulary.py`) or shows as `unrecognized`, and the plan is projected recursively by `PLAN_SCHEMA`. What these views still disclose by design (counts, flag kinds, singleton condition summaries, DOIs, human-written text, timing) is listed in `ACCEPTED_DISCLOSURES` and the register. Unrecognized category values are counted per source in "test connection" and in a run's coverage.
++- **Stages come from the database**, on every call: before the rules lock, curation, analysis, closed without a freeze, final, final without a freeze. Queued and failed runs give nothing.
++- **Logging.** Every read, policy denial and access failure is logged in `audit_log` (`detail.result`: allowed, denied or failed, with a fixed code; only validated, bounded strings). A role's input is read in one transaction that calls `hc_write_lock(p_run => …)` first. Failure rows are written without the run lock (a named exception). If the database cannot take a failure row, it goes to the process log (`hypocurate.access`). Never call the access layer while holding the same run's lock: the call waits, then fails after 5 seconds.
++- **The file guard is a tripwire, not a sandbox.** Pipeline runs execute in `python -m hypocurate.access.guarded` (`run_guarded`), where an audit hook refuses accidental reads outside the Python installation and the package, writes outside a private scratch directory, other programs and new native libraries, and logs each refusal. Python warns that audit hooks cannot contain code that tries to get around them, and this one does not (open descriptors, its own state, preloaded `ctypes`, sockets and the database are not restricted). The only construction-level guarantee is that the deployed image contains no `tests/` or `docs/`.
 ````
+
+## 11. The first review
+
+### `docs/reviews/step05_review_chatgpt.md`
+
+```markdown
+# Step 5 — second-model review (ChatGPT, 2026-10-05)
+
+Review of `docs/reviews/step05_review_packet.md` (branch `step-05-access`, code commit `81f5003`). Saved verbatim as the owner gave it. The owner accepted all six findings on 2026-10-05, with a threat-model decision that scopes the fixes (see `docs/reviews/step05_summary.md`).
+
+---
+
+There are serious gaps. I would not sign off step 5 as enforcing the isolation described in the packet. The database checkpoint checks are substantially better than the surrounding security boundary.
+I reviewed the supplied code and ran isolated probes against the file guard. I did not rerun the reported 620-test suite.
+1. The file guard is bypassable from the Python process it guards.
+   I reproduced three behaviours using a temporary sentinel file:
+   - Normal opening of the file was denied.
+   - An already-open descriptor could still read it.
+   - Changing file_guard._state["read_roots"] made the previously denied file readable.
+   I also confirmed that preloaded ctypes.string_at still works after installation. The claim that every foreign call is refused is therefore incorrect. The test exercises CDLL(None)—a new library load—not the remaining capabilities of preloaded ctypes.
+   An irreversible hook is not an immutable policy. Python explicitly warns that these hooks are unsuitable as a sandbox. Python documentation
+   Other boundary limitations:
+   - The child inherits the environment and starts without isolation flags. Startup hooks and unexpected import paths can execute before repository-path removal and guard installation.
+   - Removing a path does not remove previously loaded modules or close their handles.
+   - Sockets/network access are unrestricted.
+   - Ordinary symlink targets are resolved, but path checking followed by opening is not an atomic containment guarantee.
+   Required decision: either restrict execution to trusted application code and describe this as protection against accidental file access, or use an actual process/OS isolation boundary for untrusted Python. Extending the event blacklist will not establish the claimed guarantee.
+2. Database access bypasses the entire role/run contract.
+   The guarded process intentionally receives database credentials and can connect directly. The database probe demonstrates that. Nothing restricts its SQL to Access.get: it can read source_file, records from another run, outcomes or audit rows directly.
+   Additionally, Access accepts caller-selected, mutable role, run_id, stage and source_key:
+   - A caller can construct an Analyst access object for another frozen run.
+   - A Curator can switch to another source selected for the run; there is no independent assignment check.
+   - Concurrent mutation of run_id can make the locked run differ from the run passed to a field reader, because _call rereads mutable attributes.
+   This is acceptable only when a trusted dispatcher exclusively controls these objects and credentials. That boundary is not implemented here. Bind role/run/source in trusted orchestration, capture an immutable context per request, and keep unrestricted SQL outside model-controlled tools or executable code.
+3. The projectors allow outcome-bearing text through approved fields.
+   Field names alone do not establish blinding. Concrete examples:
+   - _category accepts any string. A microstructure value such as "FCC; yield strength 48213.579 MPa" reaches the Critic and becomes a dictionary key in the Planner’s category counts.
+   - Paper titles, origin keys, alloy labels and flag categories pass through as text.
+   - The no-freeze Analyst receives nested plan values, power_assumptions, eligibility-rule text and coverage failure messages without recursive projection.
+   - The no-freeze Commentator receives arbitrary Analyst output through gap_report.
+   The packet acknowledges that some source text is intentionally approved. That is a disclosure exception, not proof that outcome values cannot appear.
+   Use controlled category values and structured reason codes where possible. For deliberately retained free text, explicitly narrow the blinding claim and test the accepted risk. Plant values inside these allowed locations—not just discarded fields.
+4. sources_meta does not follow its stated provenance policy.
+   The summary says name and licence come from code definitions. _chosen_sources actually reads them from the mutable source table. It also reads interpretation settings there rather than from the run’s sealed source version.
+   Consequently, later source edits can change an old run’s metadata, and free text can enter supposedly controlled metadata fields.
+   Use the sealed version’s interpretation settings and the intended trusted source-description fields. Test changing the source registry after dispatch.
+5. Denied attempts are not always logged.
+   The commit-before-AccessDenied design correctly preserves ordinary policy refusals despite a caller rollback. It does not cover:
+   - File-guard refusals: no audit logging exists there.
+   - Unknown runs and lock timeouts.
+   - Reader exceptions other than Refused.
+   - Invalid role/stage calls through role_input, which can return {} without calling get.
+   The timeout test explicitly expects no audit row. Also, caller-supplied role, field and source strings are copied into messages/log details, so “never a value” is not enforced.
+   Distinguish policy denial from access failure, log both through an appropriate bounded mechanism, and specify the fallback when the database itself is unavailable. Do not claim unconditional durable database logging.
+6. The planted-value test does not yet cover complete model input.
+   role_input is a bundle of field-reader outputs. It excludes agent instructions—even though the fixture plants a value there—plus future message history, tool errors, retry prompts, attachments and any extra content step 8 assembles.
+   Test the actual outbound model request when that integration exists. Until then, call this a projected-data test.
+   The encoding detector also misses split strings, spelled-out numbers, arbitrary transformations, compression and information conveyed through counts or timing. Expanding its encoding list cannot prove absence of leakage.
+   Particularly weak tests are the static pipeline import scan, which can be vacuous before pipeline code exists and misses indirect/dynamic access, and the ctypes test discussed above.
+Checkpoint enforcement: with a fixed access context and the established database locking protocol, locking the run before reading its stage correctly serializes rules-lock and dataset-freeze transitions. I found no ordinary SQL checkpoint bypass in that path. Add an actual concurrent checkpoint-transition test; the current concurrency test holds a lock without changing the stage. Separate get calls also do not constitute one atomic input snapshot.
+Counts and timing: outcome-status counts and flag classifications intentionally reveal limited outcome-related information. Singleton condition summaries reveal exact grain size or temperature. Those are consequences of the approved contract, not new reasons to remove those fields—but “no row-level value can be inferred” would be false. Timing is not protected.
+Scope: I found no substantial unnecessary later-step functionality. The issue is the opposite: nested projection and the trusted model-input boundary cannot remain future work while step 5 claims complete enforcement. Keep this implementation as an access API foundation, but close or accurately delimit these security guarantees before approval.
+```
