@@ -1,6 +1,6 @@
 # Build step 3 — summary for review
 
-Date: 2026-10-05. Branch: `step-03-data-model`. **Status: the seven findings of the second-model review are fixed and green on GitHub; awaiting the re-check and the owner's sign-off. Not merged, not deployed.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
+Date: 2026-10-05. Branch: `step-03-data-model`. **Status: the seven findings of the second-model review are fixed; the re-check closed findings 2, 5 and 6 and left four narrow items, now fixed and green on GitHub. Awaiting the owner's sign-off. Not merged, not deployed.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step03_review_chatgpt.md`. The plan was approved by the owner on 2026-10-04/05, with decisions on seven questions and four additions, and the fix plan on 2026-10-05, with two additions (the fingerprint computed at sealing; what may be written after a run ends).
 
@@ -286,14 +286,47 @@ The review's remark on migration safety and the limits of the up/down/up proof i
 13. **PRD 5.8 and 9.2:** power-based sufficiency is not an option in sprint 1. It is an "estimated power report (information only)"; as a gate it stays in the backlog.
 14. **PRD 8 (new):** what may be written to a run in each state, as in the table above. After completion: commentary, the Commentator's stage and calls, and artifacts. After failure: only the audit log. A run ends only with no stage running and no call open.
 
-## Tests (353, all passing; 165 for step 3; the 93 from step 1 and the login tests unchanged)
+## Re-check (ChatGPT, 2026-10-05) and fixes
+
+The re-check text is in `docs/reviews/step03_recheck_chatgpt.md`. Its verdict on each finding:
+
+| Finding | Re-check status |
+|---|---|
+| 1. Locking protocol | partly closed: a parent/child deadlock path remained |
+| 2. Exact primary set at freeze | closed |
+| 3. Lifecycle and post-completion writes | partly closed: a Commentator stage's role could still change |
+| 4. Source sealing and fingerprint | partly closed: ambiguous file-list encoding; interpretation-only revisions could not be sealed |
+| 5. Validity-check wording | closed |
+| 6. Search coverage | closed |
+| 7. Costs | partly closed: NaN and Infinity were accepted |
+
+The four remaining items, fixed in migration 0001 in place (owner's instruction), one commit each:
+1. **Lock order** (`bd6f39a`).
+   - **Fix:** `hc_write_lock(p_run, p_version)` and the protocol (section "The locking protocol"). The claim is corrected: the order holds for paths that follow the protocol, not by the child-row triggers alone. Retries on `40P01` and `40001` are documented, and all write paths from step 4 on must use the helper (open item 3).
+   - **Tests:**
+     - `test_skipping_the_protocol_can_deadlock` reproduces the review's interleaving; exactly one transaction is aborted;
+     - `test_following_the_protocol_does_not_deadlock` and `test_following_the_protocol_on_model_calls_does_not_deadlock`: the same interleaving with the protocol completes without error;
+     - `test_write_lock_locks_a_run_or_a_version`.
+2. **Source fingerprints** (`c09176e`).
+   - **Fix:** (a) safe, anchored file paths, so no line break is possible; (b) `files_digest` plus `fingerprint` as the version's identity, covering the digest and the interpretation settings.
+   - **Tests:**
+     - `test_unsafe_file_paths_are_rejected` (8 cases, including the review's line-break collision);
+     - `test_the_same_files_under_revised_settings_seal_as_a_new_version`: the same files with a corrected grouping unit seal as a second version, and identical files and settings are rejected as a duplicate.
+3. **Finite costs** (`1ea2850`).
+   - **Fix:** CHECK `money_finite`.
+   - **Tests:** `test_max_cost_must_be_finite` and `test_reported_cost_must_be_finite` (NaN, Infinity, -Infinity each).
+4. **Stage role** (`f3e8f71`).
+   - **Fix:** `hc_stage_result_update` freezes the role with the stage name.
+   - **Tests:** `test_a_commentator_stage_cannot_be_relabelled` (with and without finishing the stage in the same update; to `planner` and to NULL); `test_a_running_stage_cannot_be_relabelled`.
+
+## Tests (375, all passing; 187 for step 3; the 93 from step 1 and the login tests unchanged)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data tests/test_login.py tests/test_login_throttle.py` is empty.
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_data_model.py` (new) | 134 | Every rule above, each with an allowed case and a rejected case, on a fresh migrated scratch database |
-| `tests/test_concurrency.py` (new) | 14 | Two-connection races for the locking protocol (finding 1) |
+| `tests/test_data_model.py` (new) | 153 | Every rule above, each with an allowed case and a rejected case, on a fresh migrated scratch database |
+| `tests/test_concurrency.py` (new) | 17 | Two-connection races for the locking protocol (finding 1), and the deadlock interleaving with and without the protocol (re-check item 1) |
 | `tests/test_migrations.py` (new) | 11 | One head; downgrades; no statement escapes the transaction; migrations in the package; up, down, up; upgrade at head; failed upgrade; concurrent upgrades; command line; production downgrade refused; no password printed; `schema_status` |
 | `tests/model_builder.py` (new) | — | Walks a run through the lifecycle in plain SQL, one transaction per step. Sources get one sealed version with one file. |
 | `tests/conftest.py` | — | `empty_database`, a session `template_database` migrated once, `migrated_database` copied from it, and `db`. Tests never touch the database at `DATABASE_URL`. |
@@ -333,20 +366,30 @@ Fix round (other setup changes; the assertions are unchanged unless stated):
 - `test_one_result_per_run_and_scope_on_the_right_set`: the per-source-without-source insert now has `n_groups = 1`, so that the source CHECK is the one tested; the new `records_have_a_group` CHECK would otherwise fire first.
 - `test_migrations_stay_inside_the_one_transaction`: now matches whole words in code with comments removed, because a new comment says "committed". It still catches every statement it caught before.
 
+Re-check round (no test removed):
+- `test_source_files_are_data_files_up_to_5_mib`: the `.zip` case now expects `ck_source_file_safe_data_file_path`, which replaces `ck_source_file_data_file_type` (the pattern is stricter).
+- `test_sealing_needs_files_and_the_fingerprint_of_the_file_list`:
+  - the wrong-fingerprint case expects the new message, which names the files digest and the settings;
+  - it now also checks that the digest and the identity are both stored;
+  - a new case rejects a wrong caller-supplied `files_digest`.
+- `tests/test_concurrency.py`: the two sealing races compute the version's fingerprint with the new identity (`w.fingerprint`); their assertions are unchanged.
+
 ### Suite results
 ```
 $ .venv/bin/pytest -q                    (Codespace, Python 3.14.2, `docker compose up -d db`)
-353 passed in 46.53s
+375 passed in 52.72s
 $ docker compose run --rm test           (the test image)
-353 passed in 48.24s
-GitHub Actions, commit e253950 (last code change): success; "Run the suite in the test image": 353 passed.
+375 passed in 52.79s
+GitHub Actions, commit f3e8f71 (last code change, re-check round): success; "Run the suite in the test image": 375 passed.
+https://github.com/kelawady/hypocurate/actions/runs/37251807075
+GitHub Actions, commit e253950 (first fix round): success; 353 passed.
 https://github.com/kelawady/hypocurate/actions/runs/37250072104
 ```
 The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
 
 Local checks beyond the suite:
 - `docker compose up -d`: `migrate` exited 0 ("schema at 0001"), and `/health` reported `"schema":{"revision":"0001","at_head":true}`.
-- The local database has `run_search_coverage` and 40 functions.
+- The local database has `run_search_coverage` and 42 functions. It was reset again in the re-check round (no rows; production never migrated), because 0001 changed again.
 
 ## Deviations from the approved plans
 1. **`CREATE TABLE` statements rendered by autogenerate, then edited by hand** (first round). The drift and catalog-snapshot tests compare them with the models.
