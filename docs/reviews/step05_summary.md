@@ -1,6 +1,6 @@
 # Build step 5 — summary for review
 
-Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; re-check (2026-10-05): threat model accepted, four findings closed, three narrow items left, "no further blocker under the agreed threat model". The three items were fixed and merged on their regression tests without a further review round, by the owner's decision (section "Re-check").** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
+Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; re-check (2026-10-05): threat model accepted, four findings closed, three narrow items left, "no further blocker under the agreed threat model". The three items were fixed and merged on their regression tests without a further review round, by the owner's decision (section "Re-check"). Merged into `main` (`81ce23c`, 2026-10-05) and live (see "Live deployment").** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
 
 The suite is the gate. This summary is for the second model's re-check (PRD 13.2), which uses `docs/reviews/checklist.md`. The review text is in `docs/reviews/step05_review_chatgpt.md`, the re-check in `docs/reviews/step05_recheck_chatgpt.md`. It describes the state **after** the fixes; section "Second-model review and fixes" maps each finding to its fix.
 
@@ -239,6 +239,20 @@ The three items, fixed:
 **Each new test failed on the code before its fix.** All four were run with the fixes absent and only the probe's new `sleep` action present (test scaffolding the timeout test needs); all four failed. The two timeout tests failed because no refusal row was written. The two error tests failed on `__cause__`: the reader's `ValueError` with the planted value, and psycopg's `LockNotAvailable`. With the fixes, all pass.
 
 **By the owner's decision, these fixes were merged on their regression tests without a further review round.**
+
+## Live deployment (2026-10-05)
+
+**Merge:** `step-05-access` into `main` with `--no-ff` (`81ce23c`), after the branch runs were green: last code commit `0034dc7` (https://github.com/kelawady/hypocurate/actions/runs/37330086644) and branch head `0b398cb` (https://github.com/kelawady/hypocurate/actions/runs/37330544938). Checked before merging (`git diff --name-only origin/main...step-05-access`): 31 files, all package code, tests, the image check, the README, CLAUDE.md and review documents; **no `render.yaml`, workflow, migration**, Dockerfile, Compose or dependency change. The suite passed on `main` locally (643), and `main`'s run was green (https://github.com/kelawady/hypocurate/actions/runs/37331298304; started 15:15:11 UTC, passed 15:18:02 UTC). Times are UTC.
+
+| Check | How | Result |
+|---|---|---|
+| Live `/health` before the merge | `curl` | `version` `2229df3…`, `schema` `0001`, at head |
+| Live `/health` after the deploy | `curl`, 15:19:09 UTC | `{"web":"ok","database":"ok","version":"81ce23c8f5a9b6b218861f0ca9ddda57990932db","schema":{"revision":"0001","at_head":true}}` |
+| `/assumptions` signed out | `curl` | 303 to `/login` |
+| `/assumptions?review=not_reviewed` signed out | `curl` | 303 to `/login` |
+| `/` signed out | `curl` | 303 to `/login` |
+
+That the service started on the new commit also shows that the deployed register (86 entries) passed validation at start-up. The signed-in page was not checked: that needs the production password, which only the owner uses. No migration ran (schema still `0001`), and no Blueprint sync was expected, because `render.yaml` did not change. The access layer has no caller on the live site yet (no agent, no worker job, no source registered).
 
 ## Requirements carried from earlier steps
 
