@@ -1,6 +1,6 @@
 # Build step 3 — summary for review
 
-Date: 2026-10-05. Branch: `step-03-data-model`. **Status: the seven findings of the second-model review are fixed; the re-check closed findings 2, 5 and 6 and left four narrow items, now fixed and green on GitHub. Awaiting the owner's sign-off. Not merged, not deployed.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
+Date: 2026-10-05. Branch: `step-03-data-model`. **Status: signed off by the second model's second re-check (2026-10-05): all findings closed, "Step 3 can be merged and its migration run on the live database". Merge into `main` approved by the owner (2026-10-05); migration 0001 is frozen from that merge on.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step03_review_chatgpt.md`. The plan was approved by the owner on 2026-10-04/05, with decisions on seven questions and four additions, and the fix plan on 2026-10-05, with two additions (the fingerprint computed at sealing; what may be written after a run ends).
 
@@ -319,6 +319,10 @@ The four remaining items, fixed in migration 0001 in place (owner's instruction)
    - **Fix:** `hc_stage_result_update` freezes the role with the stage name.
    - **Tests:** `test_a_commentator_stage_cannot_be_relabelled` (with and without finishing the stage in the same update; to `planner` and to NULL); `test_a_running_stage_cannot_be_relabelled`.
 
+## Second re-check (ChatGPT, 2026-10-05): sign-off
+
+The text is in `docs/reviews/step03_recheck2_chatgpt.md`. All four re-check items are closed: lock order, source fingerprints, finite costs, frozen stage role. "No new result-corruption or live-database blocker found." Its two notes for later steps are open items 3 and 4 below.
+
 ## Tests (375, all passing; 187 for step 3; the 93 from step 1 and the login tests unchanged)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data tests/test_login.py tests/test_login_throttle.py` is empty.
@@ -406,11 +410,14 @@ Local checks beyond the suite:
 ## Open items
 1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and live `/health` shows `"schema":{"revision":"0001","at_head":true}`. This is the first time a pre-deploy command runs with our Docker services. The merge also syncs the Blueprint.
 2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
-3. **Step 4 onwards: every write path follows the locking protocol.** It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`. Code review of each later step checks this.
-4. **Step 4** computes the source-version files digest and identity as defined above, seals every version before use, and loads the two frozen sources. The source file paths stored must match the safe pattern.
-5. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
-6. **Step 7 and step 9 requirements** are listed above.
-7. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.
-8. The test database user must be allowed to create databases. The tests never run against Render.
-9. Source registration's "access key" (PRD 9.6) has no column; secrets stay in environment variables.
-10. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
+3. **Step 4 onwards: every real write path follows the locking protocol** (second re-check, note 1). It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`; code review of each later step checks this.
+   - The deadlock-free claim is scoped to **single-run transactions** that follow the protocol.
+   - A transaction that writes to more than one run needs an additional ordering rule. My proposal for the step that first needs one: lock all versions first, then all runs, each in ascending id order, through `hc_write_lock`, before any child write. To be decided and tested then.
+4. **Before any stored path is written to disk, check that it stays inside its target directory** (second re-check, note 2). The safe character pattern still allows `a/../../outside.csv`. Whichever step first writes source files or artifacts to disk must resolve each path and reject any that leaves the directory, with a test for that path.
+5. **Step 4** computes the source-version files digest and identity as defined above, seals every version before use, and loads the two frozen sources. The source file paths stored must match the safe pattern.
+6. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
+7. **Step 7 and step 9 requirements** are listed above.
+8. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.
+9. The test database user must be allowed to create databases. The tests never run against Render.
+10. Source registration's "access key" (PRD 9.6) has no column; secrets stay in environment variables.
+11. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
