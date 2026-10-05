@@ -40,9 +40,11 @@ from hypocurate.access import file_guard
 MODULE = "hypocurate.access.guarded"
 SCRATCH_ENV = ("TMPDIR", "MPLCONFIGDIR", "XDG_CACHE_HOME")
 # Imported before the guard is installed: the database driver imports `ctypes`, which loads
-# the process's own symbols when it is first imported, and the guard refuses any ctypes
-# load. Importing it first changes no refusal: after installation every ctypes load,
-# symbol lookup and call is still refused, and reading the Python installation is allowed.
+# the process's own symbols when it is first imported, and the guard refuses the audit events
+# of a ctypes load. Importing it first changes what the guard sees only for that import. After
+# installation the guard refuses the ctypes audit events it intercepts (a new library load, a
+# symbol lookup, a foreign call); it does not stop preloaded ctypes from reading process memory
+# directly, which raises no such event (a documented limit; see file_guard).
 PRELOADED = ("psycopg",)
 
 
@@ -51,6 +53,13 @@ class GuardedRunError(Exception):
 
 
 MAX_REPORTED = 100  # refusals copied into the audit log per run; the rest are counted
+
+
+def _as_text(captured) -> str:
+    """Captured output as text: TimeoutExpired may hold bytes even in text mode, or nothing."""
+    if captured is None:
+        return ""
+    return captured.decode("utf-8", "replace") if isinstance(captured, bytes) else captured
 
 
 def _report_refusals(stderr: str, audit) -> None:
@@ -85,10 +94,15 @@ def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = N
     # mode 0700, in the system temporary directory; removed here, whatever the child does
     scratch = tempfile.mkdtemp(prefix=file_guard.SCRATCH_PREFIX, dir=file_guard.SYSTEM_TEMP)
     try:
-        completed = subprocess.run([sys.executable, "-m", MODULE],
-                                   input=json.dumps({"target": target, "payload": payload, "scratch": scratch}),
-                                   capture_output=True, text=True, timeout=timeout,
-                                   env=env if env is not None else dict(os.environ))
+        try:
+            completed = subprocess.run([sys.executable, "-m", MODULE],
+                                       input=json.dumps({"target": target, "payload": payload, "scratch": scratch}),
+                                       capture_output=True, text=True, timeout=timeout,
+                                       env=env if env is not None else dict(os.environ))
+        except subprocess.TimeoutExpired as expired:
+            # The child is killed; what it wrote before (possibly as bytes) is still reported.
+            _report_refusals(_as_text(expired.stderr), audit)
+            raise
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     _report_refusals(completed.stderr, audit)

@@ -3,13 +3,14 @@
 Created only by the trusted dispatcher (`dispatch.bind`), around an immutable
 `AccessContext` captured once. There is no public constructor that takes a caller-chosen
 run, role, stage or source (tests use their own helper). Every read goes through `get`
-(one field) or `read_all` (the role's complete input, used by `inputs.role_input`).
+(one field) or `read_all` (every field on the role's list, used by `inputs.role_input`).
 
 **One read is one transaction** (`run_transaction`, retried on 40P01 / 40001):
 1. `SET LOCAL lock_timeout`; check that the run exists; `hc_write_lock(p_run => …)`: the
    locking protocol of step 3 (the audit rows are writes to the run). Holding the run's lock,
-   the stage and the rows read cannot change until commit: writers to the run follow the
-   same protocol and wait. So `read_all` is one snapshot of the role's whole input;
+   the stage cannot change until commit, and neither can run data written by code that follows
+   the same protocol (it waits). So `read_all` is one snapshot of the run data protected by the
+   run-lock protocol; data outside that protocol is not covered by this claim;
 2. the run's actual stage (`stage.actual_stage`);
 3. the policy checks per field: known role and stage, the context's stage equals the actual
    one, the field is on the role's list;
@@ -31,6 +32,11 @@ transaction *without* `hc_write_lock`, because there is no run to lock (unknown 
 lock is what failed (timeout). An `audit_log` insert takes only a key-share lock on the run,
 which never conflicts with the protocol's lock, so it cannot wait on it or deadlock. For an
 unknown run, `run_id` is NULL and the requested id is in `detail`.
+
+**The original error of a failure** (a reader's exception, the database's error) is written,
+with its traceback, to the process log only. The `AccessFailed` raised to the caller is raised
+outside the handler: no cause, no context, and no text of the original, so a formatter that
+forwards it cannot forward the original (re-check, finding 5).
 
 **Fallback.** If a failure row cannot be written (the database is unavailable), the event
 goes to the process log (logger `hypocurate.access`, one bounded JSON line). Durable logging
@@ -129,6 +135,15 @@ def log_failure(engine: Engine, ctx: AccessContext, function: str, code: str, ru
                               "error": type(error).__name__}, sort_keys=True))
 
 
+def keep_in_process_log(ctx: AccessContext, function: str, code: str, original: BaseException | None) -> None:
+    """The original error of an access failure, with its traceback, in the process log only.
+    It may hold values a role must not see, so it never travels with the error raised."""
+    LOG.error(json.dumps({"access_failure": {"run": ctx.run_id, "role": bounded(ctx.role, ROLES),
+                                             "function": bounded(function, FUNCTIONS), "code": code}},
+                         sort_keys=True),
+              exc_info=(type(original), original, original.__traceback__) if original is not None else None)
+
+
 class _ReaderError(Exception):
     def __init__(self, field: str, error: BaseException):
         self.field, self.error_class = field, type(error).__name__
@@ -166,7 +181,8 @@ class Access:
         return self._read(field, (field,))[field]
 
     def read_all(self) -> dict[str, Any]:
-        """Every field on the role's list at its stage, in one transaction (one snapshot).
+        """Every field on the role's list at its stage, in one transaction (one snapshot of the
+        run data protected by the run-lock protocol).
         Never empty: a role with no field at its stage gets AccessDenied (logged)."""
         ctx = self._context
         return self._read("role_input", tuple(sorted(allowed(ctx.role, ctx.stage))))
@@ -174,16 +190,22 @@ class Access:
     def _read(self, function: str, fields: tuple) -> dict[str, Any]:
         ctx, engine = self._context, self._engine
         name = bounded(function if fields != (function,) else fields[0], FUNCTIONS)
+        failure = None
         try:
             outcome = run_transaction(engine, lambda conn: self._transaction(conn, ctx, function, fields))
         except _ReaderError as error:
-            log_failure(engine, ctx, error.field, "reader_error", error_class=error.error_class)
-            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(error.field, FUNCTIONS),
-                               "reader_error") from error.__cause__
+            keep_in_process_log(ctx, error.field, "reader_error", error.__cause__)
+            failure = (bounded(error.field, FUNCTIONS), "reader_error", {"error_class": error.error_class})
         except DBAPIError as error:
             code = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
-            log_failure(engine, ctx, name, code)
-            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, code) from error
+            keep_in_process_log(ctx, name, code, error)
+            failure = (name, code, {})
+        if failure is not None:
+            # Raised outside the handler: the error carries no cause, no context and no text of
+            # the original, which stays in the process log only (re-check, finding 5).
+            field, code, extra = failure
+            log_failure(engine, ctx, field, code, **extra)
+            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), field, code)
         kind = outcome[0]
         if kind == "unknown_run":
             log_failure(engine, ctx, name, "unknown_run", run_known=False)

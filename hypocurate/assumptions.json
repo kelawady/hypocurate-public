@@ -3389,7 +3389,8 @@
       "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place",
       "tests/test_access_files.py::test_preloaded_ctypes_still_works_a_documented_limit",
       "tests/test_access_dispatch.py::test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log",
-      "tests/test_check_runtime_image.py::test_clean_image_passes"
+      "tests/test_check_runtime_image.py::test_clean_image_passes",
+      "tests/test_access_dispatch.py::test_a_refusal_followed_by_a_timeout_is_still_logged"
     ]
   },
   {
@@ -3480,7 +3481,7 @@
     "key": "access_logging",
     "name": "What the audit log records, and its fallback",
     "state": "in_force",
-    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional.",
+    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out.",
     "value": {
       "text": "allowed / denied / failed; process log as fallback",
       "unit": null
@@ -3489,7 +3490,8 @@
     "affects": "The audit log of every run (PRD 14.2).",
     "reason": "Review finding 5.",
     "evidence": [
-      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md.",
+      "Step 5 re-check (ChatGPT, 2026-10-05): docs/reviews/step05_recheck_chatgpt.md, finding 5."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -3520,7 +3522,14 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Before the step 5 re-check: the error raised was chained to the original."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_dispatch.py::test_a_readers_error_is_a_logged_failure",
@@ -3528,7 +3537,11 @@
       "tests/test_access_dispatch.py::test_when_the_database_is_unavailable_the_process_log_is_the_fallback",
       "tests/test_access_dispatch.py::test_role_input_is_never_silently_empty",
       "tests/test_access_dispatch.py::test_only_validated_bounded_strings_are_logged",
-      "tests/test_access_dispatch.py::test_a_roles_whole_input_is_read_in_one_transaction"
+      "tests/test_access_dispatch.py::test_a_roles_whole_input_is_read_in_one_transaction",
+      "tests/test_access_dispatch.py::test_a_reader_failure_carries_nothing_of_the_original_error",
+      "tests/test_access_dispatch.py::test_a_database_failure_carries_nothing_of_the_original_error",
+      "tests/test_access_dispatch.py::test_a_refusal_followed_by_a_timeout_is_still_logged",
+      "tests/test_access_dispatch.py::test_a_timeout_with_stderr_as_bytes_is_still_reported"
     ]
   },
   {

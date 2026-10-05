@@ -6,7 +6,8 @@
 - `dispatch.bind`: the only way to obtain an access object, for one agent call;
 - `layer.Access`: the access object every agent read goes through; logs every read,
   denial and failure;
-- `inputs.role_input`: a role's complete input at its stage, in one snapshot;
+- `inputs.role_input`: a role's projected input at its stage, in one transaction under the
+  run's lock;
 - `file_guard` and `guarded`: a tripwire against accidental file access by pipeline code
   (not a sandbox).
 """

@@ -3,7 +3,7 @@
 `probe(actions)` performs each action and reports "ok", or "refused: ..." when the guard
 refused it. It is how the tests (and, later, a deploy-time self-check) show what the
 tripwire catches. It reads nothing it reports beyond a byte count. It does not show that
-the guard cannot be bypassed: it cannot be, by design (see `file_guard`).
+the guard cannot be bypassed: code that tries can bypass it (see `file_guard`).
 """
 from __future__ import annotations
 
@@ -119,6 +119,13 @@ def _ctypes_from_address(_: Any) -> str:
     return f"ok {ctypes.c_char.from_address(ctypes.addressof(buffer)).value!r}"
 
 
+def _sleep(action: dict) -> str:
+    """Sleeps (for the timeout test: a refusal followed by a child that never finishes)."""
+    import time
+    time.sleep(float(action.get("seconds", 1)))
+    return "ok"
+
+
 def _register(_: Any) -> str:
     from hypocurate.sources.versions import SOURCES, read_definition_files
     read_definition_files(SOURCES["mpea"])
@@ -148,7 +155,7 @@ ACTIONS: dict[str, Callable[[dict], str]] = {
     "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "ctypes_string_at": _ctypes_string_at,
     "ctypes_from_address": _ctypes_from_address,
     "register": _register,
-    "role_input": _role_input,
+    "role_input": _role_input, "sleep": _sleep,
 }
 
 

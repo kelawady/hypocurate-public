@@ -5,8 +5,10 @@ vocabularies with their unrecognized counts.
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 import time
+import traceback
 
 import pytest
 from sqlalchemy import text
@@ -16,6 +18,7 @@ from access_testing import access_for
 from hypocurate.access import Access, AccessDenied, AccessFailed, bind, layer, role_input, vocabulary
 from hypocurate.access.allowlist import allowed
 from hypocurate.access.context import AccessContext
+from hypocurate.access import guarded
 from hypocurate.access.guarded import run_guarded
 from hypocurate.db.engine import make_engine
 from hypocurate.sources import connection
@@ -296,3 +299,85 @@ def test_the_gap_report_input_has_codes_not_failure_text(engine):
     rules = {d["rule"] for d in got["decisions"]["records"]}
     assert rules == {"in_scope", "unrecognized"}
     assert set(allowed("analyst", "closed_without_freeze")) == set(got)
+
+
+# --- Re-check fixes (ChatGPT, 2026-10-05) ----------------------------------------------------
+
+PROBE = "hypocurate.access.guard_probe:probe"
+
+
+def test_a_refusal_followed_by_a_timeout_is_still_logged(engine):
+    """Re-check, finding 5: the child's refusal is reported from the captured standard error even
+    when the child times out, and the timeout still propagates."""
+    world = aw.build(engine, "before_lock")
+    target = str(aw.REPO / "tests" / "fixtures" / "controlled_duplicates" / "truth.csv")
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_guarded(PROBE, [{"op": "read", "path": target}, {"op": "sleep", "seconds": 120}], timeout=15,
+                    audit=(engine, world.run))
+    row = audit(engine, world.run)[-1]
+    assert (row.function, row.detail["result"], row.detail["code"], row.detail["event"]) == (
+        "guarded_run", "failed", "file_guard", "read")
+    assert "truth.csv" in row.detail["what"]
+
+
+def test_a_timeout_with_stderr_as_bytes_is_still_reported(engine, monkeypatch):
+    """subprocess.TimeoutExpired may carry the captured output as bytes even in text mode."""
+    world = aw.build(engine, "before_lock")
+    line = b'HCGUARD {"event": "read", "what": "reading /somewhere/tests/x"}\n'
+
+    def times_out(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], 1, output=b"", stderr=line)
+
+    monkeypatch.setattr(guarded.subprocess, "run", times_out)
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_guarded(PROBE, [], timeout=1, audit=(engine, world.run))
+    row = audit(engine, world.run)[-1]
+    assert (row.detail["code"], row.detail["what"]) == ("file_guard", "reading /somewhere/tests/x")
+
+
+def _forwardable(error: BaseException) -> str:
+    """Every representation of an error a trusted formatter could forward to a model."""
+    return "\n".join([str(error), repr(error), "".join(traceback.format_exception(error)),
+                      repr(error.__cause__), repr(error.__context__), str(error.args)])
+
+
+def test_a_reader_failure_carries_nothing_of_the_original_error(engine, monkeypatch, caplog):
+    """Re-check, finding 5: the original error (here with a planted value) stays out of str,
+    repr, the chained cause and context, and the formatted traceback; it is kept only in the
+    process log."""
+    world = aw.build(engine, "curation")
+
+    def broken(conn, ctx):
+        raise ValueError(f"leaked yield strength {aw.PLANTED['yield_strength']} MPa")
+
+    monkeypatch.setitem(layer.READERS, "flags_kind", broken)
+    with caplog.at_level(logging.ERROR, logger="hypocurate.access"):
+        with pytest.raises(AccessFailed) as failed:
+            access_for(engine, world.run, "critic", "curation").get("flags_kind")
+    error = failed.value
+    assert error.__cause__ is None and error.__context__ is None
+    forwarded = _forwardable(error)
+    assert "48213" not in forwarded and "leaked" not in forwarded and "ValueError" not in forwarded
+    process_log = "\n".join(r.getMessage() + (r.exc_text or "") for r in caplog.records)
+    assert "leaked yield strength 48213.579 MPa" in process_log
+
+
+def test_a_database_failure_carries_nothing_of_the_original_error(engine, caplog):
+    world = aw.build(engine, "curation")
+    holder = make_engine(engine.test_url)
+    with holder.connect() as conn:
+        tx = conn.begin()
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
+        with caplog.at_level(logging.ERROR, logger="hypocurate.access"):
+            with pytest.raises(AccessFailed) as read_failed:
+                access_for(engine, world.run, "critic", "curation", lock_timeout_ms=200).get("flags_kind")
+            with pytest.raises(AccessFailed) as bind_failed:
+                bind(engine, world.run, world.settings["critic"], lock_timeout_ms=200)
+        tx.rollback()
+    holder.dispose()
+    for error in (read_failed.value, bind_failed.value):
+        assert error.code == "lock_timeout"
+        assert error.__cause__ is None and error.__context__ is None
+        forwarded = _forwardable(error)
+        assert "LockNotAvailable" not in forwarded and "hc_write_lock" not in forwarded and "SELECT" not in forwarded
+    assert "LockNotAvailable" in "\n".join(r.getMessage() + (r.exc_text or "") for r in caplog.records)

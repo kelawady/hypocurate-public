@@ -24,7 +24,7 @@ from sqlalchemy.exc import DBAPIError
 from hypocurate.access.context import AccessContext
 from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.layer import (_AUDIT, _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, DENIALS, Access, _detail, _row,
-                                     bounded_source, log_failure)
+                                     bounded_source, keep_in_process_log, log_failure)
 from hypocurate.access.stage import actual_stage
 from hypocurate.db.retry import run_transaction, sqlstate
 
@@ -64,12 +64,15 @@ def bind(engine: Engine, run_id: int, agent_setting_id: int, source_key: str | N
         conn.execute(_AUDIT, _row(ctx, run_id, "bind", code is None, _detail(ctx, result, code, stage, **extra)))
         return (result, code, ctx)
 
+    failure = None
     try:
         outcome = run_transaction(engine, transaction)
     except DBAPIError as error:
-        code = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
-        log_failure(engine, probe, "bind", code, agent_setting=agent_setting_id)
-        raise AccessFailed(UNBOUND, UNBOUND, "bind", code) from error
+        failure = "lock_timeout" if sqlstate(error) == "55P03" else "database_error"
+        keep_in_process_log(probe, "bind", failure, error)
+    if failure is not None:  # raised outside the handler: nothing of the original travels with it
+        log_failure(engine, probe, "bind", failure, agent_setting=agent_setting_id)
+        raise AccessFailed(UNBOUND, UNBOUND, "bind", failure)
     if outcome[0] == "unknown_run":
         log_failure(engine, probe, "bind", "unknown_run", run_known=False, agent_setting=agent_setting_id)
         raise AccessFailed(UNBOUND, UNBOUND, "bind", "unknown_run")
