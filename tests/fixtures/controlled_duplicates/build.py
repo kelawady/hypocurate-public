@@ -152,7 +152,7 @@ CASES = {
         primary_analysis="not eligible: excluded by the test-type rule (tension only)",
         sensitivity_analysis="none",
         pair=None,
-        explanation="Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope.",
+        explanation="Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan accepts tension tests only, so this record is out of scope; with tension and compression together, both enter as distinct measurements.",
     ),
 }
 

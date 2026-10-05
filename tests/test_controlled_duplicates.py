@@ -14,8 +14,9 @@ FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
 TRUTH = FIXTURES / "truth.csv"
 # Pinned here, outside data/, so the answer file cannot change without changing a test.
 # Step 6 (owner, 2026-10-05): the restored survivor wording and decision C (rows 7-8 are a conflict).
-# Owner, 2026-10-06: rows 15-16 describe the reference plan with its test-type rule (tension only).
-TRUTH_SHA256 = "8ff5383783726824faa03a724d3333e519ca2afa9b2ac33146f3c793e2b9a0f9"
+# Owner, 2026-10-06: rows 15-16 describe the reference plan with its test-type rule (tension only),
+# their explanation included (after the step 6 review).
+TRUTH_SHA256 = "e6e859cd127b26cad233fac11f68c09eeb29dc2e4457ea68cba530ef2355025b"
 # The frozen source files: fingerprint-pinned, and not written by us, so they
 # cannot hold our answers. Everything else under data/ is scanned.
 FROZEN_SOURCE_FILES = {
@@ -261,6 +262,8 @@ def test_other_test_type_rows_are_compression_copies_of_tension_records():
         # The reference plan accepts tension only (owner, 2026-10-05): the compression copy is out of scope.
         assert t["prd_5_3_class"] == "Incompatible measurements: outside the plan's scope (test-type rule: tension only)"
         assert t["primary_analysis"] == "not eligible: excluded by the test-type rule (tension only)"
+        assert "accepts tension tests only, so this record is out of scope" in t["explanation"]
+        assert "sets no test-type rule" not in t["explanation"]
         # Under a tension-only plan the compression record is out of scope.
         assert t["handling_under_tension_only_plan"] == (
             "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')")

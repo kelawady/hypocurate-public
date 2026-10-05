@@ -49,7 +49,7 @@ No pair here lets a source other than MPEA survive. The step 6 tests add constru
 
 ## Permitted test types (decided)
 
-The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. Since 2026-10-06 (owner's decision) the columns `prd_5_3_class` and `primary_analysis` of rows 15–16 describe this plan; the column `handling_under_tension_only_plan` agrees with them. The rows' `explanation` text still describes the step 1 plan without a test-type rule.
+The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. Since 2026-10-06 (owner's decision) the columns `prd_5_3_class` and `primary_analysis` of rows 15–16 describe this plan; the column `handling_under_tension_only_plan` agrees with them. Their `explanation` text describes this plan too (owner, 2026-10-06, after the step 6 review).
 
 ## Rebuilding
 
