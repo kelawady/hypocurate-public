@@ -182,6 +182,7 @@ Other rules:
   - a run-level row is allowed only with `no_dataset_frozen`;
   - **such a row and a dataset freeze exclude each other**, in either order (finding 3).
 - Commentary only after completion, from the commentator stage.
+- A stage result's run, stage name, attempt and **role** never change (re-check item 4), so a Commentator stage on a completed run cannot be relabelled.
 
 **Stated limitations.**
 - The triggers stop the application and ordinary edits. The database owner can still drop or disable a trigger; that is not tamper-proof, and the fingerprints are the cross-check.

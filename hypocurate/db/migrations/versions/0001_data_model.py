@@ -1346,8 +1346,8 @@ FUNCTIONS = [
             PERFORM hc_reject('a finished stage result is final');
         END IF;
         IF NEW.run_id <> OLD.run_id OR NEW.stage <> OLD.stage OR NEW.attempt <> OLD.attempt
-           OR NEW.started_at <> OLD.started_at THEN
-            PERFORM hc_reject('the identity of a stage result cannot change');
+           OR NEW.role IS DISTINCT FROM OLD.role OR NEW.started_at <> OLD.started_at THEN
+            PERFORM hc_reject('the identity of a stage result (run, stage, attempt, role) cannot change');
         END IF;
         RETURN NEW;
     END $$

@@ -1134,6 +1134,26 @@ def test_no_table_stores_token_or_cost_totals(w):
     assert {t for t, _ in columns} == {"model_call"}
 
 
+@pytest.mark.parametrize("finishing", [False, True])
+def test_a_commentator_stage_cannot_be_relabelled(w, finishing):
+    """Re-check item 4: the role is frozen with the stage name, also on a completed
+    run and also in the update that finishes the stage."""
+    rid = w.running()
+    w.complete(rid, "insufficient")
+    st = w.stage(rid, "commentator", "commentator")
+    finish = ", status = 'done', finished_at = now()" if finishing else ""
+    for role in ("'planner'", "NULL"):
+        w.rejected(f"UPDATE stage_result SET role = {role}{finish} WHERE id = :s", "cannot change", s=st)
+    assert w.rows("SELECT role, status FROM stage_result WHERE id = :s", s=st) == [("commentator", "running")]
+
+
+def test_a_running_stage_cannot_be_relabelled(w):
+    rid = w.running()
+    st = w.stage(rid, "planner", "planner")
+    w.rejected("UPDATE stage_result SET role = 'critic' WHERE id = :s", "cannot change", s=st)
+    w.run_sql("UPDATE stage_result SET output = '{}' WHERE id = :s", s=st)  # other fields still update
+
+
 def test_a_finished_stage_result_is_final(w):
     rid = w.running()
     st = w.stage(rid)
