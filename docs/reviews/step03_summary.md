@@ -436,10 +436,18 @@ Two consequences, for later steps:
 - **The `checksPass` gate does not cover Blueprint-sync redeploys of the commit already running.** A settings change can therefore run against old code before the check passes.
 - **Next time,** deploy code that a new setting depends on in one merge, and add the setting in a later one.
 
-The owner did not send the web service's events for 01:46, so whether web also had this failed redeploy was not checked; its log screenshot starts at 01:48:21.
+**The web service had the same failed redeploy.** The owner's screenshot of `hypocurate-web` → Events (35 events) shows, newest last:
+- 6:46 PM (01:46 UTC): "Deploy started", with no commit and no "New commit via Auto-Deploy";
+- 6:47 PM: "Deploy failed for 68ba1c4 … Exited with status 1 while running your pre-deploy script";
+- 6:48 PM: "Deploy started for 427c1a3, New commit via Auto-Deploy";
+- 6:49 PM: "Deploy live for 427c1a3".
+
+That the failed deploy names `68ba1c4`, the commit already running, supports the reading above. Both services behaved alike, and neither failed redeploy was retried or changed.
+
+**Rule added** (owner, 2026-10-05; CLAUDE.md, "How we work", item 10): a `render.yaml` change takes effect at push, before the checks pass, and redeploys the code already running. So any setting that depends on new code goes in a later merge than that code, and every `render.yaml` change needs the owner's explicit review, like workflow changes.
 
 ## Open items
-1. **Live check after merge: done** (see "Live deployment"). Follow-up for later steps: a `render.yaml` change is applied by the Blueprint sync before the `checksPass` gate, as a redeploy of the code already running. Put settings that depend on new code in a later merge than the code.
+1. **Live check after merge: done** (see "Live deployment"). For later steps, CLAUDE.md "How we work" item 10 now covers `render.yaml` changes: settings that depend on new code go in a later merge than the code, and every `render.yaml` change needs the owner's review.
 2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
 3. **Step 4 onwards: every real write path follows the locking protocol** (second re-check, note 1). It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`; code review of each later step checks this.
    - The deadlock-free claim is scoped to **single-run transactions** that follow the protocol.
