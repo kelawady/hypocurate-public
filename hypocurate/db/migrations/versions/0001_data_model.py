@@ -115,10 +115,18 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
     sa.Column('source_id', sa.BigInteger(), nullable=False),
     sa.Column('label', sa.Text(), nullable=False),
-    sa.Column('fingerprint', sa.Text(), nullable=False),
     sa.Column('obtained_on', sa.Date(), nullable=False),
+    sa.Column('source_type', sa.Text(), nullable=False),
+    sa.Column('data_kind', sa.Text(), nullable=False),
+    sa.Column('grouping_unit', sa.Text(), nullable=False),
+    sa.Column('sealed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('fingerprint', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.CheckConstraint("fingerprint ~ '^[0-9a-f]{64}$'", name=op.f('ck_source_version_fingerprint_format')),
+    sa.CheckConstraint('(sealed_at IS NULL) = (fingerprint IS NULL)', name=op.f('ck_source_version_sealed_with_fingerprint')),
+    sa.CheckConstraint("source_type IN ('uploaded_table', 'web_interface', 'paper_search', 'model_recall')", name=op.f('ck_source_version_source_type')),
+    sa.CheckConstraint("data_kind IN ('measured', 'computed', 'model_recalled')", name=op.f('ck_source_version_data_kind')),
+    sa.CheckConstraint("grouping_unit IN ('paper', 'dataset', 'batch')", name=op.f('ck_source_version_grouping_unit')),
     sa.ForeignKeyConstraint(['source_id'], ['source.id'], name=op.f('fk_source_version_source_id')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_source_version')),
     sa.UniqueConstraint('id', 'source_id', name=op.f('uq_source_version_id_source_id')),
@@ -375,8 +383,11 @@ def upgrade() -> None:
     sa.CheckConstraint("label IS NULL OR label IN ('agrees', 'conflicts', 'not_enough_data')", name=op.f('ck_analysis_result_label')),
     sa.CheckConstraint("scope IN ('pooled', 'per_source', 'sensitivity')", name=op.f('ck_analysis_result_scope')),
     sa.CheckConstraint('check1_passed = (estimate IS NOT NULL)', name=op.f('ck_analysis_result_estimate_iff_check1')),
-    sa.CheckConstraint('check1_passed = (n_alloys >= 1)', name=op.f('ck_analysis_result_check1_definition')),
-    sa.CheckConstraint('check2_passed = (check1_passed AND resid_df >= 1 AND n_groups >= 2)', name=op.f('ck_analysis_result_check2_definition')),
+    sa.CheckConstraint('check1_passed = (n_alloys >= 1)', name=op.f('ck_analysis_result_check1_consistent')),
+    sa.CheckConstraint('check2_passed = (check1_passed AND resid_df >= 1 AND n_groups >= 2)', name=op.f('ck_analysis_result_check2_consistent')),
+    sa.CheckConstraint('n_records >= 2 * n_alloys', name=op.f('ck_analysis_result_two_records_per_alloy')),
+    sa.CheckConstraint('n_groups <= n_records', name=op.f('ck_analysis_result_groups_within_records')),
+    sa.CheckConstraint('n_records = 0 OR n_groups >= 1', name=op.f('ck_analysis_result_records_have_a_group')),
     sa.CheckConstraint('check2_passed = (p_value IS NOT NULL)', name=op.f('ck_analysis_result_p_value_iff_check2')),
     sa.CheckConstraint('check2_passed = (std_error IS NOT NULL)', name=op.f('ck_analysis_result_std_error_iff_check2')),
     sa.CheckConstraint('estimated_power IS NULL OR estimated_power BETWEEN 0 AND 1', name=op.f('ck_analysis_result_power_range')),
@@ -430,12 +441,12 @@ def upgrade() -> None:
     sa.Column('role', sa.Text(), nullable=False),
     sa.Column('model', sa.Text(), nullable=False),
     sa.Column('price_table_version', sa.Text(), nullable=False),
-    sa.Column('max_cost', sa.Numeric(precision=12, scale=6), nullable=False),
+    sa.Column('max_cost', sa.Numeric(), nullable=False),
     sa.Column('status', sa.Text(), server_default=sa.text("'started'"), nullable=False),
     sa.Column('input_tokens', sa.BigInteger(), nullable=True),
     sa.Column('output_tokens', sa.BigInteger(), nullable=True),
     sa.Column('cached_tokens', sa.BigInteger(), nullable=True),
-    sa.Column('cost', sa.Numeric(precision=12, scale=6), nullable=True),
+    sa.Column('cost', sa.Numeric(), nullable=True),
     sa.Column('error', sa.Text(), nullable=True),
     sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('finished_at', sa.DateTime(timezone=True), nullable=True),
@@ -447,7 +458,7 @@ def upgrade() -> None:
     sa.CheckConstraint("status IN ('started', 'succeeded', 'failed', 'interrupted')", name=op.f('ck_model_call_status')),
     sa.CheckConstraint('coalesce(input_tokens, 0) >= 0 AND coalesce(output_tokens, 0) >= 0 AND coalesce(cached_tokens, 0) >= 0 AND coalesce(cost, 0) >= 0', name=op.f('ck_model_call_usage_not_negative')),
     sa.CheckConstraint('length(model) > 0 AND length(price_table_version) > 0', name=op.f('ck_model_call_model_and_prices_named')),
-    sa.CheckConstraint('max_cost >= 0', name=op.f('ck_model_call_max_cost_not_negative')),
+    sa.CheckConstraint('max_cost > 0', name=op.f('ck_model_call_max_cost_positive')),
     sa.ForeignKeyConstraint(['stage_result_id', 'run_id'], ['stage_result.id', 'stage_result.run_id'], name='fk_model_call_stage_result'),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_model_call'))
     )
@@ -550,6 +561,25 @@ def downgrade() -> None:
 # ---------------------------------------------------------------------------
 # Hand-written: trigger functions, triggers, views, seed rows.
 # No '%' anywhere: messages are built with ||.
+#
+# Locking protocol (review finding 1). Every trigger that checks or changes a run's
+# state first locks that run's row with hc_lock_run (SELECT ... FOR NO KEY UPDATE),
+# and reads the run's status from that same statement, so it sees the latest
+# committed state. Updates of the run row itself take the same lock. Triggers on
+# chosen sources and on dispatch lock the hypothesis version first (hc_lock_version);
+# submission and dispatch are updates of that row. Lock order: version, then run.
+# A transaction that holds a run's lock makes every other writer to that run wait.
+#
+# What may be written to a run in each state (review finding 3; owner, 2026-10-05):
+#   queued:    run_source and run_agent_setting (dispatch); the run becomes running.
+#   running:   everything of the pipeline, each in its checkpoint order:
+#              plan (+ tags) -> records -> eligibility -> sets -> freeze -> results.
+#   completed: only the commentary, the Commentator's stage and model calls, and
+#              artifacts. None of them can change the outcome, verdict, analysis
+#              results or record sets, which are all final.
+#   failed:    nothing (audit_log is written in every state).
+# A run can complete or fail only when none of its stages is running and none of its
+# model calls is still started.
 # ---------------------------------------------------------------------------
 
 FUNCTION_NAMES = [
@@ -557,6 +587,9 @@ FUNCTION_NAMES = [
     "hc_append_only()",
     "hc_no_delete()",
     "hc_is_frozen(bigint)",
+    "hc_lock_run(bigint)",
+    "hc_lock_version(bigint)",
+    "hc_files_fingerprint(bigint)",
     "hc_original_domain(bigint)",
     "hc_hypothesis_insert()",
     "hc_version_insert()",
@@ -567,6 +600,10 @@ FUNCTION_NAMES = [
     "hc_plan_insert()",
     "hc_run_tag_insert()",
     "hc_tag_value_update()",
+    "hc_source_update()",
+    "hc_source_version_insert()",
+    "hc_source_version_update()",
+    "hc_source_file_insert()",
     "hc_run_agent_setting_insert()",
     "hc_run_source_insert()",
     "hc_run_source_update()",
@@ -581,6 +618,8 @@ FUNCTION_NAMES = [
     "hc_analysis_result_insert()",
     "hc_calibration_insert()",
     "hc_commentary_insert()",
+    "hc_artifact_insert()",
+    "hc_stage_result_insert()",
     "hc_stage_result_update()",
     "hc_model_call_insert()",
     "hc_model_call_update()",
@@ -613,6 +652,33 @@ FUNCTIONS = [
         SELECT EXISTS (SELECT 1 FROM run_snapshot WHERE run_id = p_run)
     $$
     """,
+    # The locking protocol: lock the row and read its current status in one statement.
+    """
+    CREATE FUNCTION hc_lock_run(p_run bigint) RETURNS text LANGUAGE plpgsql AS $$
+    DECLARE s text;
+    BEGIN
+        SELECT status INTO s FROM run WHERE id = p_run FOR NO KEY UPDATE;
+        RETURN s;
+    END $$
+    """,
+    """
+    CREATE FUNCTION hc_lock_version(p_version bigint) RETURNS text LANGUAGE plpgsql AS $$
+    DECLARE s text;
+    BEGIN
+        SELECT status INTO s FROM hypothesis_version WHERE id = p_version FOR NO KEY UPDATE;
+        RETURN s;
+    END $$
+    """,
+    # A source version's fingerprint (owner, 2026-10-05): SHA-256 of its file list,
+    # one line "<sha256>  <path>\\n" per file (the sha256sum format), sorted by path
+    # bytewise. Step 4 computes the same in Python.
+    """
+    CREATE FUNCTION hc_files_fingerprint(p_version bigint) RETURNS text LANGUAGE sql STABLE AS $$
+        SELECT encode(sha256(convert_to(
+                   string_agg(sha256 || '  ' || path || chr(10), '' ORDER BY path COLLATE "C"), 'UTF8')), 'hex')
+        FROM source_file WHERE source_version_id = p_version
+    $$
+    """,
     # The confirmed domain of the original question, for a narrower query; NULL otherwise.
     """
     CREATE FUNCTION hc_original_domain(p_hypothesis bigint) RETURNS bigint LANGUAGE sql STABLE AS $$
@@ -624,6 +690,7 @@ FUNCTIONS = [
     $$
     """,
     # A narrower question links only to a run whose outcome is partly sufficient (owner, question 1).
+    # A completed run never changes, so no lock is needed here.
     """
     CREATE FUNCTION hc_hypothesis_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
@@ -648,6 +715,7 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # The UPDATE itself holds the version row's lock.
     """
     CREATE FUNCTION hc_version_update() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE original bigint := hc_original_domain(NEW.hypothesis_id);
@@ -686,7 +754,7 @@ FUNCTIONS = [
             PERFORM hc_reject('hypothesis_version_source rows are added or removed, not updated');
         END IF;
         row_version := CASE WHEN TG_OP = 'INSERT' THEN NEW.hypothesis_version_id ELSE OLD.hypothesis_version_id END;
-        IF (SELECT status FROM hypothesis_version WHERE id = row_version) IS DISTINCT FROM 'draft' THEN
+        IF hc_lock_version(row_version) IS DISTINCT FROM 'draft' THEN
             PERFORM hc_reject('the chosen sources can change only while the version is a draft');
         END IF;
         RETURN CASE WHEN TG_OP = 'INSERT' THEN NEW ELSE OLD END;
@@ -699,7 +767,7 @@ FUNCTIONS = [
         IF NEW.status <> 'queued' OR NEW.exploratory THEN
             PERFORM hc_reject('a run starts as queued');
         END IF;
-        IF (SELECT status FROM hypothesis_version WHERE id = NEW.hypothesis_version_id) IS DISTINCT FROM 'dispatched' THEN
+        IF hc_lock_version(NEW.hypothesis_version_id) IS DISTINCT FROM 'dispatched' THEN
             PERFORM hc_reject('a run needs a dispatched hypothesis version');
         END IF;
         IF (SELECT d.supported FROM hypothesis_version hv JOIN domain d ON d.id = hv.confirmed_domain_id
@@ -709,9 +777,11 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Completion (owner, question 4 and addition 2): only for an outcome of sufficient,
-    # exactly one pooled result that passed both validity checks is required, and
-    # exploratory = (use_available AND minimums not met).
+    # The UPDATE itself holds the run row's lock, so writers to the run's children wait.
+    # Start: the dispatch-time source inventory is complete (review finding 6).
+    # Completion and failure: no stage running, no model call open.
+    # Completion as sufficient (owner, question 4 and addition 2): exactly one pooled
+    # result that passed both validity checks; exploratory = use_available AND minimums not met.
     """
     CREATE FUNCTION hc_run_update() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE p plan; pooled analysis_result; n_pooled int;
@@ -727,6 +797,17 @@ FUNCTIONS = [
         IF NOT ((OLD.status, NEW.status) IN (('queued', 'queued'), ('queued', 'running'), ('queued', 'failed'),
                                              ('running', 'running'), ('running', 'completed'), ('running', 'failed'))) THEN
             PERFORM hc_reject('run status cannot go from ' || OLD.status || ' to ' || NEW.status);
+        END IF;
+        IF OLD.status = 'queued' AND NEW.status = 'running' AND EXISTS (
+            SELECT 1 FROM source s WHERE s.created_at <= NEW.queued_at
+              AND NOT EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = NEW.id AND rs.source_id = s.id)) THEN
+            PERFORM hc_reject('a run starts only with a run_source row for every source registered at dispatch');
+        END IF;
+        IF NEW.status IN ('completed', 'failed') THEN
+            IF EXISTS (SELECT 1 FROM stage_result WHERE run_id = NEW.id AND status = 'running')
+               OR EXISTS (SELECT 1 FROM model_call WHERE run_id = NEW.id AND status = 'started') THEN
+                PERFORM hc_reject('a run ends only when no stage is running and no model call is open');
+            END IF;
         END IF;
         IF NEW.status = 'completed' AND NEW.outcome = 'sufficient' THEN
             SELECT * INTO p FROM plan WHERE run_id = NEW.id;
@@ -752,7 +833,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_plan_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'running' THEN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('a plan is locked only while its run is running');
         END IF;
         IF NEW.locked_at IS DISTINCT FROM now() THEN
@@ -772,10 +853,13 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_run_tag_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('run tags are written only while the run is running');
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM plan WHERE run_id = NEW.run_id AND locked_at = now()) THEN
             PERFORM hc_reject('run tags are written in the rules-lock transaction only');
         END IF;
-        IF (SELECT status FROM tag_value WHERE id = NEW.tag_value_id) = 'rejected' THEN
+        IF (SELECT status FROM tag_value WHERE id = NEW.tag_value_id) IS NOT DISTINCT FROM 'rejected' THEN
             PERFORM hc_reject('a rejected tag value cannot be attached');
         END IF;
         RETURN NEW;
@@ -794,10 +878,76 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # A source's key names it in every run's coverage, so it never changes (review finding 6).
+    """
+    CREATE FUNCTION hc_source_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NEW.key <> OLD.key OR NEW.created_at <> OLD.created_at THEN
+            PERFORM hc_reject('a source''s key and registration time cannot change');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    # A version copies the settings that change how records are read (review finding 4).
+    """
+    CREATE FUNCTION hc_source_version_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s source;
+    BEGIN
+        SELECT * INTO s FROM source WHERE id = NEW.source_id;
+        IF NEW.sealed_at IS NOT NULL OR NEW.fingerprint IS NOT NULL THEN
+            PERFORM hc_reject('a source version is sealed after its files are added');
+        END IF;
+        IF NEW.source_type IS DISTINCT FROM s.source_type AND NEW.source_type IS NOT NULL
+           OR NEW.data_kind IS DISTINCT FROM s.data_kind AND NEW.data_kind IS NOT NULL
+           OR NEW.grouping_unit IS DISTINCT FROM s.grouping_unit AND NEW.grouping_unit IS NOT NULL THEN
+            PERFORM hc_reject('a source version copies its settings from the source');
+        END IF;
+        NEW.source_type := s.source_type;
+        NEW.data_kind := s.data_kind;
+        NEW.grouping_unit := s.grouping_unit;
+        RETURN NEW;
+    END $$
+    """,
+    # The only change to a version is sealing it, once (owner, 2026-10-05).
+    """
+    CREATE FUNCTION hc_source_version_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF OLD.sealed_at IS NOT NULL THEN
+            PERFORM hc_reject('a sealed source version cannot change');
+        END IF;
+        IF NEW.sealed_at IS NULL OR NEW.source_id <> OLD.source_id OR NEW.label <> OLD.label
+           OR NEW.obtained_on <> OLD.obtained_on OR NEW.source_type <> OLD.source_type
+           OR NEW.data_kind <> OLD.data_kind OR NEW.grouping_unit <> OLD.grouping_unit
+           OR NEW.created_at <> OLD.created_at THEN
+            PERFORM hc_reject('the only change to a source version is sealing it');
+        END IF;
+        IF NEW.sealed_at IS DISTINCT FROM now() THEN
+            PERFORM hc_reject('sealed_at is set by the database at sealing');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM source_file WHERE source_version_id = NEW.id) THEN
+            PERFORM hc_reject('a source version needs at least one file before sealing');
+        END IF;
+        IF NEW.fingerprint IS DISTINCT FROM hc_files_fingerprint(NEW.id) THEN
+            PERFORM hc_reject('the fingerprint must be the SHA-256 of the sorted file list');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    """
+    CREATE FUNCTION hc_source_file_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE sealed timestamptz;
+    BEGIN
+        SELECT sealed_at INTO sealed FROM source_version WHERE id = NEW.source_version_id FOR NO KEY UPDATE;
+        IF sealed IS NOT NULL THEN
+            PERFORM hc_reject('files cannot be added to a sealed source version');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
     """
     CREATE FUNCTION hc_run_agent_setting_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'queued' THEN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'queued' THEN
             PERFORM hc_reject('agent settings versions are recorded at dispatch');
         END IF;
         RETURN NEW;
@@ -806,11 +956,15 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_run_source_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'queued' THEN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'queued' THEN
             PERFORM hc_reject('run sources are recorded at dispatch');
         END IF;
         IF NEW.search_status NOT IN ('not_selected', 'pending') THEN
             PERFORM hc_reject('a run source starts as not_selected or pending');
+        END IF;
+        IF NEW.source_version_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM source_version WHERE id = NEW.source_version_id AND sealed_at IS NOT NULL) THEN
+            PERFORM hc_reject('a run can use only a sealed source version');
         END IF;
         RETURN NEW;
     END $$
@@ -818,6 +972,9 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_run_source_update() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
+        IF hc_lock_run(OLD.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('a search result is recorded only while the run is running');
+        END IF;
         IF OLD.search_status <> 'pending' THEN
             PERFORM hc_reject('a run source that is ' || OLD.search_status || ' is final');
         END IF;
@@ -831,12 +988,16 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Records come from a source version the run recorded, while the run is running, before the freeze.
+    # Records: after the rules lock, while running, before the freeze, from a version the
+    # run recorded, and of the kind that version holds (review findings 3 and 4).
     """
     CREATE FUNCTION hc_record_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.extraction_run_id) IS DISTINCT FROM 'running' THEN
+        IF hc_lock_run(NEW.extraction_run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('records are extracted while their run is running');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM plan WHERE run_id = NEW.extraction_run_id) THEN
+            PERFORM hc_reject('records are extracted only after the rules lock');
         END IF;
         IF hc_is_frozen(NEW.extraction_run_id) THEN
             PERFORM hc_reject('records cannot be added after the dataset freeze');
@@ -844,6 +1005,9 @@ FUNCTIONS = [
         IF NOT EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = NEW.extraction_run_id
                          AND rs.source_version_id = NEW.source_version_id) THEN
             PERFORM hc_reject('a record must come from a source version recorded for its run');
+        END IF;
+        IF NEW.kind IS DISTINCT FROM (SELECT data_kind FROM source_version WHERE id = NEW.source_version_id) THEN
+            PERFORM hc_reject('a record has the kind of data of its source version');
         END IF;
         RETURN NEW;
     END $$
@@ -853,6 +1017,9 @@ FUNCTIONS = [
     CREATE FUNCTION hc_run_record_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE rec record;
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('eligibility is decided only while the run is running');
+        END IF;
         SELECT * INTO rec FROM record WHERE id = NEW.record_id;
         IF rec.extraction_run_id IS DISTINCT FROM NEW.run_id THEN
             PERFORM hc_reject('a run decides only on records extracted in that run');
@@ -874,6 +1041,9 @@ FUNCTIONS = [
     CREATE FUNCTION hc_analysis_set_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE keys text[];
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('analysis sets are written only while the run is running');
+        END IF;
         SELECT sensitivity_analysis_keys INTO keys FROM plan WHERE run_id = NEW.run_id;
         IF NOT FOUND THEN
             PERFORM hc_reject('an analysis set needs a locked plan');
@@ -892,6 +1062,9 @@ FUNCTIONS = [
     DECLARE s analysis_set; rr run_record;
     BEGIN
         SELECT * INTO s FROM analysis_set WHERE id = NEW.analysis_set_id;
+        IF hc_lock_run(s.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('analysis sets are written only while the run is running');
+        END IF;
         IF hc_is_frozen(s.run_id) THEN
             PERFORM hc_reject('analysis sets cannot change after the dataset freeze');
         END IF;
@@ -908,12 +1081,14 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Dataset freeze (PRD 5.6): the primary set and every named sensitivity set exist.
+    # Dataset freeze (PRD 5.6; review findings 2 and 3): every record of the run has a
+    # decision; the primary set is exactly the records decided eligible; every named
+    # sensitivity set exists; no "no dataset frozen" calibration was recorded.
     """
     CREATE FUNCTION hc_run_snapshot_insert() RETURNS trigger LANGUAGE plpgsql AS $$
-    DECLARE keys text[]; primary_count int;
+    DECLARE keys text[]; primary_id bigint; primary_count int;
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'running' THEN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('a dataset is frozen only while its run is running');
         END IF;
         IF NEW.frozen_at IS DISTINCT FROM now() THEN
@@ -923,10 +1098,22 @@ FUNCTIONS = [
         IF NOT FOUND THEN
             PERFORM hc_reject('a dataset freeze needs a locked plan');
         END IF;
-        SELECT count(*) INTO primary_count FROM analysis_set s JOIN analysis_set_record sr ON sr.analysis_set_id = s.id
-            WHERE s.run_id = NEW.run_id AND s.key = 'primary';
+        IF EXISTS (SELECT 1 FROM calibration_result WHERE run_id = NEW.run_id AND analysis_result_id IS NULL) THEN
+            PERFORM hc_reject('this run already recorded that no dataset was frozen');
+        END IF;
+        IF EXISTS (SELECT 1 FROM record r WHERE r.extraction_run_id = NEW.run_id
+                     AND NOT EXISTS (SELECT 1 FROM run_record rr WHERE rr.run_id = NEW.run_id AND rr.record_id = r.id)) THEN
+            PERFORM hc_reject('every record of the run needs an eligibility decision before the freeze');
+        END IF;
+        SELECT id INTO primary_id FROM analysis_set WHERE run_id = NEW.run_id AND key = 'primary';
+        SELECT count(*) INTO primary_count FROM analysis_set_record WHERE analysis_set_id = primary_id;
         IF primary_count = 0 THEN
             PERFORM hc_reject('no eligible records: no dataset is frozen');
+        END IF;
+        IF EXISTS (SELECT 1 FROM run_record rr WHERE rr.run_id = NEW.run_id AND rr.eligible
+                     AND NOT EXISTS (SELECT 1 FROM analysis_set_record sr
+                                     WHERE sr.analysis_set_id = primary_id AND sr.record_id = rr.record_id)) THEN
+            PERFORM hc_reject('the primary set must hold every record decided eligible');
         END IF;
         IF NEW.n_records <> primary_count THEN
             PERFORM hc_reject('n_records must equal the size of the primary set');
@@ -941,6 +1128,9 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_flag_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('flags are raised only while the run is running');
+        END IF;
         IF hc_is_frozen(NEW.run_id) THEN
             PERFORM hc_reject('flags cannot be added after the dataset freeze');
         END IF;
@@ -950,6 +1140,9 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_flag_update() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
+        IF hc_lock_run(OLD.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('flags are classified only while the run is running');
+        END IF;
         IF OLD.critic_class IS NOT NULL THEN
             PERFORM hc_reject('a flag is classified once');
         END IF;
@@ -968,6 +1161,9 @@ FUNCTIONS = [
     DECLARE flag_run bigint;
     BEGIN
         SELECT run_id INTO flag_run FROM flag WHERE id = NEW.flag_id;
+        IF hc_lock_run(flag_run) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('flags are raised only while the run is running');
+        END IF;
         IF (SELECT extraction_run_id FROM record WHERE id = NEW.record_id) IS DISTINCT FROM flag_run THEN
             PERFORM hc_reject('a flag names only records of its own run');
         END IF;
@@ -977,11 +1173,15 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Results (owner, addition 3): after the freeze, on the right set, with counts that match it.
+    # Results (owner, addition 3; review finding 5): after the freeze, while running, on
+    # the right set, with counts consistent with it. These are necessary conditions only.
     """
     CREATE FUNCTION hc_analysis_result_insert() RETURNS trigger LANGUAGE plpgsql AS $$
-    DECLARE s analysis_set; p plan; set_count int;
+    DECLARE s analysis_set; p plan; set_count int; set_alloys int;
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('analysis results are written only while the run is running');
+        END IF;
         IF NOT hc_is_frozen(NEW.run_id) THEN
             PERFORM hc_reject('analysis results come after the dataset freeze');
         END IF;
@@ -992,13 +1192,16 @@ FUNCTIONS = [
         IF NEW.scope = 'sensitivity' AND s.key = 'primary' THEN
             PERFORM hc_reject('a sensitivity result uses a sensitivity set');
         END IF;
-        SELECT count(*) INTO set_count FROM analysis_set_record sr
+        SELECT count(*), count(DISTINCT r.alloy) INTO set_count, set_alloys FROM analysis_set_record sr
             JOIN record r ON r.id = sr.record_id
             JOIN source_version sv ON sv.id = r.source_version_id
             WHERE sr.analysis_set_id = NEW.analysis_set_id
               AND (NEW.source_id IS NULL OR sv.source_id = NEW.source_id);
         IF NEW.n_records <> set_count THEN
             PERFORM hc_reject('n_records must equal the records of the set used');
+        END IF;
+        IF NEW.n_alloys > set_alloys THEN
+            PERFORM hc_reject('n_alloys cannot exceed the distinct alloys of the set used');
         END IF;
         SELECT * INTO p FROM plan WHERE run_id = NEW.run_id;
         IF NEW.minimums_met <> (NEW.n_records >= p.min_records AND NEW.n_alloys >= p.min_alloys
@@ -1008,11 +1211,15 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Calibration (PRD 5.10): computed exactly when inference is valid; otherwise the reason matches.
+    # Calibration (PRD 5.10): computed exactly when inference is valid; otherwise the reason
+    # matches. A run-level "no dataset frozen" row and a freeze exclude each other (finding 3).
     """
     CREATE FUNCTION hc_calibration_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE a analysis_result;
     BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('calibration is recorded only while the run is running');
+        END IF;
         IF NEW.analysis_result_id IS NULL THEN
             IF hc_is_frozen(NEW.run_id) THEN
                 PERFORM hc_reject('a dataset was frozen: calibration is reported per analysis');
@@ -1033,15 +1240,46 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_commentary_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'completed' THEN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'completed' THEN
             PERFORM hc_reject('commentary is written after the run is completed');
+        END IF;
+        IF (SELECT stage FROM stage_result WHERE id = NEW.stage_result_id) IS DISTINCT FROM 'commentator' THEN
+            PERFORM hc_reject('commentary comes from the commentator stage');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    """
+    CREATE FUNCTION hc_artifact_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF coalesce(hc_lock_run(NEW.run_id), '') NOT IN ('running', 'completed') THEN
+            PERFORM hc_reject('artifacts are stored only for a running or completed run');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    # Stages: while running; after completion only the Commentator's stage.
+    """
+    CREATE FUNCTION hc_stage_result_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s text := coalesce(hc_lock_run(NEW.run_id), '');
+    BEGIN
+        IF NOT (s = 'running' OR s = 'completed' AND NEW.stage = 'commentator'
+                                              AND NEW.role IS NOT DISTINCT FROM 'commentator') THEN
+            PERFORM hc_reject('a stage runs while the run is running; after completion only the commentator');
+        END IF;
+        IF NEW.status <> 'running' THEN
+            PERFORM hc_reject('a stage result starts as running');
         END IF;
         RETURN NEW;
     END $$
     """,
     """
     CREATE FUNCTION hc_stage_result_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s text := coalesce(hc_lock_run(OLD.run_id), '');
     BEGIN
+        IF NOT (s = 'running' OR s = 'completed' AND OLD.stage = 'commentator') THEN
+            PERFORM hc_reject('a stage result changes only while its run is running');
+        END IF;
         IF OLD.status <> 'running' THEN
             PERFORM hc_reject('a finished stage result is final');
         END IF;
@@ -1052,19 +1290,33 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
-    # Model calls (owner, question 5): written before the request, finished exactly once.
+    # Model calls (owner, question 5; review finding 7): written before the request with
+    # the database's time, finished exactly once with the database's time. After
+    # completion only the Commentator's calls, which count in the run's totals.
     """
     CREATE FUNCTION hc_model_call_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s text := coalesce(hc_lock_run(NEW.run_id), '');
     BEGIN
+        IF NOT (s = 'running' OR s = 'completed' AND NEW.role = 'commentator'
+                AND (SELECT stage FROM stage_result WHERE id = NEW.stage_result_id) = 'commentator') THEN
+            PERFORM hc_reject('a model call is made while the run is running; after completion only the commentator''s');
+        END IF;
         IF NEW.status <> 'started' THEN
             PERFORM hc_reject('a model call is recorded before the request, as started');
+        END IF;
+        IF NEW.started_at IS DISTINCT FROM now() THEN
+            PERFORM hc_reject('started_at is set by the database');
         END IF;
         RETURN NEW;
     END $$
     """,
     """
     CREATE FUNCTION hc_model_call_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s text := coalesce(hc_lock_run(OLD.run_id), '');
     BEGIN
+        IF NOT (s = 'running' OR s = 'completed' AND OLD.role = 'commentator') THEN
+            PERFORM hc_reject('a model call is finished only while its run is running');
+        END IF;
         IF OLD.status <> 'started' OR NEW.status = 'started' THEN
             PERFORM hc_reject('a model call is finished exactly once');
         END IF;
@@ -1073,18 +1325,22 @@ FUNCTIONS = [
            OR NEW.max_cost <> OLD.max_cost OR NEW.started_at <> OLD.started_at THEN
             PERFORM hc_reject('what was recorded before the request cannot change');
         END IF;
+        IF NEW.finished_at IS DISTINCT FROM now() THEN
+            PERFORM hc_reject('finished_at is set by the database');
+        END IF;
         RETURN NEW;
     END $$
     """,
 ]
 
 APPEND_ONLY = [
-    "domain", "agent_setting", "source_version", "source_file", "hypothesis", "plan", "run_tag",
+    "domain", "agent_setting", "source_file", "hypothesis", "plan", "run_tag",
     "run_agent_setting", "run_snapshot", "record", "run_record", "analysis_set", "analysis_set_record",
     "flag_record", "analysis_result", "calibration_result", "commentary", "artifact", "audit_log",
 ]
 NO_DELETE = [
-    "hypothesis_version", "run", "tag_value", "source", "run_source", "stage_result", "model_call", "flag",
+    "hypothesis_version", "run", "tag_value", "source", "source_version", "run_source", "stage_result",
+    "model_call", "flag",
 ]
 # (table, event, function)
 CHECKED = [
@@ -1097,6 +1353,10 @@ CHECKED = [
     ("plan", "INSERT", "hc_plan_insert"),
     ("run_tag", "INSERT", "hc_run_tag_insert"),
     ("tag_value", "UPDATE", "hc_tag_value_update"),
+    ("source", "UPDATE", "hc_source_update"),
+    ("source_version", "INSERT", "hc_source_version_insert"),
+    ("source_version", "UPDATE", "hc_source_version_update"),
+    ("source_file", "INSERT", "hc_source_file_insert"),
     ("run_agent_setting", "INSERT", "hc_run_agent_setting_insert"),
     ("run_source", "INSERT", "hc_run_source_insert"),
     ("run_source", "UPDATE", "hc_run_source_update"),
@@ -1111,6 +1371,8 @@ CHECKED = [
     ("analysis_result", "INSERT", "hc_analysis_result_insert"),
     ("calibration_result", "INSERT", "hc_calibration_insert"),
     ("commentary", "INSERT", "hc_commentary_insert"),
+    ("artifact", "INSERT", "hc_artifact_insert"),
+    ("stage_result", "INSERT", "hc_stage_result_insert"),
     ("stage_result", "UPDATE", "hc_stage_result_update"),
     ("model_call", "INSERT", "hc_model_call_insert"),
     ("model_call", "UPDATE", "hc_model_call_update"),
@@ -1142,8 +1404,14 @@ _TOTALS = """
     coalesce(sum(coalesce(mc.cost, mc.max_cost)), 0) AS cap_cost
 """
 
+
+def _sources(condition: str) -> str:
+    return (f"ARRAY(SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id "
+            f"WHERE rs.run_id = r.id AND {condition} ORDER BY s.key)")
+
+
 VIEW_NAMES = [
-    "run_nothing_found",
+    "run_search_coverage",
     "model_call_totals_by_stage",
     "model_call_totals_by_run",
     "model_call_totals_by_query",
@@ -1151,28 +1419,19 @@ VIEW_NAMES = [
 ]
 
 VIEWS = [
-    # Owner, question 3: the run-level kind of "nothing found" is derived, never stored.
-    # A failed source is never "missing evidence": it is listed as failed and not searched.
-    """
-    CREATE VIEW run_nothing_found AS
+    # Review finding 6: every category is reported with its sources, never collapsed into
+    # one label; coverage comes only from the run's own dispatch-time run_source rows.
+    # A failed source is listed as failed and not searched, never as missing evidence.
+    f"""
+    CREATE VIEW run_search_coverage AS
     SELECT r.id AS run_id,
-        CASE
-            WHEN r.outcome IS DISTINCT FROM 'insufficient' THEN NULL
-            WHEN NOT EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = r.id AND rs.search_status = 'searched')
-                THEN 'failed_search'
-            WHEN EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = r.id AND rs.search_status = 'searched'
-                           AND rs.nothing_found = 'reported_negative')
-                THEN 'reported_negative'
-            ELSE 'missing_evidence'
-        END AS nothing_found,
-        ARRAY(SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id
-              WHERE rs.run_id = r.id AND rs.search_status = 'searched' ORDER BY s.key) AS searched_sources,
-        ARRAY(SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id
-              WHERE rs.run_id = r.id AND rs.search_status = 'failed' ORDER BY s.key) AS failed_sources,
-        ARRAY(SELECT s.key FROM source s
-              WHERE NOT EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = r.id AND rs.source_id = s.id
-                                  AND rs.search_status = 'searched')
-              ORDER BY s.key) AS not_searched_sources
+        {_sources("rs.search_status = 'searched'")} AS searched_sources,
+        {_sources("rs.search_status <> 'searched'")} AS not_searched_sources,
+        {_sources("rs.search_status = 'not_selected'")} AS not_selected_sources,
+        {_sources("rs.search_status = 'failed'")} AS failed_search_sources,
+        {_sources("rs.search_status = 'searched' AND rs.nothing_found IS NULL")} AS records_found_sources,
+        {_sources("rs.search_status = 'searched' AND rs.nothing_found = 'missing_evidence'")} AS missing_evidence_sources,
+        {_sources("rs.search_status = 'searched' AND rs.nothing_found = 'reported_negative'")} AS reported_negative_sources
     FROM run r
     """,
     f"""
@@ -1196,6 +1455,7 @@ VIEWS = [
     LEFT JOIN model_call mc ON mc.run_id = r.id
     GROUP BY h.id
     """,
+    # A call counts in the UTC month of its started_at, which the database sets.
     f"""
     CREATE VIEW model_call_totals_by_month AS
     SELECT date_trunc('month', mc.started_at AT TIME ZONE 'UTC') AS month_utc, {_TOTALS}

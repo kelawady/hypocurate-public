@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from hypocurate.db.models import MAX_FILE_BYTES
-from model_builder import FP, World, sha
+from model_builder import FP, World, files_fingerprint, sha
 
 
 @pytest.fixture
@@ -407,7 +407,7 @@ def test_agent_settings_versions_are_recorded_at_dispatch(w):
 # --- run sources and "nothing found" (owner decision, question 3) ----------------------------------------
 
 def test_a_run_source_starts_undecided(w):
-    rid = w.run(sources=())
+    rid = w.running(sources=())
     w.rejected("UPDATE run_source SET search_status = 'searched' WHERE run_id = :r", "is final", r=rid)
     vid = w.dispatched()
     rid2 = w.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
@@ -438,58 +438,87 @@ def test_a_decided_run_source_is_final(w):
 
 def test_the_source_version_of_a_run_cannot_change(w):
     rid = w.running()
-    other = w.val("INSERT INTO source_version (source_id, label, fingerprint, obtained_on) "
-                  "VALUES (:s, 'v2', :fp, '2026-10-05') RETURNING id", s=w.source["mpea"], fp="c" * 64)
+    other = w.new_version("mpea", "v2")
+    w.add_file(other, "mpea_v2.csv", b"v2")
+    w.seal(other)
     w.rejected("UPDATE run_source SET source_version_id = :sv WHERE run_id = :r AND source_id = :s",
                "cannot change", sv=other, r=rid, s=w.source["mpea"])
 
 
-def nothing_found(w, rid):
-    return w.rows("SELECT nothing_found, searched_sources, failed_sources, not_searched_sources "
-                  "FROM run_nothing_found WHERE run_id = :r", r=rid)[0]
+COVERAGE = ("searched_sources, not_searched_sources, not_selected_sources, failed_search_sources, "
+            "records_found_sources, missing_evidence_sources, reported_negative_sources")
+
+
+def coverage(w, rid):
+    names = [c.strip() for c in COVERAGE.split(",")]
+    return dict(zip(names, w.rows(f"SELECT {COVERAGE} FROM run_search_coverage WHERE run_id = :r", r=rid)[0]))
 
 
 def test_a_failed_source_is_never_missing_evidence(w):
-    """One source failed, the other has missing evidence: the run is missing evidence
-    in the sources searched, and the failed source is named as failed and not searched."""
+    """One source failed, the other has missing evidence: each is reported in its own
+    category; the failed source is named as failed and not searched."""
     rid = w.running()
     w.search(rid, "mpea", "searched", "missing_evidence")
     w.search(rid, "tamu_fcc", "failed", "failed_search", "unreachable")
     w.complete(rid, "insufficient")
-    assert nothing_found(w, rid) == ("missing_evidence", ["mpea"], ["tamu_fcc"], ["tamu_fcc"])
+    c = coverage(w, rid)
+    assert c["missing_evidence_sources"] == ["mpea"] and c["failed_search_sources"] == ["tamu_fcc"]
+    assert c["searched_sources"] == ["mpea"] and c["not_searched_sources"] == ["tamu_fcc"]
 
 
-def test_no_source_searched_is_failed_search(w):
-    rid = w.running(sources=("mpea",))
-    w.search(rid, "mpea", "failed", "failed_search", "unreachable")
-    w.complete(rid, "insufficient")
-    assert nothing_found(w, rid) == ("failed_search", [], ["mpea"], ["mpea", "tamu_fcc"])
-
-
-def test_a_reported_negative_result_is_kept_distinct(w):
+def test_mixed_results_are_reported_per_category(w):
+    """Review finding 6: a negative report in one source and missing evidence in another
+    are both reported, each with its source; nothing collapses them into one label."""
     rid = w.running()
     w.search(rid, "mpea", "searched", "reported_negative")
     w.search(rid, "tamu_fcc", "searched", "missing_evidence")
     w.complete(rid, "insufficient")
-    assert nothing_found(w, rid) == ("reported_negative", ["mpea", "tamu_fcc"], [], [])
+    c = coverage(w, rid)
+    assert c["reported_negative_sources"] == ["mpea"] and c["missing_evidence_sources"] == ["tamu_fcc"]
+    assert c["searched_sources"] == ["mpea", "tamu_fcc"] and c["not_searched_sources"] == []
 
 
-def test_records_found_but_insufficient_is_missing_evidence(w):
+def test_every_selected_source_failing_shows_no_source_searched(w):
+    rid = w.running(sources=("mpea",))
+    w.search(rid, "mpea", "failed", "failed_search", "unreachable")
+    w.complete(rid, "insufficient")
+    c = coverage(w, rid)
+    assert c["searched_sources"] == [] and c["failed_search_sources"] == ["mpea"]
+    assert c["not_searched_sources"] == ["mpea", "tamu_fcc"] and c["not_selected_sources"] == ["tamu_fcc"]
+
+
+def test_records_found_is_its_own_category(w):
     rid = w.running(sources=("mpea",))
     w.search(rid, "mpea", "searched")
-    w.complete(rid, "insufficient")
-    assert nothing_found(w, rid) == ("missing_evidence", ["mpea"], [], ["tamu_fcc"])
+    c = coverage(w, rid)
+    assert c["records_found_sources"] == ["mpea"] and c["missing_evidence_sources"] == []
 
 
-def test_nothing_found_applies_only_to_insufficient_runs(w):
+def test_coverage_comes_from_the_runs_own_dispatch_rows(w):
+    """Review finding 6: registering a source later does not change an earlier run's coverage."""
     rid = w.running()
     w.search(rid, "mpea", "searched")
-    assert nothing_found(w, rid)[0] is None
-    w.complete(rid, "partly_sufficient")
-    assert nothing_found(w, rid)[0] is None
+    w.complete(rid, "insufficient")
+    before = coverage(w, rid)
+    w.add_source("later_source")
+    assert coverage(w, rid) == before
+    w.rejected("UPDATE source SET key = 'renamed' WHERE key = 'mpea'", "key and registration time cannot change")
 
 
-def test_run_has_no_stored_nothing_found_column(w):
+def test_a_run_starts_only_with_its_full_source_inventory(w):
+    """Every source registered at dispatch has a run_source row before the run starts."""
+    vid = w.dispatched()
+    rid = w.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
+    w.run_sql("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
+              "VALUES (:r, :s, :sv, 'pending')", r=rid, s=w.source["mpea"], sv=w.version["mpea"])
+    with pytest.raises(IntegrityError, match="every source registered at dispatch"):
+        w.start(rid)
+    w.run_sql("INSERT INTO run_source (run_id, source_id, search_status) VALUES (:r, :s, 'not_selected')",
+              r=rid, s=w.source["tamu_fcc"])
+    w.start(rid)
+
+
+def test_no_table_stores_a_run_level_nothing_found(w):
     assert w.val("SELECT count(*) FROM information_schema.columns WHERE table_name = 'run' "
                  "AND column_name LIKE '%nothing%'") == 0
 
@@ -497,7 +526,7 @@ def test_run_has_no_stored_nothing_found_column(w):
 # --- records: stored is not analysed ---------------------------------------------------------
 
 def test_records_are_never_updated_or_deleted(w):
-    rid = w.running()
+    rid = w.locked()
     rec = w.record(rid)
     for sql in ("UPDATE record SET alloy = 'other' WHERE id = :c", "UPDATE record SET harmonized = '{}' WHERE id = :c",
                 "DELETE FROM record WHERE id = :c"):
@@ -506,7 +535,7 @@ def test_records_are_never_updated_or_deleted(w):
 
 
 def test_a_record_comes_from_a_source_version_its_run_recorded(w):
-    rid = w.running(sources=("mpea",))
+    rid = w.locked(sources=("mpea",))
     with pytest.raises(IntegrityError, match="source version recorded for its run"):
         w.record(rid, source="tamu_fcc")
     w.record(rid, source="mpea")
@@ -523,7 +552,7 @@ def test_records_are_extracted_while_running_and_before_the_freeze(w):
 def test_every_record_names_its_origin(w):
     """Owner decision, question 7: source version plus the row it came from, so the
     same source row can be matched across runs."""
-    rid = w.running()
+    rid = w.locked()
     w.rejected("INSERT INTO record (extraction_run_id, source_version_id, source_item_key, kind, harmonized, reported) "
                "VALUES (:r, :sv, '', 'measured', '{}', '{}')", "ck_record_item_key_not_empty",
                r=rid, sv=w.version["mpea"])
@@ -533,7 +562,7 @@ def test_every_record_names_its_origin(w):
     with pytest.raises(IntegrityError, match="uq_record_origin_per_run"):
         w.record(rid, key="row-7")
     w.record(rid, key="row-7", index=1)  # a second observation from the same row
-    other_run = w.running()
+    other_run = w.locked()
     w.record(other_run, key="row-7")
     matched = w.rows("SELECT extraction_run_id FROM record WHERE source_version_id = :sv AND source_item_key = 'row-7' "
                      "AND item_index = 0 ORDER BY extraction_run_id", sv=w.version["mpea"])
@@ -542,19 +571,21 @@ def test_every_record_names_its_origin(w):
     assert index.endswith("(source_version_id, source_item_key)")
 
 
-def test_eligibility_is_decided_only_under_a_locked_plan(w):
+def test_records_and_eligibility_come_after_the_rules_lock(w):
+    """Review finding 3: no extraction before the rules lock, so no record can be
+    decided on outside a locked plan."""
     rid = w.running()
-    rec = w.record(rid)
-    with pytest.raises(IntegrityError, match="under a locked plan"):
-        w.decide(rid, rec)
+    with pytest.raises(IntegrityError, match="only after the rules lock"):
+        w.record(rid)
     w.lock(rid)
+    rec = w.record(rid)
     w.decide(rid, rec, eligible=False, rule="grain size below 0.1 um")
     w.rejected("UPDATE run_record SET eligible = true", "append-only")
     w.rejected("DELETE FROM run_record", "append-only")
 
 
 def test_a_run_decides_only_on_its_own_records(w):
-    other = w.running()
+    other = w.locked()
     rec = w.record(other)
     rid = w.running()
     w.lock(rid)
@@ -563,9 +594,10 @@ def test_a_run_decides_only_on_its_own_records(w):
 
 
 def test_a_model_recalled_record_is_stored_but_never_eligible(w):
-    rid = w.running()
-    w.lock(rid)
-    rec = w.record(rid, kind="model_recalled")
+    w.add_source("recall", data_kind="model_recalled", source_type="model_recall")
+    rid = w.locked(sources=("mpea", "recall"))
+    rec = w.record(rid, source="recall")
+    assert w.val("SELECT kind FROM record WHERE id = :c", c=rec) == "model_recalled"
     with pytest.raises(IntegrityError, match="never eligible"):
         w.decide(rid, rec, eligible=True)
     w.decide(rid, rec, eligible=False, rule="model-recalled: comparison only")
@@ -604,7 +636,10 @@ def test_primary_holds_only_eligible_records_and_sensitivity_sets_may_hold_other
 
 
 def test_a_possible_duplicate_counts_once_in_primary_and_twice_in_its_sensitivity_set(w):
-    """PRD 5.3, the reason for named sets: one survivor in primary, both in the sensitivity set."""
+    """PRD 5.3, the reason for named sets: one survivor in primary, both in the sensitivity set.
+    This shows the storage can hold the result; it does not test duplicate handling,
+    which is built in step 6 (second-model review of step 3). The non-surviving copy
+    carries its own decision (not eligible), which keeps it out of the primary set."""
     rid = w.running()
     w.lock(rid, keys=["duplicates_separate"])
     survivor, twin = w.record(rid, key="a"), w.record(rid, key="b")
@@ -637,6 +672,36 @@ def test_nothing_changes_after_the_freeze(w):
         w.decide(rid, late)
 
 
+def eligible_records(w, rid, n):
+    recs = [w.record(rid, key=f"row-{i}") for i in range(n)]
+    for rec in recs:
+        w.decide(rid, rec)
+    return recs
+
+
+def test_the_freeze_rejects_a_primary_set_that_omits_eligible_records(w):
+    """Review finding 2: ten records decided eligible, three put in primary."""
+    rid = w.locked()
+    recs = eligible_records(w, rid, 10)
+    primary = w.analysis_set(rid)
+    for rec in recs[:3]:
+        w.add(primary, rec)
+    with pytest.raises(IntegrityError, match="must hold every record decided eligible"):
+        w.freeze(rid, 3)
+    for rec in recs[3:]:
+        w.add(primary, rec)
+    w.freeze(rid, 10)
+
+
+def test_the_freeze_rejects_an_undecided_record(w):
+    rid = w.locked()
+    rec = eligible_records(w, rid, 1)[0]
+    w.add(w.analysis_set(rid), rec)
+    w.record(rid, key="undecided")
+    with pytest.raises(IntegrityError, match="needs an eligibility decision"):
+        w.freeze(rid, 1)
+
+
 def test_no_eligible_records_means_no_freeze(w):
     rid = w.running()
     w.lock(rid)
@@ -663,6 +728,122 @@ def test_the_freeze_matches_the_primary_set_and_needs_every_named_set(w):
     w.freeze(rid, 1)
 
 
+# --- lifecycle on both sides (review finding 3; owner, 2026-10-05) ---------------------------------
+
+def curation_in_progress(w):
+    """A locked run with a record, a decision, a primary set, a pending source and an
+    unclassified flag: everything curation could still touch."""
+    rid = w.locked()
+    w.search(rid, "mpea", "searched")  # tamu_fcc stays pending
+    rec = eligible_records(w, rid, 1)[0]
+    w.record(rid, key="undecided")
+    primary = w.analysis_set(rid)
+    f = flag(w, rid)
+    return rid, rec, primary, f
+
+
+@pytest.mark.parametrize("ending", ["completed", "failed"])
+def test_no_curation_once_the_run_has_ended(w, ending):
+    rid, rec, primary, f = curation_in_progress(w)
+    w.complete(rid, "insufficient") if ending == "completed" else w.fail(rid)
+    with pytest.raises(IntegrityError, match="while their run is running"):
+        w.record(rid, key="late")
+    for sql in [
+        "INSERT INTO run_record (run_id, record_id, eligible, rule) SELECT :r, id, true, 'x' FROM record "
+        "WHERE extraction_run_id = :r AND source_item_key = 'undecided'",
+        "INSERT INTO analysis_set_record VALUES (:s, :c)",
+        "INSERT INTO flag (run_id, kind, category) VALUES (:r, 'k', 'c')",
+        "UPDATE flag SET critic_class = 'comparable', classified_at = now() WHERE id = :f",
+        "INSERT INTO flag_record VALUES (:f, :c)",
+        "UPDATE run_source SET search_status = 'searched', decided_at = now() WHERE run_id = :r AND search_status = 'pending'",
+    ]:
+        w.rejected(sql, "only while the run is running|while the run is running", r=rid, c=rec, s=primary, f=f)
+    w.rejected("INSERT INTO run_snapshot (run_id, fingerprint, n_records) VALUES (:r, :fp, 1)",
+               "only while its run is running", r=rid, fp=FP)
+    w.rejected(CALIBRATION.format(numbers=NONE), "only while the run is running",
+               r=rid, a=None, st="unavailable", re="no_dataset_frozen")
+
+
+def test_a_record_extracted_after_the_freeze_cannot_slip_in_after_the_run_ends(w):
+    rid, sets, _ = w.frozen()
+    w.result(rid, sets["primary"])
+    w.complete(rid, "sufficient", "supported")
+    for sql in ["INSERT INTO analysis_set (run_id, key) VALUES (:r, 'extra')",
+                "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, resid_df, "
+                "check1_passed, check2_passed, minimums_met) VALUES (:r, 'sensitivity', :s, 0, 0, 0, -1, false, false, false)"]:
+        w.rejected(sql, "only while the run is running", r=rid, s=sets["primary"])
+
+
+def test_no_dataset_frozen_and_a_freeze_exclude_each_other(w):
+    """Review finding 3: whichever comes second is rejected (the other order is in the
+    calibration tests below)."""
+    rid = w.locked()
+    rec = eligible_records(w, rid, 1)[0]
+    w.add(w.analysis_set(rid), rec)
+    w.run_sql(CALIBRATION.format(numbers=NONE), r=rid, a=None, st="unavailable", re="no_dataset_frozen")
+    with pytest.raises(IntegrityError, match="already recorded that no dataset was frozen"):
+        w.freeze(rid, 1)
+
+
+def test_what_may_be_written_after_completion(w):
+    """Owner, 2026-10-05: the commentary, the Commentator's stage and model calls, and
+    artifacts. The Commentator's calls count in the run's totals and cap. Nothing else."""
+    rid, sets, _ = w.frozen()
+    w.result(rid, sets["primary"])
+    w.complete(rid, "sufficient", "supported")
+    commentator = w.stage(rid, "commentator", "commentator")
+    call = w.call(rid, commentator, max_cost=0.25, role="commentator")
+    assert float(w.val("SELECT cap_cost FROM model_call_totals_by_run WHERE run_id = :r", r=rid)) == 0.25
+    w.finish_call(call, "succeeded", (100, 50, 0, 0.002))
+    assert float(w.val("SELECT reported_cost FROM model_call_totals_by_run WHERE run_id = :r", r=rid)) == 0.002
+    w.run_sql("UPDATE stage_result SET status = 'done', finished_at = now() WHERE id = :s", s=commentator)
+    w.run_sql("INSERT INTO commentary (run_id, stage_result_id, status, text, model, number_check) "
+              "VALUES (:r, :s, 'written', 'k = 428', 'other-model', 'all_match')", r=rid, s=commentator)
+    w.run_sql(ARTIFACT, r=rid, h=sha(b"plot"), c=b"plot")
+    with pytest.raises(IntegrityError, match="after completion only the commentator"):
+        w.stage(rid, "analyst", "analyst")
+    with pytest.raises(IntegrityError, match="after completion only the commentator"):
+        w.call(rid, commentator, role="analyst")
+    for sql in ["UPDATE run SET verdict = 'not_supported' WHERE id = :r",
+                "UPDATE run SET outcome = 'insufficient', verdict = NULL WHERE id = :r"]:
+        w.rejected(sql, "run is final", r=rid)
+    w.rejected("UPDATE analysis_result SET estimate = 1", "append-only")
+    w.rejected("INSERT INTO analysis_set_record VALUES (:s, :c)", "only while the run is running",
+               s=sets["primary"], c=w.val("SELECT min(id) FROM record"))
+    assert w.rows("SELECT outcome, verdict FROM run WHERE id = :r", r=rid) == [("sufficient", "supported")]
+
+
+def test_nothing_but_the_audit_log_after_failure(w):
+    rid = w.running()
+    st = w.stage(rid, "planner", "planner")
+    w.run_sql("UPDATE stage_result SET status = 'failed', finished_at = now() WHERE id = :s", s=st)
+    w.fail(rid, "worker stopped")
+    with pytest.raises(IntegrityError, match="while the run is running"):
+        w.stage(rid, "commentator", "commentator")
+    with pytest.raises(IntegrityError, match="while the run is running"):
+        w.call(rid, st)
+    w.rejected("INSERT INTO commentary (run_id, stage_result_id, status, model) VALUES (:r, :s, 'unavailable', 'm')",
+               "after the run is completed", r=rid, s=st)
+    w.rejected(ARTIFACT, "running or completed run", r=rid, h=sha(b"x"), c=b"x")
+    w.run_sql("INSERT INTO audit_log (run_id, role, stage, function, allowed) VALUES (:r, 'planner', 'plan', 'x', false)",
+              r=rid)
+
+
+@pytest.mark.parametrize("ending", ["completed", "failed"])
+def test_a_run_ends_only_with_no_stage_running_and_no_call_open(w, ending):
+    rid = w.running()
+    st = w.stage(rid)
+    end = (lambda: w.complete(rid, "insufficient")) if ending == "completed" else (lambda: w.fail(rid))
+    with pytest.raises(IntegrityError, match="no stage is running and no model call is open"):
+        end()
+    call = w.call(rid, st)
+    w.run_sql("UPDATE stage_result SET status = 'done', finished_at = now() WHERE id = :s", s=st)
+    with pytest.raises(IntegrityError, match="no stage is running and no model call is open"):
+        end()
+    w.finish_call(call, "interrupted", None)
+    end()
+
+
 # --- flags ---------------------------------------------------------------------------------------
 
 def flag(w, rid):
@@ -686,7 +867,7 @@ def test_flags_stop_at_the_freeze(w):
 
 
 def test_a_flag_names_records_of_its_own_run(w):
-    rid, other = w.running(), w.running()
+    rid, other = w.locked(), w.locked()
     f = flag(w, rid)
     w.run_sql("INSERT INTO flag_record VALUES (:f, :c)", f=f, c=w.record(rid))
     w.rejected("INSERT INTO flag_record VALUES (:f, :c)", "its own run", f=f, c=w.record(other))
@@ -703,7 +884,7 @@ def test_results_come_after_the_freeze(w):
 
 
 @pytest.mark.parametrize("column, value, match", [
-    ("check2_passed", "true", "ck_analysis_result_check2_definition"),  # 1 group
+    ("check2_passed", "true", "ck_analysis_result_check2_consistent"),  # 1 group
     ("std_error", "1.0", "ck_analysis_result_std_error_iff_check2"),
     ("p_value", "0.01", "ck_analysis_result_p_value_iff_check2"),
     ("resid_df", "5", "ck_analysis_result_resid_df_definition"),
@@ -731,6 +912,20 @@ def test_check_one_failing_means_no_estimate(w):
     w.result(rid, sets["primary"], n=1, alloys=0, groups=1, mins=(1, 1, 1, 1))
 
 
+@pytest.mark.parametrize("n, alloys, groups, match", [
+    (1, 1, 1, "ck_analysis_result_two_records_per_alloy"),  # one record cannot show two grain sizes
+    (4, 1, 5, "ck_analysis_result_groups_within_records"),
+    (4, 0, 0, "ck_analysis_result_records_have_a_group"),
+    (4, 2, 2, "cannot exceed the distinct alloys"),         # the set has one alloy
+])
+def test_stored_counts_must_be_consistent(w, n, alloys, groups, match):
+    """Review finding 5: necessary conditions on the stored counts. The full validity
+    rules of PRD 5.7 are computed and tested in step 7."""
+    rid, sets, _ = w.frozen(n=n, mins=(1, 1, 1, 1))
+    with pytest.raises(IntegrityError, match=match):
+        w.result(rid, sets["primary"], n=n, alloys=alloys, groups=groups, mins=(1, 1, 1, 1))
+
+
 def test_one_result_per_run_and_scope_on_the_right_set(w):
     rid, sets, _ = w.frozen(n=4, per_source={"mpea": 3, "tamu_fcc": 1}, keys=["no_exclusions"])
     w.result(rid, sets["primary"])
@@ -742,7 +937,7 @@ def test_one_result_per_run_and_scope_on_the_right_set(w):
         w.result(rid, sets["primary"], scope="sensitivity")
     w.rejected("INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
                "resid_df, check1_passed, check2_passed, minimums_met) "
-               "VALUES (:r, 'per_source', :s, 4, 0, 0, 3, false, false, false)",
+               "VALUES (:r, 'per_source', :s, 4, 0, 1, 3, false, false, false)",
                "ck_analysis_result_source_iff_per_source", r=rid, s=sets["primary"])
     w.result(rid, sets["primary"], scope="per_source", source="mpea", n=3, alloys=1, groups=2)
     w.result(rid, sets["primary"], scope="per_source", source="tamu_fcc", n=1, alloys=0, groups=1)
@@ -877,6 +1072,32 @@ def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bou
     assert tuple(map(float, direct)) == (0.0163, 0.5163)
 
 
+def test_small_costs_are_stored_exactly(w):
+    """Review finding 7: numeric without a fixed scale; nothing rounds to zero."""
+    from decimal import Decimal
+    rid = w.running()
+    call = w.call(rid, w.stage(rid), max_cost=Decimal("1E-12"))
+    w.finish_call(call, "succeeded", (1, 1, 0, Decimal("3E-13")))
+    w.call(rid, w.stage(rid, "curator", "curator"), max_cost=Decimal("2E-12"))
+    row = w.rows("SELECT reported_cost, unconfirmed_cost_bound, cap_cost FROM model_call_totals_by_run "
+                 "WHERE run_id = :r", r=rid)[0]
+    assert row == (Decimal("3E-13"), Decimal("2E-12"), Decimal("2.3E-12"))
+    w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost) "
+               "VALUES (:r, :s, 'planner', 'm', 'p', 0)", "ck_model_call_max_cost_positive",
+               r=rid, s=w.val("SELECT min(id) FROM stage_result"))
+
+
+def test_call_times_are_set_by_the_database(w):
+    rid = w.running()
+    st = w.stage(rid)
+    w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost, started_at) "
+               "VALUES (:r, :s, 'planner', 'm', 'p', 1, now() - interval '40 days')", "started_at is set by the database",
+               r=rid, s=st)
+    call = w.call(rid, st)
+    w.rejected("UPDATE model_call SET status = 'interrupted', finished_at = now() - interval '1 day' WHERE id = :c",
+               "finished_at is set by the database", c=call)
+
+
 def test_a_run_without_calls_totals_zero(w):
     rid = w.running()
     assert tuple(map(float, w.rows("SELECT calls, reported_cost, cap_cost FROM model_call_totals_by_run "
@@ -902,11 +1123,13 @@ def test_a_finished_stage_result_is_final(w):
 
 def test_commentary_comes_after_completion_and_lists_mismatches(w):
     rid = w.running()
-    st = w.stage(rid, "commentator", "commentator")
+    early = w.stage(rid, "commentator", "commentator")
+    w.run_sql("UPDATE stage_result SET status = 'done', finished_at = now() WHERE id = :s", s=early)
     sql = ("INSERT INTO commentary (run_id, stage_result_id, status, text, model, number_check, mismatches) "
            "VALUES (:r, :s, :st, :t, 'other-model', :nc, CAST(:mm AS jsonb))")
-    w.rejected(sql, "after the run is completed", r=rid, s=st, st="written", t="x", nc="all_match", mm=None)
+    w.rejected(sql, "after the run is completed", r=rid, s=early, st="written", t="x", nc="all_match", mm=None)
     w.complete(rid, "insufficient")
+    st = w.stage(rid, "commentator", "commentator", attempt=2)  # the Commentator's stage after completion
     w.rejected(sql, "ck_commentary_mismatches_listed", r=rid, s=st, st="written", t="x", nc="mismatches", mm=None)
     w.rejected(sql, "ck_commentary_written_has_text_and_check", r=rid, s=st, st="written", t=None, nc=None, mm=None)
     w.run_sql(sql, r=rid, s=st, st="written", t="k = 999", nc="mismatches", mm='["999"]')
@@ -921,7 +1144,7 @@ ARTIFACT = ("INSERT INTO artifact (run_id, kind, filename, media_type, sha256, c
 
 
 def test_source_files_are_data_files_up_to_5_mib(w):
-    sv = w.version["mpea"]
+    sv = w.new_version("mpea", "v2")  # files are added before the version is sealed
     at_limit, over = b"x" * MAX_FILE_BYTES, b"x" * (MAX_FILE_BYTES + 1)
     w.run_sql(SOURCE_FILE, sv=sv, p="MPEA_dataset.csv", h=sha(at_limit), c=at_limit)
     w.rejected(SOURCE_FILE, "ck_source_file_max_size", sv=sv, p="big.csv", h=sha(over), c=over)
@@ -929,7 +1152,74 @@ def test_source_files_are_data_files_up_to_5_mib(w):
     w.rejected(SOURCE_FILE, "ck_source_file_sha256_matches_content", sv=sv, p="other.csv", h=sha(b"a"), c=b"b")
     w.run_sql(SOURCE_FILE, sv=sv, p="Grain_Size_Summary_v3.xlsx", h=sha(b"x"), c=b"x")
     w.rejected("UPDATE source_file SET content = 'y'", "append-only")
-    w.rejected("UPDATE source_version SET label = 'v9'", "append-only")
+    w.rejected("UPDATE source_version SET label = 'v9' WHERE id = :v", "only change to a source version is sealing",
+               v=sv)
+    w.rejected("UPDATE source_version SET label = 'v9' WHERE id = :v", "sealed source version cannot change",
+               v=w.version["mpea"])
+
+
+# --- source versions: sealed files and their interpretation (review finding 4) ------------------------
+
+def test_files_cannot_be_added_after_sealing(w):
+    sv = w.new_version("mpea", "v2")
+    w.add_file(sv, "a.csv", b"a")
+    w.seal(sv)
+    with pytest.raises(IntegrityError, match="sealed source version"):
+        w.add_file(sv, "b.csv", b"b")
+
+
+def test_sealing_needs_files_and_the_fingerprint_of_the_file_list(w):
+    sv = w.new_version("mpea", "v2")
+    with pytest.raises(IntegrityError, match="at least one file"):
+        w.seal(sv, fingerprint="0" * 64)
+    files = {"b.csv": b"second", "a.csv": b"first"}
+    for path, content in files.items():
+        w.add_file(sv, path, content)
+    with pytest.raises(IntegrityError, match="SHA-256 of the sorted file list"):
+        w.seal(sv, fingerprint="0" * 64)
+    w.rejected("UPDATE source_version SET sealed_at = now() - interval '1 day', fingerprint = :fp WHERE id = :v",
+               "set by the database", v=sv, fp=files_fingerprint(files))
+    w.seal(sv)
+    assert w.val("SELECT fingerprint FROM source_version WHERE id = :v", v=sv) == files_fingerprint(files)
+    with pytest.raises(IntegrityError, match="sealed source version cannot change"):
+        w.seal(sv)
+    w.rejected("DELETE FROM source_version WHERE id = :v", "never deleted", v=sv)
+
+
+def test_a_new_version_starts_unsealed(w):
+    w.rejected("INSERT INTO source_version (source_id, label, obtained_on, sealed_at, fingerprint) "
+               "VALUES (:s, 'v2', '2026-10-05', now(), :fp)", "sealed after its files are added",
+               s=w.source["mpea"], fp=FP)
+
+
+def test_only_a_sealed_version_can_be_used_by_a_run(w):
+    unsealed = w.new_version("mpea", "v2")
+    vid = w.dispatched()
+    rid = w.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
+    w.rejected("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
+               "VALUES (:r, :s, :sv, 'pending')", "only a sealed source version", r=rid, s=w.source["mpea"],
+               sv=unsealed)
+
+
+def test_a_version_keeps_its_own_interpretation_settings(w):
+    """Changing the source's settings affects only versions made afterwards."""
+    sv = w.version["mpea"]
+    assert w.rows("SELECT source_type, data_kind, grouping_unit FROM source_version WHERE id = :v", v=sv) == [
+        ("uploaded_table", "measured", "paper")]
+    w.run_sql("UPDATE source SET grouping_unit = 'dataset', data_kind = 'computed', enabled = false WHERE key = 'mpea'")
+    assert w.rows("SELECT data_kind, grouping_unit FROM source_version WHERE id = :v", v=sv) == [("measured", "paper")]
+    later = w.new_version("mpea", "v2")
+    assert w.rows("SELECT data_kind, grouping_unit FROM source_version WHERE id = :v", v=later) == [
+        ("computed", "dataset")]
+    w.rejected("INSERT INTO source_version (source_id, label, obtained_on, grouping_unit) "
+               "VALUES (:s, 'v3', '2026-10-05', 'paper')", "copies its settings from the source", s=w.source["mpea"])
+    w.rejected("UPDATE source_version SET grouping_unit = 'dataset' WHERE id = :v", "sealed source version", v=sv)
+
+
+def test_a_record_has_its_versions_kind_of_data(w):
+    rid = w.locked()
+    with pytest.raises(IntegrityError, match="kind of data of its source version"):
+        w.record(rid, kind="computed")
 
 
 def test_artifacts_up_to_5_mib(w):

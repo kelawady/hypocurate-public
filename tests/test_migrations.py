@@ -112,9 +112,10 @@ def test_migrations_stay_inside_the_one_transaction():
     for path in list((migrate.MIGRATIONS / "versions").glob("*.py")) + [migrate.MIGRATIONS / "script.py.mako"]:
         source = path.read_text()
         docstring = source.split('"""')[1]  # the module docstring states these rules in words
-        code = source.replace(docstring, "").upper()
-        for forbidden in ("CONCURRENTLY", "AUTOCOMMIT_BLOCK(", "COMMIT", "VACUUM"):
-            assert forbidden not in code, (path.name, forbidden)
+        code = "\n".join(line for line in source.replace(docstring, "").splitlines()
+                          if not line.lstrip().startswith("#")).upper()  # comments may say "committed"
+        for forbidden in ("CONCURRENTLY", "AUTOCOMMIT_BLOCK", "COMMIT", "VACUUM"):
+            assert not re.search(rf"\b{forbidden}\b", code), (path.name, forbidden)
 
 
 def test_migrations_ship_inside_the_package():

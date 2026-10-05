@@ -11,8 +11,17 @@ Limitation, stated plainly: the triggers stop the application and ordinary edits
 The database owner can still drop a trigger; the fingerprints are the cross-check.
 
 No table stores token or cost totals; the views `model_call_totals_by_*` sum
-`model_call`. The run-level kind of "nothing found" is not stored either; the view
-`run_nothing_found` derives it from `run_source`.
+`model_call`. Search coverage and the kinds of "nothing found" are not stored per
+run either; the view `run_search_coverage` reports them per source, from the run's
+own dispatch-time `run_source` rows.
+
+Locking protocol (review finding 1): every trigger that checks or changes a run's
+state first locks that run's row (FOR NO KEY UPDATE); triggers on chosen sources and
+on dispatch lock the hypothesis version first. Lock order: version, then run.
+
+What the CHECKs on `analysis_result` establish (review finding 5): necessary
+conditions on the stored counts only. The full validity rules of PRD 5.7 and the
+agreement of the verdict with the pooled result are computed and tested in step 7.
 """
 from __future__ import annotations
 
@@ -121,7 +130,10 @@ DATA_KINDS = ("measured", "computed", "model_recalled")
 
 
 class Source(Base):
-    """A registered source (PRD 9.6). Settings such as on/off may change; it is never deleted."""
+    """A registered source (PRD 9.6). It is never deleted and its key never changes.
+    `source_type`, `data_kind` and `grouping_unit` here are the settings for the next
+    version: each version keeps its own copy (review finding 4). Operational settings
+    (enabled, adapter status, address, licence, properties) may change."""
     __tablename__ = "source"
     id: Mapped[int] = pk()
     key: Mapped[str] = mapped_column(Text, unique=True)
@@ -146,23 +158,36 @@ class Source(Base):
 
 
 class SourceVersion(Base):
-    """A snapshot of a source. Append-only."""
+    """A snapshot of a source (review finding 4). It holds its own copy of the settings
+    that change how records are read, copied from `source` at insert. Files are added,
+    then the version is sealed once: the database sets `sealed_at` and checks that
+    `fingerprint` is the SHA-256 of the sorted file list. Only a sealed version can be
+    used by a run. Nothing changes after sealing; it is never deleted."""
     __tablename__ = "source_version"
     id: Mapped[int] = pk()
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id"))
     label: Mapped[str] = mapped_column(Text)
-    fingerprint: Mapped[str] = mapped_column(Text)
     obtained_on: Mapped[date] = mapped_column(Date)
+    source_type: Mapped[str] = mapped_column(Text)
+    data_kind: Mapped[str] = mapped_column(Text)
+    grouping_unit: Mapped[str] = mapped_column(Text)
+    sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fingerprint: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created()
     __table_args__ = (
         UniqueConstraint("source_id", "fingerprint"),
         UniqueConstraint("id", "source_id"),
         CheckConstraint(f"fingerprint {SHA256}", name="fingerprint_format"),
+        CheckConstraint("(sealed_at IS NULL) = (fingerprint IS NULL)", name="sealed_with_fingerprint"),
+        CheckConstraint(one_of("source_type", SOURCE_TYPES), name="source_type"),
+        CheckConstraint(one_of("data_kind", DATA_KINDS), name="data_kind"),
+        CheckConstraint(one_of("grouping_unit", ("paper", "dataset", "batch")), name="grouping_unit"),
     )
 
 
 class SourceFile(Base):
-    """A data file an adapter reads (owner decision: only data files, at most 5 MiB). Append-only."""
+    """A data file an adapter reads (owner decision: only data files, at most 5 MiB).
+    Added only before its version is sealed. Append-only."""
     __tablename__ = "source_file"
     id: Mapped[int] = pk()
     source_version_id: Mapped[int] = mapped_column(ForeignKey("source_version.id"))
@@ -358,7 +383,9 @@ NOTHING_FOUND = ("reported_negative", "missing_evidence", "failed_search")
 
 class RunSource(Base):
     """Per run and source: what was searched, and the kind of "nothing found"
-    (owner decision, question 3). The run-level kind is derived (view run_nothing_found)."""
+    (owner decision, question 3). Coverage and the kinds of "nothing found" are reported
+    per source by the view run_search_coverage, from these dispatch-time rows only
+    (review finding 6). A run starts only when every source registered at dispatch has a row."""
     __tablename__ = "run_source"
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id"), primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), primary_key=True)
@@ -439,7 +466,8 @@ def _all(cond: str) -> str:
 class ModelCall(Base):
     """One row per model call (owner decision, question 5), written BEFORE the request
     with its upper bound `max_cost`, then finished exactly once. A call without
-    reported cost counts at `max_cost` toward totals and caps."""
+    reported cost counts at `max_cost` toward totals and caps. `started_at` and
+    `finished_at` are the database's transaction times (review finding 7)."""
     __tablename__ = "model_call"
     id: Mapped[int] = pk()
     run_id: Mapped[int] = mapped_column(BigInteger)
@@ -447,12 +475,13 @@ class ModelCall(Base):
     role: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(Text)
     price_table_version: Mapped[str] = mapped_column(Text)
-    max_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    # numeric with no fixed scale: stored exactly, so no amount rounds (review finding 7)
+    max_cost: Mapped[Decimal] = mapped_column(Numeric())
     status: Mapped[str] = mapped_column(Text, server_default=sql("'started'"))
     input_tokens: Mapped[int | None] = mapped_column(BigInteger)
     output_tokens: Mapped[int | None] = mapped_column(BigInteger)
     cached_tokens: Mapped[int | None] = mapped_column(BigInteger)
-    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    cost: Mapped[Decimal | None] = mapped_column(Numeric())
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -463,7 +492,7 @@ class ModelCall(Base):
         CheckConstraint(one_of("role", ROLES), name="role"),
         CheckConstraint(one_of("status", CALL_STATUSES), name="status"),
         CheckConstraint("length(model) > 0 AND length(price_table_version) > 0", name="model_and_prices_named"),
-        CheckConstraint("max_cost >= 0", name="max_cost_not_negative"),
+        CheckConstraint("max_cost > 0", name="max_cost_positive"),
         CheckConstraint(" AND ".join(f"coalesce({c}, 0) >= 0" for c in USAGE), name="usage_not_negative"),
         CheckConstraint(f"status <> 'started' OR ({_all('IS NULL')} AND finished_at IS NULL)",
                         name="started_has_no_usage"),
@@ -507,7 +536,10 @@ class Record(Base):
 
 class RunRecord(Base):
     """For each run and record: eligible for the primary analysis or not, and the rule
-    that decided it (PRD 5.3). Written by code under the locked plan, before the freeze."""
+    that decided it (PRD 5.3). Written by code under the locked plan, before the freeze.
+    At the freeze every record of the run must have a decision, and the primary set must
+    be exactly the records decided eligible (review finding 2). A duplicate's
+    non-surviving copy carries its own decision (eligible = false, "counted once")."""
     __tablename__ = "run_record"
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id"), primary_key=True)
     record_id: Mapped[int] = mapped_column(ForeignKey("record.id"), primary_key=True)
@@ -568,8 +600,12 @@ LABELS = ("agrees", "conflicts", "not_enough_data")
 
 
 class AnalysisResult(Base):
-    """One row per analysis and scope (owner's addition 3). The two validity checks
-    (PRD 5.7) are recomputed from the stored counts by CHECK constraints."""
+    """One row per analysis and scope (owner's addition 3).
+    The CHECKs below are necessary conditions on the stored counts, not the full
+    validity rules of PRD 5.7 (review finding 5): the database cannot see whether an
+    alloy was measured at two distinct grain sizes, nor recount alloys and groups.
+    Those, and the agreement of the verdict with the pooled result, are computed and
+    tested in step 7."""
     __tablename__ = "analysis_result"
     id: Mapped[int] = pk()
     run_id: Mapped[int] = mapped_column(BigInteger)
@@ -599,10 +635,14 @@ class AnalysisResult(Base):
         CheckConstraint("(scope = 'per_source') = (source_id IS NOT NULL)", name="source_iff_per_source"),
         CheckConstraint(f"label IS NULL OR {one_of('label', LABELS)}", name="label"),
         CheckConstraint("n_records >= 0 AND n_alloys >= 0 AND n_groups >= 0", name="counts_not_negative"),
+        # Each counted alloy has records at two or more grain sizes, so at least two records.
+        CheckConstraint("n_records >= 2 * n_alloys", name="two_records_per_alloy"),
+        CheckConstraint("n_groups <= n_records", name="groups_within_records"),
+        CheckConstraint("n_records = 0 OR n_groups >= 1", name="records_have_a_group"),
         CheckConstraint("resid_df = n_records - n_alloys - 1", name="resid_df_definition"),
-        CheckConstraint("check1_passed = (n_alloys >= 1)", name="check1_definition"),
+        CheckConstraint("check1_passed = (n_alloys >= 1)", name="check1_consistent"),
         CheckConstraint("check2_passed = (check1_passed AND resid_df >= 1 AND n_groups >= 2)",
-                        name="check2_definition"),
+                        name="check2_consistent"),
         CheckConstraint("check1_passed = (estimate IS NOT NULL)", name="estimate_iff_check1"),
         CheckConstraint("check2_passed = (std_error IS NOT NULL)", name="std_error_iff_check2"),
         CheckConstraint("check2_passed = (p_value IS NOT NULL)", name="p_value_iff_check2"),
@@ -689,7 +729,8 @@ class Commentary(Base):
 
 
 class Artifact(Base):
-    """Plots and workbooks for a run (at most 5 MiB each). Append-only."""
+    """Plots and workbooks for a run (at most 5 MiB each), written while the run is
+    running or after it completed, never for a failed run. Append-only."""
     __tablename__ = "artifact"
     id: Mapped[int] = pk()
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id"))

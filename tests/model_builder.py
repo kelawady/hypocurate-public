@@ -15,20 +15,49 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def files_fingerprint(files: dict[str, bytes]) -> str:
+    """A source version's fingerprint (owner, 2026-10-05): SHA-256 of one line
+    "<sha256>  <path>\\n" per file, sorted by path (the sha256sum format)."""
+    listing = "".join(f"{sha(files[path])}  {path}\n" for path in sorted(files))
+    return sha(listing.encode())
+
+
 class World:
     def __init__(self, engine):
         self.e = engine
         self.domain = {k: v for k, v in self.rows("SELECT key, id FROM domain")}
         self.source = {}
         self.version = {}
-        for key, unit, fp in (("mpea", "paper", "a" * 64), ("tamu_fcc", "dataset", "b" * 64)):
-            self.source[key] = self.val(
-                "INSERT INTO source (key, name, source_type, licence, data_kind, adapter_status, enabled, grouping_unit) "
-                "VALUES (:k, :k, 'uploaded_table', 'test', 'measured', 'available', true, :u) RETURNING id",
-                k=key, u=unit)
-            self.version[key] = self.val(
-                "INSERT INTO source_version (source_id, label, fingerprint, obtained_on) "
-                "VALUES (:s, 'v1', :fp, '2026-10-04') RETURNING id", s=self.source[key], fp=fp)
+        for key, unit in (("mpea", "paper"), ("tamu_fcc", "dataset")):
+            self.add_source(key, grouping_unit=unit)
+
+    def add_source(self, key, data_kind="measured", source_type="uploaded_table", grouping_unit="paper"):
+        """Registers a source with one sealed version holding one data file."""
+        self.source[key] = self.val(
+            "INSERT INTO source (key, name, source_type, licence, data_kind, adapter_status, enabled, grouping_unit) "
+            "VALUES (:k, :k, :t, 'test', :d, 'available', true, :u) RETURNING id",
+            k=key, t=source_type, d=data_kind, u=grouping_unit)
+        self.version[key] = self.new_version(key)
+        self.add_file(self.version[key], f"{key}.csv", f"{key},data\n".encode())
+        self.seal(self.version[key])
+        return self.source[key]
+
+    def new_version(self, key, label="v1"):
+        return self.val("INSERT INTO source_version (source_id, label, obtained_on) "
+                        "VALUES (:s, :l, '2026-10-04') RETURNING id", s=self.source[key], l=label)
+
+    def add_file(self, version, path, content):
+        self.run_sql("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)",
+                     v=version, p=path, h=sha(content), c=content)
+
+    def files(self, version):
+        return {p: bytes(c) for p, c in self.rows(
+            "SELECT path, content FROM source_file WHERE source_version_id = :v", v=version)}
+
+    def seal(self, version, fingerprint=None):
+        fingerprint = fingerprint or files_fingerprint(self.files(version))
+        self.run_sql("UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v",
+                     v=version, fp=fingerprint)
 
     # --- plumbing ---------------------------------------------------------------------
     def run_sql(self, sql, **params):
@@ -101,6 +130,12 @@ class World:
         self.start(rid)
         return rid
 
+    def locked(self, **kw):
+        """A running run whose rules are locked: records may now be extracted."""
+        rid = self.running(**kw)
+        self.lock(rid)
+        return rid
+
     def lock(self, rid, option="fixed_minimum", keys=(), mins=(4, 1, 2, 1), tags=()):
         """The rules lock, in one transaction with its tags."""
         with self.e.begin() as conn:
@@ -118,7 +153,8 @@ class World:
                      "decided_at = now() WHERE run_id = :r AND source_id = :s",
                      st=status, nf=nothing_found, fr=reason, r=rid, s=self.source[source])
 
-    def record(self, rid, source="mpea", key="row-1", kind="measured", index=0):
+    def record(self, rid, source="mpea", key="row-1", kind=None, index=0):
+        kind = kind or self.val("SELECT data_kind FROM source_version WHERE id = :v", v=self.version[source])
         return self.val(
             "INSERT INTO record (extraction_run_id, source_version_id, source_item_key, item_index, kind, "
             "alloy, harmonized, reported) VALUES (:r, :sv, :k, :i, :kind, 'CoCrNi', '{}', '{}') RETURNING id",
@@ -183,9 +219,9 @@ class World:
         self.run_sql("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r",
                      f=reason, r=rid)
 
-    def stage(self, rid, stage="planner", role="planner"):
-        return self.val("INSERT INTO stage_result (run_id, stage, role) VALUES (:r, :s, :o) RETURNING id",
-                        r=rid, s=stage, o=role)
+    def stage(self, rid, stage="planner", role="planner", attempt=1):
+        return self.val("INSERT INTO stage_result (run_id, stage, role, attempt) VALUES (:r, :s, :o, :a) RETURNING id",
+                        r=rid, s=stage, o=role, a=attempt)
 
     def call(self, rid, stage_id, max_cost=0.5, role="planner"):
         return self.val(
