@@ -1,10 +1,10 @@
 # Build step 4b — summary for review
 
-Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: built, suite green; awaiting the second-model review.** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
+Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: second-model review received (2026-10-05): no serious issue, four findings, eight missing assumptions and four small corrections, all accepted by the owner and applied (section "Second-model review and fixes"). Awaiting the owner's sign-off.** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
 
-The owner approved the plan on 2026-10-05, after six questions (below), with additions: nine more entries and a summary line on the page. After the first build, the owner decided the one open entry, the Texas A&M microstructure (section "The owner's decision on the Texas A&M microstructure"); the register and this summary were updated, with no code that applies it.
+The owner approved the plan on 2026-10-05, after six questions (below), with additions: nine more entries and a summary line on the page. After the first build, the owner decided the one open entry, the Texas A&M microstructure (section "The owner's decision on the Texas A&M microstructure"); the register and this summary were updated, with no code that applies it. This summary describes the state after the review fixes.
 
 **Not built, as instructed:**
 - applying any of the eight decisions in code;
@@ -18,16 +18,17 @@ There is no change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compo
 
 | Path | What it is |
 |---|---|
-| `hypocurate/assumptions.json` | **The register: one source file**, a JSON list with one object per assumption (the same pattern as `docs/glossary.json`). 60 entries, all in force; no open decision since the owner's decision on the Texas A&M microstructure. |
-| `hypocurate/assumptions.py` | It provides:<br>• `load_register()` and `validate()`: the schema, in plain Python with no new dependency;<br>• `resolve_setting()` and `check_settings()`: the named settings in code;<br>• `page_sections()` and `summary_counts()`: what the page shows. |
+| `hypocurate/assumptions.json` | **The register: one source file**, a JSON list with one object per assumption (the same pattern as `docs/glossary.json`). 69 entries: 67 in force, 1 open decision (the conflict-pairing rule) and 1 direction approved, pending technical review (the calibration noise levels). |
+| `hypocurate/assumptions.py` | It provides:<br>• `load_register()` and `validate()`: the schema, in plain Python with no new dependency;<br>• `resolve_setting()` and `check_settings()`: reference and value checks of the named settings (they do not show that the code behaves as an entry says);<br>• `named_tests_missing()`: whether the regression tests an entry names exist;<br>• `page_sections()` and `summary_counts()`: what the page shows. |
 | `hypocurate/web/app.py` | `GET /assumptions`:<br>• behind the existing login middleware (nothing new is public);<br>• no other method: POST, PUT, PATCH and DELETE give 405;<br>• the register is read and validated once when the service starts, so **an invalid register stops the service starting**;<br>• `create_app` takes an optional `register` for tests, and validates it too. |
-| `hypocurate/web/templates/assumptions.html` | The page:<br>• a summary line (entries, open decisions, scientific assumptions not reviewed by an expert);<br>• open decisions first, then one table per category (scientific, statistical, data handling, operational);<br>• columns: assumption and statement, value, what it affects, expert review, applied in code;<br>• each unreviewed scientific entry has a red left border and the badge "Not reviewed by an expert";<br>• each row expands (`<details>`, no JavaScript) to the reason, evidence, who decided and when, sensitivity analysis, the named settings or the step, earlier values, notes and the key;<br>• a filter `?review=not_reviewed` ("Show only: not reviewed by an expert" / "Show all");<br>• the only form is "Sign out". |
+| `hypocurate/web/templates/assumptions.html` | The page:<br>• a summary line (entries, and the count in each state: in force, open, direction approved pending technical review; scientific assumptions not reviewed by an expert);<br>• open decisions first, then directions approved pending technical review, then one table per category (scientific, statistical, data handling, operational);<br>• columns: assumption and statement, value, what it affects, expert review, applied in code ("Yes"; "Partly" with what is done and what is pending, and its step; or "Not yet: step N");<br>• each unreviewed scientific entry has a red left border and the badge "Not reviewed by an expert";<br>• each row expands (`<details>`, no JavaScript) to the reason, evidence, who decided and when, sensitivity analysis, the named settings (labelled "reference and value checks only"), the regression tests, earlier values, notes and the key;<br>• a filter `?review=not_reviewed` ("Show only: not reviewed by an expert" / "Show all");<br>• the only form is "Sign out". |
 | `hypocurate/web/templates/base.html` | A `main_attrs` block, so this page can widen `<main>`. The other pages render as before. |
 | `hypocurate/web/templates/home.html` | A link to Assumptions. |
 | `hypocurate/web/static/style.css` | Plain table and badge styles in the login page's colours, with a narrow-screen layout. Full styling and the per-run "assumptions in force" panel come at step 10. |
 | `scripts/check_runtime_image.py` | `REQUIRED` gains the register, its module and the template, so the deployed image must contain the page. |
-| `CLAUDE.md` | "How we work":<br>• **item 11**: any new assumption or changed default enters the register in the same merge;<br>• **item 12**: code reads a default from one named place, never a scattered literal; an "applied: yes" entry names it, and `tests/test_assumptions.py` fails if it does not exist or holds a different value. |
-| `tests/test_assumptions.py` | 58 tests (below). |
+| `CLAUDE.md` | "How we work":<br>• **item 11**: any new assumption or changed default enters the register in the same merge;<br>• **item 12**: code reads a default from one named place, never a scattered literal; an entry applied in code ("yes" or "partly") names it, and `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only; behaviour is covered by the regression tests the entry names, which the register test checks exist. |
+| `tests/test_assumptions.py` | 74 tests (below). |
+| `tests/test_login.py` | One new test, `test_ordinary_requests_do_not_renew_the_session` (review correction on session expiry). No existing test changed. |
 
 ## The register's schema
 
@@ -37,7 +38,7 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 |---|---|
 | `key` | Lower-case identifier, unique. |
 | `name`, `statement` | A short name and a plain-English statement. |
-| `state` | `in_force` or `open` (an open decision has `value: null`, `decided: null` and `pending: {by, before_step}`). |
+| `state` | `in_force`; `open` (`value: null`, `decided: null`, `pending: {by, before_step}`); or `direction_approved` (a value and a decision, plus `pending: {by, before_step}` for the technical review). |
 | `value` | `{text, unit}`; unit may be null. |
 | `category` | `scientific`, `statistical`, `data_handling` or `operational`. |
 | `affects` | What it affects. |
@@ -45,7 +46,8 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 | `decided` | `{by, date}`. |
 | `expert_review` | `{status, name, date}`, where status is `not_reviewed` (no name or date), `accepted` or `disputed` (both need a name and a date). |
 | `sensitivity` | The sensitivity analysis that covers it, or null. |
-| `applied` | Either `{status: "yes", settings: [{ref, equals?}…], note}`, with at least one named setting, or `{status: "not_yet", step: 5–12, note}`. |
+| `applied` | `{status: "yes", settings: [{ref, equals?}…], note}`; `{status: "partly", settings, done, pending, step: 5–12, note}`; or `{status: "not_yet", step: 5–12, note}`. "Yes" and "partly" need at least one named setting. |
+| `tests` | Regression tests `tests/test_<file>.py::test_<name>` that cover the behaviour the entry describes; required (non-empty) when applied is "yes" or "partly". |
 | `history` | Earlier values `{value, from, to, note}`, in date order, ending no later than the current decision. |
 | `notes` | PRD conflicts and open points. |
 
@@ -60,7 +62,9 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 
 An optional `equals` gives the value the code must hold. Sets are compared sorted and tuples as lists.
 
-## The entries (60)
+**What these checks establish, and what they do not** (review finding 1). They are **reference and value checks**: the named setting exists and, where `equals` is given, holds that value. They do not show that the entry's wording matches what the code does. A function can change behaviour under the same name; a `sql:` reference matches the name anywhere in the migration text, comments included; a constant can stay unchanged while code stops using it. Behaviour is covered by the regression tests each applied entry names, and the register test checks only that those tests exist. Neither check is general protection against an entry drifting from the code.
+
+## The entries (69)
 
 Who decided, abbreviated:
 - **Owner**: owner (Khalid El-Awady);
@@ -82,37 +86,43 @@ It was the one open decision in the first build (`state: open`, pending the owne
 |---|---|---|---|
 | `tamu_test_temperature` (a) | scientific | room temperature, **assigned by decision** | not yet: step 6 |
 | `permitted_test_types` (b) | scientific | tension only; sensitivity "tension and compression together" | not yet: step 6 |
-| `tamu_grouping_unit` (c) | statistical | one group (the dataset); sensitivity "six batches as six groups" | **yes**: `SOURCES.tamu_fcc.grouping_unit == "dataset"` (the sensitivity analysis is step 7's) |
+| `tamu_grouping_unit` (c) | statistical | one group (the dataset); sensitivity "six batches as six groups" | **partly**: the adapter assigns one group and refuses another unit; pending: use in inference and the six-batch analysis (step 7) |
 | `same_alloy_rule` (d) | scientific | round to 0.1 at.%, same alloy when the rounded compositions are identical; sensitivity at 1 at.% | not yet: step 6 |
-| `fixed_minimums` (e) | statistical | 30 records; 5 alloys; 10 papers; 10 residual df | not yet: step 6 (plan default; check in step 7) |
+| `fixed_minimums` (e) | statistical | 30 records; 5 alloys; 10 papers; 10 residual df | **partly**: the database checks that 'minimums met' agrees with each plan's minimums; pending: plan default (step 6), check computed by code (step 7) |
 | `values_disagree_tolerance` (f) | data handling | > 2%, relative to the smaller value | not yet: step 6 |
-| `calibration_noise_levels` (g) | statistical | estimated from frozen residuals by a method fixed at the rules lock; smallest effect default 150 | not yet: step 7 |
+| `calibration_noise_levels` (g) | statistical | estimated from frozen residuals by a method fixed at the rules lock; smallest effect default 150. **State: direction approved, pending technical review** (second-model review before step 7) | not yet: step 7 |
 | `tag_starting_lists` (h) | data handling | the three lists as given | not yet: step 6 |
 
-**"Unless you find otherwise":** decision c is already applied. The Texas A&M source definition has grouping unit `dataset`, and the adapter refuses any other unit (step 4).
+**"Unless you find otherwise":** decision c is partly applied. The Texas A&M source definition has grouping unit `dataset`, and the adapter refuses any other unit (step 4); the first build called this "yes", corrected to "partly" after review finding 2.
 
 ### All other entries
 | Category | Key | Decided by | Applied |
 |---|---|---|---|
 | scientific | `shared_coefficient`, `exponent_fixed`, `baseline_per_alloy`, `quasistatic_tests` | Implicit | not yet: 7, 7, 7, 6 |
+| scientific | `association_not_causation`, `measurement_error_not_propagated` | Implicit (recorded after the review) | not yet: 7 |
 | scientific | `grain_size_as_reported`, `yield_strength_as_reported`, `composition_as_reported` | Implicit | yes (`HARMONIZED_FIELDS` units) |
 | scientific | `mean_grain_size_only` | Implicit | not yet: 7 |
 | scientific | `model_form`, `alloy_eligibility`, `physical_validity_checks` | PRD | not yet: 7, 6, 6 |
 | scientific | `room_temperature_scope` (20–25 °C), `fcc_microstructure_scope`, `grain_size_floor` (< 0.1 µm excluded) | Ref. | not yet: 6 (test side only today) |
 | scientific | `tamu_test_type`, `tamu_phase_class` | Owner (step 4 rule) | yes (`TEST_TYPE_CITATION`, `PHASE_CITATION`) |
-| statistical | `ols_alloy_intercepts`, `cluster_robust_se`, `one_sided_test`, `validity_checks`, `pooled_gives_verdict`, `calibration_simulation`, `reference_test_tolerance` | PRD | not yet: 7 |
-| statistical | `p_threshold_comparison` (p < 0.05) | Owner, 2026-10-05 | not yet: 7 |
-| statistical | `papers_independent` | Implicit | yes (`SOURCES.mpea.grouping_unit == "paper"`) |
+| statistical | `ols_alloy_intercepts`, `cluster_robust_se`, `one_sided_test`, `pooled_gives_verdict`, `calibration_simulation`, `reference_test_tolerance` | PRD | not yet: 7 |
+| statistical | `validity_checks` | PRD | **partly** (the database's necessary conditions on stored counts; pending: the full rules in code, step 7) |
+| statistical | `p_threshold_comparison` (p < α, α = 0.05 by default) | Owner, 2026-10-05 | not yet: 7 |
+| statistical | `papers_independent` | Implicit | **partly** (`SOURCES.mpea.grouping_unit == "paper"`; independence assumed, used in inference in step 7) |
+| statistical | `equal_row_weights`, `few_groups_approximate`, `no_multiplicity_adjustment`, `selection_and_missingness`, `calibration_error_model` | Implicit (recorded after the review) | not yet: 7 |
 | statistical | `normal_errors_in_calibration` | Implicit | not yet: 7 |
-| statistical | `sufficiency_options` | PRD | yes (`ck_plan_sufficiency_option`, `ck_run_exploratory_needs_verdict`, `hc_run_update`) |
+| statistical | `sufficiency_options` | PRD | **partly** (the database's two options and 'exploratory' rule; pending: fixed minimum as the plan default, step 6) |
 | statistical | `power_information_only` | Owner, step 3 | yes (`ck_plan_sufficiency_option`) |
 | data handling | `tamu_composition_unit` | Owner (step 4 rule) | yes (`COMPOSITION_UNIT_CITATION`) |
 | data handling | `mpea_microstructure_label_trusted`, `curated_values_trusted` | Implicit | yes (`HARMONIZED_FIELDS.microstructure`; `mpea_layout.read`) |
-| data handling | `paper_grouping_by_doi`, `values_kept_as_reported`, `malformed_files_refused`, `composition_normalization`, `alloy_label_display_only`, `controlled_extract_disabled` | Owner, step 4 | yes |
-| data handling | `assigned_value_statuses` | Owner, 2026-10-05 | not yet: 6 |
-| data handling | `grain_size_transformation_at_analysis` | Owner, step 4 | not yet: 6 |
+| data handling | `observation_unit` | Implicit (recorded after the review) | not yet: 6 |
+| data handling | `conflict_pairing_rule` | **open decision** (owner, before step 6) | not yet: 6 |
+| data handling | `paper_grouping_by_doi`, `values_kept_as_reported`, `malformed_files_refused`, `composition_normalization`, `alloy_label_display_only` | Owner, step 4 | yes |
+| data handling | `controlled_extract_disabled` | Owner, step 4 | **partly** (registered switched off; pending: the guard against a real analysis, step 6) |
+| data handling | `assigned_value_statuses` | Owner, 2026-10-05 | **partly** (one status 'assigned' with a citation; pending: the two statuses, step 6) |
+| data handling | `grain_size_transformation_at_analysis` | Owner, step 4 | **partly** (µm in records; pending: the transformation at analysis, step 6) |
 | data handling | `duplicate_identity`, `unresolved_duplicates`, `scope_not_confirmed` | PRD | not yet: 6 |
-| data handling | `duplicate_survivor_rule` | Owner, step 1 | not yet: 6 |
+| data handling | `duplicate_survivor_rule` | Owner, step 1 (wording restored after the review) | not yet: 6 |
 | operational | `stored_file_limits`, `login_throttle`, `session_length`, `secret_lengths`, `single_web_process`, `transaction_retries`, `worker_poll_interval` | Owner, steps 2–4 | yes |
 | operational | `spending_caps` | PRD | not yet: 9 |
 
@@ -263,16 +273,27 @@ Register and summary only; no code applies it. With this, the register has no op
 | `FCC+L12+Sec.`, `BCC+B2+Laves` | 2 each |
 | `BCC+HCP`, `BCC+BCC+HCP`, `FCC+B2+Sec.`, `FCC+L12`, `FCC+L12+B2`, `FCC+FCC`, `B2` | 1 each |
 
-## Tests (527, all passing; 58 new; no test from an earlier step changed)
+## Tests (544, all passing; 74 in `tests/test_assumptions.py` and one added to `tests/test_login.py`; no test from an earlier step changed)
 
-`git diff main --stat -- tests/` shows only the new `tests/test_assumptions.py`.
+`git diff main --stat -- tests/` shows the new `tests/test_assumptions.py` and one added test in `tests/test_login.py` (additions only).
 
 | Group | Tests |
 |---|---|
-| Schema | The file validates. Every category has entries, and keys are unique. The eight decisions are present: decided by the owner on 2026-10-05, not reviewed, applied as stated (c applied, the others not yet, at their steps). The owner's wording is checked (assigned by decision; rounded compositions identical, with no "within"; min(\|a\|, \|b\|) and "not final"; g's statement and its three notes; p < 0.05). The Texas A&M microstructure decision is recorded as decided (in force, owner, 2026-10-05, not reviewed, step 6, the six citations, the three notes, the sensitivity analysis, the open-decision history), and no decision is open. An open decision (a fixture, since the register has none) validates, and is refused if it carries a value or a decision. |
-| Validator | 25 malformed cases, each refused with its message: missing or unknown field, bad key, category, state, blank text, empty evidence, bad dates, review status, a name without a review, accepted or disputed without a name or date, "applied: yes" with no setting or without `settings`, bad status, step outside 5–12, history out of order or after the decision, open/in-force inconsistencies. Also duplicate keys, an empty register, and an open decision (fixture) without `pending` or with a past step. |
-| **Settings in code** | **Every "applied: yes" entry's settings resolve, and every `equals` matches the code** (25 entries). The values compared are spot-checked. 11 references to nothing are refused (missing constant, module, mapping key or parameter; a parameter without a default; a missing or partial SQL name; a wrong Dockerfile text; a path outside the repository; a missing file; an unknown kind). A wrong value and a missing setting are reported with the key. JSON terms are used for sets and tuples. |
-| Page | Login is required for `/assumptions`, the filter URL and `/assumptions/`. Headings are in category order, every entry appears in its section, in register order. With an open decision added (fixture register), "Open decisions" comes first, holds only that entry, shows "Not decided" and the badge, and the summary counts it. Summary counts on the real register: 0 open decisions, 20 unreviewed scientific entries. The unreviewed-scientific mark is on exactly the right entries (with a fixture register where one scientific entry is reviewed). The filter shows exactly the not-reviewed entries (fixture with one accepted and one disputed entry). A row expands to reason, evidence, history, notes and sensitivity, and shows named settings or the step. The only form is sign-out, there is no input, and POST/PUT/PATCH/DELETE give 405. The service refuses an invalid register. The home page links to the page. |
+| Schema | The file validates. Every category has entries, and keys are unique. The eight decisions are present: decided by the owner on 2026-10-05, not reviewed, applied as stated (c and e partly, the others not yet, at their steps; g in the state "direction approved"). The owner's wording is checked (assigned by decision; rounded compositions identical, with no "within"; min(\|a\|, \|b\|) and the reference to the open pairing rule; g's statement and its three notes; p < α). The Texas A&M microstructure decision is recorded as decided (in force, owner, 2026-10-05, not reviewed, step 6, the six citations, the three notes, the sensitivity analysis, the open-decision history), and it is not open. An open decision (a fixture) validates, and is refused if it carries a value or a decision. **Review checks:** exactly the eight partly-applied entries, each with what is done, what is pending and settings; the survivor rule's restored wording, with no "directly" or "detected" and the note on extraction-origin metadata, and the withdrawn wording kept in its history; the pairing rule is the one open entry and calibration the one direction approved, with their pending reviews; the eight added assumptions, in their categories, not reviewed, with their key statements; the small corrections (CSV, "may change the calibration" and no "optimistic", session expiry). |
+| Validator | 25 malformed cases, each refused with its message: missing or unknown field, bad key, category, state, blank text, empty evidence, bad dates, review status, a name without a review, accepted or disputed without a name or date, "applied: yes" with no setting or without `settings`, bad status, step outside 5–12, history out of order or after the decision, open/in-force inconsistencies. After the review, 8 more: a direction approved without `pending` or with a step outside 5–12, an applied entry with no named tests, a malformed or missing `tests` field, and "partly" without a step, with blank `done`, or with no settings (33 in all). Also duplicate keys, an empty register, and an open decision (fixture) without `pending` or with a past step. |
+| **Settings in code (reference and value checks)** | **Every entry applied in code ("yes" or "partly") names settings that resolve, and every `equals` matches the code** (29 entries). This does not test the entries' wording against behaviour (review finding 1). The values compared are spot-checked. 11 references to nothing are refused (missing constant, module, mapping key or parameter; a parameter without a default; a missing or partial SQL name; a wrong Dockerfile text; a path outside the repository; a missing file; an unknown kind). A wrong value and a missing setting are reported with the key. JSON terms are used for sets and tuples. |
+| **Named regression tests** | Every entry applied in code names regression tests, and each exists as a test function in its file. A missing test or file is reported with the key. |
+| Page | Login is required for `/assumptions`, the filter URL and `/assumptions/`. Headings: open decisions, then directions approved pending technical review, then the categories; every entry appears in its section, in register order. With a second open decision added (fixture register), it is listed after the real one, with "Not decided" and the badge, the summary counts 2, and the calibration entry shows its pending review. The summary line counts each state (67 in force, 1 open, 1 direction approved) and 22 unreviewed scientific entries. Each partly-applied entry's main row shows "Partly", what is done and what is pending with its step. The expanded row labels the named settings as reference and value checks and lists the regression tests. The unreviewed-scientific mark is on exactly the right entries (with a fixture register where one scientific entry is reviewed). The filter shows exactly the not-reviewed entries (fixture with one accepted and one disputed entry). A row expands to reason, evidence, history, notes and sensitivity, and shows named settings or the step. The only form is sign-out, there is no input, and POST/PUT/PATCH/DELETE give 405. The service refuses an invalid register. The home page links to the page. |
+
+### Tests changed after the review (none weakened)
+
+- `test_the_owners_eight_decisions_are_recorded_as_decided`: decision c expected "yes"; it now expects "partly" (step 7), decision e "partly" (step 6), and g the state "direction approved", as the owner accepted (findings 2 and 4).
+- `test_decisions_carry_the_owners_wording`: "not final" in decision f's notes → the notes refer to the open entry `conflict_pairing_rule` (the open point moved there; finding 4); `p < 0.05` → `p < α (α = 0.05 by default)` (small correction).
+- `test_the_microstructure_decision_is_recorded_and_no_decision_is_open` is renamed `test_the_microstructure_decision_is_recorded`: the register now has an open entry (the pairing rule), so "no decision is open" no longer holds; it checks that the microstructure entry is not open. Which entries are open is asserted by the new `test_the_pairing_rule_is_open_and_calibration_awaits_its_technical_review`.
+- `test_the_page_shows_every_entry_grouped_by_category` is renamed `test_the_page_shows_every_entry_grouped_with_pending_states_first` and expects the six headings; the section-by-section checks are unchanged.
+- `test_open_decisions_are_shown_first_when_there_are_any`: with the fixture added there are now two open entries (the real one first) and the summary counts 2; it also checks the direction-approved section.
+- `test_the_summary_line_counts_open_decisions_and_unreviewed_scientific_entries` is renamed `test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries`; "0 open decisions" → the count of each state.
+- The settings tests now include partly-applied entries (`yes` → `yes` or `partly`), so they check more entries, not fewer.
 
 ### Tests changed after the owner's microstructure decision (none weakened)
 
@@ -284,7 +305,7 @@ The register no longer has an open decision, so three tests that used the real o
 
 ### The safeguard tests fail when the safeguard is removed
 
-Each change was made in a scratch copy of the working tree, and only `tests/test_assumptions.py` was run. The copy was then discarded.
+Each change was made in a scratch copy of the working tree, and only `tests/test_assumptions.py` (and, in the review round, `tests/test_login.py`) was run. The copy was then discarded.
 
 | Change in the copy | Result |
 |---|---|
@@ -295,8 +316,19 @@ Each change was made in a scratch copy of the working tree, and only `tests/test
 | The validator accepts "applied: yes" with an empty settings list | the validator test for that case fails |
 | The "Not reviewed by an expert" badge removed from the template | the mark test fails |
 | The filter ignored | the filter test fails |
+| A named regression test renamed (`test_web_runs_one_process`) | the named-tests test fails (review round) |
+| A partly-applied entry shown as "Yes" in the main row | the partly-display test fails (review round) |
+| The session written on every request, so the cookie is renewed | `test_ordinary_requests_do_not_renew_the_session`, `test_session_expires_after_max_age` and one other login test fail (review round) |
 
 ### Suite results
+After the review fixes:
+```
+$ pytest -q                              (Codespace, Python 3.14.2, `docker compose up -d db`)
+544 passed in 62.21s
+```
+GitHub Actions, commit `12fe2da` (the review fixes): success; "Run the suite in the test image": 544 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37264317263
+
 After the owner's microstructure decision (commit `b8837ee`):
 ```
 $ pytest -q                              (Codespace, Python 3.14.2, `docker compose up -d db`)
@@ -316,12 +348,53 @@ https://github.com/kelawady/hypocurate/actions/runs/37262162090
 
 The step 1 answer-isolation scan (`test_no_row_answers_under_package`) passes with the register in the package. The register names the compression record by its origin key `MPEA_dataset.csv:row:139`, not in the answer file's wording.
 
+## Second-model review and fixes (ChatGPT, 2026-10-05)
+
+The review text is in `docs/reviews/step04b_review_chatgpt.md`. Its verdict: no serious security or database-damage issue; four findings, eight missing assumptions and four small corrections. The owner accepted all of them, with instructions, and asked for no code that changes behaviour.
+
+1. **"Applied: yes" overclaimed what the register tests prove.** The reviewer changed `grain_size_as_reported` to say nanometres while its checked constant stayed µm; the validation and the settings check both passed.
+   - **Fix:** the claim is corrected everywhere: the module and test docstrings, CLAUDE.md item 12, the page's introduction, the expanded row ("Named settings (reference and value checks only)") and this summary. The settings check is a reference and value check; it does not show that an entry's wording matches what the code does.
+   - **Every entry applied in code now names the regression tests that cover its behaviour** (field `tests`, required for "yes" and "partly"). A new test checks that each named test exists. Where no test covered a stated behaviour (session expiry without renewal), one was added.
+   - Displayed defaults are not generated from the structured values in this round; the page shows the register's text.
+2. **"Yes" where only part is built.** New applied status **"partly"**, with what is done, what is pending and the step, shown in the main row. Changed from "yes": `papers_independent`, `sufficiency_options`, `controlled_extract_disabled`, `tamu_grouping_unit`. Changed from "not yet" because part is in code and the principal part is pending: `validity_checks`, `fixed_minimums`, `grain_size_transformation_at_analysis`, `assigned_value_statuses`. No other "yes" entry has a pending principal safeguard: the remaining 21 describe behaviour that is fully in code today, each with its named tests.
+3. **The survivor rule confused citation with provenance.** `duplicate_survivor_rule` now has the owner's step 1 wording: "1) Prefer the record that carries the original paper reference (DOI)." The DOI-detection claim is removed. A note says that preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist. The withdrawn wording is in the entry's history.
+   - It came from the step 1 re-check correction 3, which reworded the owner's first rule ("prefer the record that carries the original paper reference (DOI)") as "comes directly from the original paper (detected by the original paper's DOI)".
+   - That wording is still in the step 1 answer file (`survivor_rule` column) and fixtures README, whose fingerprints are pinned. They are not changed here; aligning them is an open item for step 6.
+4. **"0 open decisions" hid an unresolved decision.**
+   - A new **open** entry `conflict_pairing_rule` (data handling; owner, before step 6): repeat specimens versus conflicting reports. Decision f's notes now point to it.
+   - A third state, **"direction approved, pending technical review"**, used for `calibration_noise_levels` (pending: second-model technical review, before step 7).
+   - The page has a section for each, after open decisions, and the summary line counts each state.
+
+**Eight missing assumptions**, added in plain words with what each affects, decided "implicit in PRD v1.6 and the reference script; recorded after the step 4b review", not reviewed, applied "not yet":
+
+| Key | Category | What it states |
+|---|---|---|
+| `association_not_causation` | scientific | Omitted factors that vary with grain size within an alloy can bias k; a positive k supports an association under the model, not causal proof. `baseline_per_alloy` gained a note pointing to it. Its note records the step 10 wording rule. |
+| `measurement_error_not_propagated` | scientific | Grain size and composition treated as exact; their uncertainty is not propagated; (mean d)^-1/2 is not the mean of d^-1/2. |
+| `equal_row_weights` | statistical | OLS weights each row equally, not each paper or alloy; reported uncertainties and replicate counts are not weights. |
+| `selection_and_missingness` | statistical | Retained records need not be representative; no correction for publication bias or outcome-related missingness; conclusions conditional on the retained evidence. |
+| `no_multiplicity_adjustment` | statistical | The threshold applies per locked test; no adjustment across queries, narrower questions, plans or sensitivity analyses. |
+| `calibration_error_model` | statistical | Fixed design; independent zero-mean group shifts and record errors with common variances; what is not simulated. |
+| `few_groups_approximate` | statistical | Passing check 2 makes an uncertainty computable, not reliable; the correction and t reference are approximations with few or unequal groups. |
+| `observation_unit` | data handling | One source row is one record, whether a specimen, a mean of repeats or a summarized condition; not distinguished today; linked to the pairing rule. |
+
+**Small corrections:**
+- `malformed_files_refused` (now "Malformed CSV files refused") states the CSV rule and how spreadsheets differ.
+- `p_threshold_comparison` shows "p < α (α = 0.05 by default)".
+- `normal_errors_in_calibration`: heavier tails "may change the calibration, in either direction" (not "optimistic").
+- `session_length` describes the expiry precisely. **The review's remark that the middleware renews non-empty session cookies does not hold for the locked Starlette 1.7.0.** It re-signs the cookie only when the session data change, which happens only at sign-in, so a session ends 12 hours after sign-in however much it is used. The new test `test_ordinary_requests_do_not_renew_the_session` shows it: three requests over 9 hours get no `Set-Cookie`, and the session ends 12 hours and 1 second after sign-in. Older Starlette versions behaved as the review describes.
+
+**Recorded for step 10:** the verdict wording on the run screen must say "supported under the stated model" and never imply proof of cause.
+
+The review's note on startup failure is reflected in "Deviations", item 2. No code that changes behaviour was written: the changes are to the register, its validator and page, CLAUDE.md, the tests and this summary.
+
 ## Deviations from the approved plan
 
 1. **`base.html` gained a `main_attrs` block**, because `<main>` is 32 rem wide. The login, home and health pages render as before (their tests are unchanged and pass).
-2. **The service refuses to start with an invalid register.** The plan did not say what happens then. A broken register therefore fails CI (the schema test) before any merge, and on Render a failed start keeps the previous version running.
+2. **The service refuses to start with an invalid register.** The plan did not say what happens then. A broken register fails CI (the schema test) before any merge. As the review notes, a failed start also takes down login and /health on that instance. A normal Render deploy keeps the previous release when the new instance fails its health check, but that is not a guarantee for a first start or every restart, and it does not undo a pre-deploy migration that has already committed.
 3. **`markupsafe.escape`** is used in one page test to compare escaped text. markupsafe is already in the runtime lock (Jinja2 depends on it). No dependency change.
 4. **Nine entry keys were renamed** from the plan (table above), and three entries were added while writing (above).
+5. **The register file was rewritten by a script in the review round** with one uniform layout (JSON, two-space indent), so its diff against the first build is large. The content changes are those listed in "Second-model review and fixes"; every other entry's content is unchanged apart from the new `tests` field.
 
 ## PRD corrections and clarifications for the next PRD update
 
@@ -344,17 +417,20 @@ The step 1 answer-isolation scan (`test_no_row_answers_under_package`) passes wi
 1. **Step 6** (each is in the register with its step):
    - apply decisions a, b, d, e, f and h, and the two assigned-value statuses;
    - the source-only sensitivity analysis;
-   - the pairing for decision f (owner's approval);
+   - the open decision `conflict_pairing_rule` (owner), and the treatment of what one source row represents (`observation_unit`);
+   - the guard that keeps the controlled extract out of a real analysis (`controlled_extract_disabled`, partly);
+   - align the step 1 answer file and fixtures README with the restored survivor-rule wording (their fingerprints are pinned; owner's approval).
    - apply the Texas A&M microstructure decision ("single-phase FCC", assigned by decision);
    - the room-temperature scope must accept the assigned band, with a test that the 21 Texas A&M records stay eligible.
 2. **Before step 7:** recompute the reference numbers. Tension only removes `MPEA_dataset.csv:row:139` from the 77. The same-alloy rule is unchanged, so the alloy count changes only through that record. Update CLAUDE.md's "Reference numbers" when recomputed.
-3. **Step 7:** the second-model review of decision g (both ways) before it is applied.
-4. **Expert review:** every entry is "not reviewed". The page lists 20 scientific entries for Prof. El-Awady. A review is recorded in the register (status, name, date) in a reviewed merge.
-5. **Carried, unchanged:** the step 4 open items (live registration after the owner's decisions; step 5 approved inputs; step 6 guards), and the step 3 step 7/9 requirements. The step 3 "p < vs ≤" item is closed by decision O.
+3. **Step 7:** the second-model review of decision g (both ways) before it is applied (state "direction approved, pending technical review").
+4. **Step 10:** the verdict wording on the run screen must say "supported under the stated model" and never imply proof of cause (entry `association_not_causation`).
+5. **Expert review:** every entry is "not reviewed". The page lists 22 scientific entries for Prof. El-Awady. A review is recorded in the register (status, name, date) in a reviewed merge.
+6. **Carried, unchanged:** the step 4 open items (live registration after the owner's decisions; step 5 approved inputs; step 6 guards), and the step 3 step 7/9 requirements. The step 3 "p < vs ≤" item is closed by decision O.
 
 ## Questions for the reviewer
 
 1. Is any assumption already in the code, the PRD or the summaries missing from the register, or stated more strongly than the code does?
-2. Does the settings test ("applied: yes" names a setting that exists and holds the stated value) catch a default changed in code without the register? Which defaults would it miss (for example a literal that no entry names)?
+2. The settings test is a reference and value check (answered by the review, finding 1). Are the named regression tests the right ones for each applied entry?
 3. Is refusing to start on an invalid register the right behaviour for the web service?
 4. Is the page read-only in every way that matters (no form, no method other than GET, nothing written)?

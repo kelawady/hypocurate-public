@@ -1,10 +1,12 @@
 # Build step 4b — review packet for the second model
 
-Date: 2026-10-05. Branch: `step-04b-assumptions`. Code reviewed: commit `b8837ee` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 527 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37263110672.
+Date: 2026-10-05. Branch: `step-04b-assumptions`. Code reviewed: commit `12fe2da` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 544 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37264317263.
 
 Generated from the files on disk by a script, so every file below is quoted exactly.
 
 ## How to use this packet
+
+**This packet is for the re-check after the first review** (`docs/reviews/step04b_review_chatgpt.md`, included in section 8). The summary's section "Second-model review and fixes" lists how each finding, missing assumption and correction was handled. Please confirm each is closed, and check in particular that no entry still claims more than the code does, that the named regression tests fit their entries, and the session-expiry statement (the review's renewal remark does not hold for the locked Starlette 1.7.0; see the new test).
 
 You are reviewing step 4b of HypoCurate, a small step before PRD 15 step 5: an **assumptions register** (`hypocurate/assumptions.json`, one entry per assumption made so far, validated by a schema test), a **read-only page** for it (GET /assumptions, behind the login), and two new working rules in CLAUDE.md (items 11 and 12): every new assumption or changed default enters the register in the same merge, and code reads each default from one named place, which an "applied: yes" entry names and a test checks.
 
@@ -29,11 +31,13 @@ Use the fixed checklist in section 2, answering each item yes, no or not applica
 5. Code: `hypocurate/assumptions.py`, `hypocurate/web/app.py`, templates, stylesheet, image check
 6. Tests: `tests/test_assumptions.py`
 7. Suite output
+8. The first review, verbatim
 
 ## Files added, modified or deleted since `main` (step 4 live record, `355e2c3`)
 
 ```
 M	CLAUDE.md
+A	docs/reviews/step04b_review_chatgpt.md
 A	docs/reviews/step04b_review_packet.md
 A	docs/reviews/step04b_summary.md
 A	hypocurate/assumptions.json
@@ -45,13 +49,14 @@ M	hypocurate/web/templates/base.html
 M	hypocurate/web/templates/home.html
 M	scripts/check_runtime_image.py
 A	tests/test_assumptions.py
+M	tests/test_login.py
 ```
 
 Diff of the modified files other than new ones:
 
 ```diff
 diff --git a/CLAUDE.md b/CLAUDE.md
-index c178d6f..2e18544 100644
+index c178d6f..d3fa37c 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
 @@ -21,6 +21,9 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
@@ -59,7 +64,7 @@ index c178d6f..2e18544 100644
  10. **A change to `render.yaml` takes effect at push, before the checks pass**, and redeploys the code already running (Render's Blueprint sync; seen on the step 3 merge, 2026-10-05). So any setting that depends on new code goes in a later merge than that code, and every `render.yaml` change needs the owner's explicit review, like workflow changes.
  
 +11. **Assumptions register.** Any new assumption or changed default is entered in `hypocurate/assumptions.json` in the same merge, with its reason, who decided it and when, and its earlier value in the history. The page /assumptions is generated from that file only.
-+12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry marked "applied: yes" names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value.
++12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry applied in code ("yes" or "partly") names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only: it does not show that the entry's wording matches what the code does. Behaviour is covered by the regression tests the entry names, and the register test checks only that they exist.
 +
  ## Rules the code must never break
  
@@ -184,6 +189,33 @@ index b5958c8..f4f02a5 100644
 +            "hypocurate/web/templates/assumptions.html"]
  FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
  FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
+ 
+diff --git a/tests/test_login.py b/tests/test_login.py
+index 780f656..360f28a 100644
+--- a/tests/test_login.py
++++ b/tests/test_login.py
+@@ -202,6 +202,21 @@ def test_session_expires_after_max_age(monkeypatch):
+     assert c.get("/").status_code == 303
+ 
+ 
++def test_ordinary_requests_do_not_renew_the_session(monkeypatch):
++    """Step 4b review: the session ends 12 hours after sign-in, however much it is used.
++    The middleware re-signs the cookie only when the session data change (at sign-in)."""
++    now = {"t": 1_800_000_000}
++    monkeypatch.setattr(itsdangerous.timed.TimestampSigner, "get_timestamp", lambda self: now["t"])
++    c = client()
++    assert "set-cookie" in sign_in(c).headers
++    for _ in range(3):
++        now["t"] += SESSION_MAX_AGE // 4
++        r = c.get("/")
++        assert r.status_code == 200 and "set-cookie" not in r.headers
++    now["t"] += SESSION_MAX_AGE // 4 + 1  # 12 hours and 1 second after sign-in
++    assert c.get("/").status_code == 303
++
++
+ def test_copied_cookie_still_works_after_logout():
+     """Stated limitation of cookie-only sessions (no session table in sprint 1):
+     logout clears this browser's cookie but cannot revoke a copy. A copy works
 ```
 
 ## 1. Step summary
@@ -193,11 +225,11 @@ index b5958c8..f4f02a5 100644
 ````markdown
 # Build step 4b — summary for review
 
-Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: built, suite green; awaiting the second-model review.** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
+Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: second-model review received (2026-10-05): no serious issue, four findings, eight missing assumptions and four small corrections, all accepted by the owner and applied (section "Second-model review and fixes"). Awaiting the owner's sign-off.** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
 
-The owner approved the plan on 2026-10-05, after six questions (below), with additions: nine more entries and a summary line on the page. After the first build, the owner decided the one open entry, the Texas A&M microstructure (section "The owner's decision on the Texas A&M microstructure"); the register and this summary were updated, with no code that applies it.
+The owner approved the plan on 2026-10-05, after six questions (below), with additions: nine more entries and a summary line on the page. After the first build, the owner decided the one open entry, the Texas A&M microstructure (section "The owner's decision on the Texas A&M microstructure"); the register and this summary were updated, with no code that applies it. This summary describes the state after the review fixes.
 
 **Not built, as instructed:**
 - applying any of the eight decisions in code;
@@ -211,16 +243,17 @@ There is no change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compo
 
 | Path | What it is |
 |---|---|
-| `hypocurate/assumptions.json` | **The register: one source file**, a JSON list with one object per assumption (the same pattern as `docs/glossary.json`). 60 entries, all in force; no open decision since the owner's decision on the Texas A&M microstructure. |
-| `hypocurate/assumptions.py` | It provides:<br>• `load_register()` and `validate()`: the schema, in plain Python with no new dependency;<br>• `resolve_setting()` and `check_settings()`: the named settings in code;<br>• `page_sections()` and `summary_counts()`: what the page shows. |
+| `hypocurate/assumptions.json` | **The register: one source file**, a JSON list with one object per assumption (the same pattern as `docs/glossary.json`). 69 entries: 67 in force, 1 open decision (the conflict-pairing rule) and 1 direction approved, pending technical review (the calibration noise levels). |
+| `hypocurate/assumptions.py` | It provides:<br>• `load_register()` and `validate()`: the schema, in plain Python with no new dependency;<br>• `resolve_setting()` and `check_settings()`: reference and value checks of the named settings (they do not show that the code behaves as an entry says);<br>• `named_tests_missing()`: whether the regression tests an entry names exist;<br>• `page_sections()` and `summary_counts()`: what the page shows. |
 | `hypocurate/web/app.py` | `GET /assumptions`:<br>• behind the existing login middleware (nothing new is public);<br>• no other method: POST, PUT, PATCH and DELETE give 405;<br>• the register is read and validated once when the service starts, so **an invalid register stops the service starting**;<br>• `create_app` takes an optional `register` for tests, and validates it too. |
-| `hypocurate/web/templates/assumptions.html` | The page:<br>• a summary line (entries, open decisions, scientific assumptions not reviewed by an expert);<br>• open decisions first, then one table per category (scientific, statistical, data handling, operational);<br>• columns: assumption and statement, value, what it affects, expert review, applied in code;<br>• each unreviewed scientific entry has a red left border and the badge "Not reviewed by an expert";<br>• each row expands (`<details>`, no JavaScript) to the reason, evidence, who decided and when, sensitivity analysis, the named settings or the step, earlier values, notes and the key;<br>• a filter `?review=not_reviewed` ("Show only: not reviewed by an expert" / "Show all");<br>• the only form is "Sign out". |
+| `hypocurate/web/templates/assumptions.html` | The page:<br>• a summary line (entries, and the count in each state: in force, open, direction approved pending technical review; scientific assumptions not reviewed by an expert);<br>• open decisions first, then directions approved pending technical review, then one table per category (scientific, statistical, data handling, operational);<br>• columns: assumption and statement, value, what it affects, expert review, applied in code ("Yes"; "Partly" with what is done and what is pending, and its step; or "Not yet: step N");<br>• each unreviewed scientific entry has a red left border and the badge "Not reviewed by an expert";<br>• each row expands (`<details>`, no JavaScript) to the reason, evidence, who decided and when, sensitivity analysis, the named settings (labelled "reference and value checks only"), the regression tests, earlier values, notes and the key;<br>• a filter `?review=not_reviewed` ("Show only: not reviewed by an expert" / "Show all");<br>• the only form is "Sign out". |
 | `hypocurate/web/templates/base.html` | A `main_attrs` block, so this page can widen `<main>`. The other pages render as before. |
 | `hypocurate/web/templates/home.html` | A link to Assumptions. |
 | `hypocurate/web/static/style.css` | Plain table and badge styles in the login page's colours, with a narrow-screen layout. Full styling and the per-run "assumptions in force" panel come at step 10. |
 | `scripts/check_runtime_image.py` | `REQUIRED` gains the register, its module and the template, so the deployed image must contain the page. |
-| `CLAUDE.md` | "How we work":<br>• **item 11**: any new assumption or changed default enters the register in the same merge;<br>• **item 12**: code reads a default from one named place, never a scattered literal; an "applied: yes" entry names it, and `tests/test_assumptions.py` fails if it does not exist or holds a different value. |
-| `tests/test_assumptions.py` | 58 tests (below). |
+| `CLAUDE.md` | "How we work":<br>• **item 11**: any new assumption or changed default enters the register in the same merge;<br>• **item 12**: code reads a default from one named place, never a scattered literal; an entry applied in code ("yes" or "partly") names it, and `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only; behaviour is covered by the regression tests the entry names, which the register test checks exist. |
+| `tests/test_assumptions.py` | 74 tests (below). |
+| `tests/test_login.py` | One new test, `test_ordinary_requests_do_not_renew_the_session` (review correction on session expiry). No existing test changed. |
 
 ## The register's schema
 
@@ -230,7 +263,7 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 |---|---|
 | `key` | Lower-case identifier, unique. |
 | `name`, `statement` | A short name and a plain-English statement. |
-| `state` | `in_force` or `open` (an open decision has `value: null`, `decided: null` and `pending: {by, before_step}`). |
+| `state` | `in_force`; `open` (`value: null`, `decided: null`, `pending: {by, before_step}`); or `direction_approved` (a value and a decision, plus `pending: {by, before_step}` for the technical review). |
 | `value` | `{text, unit}`; unit may be null. |
 | `category` | `scientific`, `statistical`, `data_handling` or `operational`. |
 | `affects` | What it affects. |
@@ -238,7 +271,8 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 | `decided` | `{by, date}`. |
 | `expert_review` | `{status, name, date}`, where status is `not_reviewed` (no name or date), `accepted` or `disputed` (both need a name and a date). |
 | `sensitivity` | The sensitivity analysis that covers it, or null. |
-| `applied` | Either `{status: "yes", settings: [{ref, equals?}…], note}`, with at least one named setting, or `{status: "not_yet", step: 5–12, note}`. |
+| `applied` | `{status: "yes", settings: [{ref, equals?}…], note}`; `{status: "partly", settings, done, pending, step: 5–12, note}`; or `{status: "not_yet", step: 5–12, note}`. "Yes" and "partly" need at least one named setting. |
+| `tests` | Regression tests `tests/test_<file>.py::test_<name>` that cover the behaviour the entry describes; required (non-empty) when applied is "yes" or "partly". |
 | `history` | Earlier values `{value, from, to, note}`, in date order, ending no later than the current decision. |
 | `notes` | PRD conflicts and open points. |
 
@@ -253,7 +287,9 @@ Every entry has these fields. Unknown fields are refused, and so are missing one
 
 An optional `equals` gives the value the code must hold. Sets are compared sorted and tuples as lists.
 
-## The entries (60)
+**What these checks establish, and what they do not** (review finding 1). They are **reference and value checks**: the named setting exists and, where `equals` is given, holds that value. They do not show that the entry's wording matches what the code does. A function can change behaviour under the same name; a `sql:` reference matches the name anywhere in the migration text, comments included; a constant can stay unchanged while code stops using it. Behaviour is covered by the regression tests each applied entry names, and the register test checks only that those tests exist. Neither check is general protection against an entry drifting from the code.
+
+## The entries (69)
 
 Who decided, abbreviated:
 - **Owner**: owner (Khalid El-Awady);
@@ -275,37 +311,43 @@ It was the one open decision in the first build (`state: open`, pending the owne
 |---|---|---|---|
 | `tamu_test_temperature` (a) | scientific | room temperature, **assigned by decision** | not yet: step 6 |
 | `permitted_test_types` (b) | scientific | tension only; sensitivity "tension and compression together" | not yet: step 6 |
-| `tamu_grouping_unit` (c) | statistical | one group (the dataset); sensitivity "six batches as six groups" | **yes**: `SOURCES.tamu_fcc.grouping_unit == "dataset"` (the sensitivity analysis is step 7's) |
+| `tamu_grouping_unit` (c) | statistical | one group (the dataset); sensitivity "six batches as six groups" | **partly**: the adapter assigns one group and refuses another unit; pending: use in inference and the six-batch analysis (step 7) |
 | `same_alloy_rule` (d) | scientific | round to 0.1 at.%, same alloy when the rounded compositions are identical; sensitivity at 1 at.% | not yet: step 6 |
-| `fixed_minimums` (e) | statistical | 30 records; 5 alloys; 10 papers; 10 residual df | not yet: step 6 (plan default; check in step 7) |
+| `fixed_minimums` (e) | statistical | 30 records; 5 alloys; 10 papers; 10 residual df | **partly**: the database checks that 'minimums met' agrees with each plan's minimums; pending: plan default (step 6), check computed by code (step 7) |
 | `values_disagree_tolerance` (f) | data handling | > 2%, relative to the smaller value | not yet: step 6 |
-| `calibration_noise_levels` (g) | statistical | estimated from frozen residuals by a method fixed at the rules lock; smallest effect default 150 | not yet: step 7 |
+| `calibration_noise_levels` (g) | statistical | estimated from frozen residuals by a method fixed at the rules lock; smallest effect default 150. **State: direction approved, pending technical review** (second-model review before step 7) | not yet: step 7 |
 | `tag_starting_lists` (h) | data handling | the three lists as given | not yet: step 6 |
 
-**"Unless you find otherwise":** decision c is already applied. The Texas A&M source definition has grouping unit `dataset`, and the adapter refuses any other unit (step 4).
+**"Unless you find otherwise":** decision c is partly applied. The Texas A&M source definition has grouping unit `dataset`, and the adapter refuses any other unit (step 4); the first build called this "yes", corrected to "partly" after review finding 2.
 
 ### All other entries
 | Category | Key | Decided by | Applied |
 |---|---|---|---|
 | scientific | `shared_coefficient`, `exponent_fixed`, `baseline_per_alloy`, `quasistatic_tests` | Implicit | not yet: 7, 7, 7, 6 |
+| scientific | `association_not_causation`, `measurement_error_not_propagated` | Implicit (recorded after the review) | not yet: 7 |
 | scientific | `grain_size_as_reported`, `yield_strength_as_reported`, `composition_as_reported` | Implicit | yes (`HARMONIZED_FIELDS` units) |
 | scientific | `mean_grain_size_only` | Implicit | not yet: 7 |
 | scientific | `model_form`, `alloy_eligibility`, `physical_validity_checks` | PRD | not yet: 7, 6, 6 |
 | scientific | `room_temperature_scope` (20–25 °C), `fcc_microstructure_scope`, `grain_size_floor` (< 0.1 µm excluded) | Ref. | not yet: 6 (test side only today) |
 | scientific | `tamu_test_type`, `tamu_phase_class` | Owner (step 4 rule) | yes (`TEST_TYPE_CITATION`, `PHASE_CITATION`) |
-| statistical | `ols_alloy_intercepts`, `cluster_robust_se`, `one_sided_test`, `validity_checks`, `pooled_gives_verdict`, `calibration_simulation`, `reference_test_tolerance` | PRD | not yet: 7 |
-| statistical | `p_threshold_comparison` (p < 0.05) | Owner, 2026-10-05 | not yet: 7 |
-| statistical | `papers_independent` | Implicit | yes (`SOURCES.mpea.grouping_unit == "paper"`) |
+| statistical | `ols_alloy_intercepts`, `cluster_robust_se`, `one_sided_test`, `pooled_gives_verdict`, `calibration_simulation`, `reference_test_tolerance` | PRD | not yet: 7 |
+| statistical | `validity_checks` | PRD | **partly** (the database's necessary conditions on stored counts; pending: the full rules in code, step 7) |
+| statistical | `p_threshold_comparison` (p < α, α = 0.05 by default) | Owner, 2026-10-05 | not yet: 7 |
+| statistical | `papers_independent` | Implicit | **partly** (`SOURCES.mpea.grouping_unit == "paper"`; independence assumed, used in inference in step 7) |
+| statistical | `equal_row_weights`, `few_groups_approximate`, `no_multiplicity_adjustment`, `selection_and_missingness`, `calibration_error_model` | Implicit (recorded after the review) | not yet: 7 |
 | statistical | `normal_errors_in_calibration` | Implicit | not yet: 7 |
-| statistical | `sufficiency_options` | PRD | yes (`ck_plan_sufficiency_option`, `ck_run_exploratory_needs_verdict`, `hc_run_update`) |
+| statistical | `sufficiency_options` | PRD | **partly** (the database's two options and 'exploratory' rule; pending: fixed minimum as the plan default, step 6) |
 | statistical | `power_information_only` | Owner, step 3 | yes (`ck_plan_sufficiency_option`) |
 | data handling | `tamu_composition_unit` | Owner (step 4 rule) | yes (`COMPOSITION_UNIT_CITATION`) |
 | data handling | `mpea_microstructure_label_trusted`, `curated_values_trusted` | Implicit | yes (`HARMONIZED_FIELDS.microstructure`; `mpea_layout.read`) |
-| data handling | `paper_grouping_by_doi`, `values_kept_as_reported`, `malformed_files_refused`, `composition_normalization`, `alloy_label_display_only`, `controlled_extract_disabled` | Owner, step 4 | yes |
-| data handling | `assigned_value_statuses` | Owner, 2026-10-05 | not yet: 6 |
-| data handling | `grain_size_transformation_at_analysis` | Owner, step 4 | not yet: 6 |
+| data handling | `observation_unit` | Implicit (recorded after the review) | not yet: 6 |
+| data handling | `conflict_pairing_rule` | **open decision** (owner, before step 6) | not yet: 6 |
+| data handling | `paper_grouping_by_doi`, `values_kept_as_reported`, `malformed_files_refused`, `composition_normalization`, `alloy_label_display_only` | Owner, step 4 | yes |
+| data handling | `controlled_extract_disabled` | Owner, step 4 | **partly** (registered switched off; pending: the guard against a real analysis, step 6) |
+| data handling | `assigned_value_statuses` | Owner, 2026-10-05 | **partly** (one status 'assigned' with a citation; pending: the two statuses, step 6) |
+| data handling | `grain_size_transformation_at_analysis` | Owner, step 4 | **partly** (µm in records; pending: the transformation at analysis, step 6) |
 | data handling | `duplicate_identity`, `unresolved_duplicates`, `scope_not_confirmed` | PRD | not yet: 6 |
-| data handling | `duplicate_survivor_rule` | Owner, step 1 | not yet: 6 |
+| data handling | `duplicate_survivor_rule` | Owner, step 1 (wording restored after the review) | not yet: 6 |
 | operational | `stored_file_limits`, `login_throttle`, `session_length`, `secret_lengths`, `single_web_process`, `transaction_retries`, `worker_poll_interval` | Owner, steps 2–4 | yes |
 | operational | `spending_caps` | PRD | not yet: 9 |
 
@@ -456,16 +498,27 @@ Register and summary only; no code applies it. With this, the register has no op
 | `FCC+L12+Sec.`, `BCC+B2+Laves` | 2 each |
 | `BCC+HCP`, `BCC+BCC+HCP`, `FCC+B2+Sec.`, `FCC+L12`, `FCC+L12+B2`, `FCC+FCC`, `B2` | 1 each |
 
-## Tests (527, all passing; 58 new; no test from an earlier step changed)
+## Tests (544, all passing; 74 in `tests/test_assumptions.py` and one added to `tests/test_login.py`; no test from an earlier step changed)
 
-`git diff main --stat -- tests/` shows only the new `tests/test_assumptions.py`.
+`git diff main --stat -- tests/` shows the new `tests/test_assumptions.py` and one added test in `tests/test_login.py` (additions only).
 
 | Group | Tests |
 |---|---|
-| Schema | The file validates. Every category has entries, and keys are unique. The eight decisions are present: decided by the owner on 2026-10-05, not reviewed, applied as stated (c applied, the others not yet, at their steps). The owner's wording is checked (assigned by decision; rounded compositions identical, with no "within"; min(\|a\|, \|b\|) and "not final"; g's statement and its three notes; p < 0.05). The Texas A&M microstructure decision is recorded as decided (in force, owner, 2026-10-05, not reviewed, step 6, the six citations, the three notes, the sensitivity analysis, the open-decision history), and no decision is open. An open decision (a fixture, since the register has none) validates, and is refused if it carries a value or a decision. |
-| Validator | 25 malformed cases, each refused with its message: missing or unknown field, bad key, category, state, blank text, empty evidence, bad dates, review status, a name without a review, accepted or disputed without a name or date, "applied: yes" with no setting or without `settings`, bad status, step outside 5–12, history out of order or after the decision, open/in-force inconsistencies. Also duplicate keys, an empty register, and an open decision (fixture) without `pending` or with a past step. |
-| **Settings in code** | **Every "applied: yes" entry's settings resolve, and every `equals` matches the code** (25 entries). The values compared are spot-checked. 11 references to nothing are refused (missing constant, module, mapping key or parameter; a parameter without a default; a missing or partial SQL name; a wrong Dockerfile text; a path outside the repository; a missing file; an unknown kind). A wrong value and a missing setting are reported with the key. JSON terms are used for sets and tuples. |
-| Page | Login is required for `/assumptions`, the filter URL and `/assumptions/`. Headings are in category order, every entry appears in its section, in register order. With an open decision added (fixture register), "Open decisions" comes first, holds only that entry, shows "Not decided" and the badge, and the summary counts it. Summary counts on the real register: 0 open decisions, 20 unreviewed scientific entries. The unreviewed-scientific mark is on exactly the right entries (with a fixture register where one scientific entry is reviewed). The filter shows exactly the not-reviewed entries (fixture with one accepted and one disputed entry). A row expands to reason, evidence, history, notes and sensitivity, and shows named settings or the step. The only form is sign-out, there is no input, and POST/PUT/PATCH/DELETE give 405. The service refuses an invalid register. The home page links to the page. |
+| Schema | The file validates. Every category has entries, and keys are unique. The eight decisions are present: decided by the owner on 2026-10-05, not reviewed, applied as stated (c and e partly, the others not yet, at their steps; g in the state "direction approved"). The owner's wording is checked (assigned by decision; rounded compositions identical, with no "within"; min(\|a\|, \|b\|) and the reference to the open pairing rule; g's statement and its three notes; p < α). The Texas A&M microstructure decision is recorded as decided (in force, owner, 2026-10-05, not reviewed, step 6, the six citations, the three notes, the sensitivity analysis, the open-decision history), and it is not open. An open decision (a fixture) validates, and is refused if it carries a value or a decision. **Review checks:** exactly the eight partly-applied entries, each with what is done, what is pending and settings; the survivor rule's restored wording, with no "directly" or "detected" and the note on extraction-origin metadata, and the withdrawn wording kept in its history; the pairing rule is the one open entry and calibration the one direction approved, with their pending reviews; the eight added assumptions, in their categories, not reviewed, with their key statements; the small corrections (CSV, "may change the calibration" and no "optimistic", session expiry). |
+| Validator | 25 malformed cases, each refused with its message: missing or unknown field, bad key, category, state, blank text, empty evidence, bad dates, review status, a name without a review, accepted or disputed without a name or date, "applied: yes" with no setting or without `settings`, bad status, step outside 5–12, history out of order or after the decision, open/in-force inconsistencies. After the review, 8 more: a direction approved without `pending` or with a step outside 5–12, an applied entry with no named tests, a malformed or missing `tests` field, and "partly" without a step, with blank `done`, or with no settings (33 in all). Also duplicate keys, an empty register, and an open decision (fixture) without `pending` or with a past step. |
+| **Settings in code (reference and value checks)** | **Every entry applied in code ("yes" or "partly") names settings that resolve, and every `equals` matches the code** (29 entries). This does not test the entries' wording against behaviour (review finding 1). The values compared are spot-checked. 11 references to nothing are refused (missing constant, module, mapping key or parameter; a parameter without a default; a missing or partial SQL name; a wrong Dockerfile text; a path outside the repository; a missing file; an unknown kind). A wrong value and a missing setting are reported with the key. JSON terms are used for sets and tuples. |
+| **Named regression tests** | Every entry applied in code names regression tests, and each exists as a test function in its file. A missing test or file is reported with the key. |
+| Page | Login is required for `/assumptions`, the filter URL and `/assumptions/`. Headings: open decisions, then directions approved pending technical review, then the categories; every entry appears in its section, in register order. With a second open decision added (fixture register), it is listed after the real one, with "Not decided" and the badge, the summary counts 2, and the calibration entry shows its pending review. The summary line counts each state (67 in force, 1 open, 1 direction approved) and 22 unreviewed scientific entries. Each partly-applied entry's main row shows "Partly", what is done and what is pending with its step. The expanded row labels the named settings as reference and value checks and lists the regression tests. The unreviewed-scientific mark is on exactly the right entries (with a fixture register where one scientific entry is reviewed). The filter shows exactly the not-reviewed entries (fixture with one accepted and one disputed entry). A row expands to reason, evidence, history, notes and sensitivity, and shows named settings or the step. The only form is sign-out, there is no input, and POST/PUT/PATCH/DELETE give 405. The service refuses an invalid register. The home page links to the page. |
+
+### Tests changed after the review (none weakened)
+
+- `test_the_owners_eight_decisions_are_recorded_as_decided`: decision c expected "yes"; it now expects "partly" (step 7), decision e "partly" (step 6), and g the state "direction approved", as the owner accepted (findings 2 and 4).
+- `test_decisions_carry_the_owners_wording`: "not final" in decision f's notes → the notes refer to the open entry `conflict_pairing_rule` (the open point moved there; finding 4); `p < 0.05` → `p < α (α = 0.05 by default)` (small correction).
+- `test_the_microstructure_decision_is_recorded_and_no_decision_is_open` is renamed `test_the_microstructure_decision_is_recorded`: the register now has an open entry (the pairing rule), so "no decision is open" no longer holds; it checks that the microstructure entry is not open. Which entries are open is asserted by the new `test_the_pairing_rule_is_open_and_calibration_awaits_its_technical_review`.
+- `test_the_page_shows_every_entry_grouped_by_category` is renamed `test_the_page_shows_every_entry_grouped_with_pending_states_first` and expects the six headings; the section-by-section checks are unchanged.
+- `test_open_decisions_are_shown_first_when_there_are_any`: with the fixture added there are now two open entries (the real one first) and the summary counts 2; it also checks the direction-approved section.
+- `test_the_summary_line_counts_open_decisions_and_unreviewed_scientific_entries` is renamed `test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries`; "0 open decisions" → the count of each state.
+- The settings tests now include partly-applied entries (`yes` → `yes` or `partly`), so they check more entries, not fewer.
 
 ### Tests changed after the owner's microstructure decision (none weakened)
 
@@ -477,7 +530,7 @@ The register no longer has an open decision, so three tests that used the real o
 
 ### The safeguard tests fail when the safeguard is removed
 
-Each change was made in a scratch copy of the working tree, and only `tests/test_assumptions.py` was run. The copy was then discarded.
+Each change was made in a scratch copy of the working tree, and only `tests/test_assumptions.py` (and, in the review round, `tests/test_login.py`) was run. The copy was then discarded.
 
 | Change in the copy | Result |
 |---|---|
@@ -488,8 +541,19 @@ Each change was made in a scratch copy of the working tree, and only `tests/test
 | The validator accepts "applied: yes" with an empty settings list | the validator test for that case fails |
 | The "Not reviewed by an expert" badge removed from the template | the mark test fails |
 | The filter ignored | the filter test fails |
+| A named regression test renamed (`test_web_runs_one_process`) | the named-tests test fails (review round) |
+| A partly-applied entry shown as "Yes" in the main row | the partly-display test fails (review round) |
+| The session written on every request, so the cookie is renewed | `test_ordinary_requests_do_not_renew_the_session`, `test_session_expires_after_max_age` and one other login test fail (review round) |
 
 ### Suite results
+After the review fixes:
+```
+$ pytest -q                              (Codespace, Python 3.14.2, `docker compose up -d db`)
+544 passed in 62.21s
+```
+GitHub Actions, commit `12fe2da` (the review fixes): success; "Run the suite in the test image": 544 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37264317263
+
 After the owner's microstructure decision (commit `b8837ee`):
 ```
 $ pytest -q                              (Codespace, Python 3.14.2, `docker compose up -d db`)
@@ -509,12 +573,53 @@ https://github.com/kelawady/hypocurate/actions/runs/37262162090
 
 The step 1 answer-isolation scan (`test_no_row_answers_under_package`) passes with the register in the package. The register names the compression record by its origin key `MPEA_dataset.csv:row:139`, not in the answer file's wording.
 
+## Second-model review and fixes (ChatGPT, 2026-10-05)
+
+The review text is in `docs/reviews/step04b_review_chatgpt.md`. Its verdict: no serious security or database-damage issue; four findings, eight missing assumptions and four small corrections. The owner accepted all of them, with instructions, and asked for no code that changes behaviour.
+
+1. **"Applied: yes" overclaimed what the register tests prove.** The reviewer changed `grain_size_as_reported` to say nanometres while its checked constant stayed µm; the validation and the settings check both passed.
+   - **Fix:** the claim is corrected everywhere: the module and test docstrings, CLAUDE.md item 12, the page's introduction, the expanded row ("Named settings (reference and value checks only)") and this summary. The settings check is a reference and value check; it does not show that an entry's wording matches what the code does.
+   - **Every entry applied in code now names the regression tests that cover its behaviour** (field `tests`, required for "yes" and "partly"). A new test checks that each named test exists. Where no test covered a stated behaviour (session expiry without renewal), one was added.
+   - Displayed defaults are not generated from the structured values in this round; the page shows the register's text.
+2. **"Yes" where only part is built.** New applied status **"partly"**, with what is done, what is pending and the step, shown in the main row. Changed from "yes": `papers_independent`, `sufficiency_options`, `controlled_extract_disabled`, `tamu_grouping_unit`. Changed from "not yet" because part is in code and the principal part is pending: `validity_checks`, `fixed_minimums`, `grain_size_transformation_at_analysis`, `assigned_value_statuses`. No other "yes" entry has a pending principal safeguard: the remaining 21 describe behaviour that is fully in code today, each with its named tests.
+3. **The survivor rule confused citation with provenance.** `duplicate_survivor_rule` now has the owner's step 1 wording: "1) Prefer the record that carries the original paper reference (DOI)." The DOI-detection claim is removed. A note says that preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist. The withdrawn wording is in the entry's history.
+   - It came from the step 1 re-check correction 3, which reworded the owner's first rule ("prefer the record that carries the original paper reference (DOI)") as "comes directly from the original paper (detected by the original paper's DOI)".
+   - That wording is still in the step 1 answer file (`survivor_rule` column) and fixtures README, whose fingerprints are pinned. They are not changed here; aligning them is an open item for step 6.
+4. **"0 open decisions" hid an unresolved decision.**
+   - A new **open** entry `conflict_pairing_rule` (data handling; owner, before step 6): repeat specimens versus conflicting reports. Decision f's notes now point to it.
+   - A third state, **"direction approved, pending technical review"**, used for `calibration_noise_levels` (pending: second-model technical review, before step 7).
+   - The page has a section for each, after open decisions, and the summary line counts each state.
+
+**Eight missing assumptions**, added in plain words with what each affects, decided "implicit in PRD v1.6 and the reference script; recorded after the step 4b review", not reviewed, applied "not yet":
+
+| Key | Category | What it states |
+|---|---|---|
+| `association_not_causation` | scientific | Omitted factors that vary with grain size within an alloy can bias k; a positive k supports an association under the model, not causal proof. `baseline_per_alloy` gained a note pointing to it. Its note records the step 10 wording rule. |
+| `measurement_error_not_propagated` | scientific | Grain size and composition treated as exact; their uncertainty is not propagated; (mean d)^-1/2 is not the mean of d^-1/2. |
+| `equal_row_weights` | statistical | OLS weights each row equally, not each paper or alloy; reported uncertainties and replicate counts are not weights. |
+| `selection_and_missingness` | statistical | Retained records need not be representative; no correction for publication bias or outcome-related missingness; conclusions conditional on the retained evidence. |
+| `no_multiplicity_adjustment` | statistical | The threshold applies per locked test; no adjustment across queries, narrower questions, plans or sensitivity analyses. |
+| `calibration_error_model` | statistical | Fixed design; independent zero-mean group shifts and record errors with common variances; what is not simulated. |
+| `few_groups_approximate` | statistical | Passing check 2 makes an uncertainty computable, not reliable; the correction and t reference are approximations with few or unequal groups. |
+| `observation_unit` | data handling | One source row is one record, whether a specimen, a mean of repeats or a summarized condition; not distinguished today; linked to the pairing rule. |
+
+**Small corrections:**
+- `malformed_files_refused` (now "Malformed CSV files refused") states the CSV rule and how spreadsheets differ.
+- `p_threshold_comparison` shows "p < α (α = 0.05 by default)".
+- `normal_errors_in_calibration`: heavier tails "may change the calibration, in either direction" (not "optimistic").
+- `session_length` describes the expiry precisely. **The review's remark that the middleware renews non-empty session cookies does not hold for the locked Starlette 1.7.0.** It re-signs the cookie only when the session data change, which happens only at sign-in, so a session ends 12 hours after sign-in however much it is used. The new test `test_ordinary_requests_do_not_renew_the_session` shows it: three requests over 9 hours get no `Set-Cookie`, and the session ends 12 hours and 1 second after sign-in. Older Starlette versions behaved as the review describes.
+
+**Recorded for step 10:** the verdict wording on the run screen must say "supported under the stated model" and never imply proof of cause.
+
+The review's note on startup failure is reflected in "Deviations", item 2. No code that changes behaviour was written: the changes are to the register, its validator and page, CLAUDE.md, the tests and this summary.
+
 ## Deviations from the approved plan
 
 1. **`base.html` gained a `main_attrs` block**, because `<main>` is 32 rem wide. The login, home and health pages render as before (their tests are unchanged and pass).
-2. **The service refuses to start with an invalid register.** The plan did not say what happens then. A broken register therefore fails CI (the schema test) before any merge, and on Render a failed start keeps the previous version running.
+2. **The service refuses to start with an invalid register.** The plan did not say what happens then. A broken register fails CI (the schema test) before any merge. As the review notes, a failed start also takes down login and /health on that instance. A normal Render deploy keeps the previous release when the new instance fails its health check, but that is not a guarantee for a first start or every restart, and it does not undo a pre-deploy migration that has already committed.
 3. **`markupsafe.escape`** is used in one page test to compare escaped text. markupsafe is already in the runtime lock (Jinja2 depends on it). No dependency change.
 4. **Nine entry keys were renamed** from the plan (table above), and three entries were added while writing (above).
+5. **The register file was rewritten by a script in the review round** with one uniform layout (JSON, two-space indent), so its diff against the first build is large. The content changes are those listed in "Second-model review and fixes"; every other entry's content is unchanged apart from the new `tests` field.
 
 ## PRD corrections and clarifications for the next PRD update
 
@@ -537,18 +642,21 @@ The step 1 answer-isolation scan (`test_no_row_answers_under_package`) passes wi
 1. **Step 6** (each is in the register with its step):
    - apply decisions a, b, d, e, f and h, and the two assigned-value statuses;
    - the source-only sensitivity analysis;
-   - the pairing for decision f (owner's approval);
+   - the open decision `conflict_pairing_rule` (owner), and the treatment of what one source row represents (`observation_unit`);
+   - the guard that keeps the controlled extract out of a real analysis (`controlled_extract_disabled`, partly);
+   - align the step 1 answer file and fixtures README with the restored survivor-rule wording (their fingerprints are pinned; owner's approval).
    - apply the Texas A&M microstructure decision ("single-phase FCC", assigned by decision);
    - the room-temperature scope must accept the assigned band, with a test that the 21 Texas A&M records stay eligible.
 2. **Before step 7:** recompute the reference numbers. Tension only removes `MPEA_dataset.csv:row:139` from the 77. The same-alloy rule is unchanged, so the alloy count changes only through that record. Update CLAUDE.md's "Reference numbers" when recomputed.
-3. **Step 7:** the second-model review of decision g (both ways) before it is applied.
-4. **Expert review:** every entry is "not reviewed". The page lists 20 scientific entries for Prof. El-Awady. A review is recorded in the register (status, name, date) in a reviewed merge.
-5. **Carried, unchanged:** the step 4 open items (live registration after the owner's decisions; step 5 approved inputs; step 6 guards), and the step 3 step 7/9 requirements. The step 3 "p < vs ≤" item is closed by decision O.
+3. **Step 7:** the second-model review of decision g (both ways) before it is applied (state "direction approved, pending technical review").
+4. **Step 10:** the verdict wording on the run screen must say "supported under the stated model" and never imply proof of cause (entry `association_not_causation`).
+5. **Expert review:** every entry is "not reviewed". The page lists 22 scientific entries for Prof. El-Awady. A review is recorded in the register (status, name, date) in a reviewed merge.
+6. **Carried, unchanged:** the step 4 open items (live registration after the owner's decisions; step 5 approved inputs; step 6 guards), and the step 3 step 7/9 requirements. The step 3 "p < vs ≤" item is closed by decision O.
 
 ## Questions for the reviewer
 
 1. Is any assumption already in the code, the PRD or the summaries missing from the register, or stated more strongly than the code does?
-2. Does the settings test ("applied: yes" names a setting that exists and holds the stated value) catch a default changed in code without the register? Which defaults would it miss (for example a literal that no entry names)?
+2. The settings test is a reference and value check (answered by the review, finding 1). Are the named regression tests the right ones for each applied entry?
 3. Is refusing to start on an invalid register the right behaviour for the web service?
 4. Is the page read-only in every way that matters (no form, no method other than GET, nothing written)?
 ````
@@ -696,7 +804,7 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 10. **A change to `render.yaml` takes effect at push, before the checks pass**, and redeploys the code already running (Render's Blueprint sync; seen on the step 3 merge, 2026-10-05). So any setting that depends on new code goes in a later merge than that code, and every `render.yaml` change needs the owner's explicit review, like workflow changes.
 
 11. **Assumptions register.** Any new assumption or changed default is entered in `hypocurate/assumptions.json` in the same merge, with its reason, who decided it and when, and its earlier value in the history. The page /assumptions is generated from that file only.
-12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry marked "applied: yes" names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value.
+12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry applied in code ("yes" or "partly") names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only: it does not show that the entry's wording matches what the code does. Behaviour is covered by the regression tests the entry names, and the register test checks only that they exist.
 
 ## Rules the code must never break
 
@@ -746,1153 +854,2824 @@ Pooled: 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 42
 
 ```json
 [
-{
-  "key": "tamu_test_temperature",
-  "name": "Texas A&M test temperature",
-  "state": "in_force",
-  "statement": "The Texas A&M records are treated as tested at room temperature. The value is 'assigned by decision': the source does not report it and does not state it explicitly.",
-  "value": {"text": "room temperature (assigned by decision)", "unit": null},
-  "category": "scientific",
-  "affects": "Whether the 94 Texas A&M records fall inside a room-temperature scope; with them, the pooled reference result (PRD 14.1a).",
-  "reason": "Quasistatic tensile tests reported without a temperature are, by convention, room-temperature tests. The paper's Table S12 caption says all values in that table are room temperature, and the table lists this dataset's own fitted slope.",
-  "evidence": [
-    "ArroyaveLab/2026-mulukutla-hall-petch@11390ee5 paper/supplementary.tex line 439 (caption of Table S12): \"All values are room temperature and, except where noted, are fitted to tensile yield strength.\"",
-    "paper/supplementary.tex line 451 (row of Table S12): \"This work, Family~3 M3 & 766 & 14.7--212 & shared fitted slope \\\\\"",
-    "Step 4 summary, 'Texas A&M: what the source states': no methods statement on test temperature."
-  ],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the effect of this and every other decision-based assignment.",
-  "applied": {"status": "not_yet", "step": 6, "note": "Today the adapter reports the temperature as not reported (tamu_fcc.TEMPERATURE_NOT_REPORTED)."},
-  "history": [
-    {"value": "not reported: the source states no test temperature for its own measurements", "from": "2026-10-05", "to": "2026-10-05", "note": "Step 4 adapter, pending the owner's decision."}
-  ],
-  "notes": ["Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."]
-},
-{
-  "key": "permitted_test_types",
-  "name": "Permitted test types",
-  "state": "in_force",
-  "statement": "The default plan accepts tension tests only. Compression tests are kept in the store and enter only the sensitivity analysis 'tension and compression together'.",
-  "value": {"text": "tension only", "unit": null},
-  "category": "scientific",
-  "affects": "Which records enter the primary analysis; the MPEA reference set (one compression record among the 77).",
-  "reason": "Yield strength in compression can differ from yield strength in tension for the same material, so the two are not pooled by default.",
-  "evidence": ["Step 1 summary, open item 2; step 4 summary, 'Owner's addition' (the 77 reference records: 76 tension, 1 compression)."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "Tension and compression together.",
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [
-    {"value": "no test-type rule: tension and compression both within scope", "from": "2026-10-04", "to": "2026-10-05", "note": "Reference script (docs/reference/worked_example.py)."}
-  ],
-  "notes": ["This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."]
-},
-{
-  "key": "tamu_grouping_unit",
-  "name": "Texas A&M grouping unit",
-  "state": "in_force",
-  "statement": "The Texas A&M dataset is one group (the dataset) for grouped standard errors. Its six batches are kept as reported.",
-  "value": {"text": "one group: the dataset", "unit": null},
-  "category": "statistical",
-  "affects": "The number of independent groups: Texas A&M alone fails validity check 2 (one group), and it adds one group to the pooled test.",
-  "reason": "The dataset has no per-record paper; whether its batches are independent enough to be separate groups is not established.",
-  "evidence": ["PRD 5.7 (uncertainty row) and PRD 17, decision 9."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "Six batches as six groups.",
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.grouping_unit", "equals": "dataset"}
-  ], "note": "The adapter refuses any other grouping unit. The sensitivity analysis comes in step 7."},
-  "history": [
-    {"value": "one group (recommended)", "from": "2026-10-04", "to": "2026-10-05", "note": "PRD 17, decision 9."}
-  ],
-  "notes": []
-},
-{
-  "key": "same_alloy_rule",
-  "name": "When two compositions are the same alloy",
-  "state": "in_force",
-  "statement": "Round each element's atomic percent to the nearest 0.1. Two compositions are the same alloy when their rounded compositions are identical: the same elements with the same rounded values. Computed on the full-precision composition, never on the display label.",
-  "value": {"text": "rounding step 0.1", "unit": "at.%"},
-  "category": "scientific",
-  "affects": "The alloy intercepts of the model, the count of alloys with two or more grain sizes, and duplicate matching.",
-  "reason": "This is the rule that produced the reference numbers (98 records, 22 alloys). It is transitive by construction, so there is no chain case.",
-  "evidence": ["docs/reference/worked_example.py, norm(): round(100*v/s, 1).", "Step 4 summary, review finding 2."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "The same rule with a rounding step of 1 at.%.",
-  "applied": {"status": "not_yet", "step": 6, "note": "The adapters give the full-precision composition; the display label (normalize.alloy_label) is not this rule."},
-  "history": [
-    {"value": "0.1 at.% rounding, the current default pending approval", "from": "2026-10-05", "to": "2026-10-05", "note": "Step 4, review finding 2."}
-  ],
-  "notes": [
-    "Known weakness: compositions closer than the step can fall into different bins at a boundary.",
-    "Ties follow the reference script's rounding (Python round on the computed percentage) unless step 6 states otherwise.",
-    "Possible improvement for step 6, not a decision: a tolerance-based grouping, which would need a stated rule for chains and the owner's approval."
-  ]
-},
-{
-  "key": "fixed_minimums",
-  "name": "Fixed minimums for data sufficiency",
-  "state": "in_force",
-  "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent papers and 10 residual degrees of freedom. All four must be met.",
-  "value": {"text": "30 records; 5 alloys; 10 papers; 10 residual degrees of freedom", "unit": null},
-  "category": "statistical",
-  "affects": "Whether the outcome can be 'sufficient' under the fixed-minimum option; never the two validity checks.",
-  "reason": "Simple counts are used until a power calculation is written down and reviewed (PRD 5.8).",
-  "evidence": ["PRD 5.8; PRD 17, decision 1."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "Step 6 makes these the plan's default values; step 7 applies the check. The database already stores each plan's minimums and checks that 'minimums met' agrees with them."},
-  "history": [
-    {"value": "the same values, as starting values to be confirmed", "from": "2026-10-04", "to": "2026-10-05", "note": "PRD 5.8."}
-  ],
-  "notes": []
-},
-{
-  "key": "values_disagree_tolerance",
-  "name": "When values disagree",
-  "state": "in_force",
-  "statement": "Two values that should be the same measurement raise a conflict flag when their relative difference |a - b| / min(|a|, |b|) is above 2%. Applies to yield strength and grain size.",
-  "value": {"text": "2% relative difference, relative to the smaller value", "unit": "%"},
-  "category": "data_handling",
-  "affects": "Conflict flags on records; flags never change the stored values.",
-  "reason": "A strict symmetric tolerance makes transcription differences visible.",
-  "evidence": ["PRD 5.3; PRD 17, decision 4."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [
-    {"value": "15% for yield strength at matched alloy and grain size (recommended)", "from": "2026-10-04", "to": "2026-10-05", "note": "PRD 17, decision 4."}
-  ],
-  "notes": ["Open point for step 6, to be settled with the owner's approval: which records are compared. Two records from the same paper with the same alloy, grain size and conditions in one source may be repeat specimens, which are separate measurements. A conflict is two records that claim to be the same measurement and disagree, which mainly arises between different sources reporting the same paper. The pairing is not final."]
-},
-{
-  "key": "calibration_noise_levels",
-  "name": "Calibration assumptions",
-  "state": "in_force",
-  "statement": "The scatter per record and the shift per paper used in the calibration simulation are estimated by code from the frozen dataset's residuals after the dataset freeze. The estimation method is fixed at the rules lock and applied by code; no person or agent chooses the values. The smallest effect that matters is a query setting.",
-  "value": {"text": "scatter and per-paper shift estimated from the frozen residuals; smallest effect default 150", "unit": "MPa·µm^0.5"},
-  "category": "statistical",
-  "affects": "The calibration shares shown with the report (a flag, never a gate).",
-  "reason": "Noise levels taken from the data's own structure describe the test's behaviour on data like this run's, instead of illustrative values.",
-  "evidence": ["PRD 5.10; PRD 17, decision 10."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [
-    {"value": "scatter 60 MPa, shift between groups 40 MPa, smallest effect 150 (illustrative), from the domain profile, fixed at the rules lock", "from": "2026-10-04", "to": "2026-10-05", "note": "PRD 5.10 and 17, decision 10."}
-  ],
-  "notes": [
-    "Conflicts with PRD 5.10, which says these assumptions are fixed at the rules lock and never estimated from the real outcomes.",
-    "This is a safeguard change: it needs a second-model review in step 7 before it is applied.",
-    "Alternative to compare in that review: report calibration both ways, with data-derived noise levels and with the fixed defaults."
-  ]
-},
-{
-  "key": "tag_starting_lists",
-  "name": "Starting lists of tag values",
-  "state": "in_force",
-  "statement": "Property: yield strength, ultimate tensile strength, hardness, elongation, fatigue life. Alloy class: multi-principal-element (high-entropy) alloy, steel, aluminium alloy, titanium alloy, nickel alloy, copper alloy, magnesium alloy, other. Test condition: room-temperature tension, room-temperature compression, elevated temperature, cryogenic, hardness test, fatigue.",
-  "value": {"text": "5 property values; 8 alloy classes; 6 test conditions", "unit": null},
-  "category": "data_handling",
-  "affects": "The tags each run carries, and filtering and reporting by topic.",
-  "reason": "Fixed lists keep the same thing named the same way; the Planner may propose a new value, which a person approves.",
-  "evidence": ["PRD 5.5; PRD 17, decision 7."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [
-    {"value": "alloy class: FCC, BCC, FCC and BCC, other; test condition: room temperature, cryogenic, elevated; tension, compression, hardness (recommended)", "from": "2026-10-04", "to": "2026-10-05", "note": "PRD 17, decision 7."}
-  ],
-  "notes": []
-},
-{
-  "key": "tamu_microstructure",
-  "name": "Texas A&M microstructure",
-  "state": "in_force",
-  "statement": "The Texas A&M records are treated as single-phase FCC. The value is 'assigned by decision': the source does not state it explicitly as a result.",
-  "value": {
-    "text": "single-phase FCC (assigned by decision)",
-    "unit": null
+  {
+    "key": "tamu_test_temperature",
+    "name": "Texas A&M test temperature",
+    "state": "in_force",
+    "statement": "The Texas A&M records are treated as tested at room temperature. The value is 'assigned by decision': the source does not report it and does not state it explicitly.",
+    "value": {
+      "text": "room temperature (assigned by decision)",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Whether the 94 Texas A&M records fall inside a room-temperature scope; with them, the pooled reference result (PRD 14.1a).",
+    "reason": "Quasistatic tensile tests reported without a temperature are, by convention, room-temperature tests. The paper's Table S12 caption says all values in that table are room temperature, and the table lists this dataset's own fitted slope.",
+    "evidence": [
+      "ArroyaveLab/2026-mulukutla-hall-petch@11390ee5 paper/supplementary.tex line 439 (caption of Table S12): \"All values are room temperature and, except where noted, are fitted to tensile yield strength.\"",
+      "paper/supplementary.tex line 451 (row of Table S12): \"This work, Family~3 M3 & 766 & 14.7--212 & shared fitted slope \\\\\"",
+      "Step 4 summary, 'Texas A&M: what the source states': no methods statement on test temperature."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the effect of this and every other decision-based assignment.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Today the adapter reports the temperature as not reported (tamu_fcc.TEMPERATURE_NOT_REPORTED)."
+    },
+    "history": [
+      {
+        "value": "not reported: the source states no test temperature for its own measurements",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 4 adapter, pending the owner's decision."
+      }
+    ],
+    "notes": [
+      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
+    ],
+    "tests": []
   },
-  "category": "scientific",
-  "affects": "Whether the 94 Texas A&M records fall inside a single-phase FCC scope; with them, the pooled reference result (PRD 14.1a).",
-  "reason": "The authors describe their measured compositions as single-phase FCC, the alloys were selected under an FCC phase-stability constraint, and their phase constitution was checked by X-ray diffraction.",
-  "evidence": [
-    "ArroyaveLab/2026-mulukutla-hall-petch@11390ee5 paper/main.tex line 138: \"The 81 compositions measured here carry all three, under one processing route and one characterization protocol. This is the largest such set reported for single-phase FCC multi-principal element alloys, and it lets composition, processing and grain size be separated without correcting across studies.\"",
-    "paper/main.tex line 173: \"It explored composition under an FCC phase stability constraint while holding processing fixed.\" (BB campaign); paper/supplementary.tex line 61: \"It explored the Al--Co--Cr--Cu--Fe--Mn--Ni--V system under an FCC phase-stability constraint while holding processing fixed.\"",
-    "paper/main.tex line 175: \"Candidate alloys were iteratively selected from an FCC-constrained, manufacturable design space with the models updated after each iteration using the newly acquired data.\" (CB campaign)",
-    "paper/main.tex line 177: \"Energy-dispersive X-ray spectroscopy (EDS) and X-ray diffraction were used to check realized chemistry and phase constitution, while electron microscopy and EBSD documented the microstructure.\"; paper/supplementary.tex line 65: \"EDS and XRD checked realized chemistry and phase constitution; SEM and EBSD documented the microstructure;\"",
-    "Step 4b summary, 'Texas A&M phase constitution'."
-  ],
-  "decided": {
-    "by": "owner (Khalid El-Awady)",
-    "date": "2026-10-05"
+  {
+    "key": "permitted_test_types",
+    "name": "Permitted test types",
+    "state": "in_force",
+    "statement": "The default plan accepts tension tests only. Compression tests are kept in the store and enter only the sensitivity analysis 'tension and compression together'.",
+    "value": {
+      "text": "tension only",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which records enter the primary analysis; the MPEA reference set (one compression record among the 77).",
+    "reason": "Yield strength in compression can differ from yield strength in tension for the same material, so the two are not pooled by default.",
+    "evidence": [
+      "Step 1 summary, open item 2; step 4 summary, 'Owner's addition' (the 77 reference records: 76 tension, 1 compression)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Tension and compression together.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "no test-type rule: tension and compression both within scope",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Reference script (docs/reference/worked_example.py)."
+      }
+    ],
+    "notes": [
+      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."
+    ],
+    "tests": []
   },
-  "expert_review": {
-    "status": "not_reviewed",
-    "name": null,
-    "date": null
+  {
+    "key": "tamu_grouping_unit",
+    "name": "Texas A&M grouping unit",
+    "state": "in_force",
+    "statement": "The Texas A&M dataset is one group (the dataset) for grouped standard errors. Its six batches are kept as reported.",
+    "value": {
+      "text": "one group: the dataset",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The number of independent groups: Texas A&M alone fails validity check 2 (one group), and it adds one group to the pooled test.",
+    "reason": "The dataset has no per-record paper; whether its batches are independent enough to be separate groups is not established.",
+    "evidence": [
+      "PRD 5.7 (uncertainty row) and PRD 17, decision 9."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Six batches as six groups.",
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.grouping_unit",
+          "equals": "dataset"
+        }
+      ],
+      "done": "The adapter gives every record one group (the dataset) and refuses any other grouping unit.",
+      "pending": "Using the groups in inference (step 7) and the six-batch sensitivity analysis.",
+      "step": 7,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "one group (recommended)",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "PRD 17, decision 9."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_one_group_the_dataset",
+      "tests/test_adapter_tamu.py::test_the_batch_grouping_unit_is_refused_until_the_owner_decides"
+    ]
   },
-  "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the result without these records.",
-  "applied": {
-    "status": "not_yet",
-    "step": 6,
-    "note": "Today the adapter reports the microstructure as not reported and assigns phase class FCC from source."
+  {
+    "key": "same_alloy_rule",
+    "name": "When two compositions are the same alloy",
+    "state": "in_force",
+    "statement": "Round each element's atomic percent to the nearest 0.1. Two compositions are the same alloy when their rounded compositions are identical: the same elements with the same rounded values. Computed on the full-precision composition, never on the display label.",
+    "value": {
+      "text": "rounding step 0.1",
+      "unit": "at.%"
+    },
+    "category": "scientific",
+    "affects": "The alloy intercepts of the model, the count of alloys with two or more grain sizes, and duplicate matching.",
+    "reason": "This is the rule that produced the reference numbers (98 records, 22 alloys). It is transitive by construction, so there is no chain case.",
+    "evidence": [
+      "docs/reference/worked_example.py, norm(): round(100*v/s, 1).",
+      "Step 4 summary, review finding 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The same rule with a rounding step of 1 at.%.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "The adapters give the full-precision composition; the display label (normalize.alloy_label) is not this rule."
+    },
+    "history": [
+      {
+        "value": "0.1 at.% rounding, the current default pending approval",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 4, review finding 2."
+      }
+    ],
+    "notes": [
+      "Known weakness: compositions closer than the step can fall into different bins at a boundary.",
+      "Ties follow the reference script's rounding (Python round on the computed percentage) unless step 6 states otherwise.",
+      "Possible improvement for step 6, not a decision: a tolerance-based grouping, which would need a stated rule for chains and the owner's approval."
+    ],
+    "tests": []
   },
-  "history": [
-    {
-      "value": "not reported: the source does not state the phases present per record (open decision)",
-      "from": "2026-10-05",
-      "to": "2026-10-05",
-      "note": "Step 4 adapter; open decision in the first step 4b register."
+  {
+    "key": "fixed_minimums",
+    "name": "Fixed minimums for data sufficiency",
+    "state": "in_force",
+    "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent papers and 10 residual degrees of freedom. All four must be met.",
+    "value": {
+      "text": "30 records; 5 alloys; 10 papers; 10 residual degrees of freedom",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Whether the outcome can be 'sufficient' under the fixed-minimum option; never the two validity checks.",
+    "reason": "Simple counts are used until a power calculation is written down and reviewed (PRD 5.8).",
+    "evidence": [
+      "PRD 5.8; PRD 17, decision 1."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "sql:hc_run_update"
+        }
+      ],
+      "done": "Each plan stores its four minimums, and the database checks that 'minimums met' agrees with them and that a sufficient outcome under the fixed minimum has them met.",
+      "pending": "These values as the plan's defaults (step 6) and the check computed by code (step 7).",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "the same values, as starting values to be confirmed",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "PRD 5.8."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_data_model.py::test_minimums_met_must_agree_with_the_plan",
+      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met"
+    ]
+  },
+  {
+    "key": "values_disagree_tolerance",
+    "name": "When values disagree",
+    "state": "in_force",
+    "statement": "Two values that should be the same measurement raise a conflict flag when their relative difference |a - b| / min(|a|, |b|) is above 2%. Applies to yield strength and grain size.",
+    "value": {
+      "text": "2% relative difference, relative to the smaller value",
+      "unit": "%"
+    },
+    "category": "data_handling",
+    "affects": "Conflict flags on records; flags never change the stored values.",
+    "reason": "A strict symmetric tolerance makes transcription differences visible.",
+    "evidence": [
+      "PRD 5.3; PRD 17, decision 4."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "15% for yield strength at matched alloy and grain size (recommended)",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "PRD 17, decision 4."
+      }
+    ],
+    "notes": [
+      "Which records are compared is the open decision 'conflict_pairing_rule' (step 6)."
+    ],
+    "tests": []
+  },
+  {
+    "key": "conflict_pairing_rule",
+    "name": "Which records are compared for a conflict",
+    "state": "open",
+    "statement": "Which pairs of records are compared for the 'values disagree' flag. Two records from the same paper with the same alloy, grain size and conditions in one source may be repeat specimens, which are separate measurements. A conflict is two records that claim to be the same measurement and disagree, which mainly arises between different sources reporting the same paper.",
+    "value": null,
+    "category": "data_handling",
+    "affects": "Whether legitimate repeat specimens are flagged as conflicts; the conflict flags of every run.",
+    "reason": "The 2% tolerance (entry 'values_disagree_tolerance') needs a pairing rule, and the owner did not state one as final.",
+    "evidence": [
+      "Owner's answer on decision f, 2026-10-05 (step 4b summary).",
+      "Step 1 summary: MPEA papers with the same alloy and grain size at different values, which duplicate detection must not merge.",
+      "Step 4b review, finding 4."
+    ],
+    "decided": null,
+    "pending": {
+      "by": "owner",
+      "before_step": 6
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": [
+      "Related: entry 'observation_unit' (what one source row represents)."
+    ]
+  },
+  {
+    "key": "calibration_noise_levels",
+    "name": "Calibration assumptions",
+    "state": "direction_approved",
+    "statement": "The scatter per record and the shift per paper used in the calibration simulation are estimated by code from the frozen dataset's residuals after the dataset freeze. The estimation method is fixed at the rules lock and applied by code; no person or agent chooses the values. The smallest effect that matters is a query setting.",
+    "value": {
+      "text": "scatter and per-paper shift estimated from the frozen residuals; smallest effect default 150",
+      "unit": "MPa·µm^0.5"
+    },
+    "category": "statistical",
+    "affects": "The calibration shares shown with the report (a flag, never a gate).",
+    "reason": "Noise levels taken from the data's own structure describe the test's behaviour on data like this run's, instead of illustrative values.",
+    "evidence": [
+      "PRD 5.10; PRD 17, decision 10."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "scatter 60 MPa, shift between groups 40 MPa, smallest effect 150 (illustrative), from the domain profile, fixed at the rules lock",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "PRD 5.10 and 17, decision 10."
+      }
+    ],
+    "notes": [
+      "Conflicts with PRD 5.10, which says these assumptions are fixed at the rules lock and never estimated from the real outcomes.",
+      "This is a safeguard change: it needs a second-model review in step 7 before it is applied.",
+      "Alternative to compare in that review: report calibration both ways, with data-derived noise levels and with the fixed defaults."
+    ],
+    "tests": [],
+    "pending": {
+      "by": "second-model technical review",
+      "before_step": 7
     }
-  ],
-  "notes": [
-    "The paper says 81 compositions; the spreadsheet has 82 distinct compositions.",
-    "No passage states the result of the XRD phase check.",
-    "Not reviewed by an expert.",
-    "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
-  ]
-},
-{
-  "key": "shared_coefficient",
-  "name": "One grain-size coefficient for all alloys",
-  "state": "in_force",
-  "statement": "All alloys share one grain-size coefficient k; only the baseline differs between alloys.",
-  "value": {"text": "one shared k", "unit": null},
-  "category": "scientific",
-  "affects": "The tested quantity and the verdict.",
-  "reason": "The claim under test is about grain-size strengthening across the alloys in scope, and one coefficient is what the supported model estimates.",
-  "evidence": ["PRD 5.7 (formula row); docs/reference/worked_example.py."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "Per-source estimates.",
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": ["The two sources' separate estimates differ: about 427 (MPEA) and about 1173 (Texas A&M)."]
-},
-{
-  "key": "exponent_fixed",
-  "name": "Exponent fixed at -1/2",
-  "state": "in_force",
-  "statement": "Yield strength depends on grain size through (grain size)^-1/2. The exponent is fixed, not fitted.",
-  "value": {"text": "-1/2", "unit": null},
-  "category": "scientific",
-  "affects": "The predictor of the model and the meaning of k.",
-  "reason": "The Hall-Petch relation as usually stated.",
-  "evidence": ["PRD 5.7 (formula row)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "model_form",
-  "name": "The supported model",
-  "state": "in_force",
-  "statement": "Yield strength = a baseline for each alloy + k x (grain size in µm)^-1/2. This is the one supported model in sprint 1.",
-  "value": {"text": "YS = baseline per alloy + k x d^-1/2, d in µm", "unit": "MPa"},
-  "category": "scientific",
-  "affects": "Every test, the verdict and the calibration.",
-  "reason": "Sprint 1 supports one model so that the safeguards can be built and checked around it.",
-  "evidence": ["PRD 5.7; CLAUDE.md, rule 6."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "baseline_per_alloy",
-  "name": "One baseline per alloy",
-  "state": "in_force",
-  "statement": "Each alloy has one baseline strength. Differences in processing, texture and laboratory are not modelled, beyond grouping the errors by paper.",
-  "value": {"text": "one intercept per alloy", "unit": null},
-  "category": "scientific",
-  "affects": "The estimate of k when processing or laboratory differ between grain sizes of the same alloy.",
-  "reason": "The supported model has alloy intercepts only.",
-  "evidence": ["PRD 5.7; docs/reference/worked_example.py (YS ~ x + C(comp))."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "grain_size_as_reported",
-  "name": "Grain size used as reported",
-  "state": "in_force",
-  "statement": "Grain size is used as each source reports it, with no correction for how it was measured (for example linear intercept or equivalent circle diameter) or for whether twin boundaries were counted.",
-  "value": {"text": "as reported, in µm", "unit": "µm"},
-  "category": "scientific",
-  "affects": "The predictor; differences in measurement method between papers enter the scatter or the estimate of k.",
-  "reason": "The sources do not report the measurement method per record in a form code can harmonize.",
-  "evidence": ["PRD 10; Texas A&M paper/main.tex line 177 (equivalent circle mean from EBSD)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.grain_size", "equals": "µm"}
-  ], "note": "The adapters convert the reported number unchanged."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "mean_grain_size_only",
-  "name": "Mean grain size only",
-  "state": "in_force",
-  "statement": "Only the mean grain size enters the model; the width of the grain-size distribution is not used.",
-  "value": {"text": "mean only", "unit": null},
-  "category": "scientific",
-  "affects": "The predictor; any effect of the distribution width is left in the scatter.",
-  "reason": "The supported model has one predictor. The Texas A&M source itself studies the distribution width as a separate predictor.",
-  "evidence": ["Texas A&M paper/main.tex line 177 (mean d and SD_grain); PRD 5.7."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": "The adapters keep the reported grain-size SD where a source has one."},
-  "history": [],
-  "notes": ["Added in step 4b while writing the entries the owner listed."]
-},
-{
-  "key": "yield_strength_as_reported",
-  "name": "Yield strength used as reported",
-  "state": "in_force",
-  "statement": "Yield strength is used as each source reports it and treated as comparable across papers (for example the definition of yield, specimen geometry and strain rate are not harmonized).",
-  "value": {"text": "as reported, in MPa", "unit": "MPa"},
-  "category": "scientific",
-  "affects": "The outcome variable; differences in definition between papers enter the scatter or the baselines.",
-  "reason": "The sources do not report these details per record in a form code can harmonize.",
-  "evidence": ["PRD 10; Texas A&M paper/main.tex line 177 (0.2% offset)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.yield_strength", "equals": "MPa"}
-  ], "note": "The adapters convert the reported number unchanged."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "quasistatic_tests",
-  "name": "Tests assumed quasistatic",
-  "state": "in_force",
-  "statement": "Tests are assumed to be quasistatic. Loading rate is not filtered.",
-  "value": {"text": "quasistatic; no loading-rate rule", "unit": null},
-  "category": "scientific",
-  "affects": "Which records are pooled; a high-rate test would be pooled with quasistatic ones.",
-  "reason": "Neither source has a loading-rate field.",
-  "evidence": ["PRD 5.2 (exclusion menu has no rate rule); the MPEA and Texas A&M column lists."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "No code applies a rate rule; step 6 states the scope."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "composition_as_reported",
-  "name": "Composition used as reported",
-  "state": "in_force",
-  "statement": "An alloy's composition is the one its source reports. Nominal (target) and measured compositions are not distinguished.",
-  "value": {"text": "as reported, in at.%", "unit": "at.%"},
-  "category": "scientific",
-  "affects": "Which records count as the same alloy.",
-  "reason": "The MPEA dataset gives formula strings; the sources do not say per record whether a composition is nominal or measured.",
-  "evidence": ["Texas A&M paper/main.tex line 182 (figure caption: measured and target composition); PRD 10."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.composition", "equals": "at.%"}
-  ], "note": null},
-  "history": [],
-  "notes": ["Added in step 4b while writing the entries the owner listed."]
-},
-{
-  "key": "room_temperature_scope",
-  "name": "Room temperature",
-  "state": "in_force",
-  "statement": "A room-temperature scope accepts reported test temperatures from 20 to 25 °C.",
-  "value": {"text": "20 to 25", "unit": "°C"},
-  "category": "scientific",
-  "affects": "Which records are in scope for a room-temperature claim.",
-  "reason": "The reference script's scope.",
-  "evidence": ["docs/reference/worked_example.py: d['T'].between(20, 25)."],
-  "decided": {"by": "reference script and PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "Used on the test side only (tests/test_reference_counts_from_adapters.py)."},
-  "history": [],
-  "notes": ["How a record with an assigned room-temperature band (decision 'tamu_test_temperature') passes this scope is defined in step 6."]
-},
-{
-  "key": "fcc_microstructure_scope",
-  "name": "Single-phase FCC scope",
-  "state": "in_force",
-  "statement": "The reference plan's scope is single-phase FCC: in the MPEA dataset, microstructure exactly 'FCC'.",
-  "value": {"text": "microstructure FCC", "unit": null},
-  "category": "scientific",
-  "affects": "Which records are in scope for the reference claim.",
-  "reason": "The reference script's scope.",
-  "evidence": ["docs/reference/worked_example.py: d.micro == 'FCC'."],
-  "decided": {"by": "reference script and PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "Used on the test side only."},
-  "history": [],
-  "notes": ["The Texas A&M records meet it by decision (entry 'tamu_microstructure')."]
-},
-{
-  "key": "mpea_microstructure_label_trusted",
-  "name": "MPEA microstructure label trusted",
-  "state": "in_force",
-  "statement": "The MPEA dataset's microstructure label ('FCC', 'FCC+Sec.' and so on) is taken as the phase constitution, without checking the original papers.",
-  "value": {"text": "as compiled", "unit": null},
-  "category": "data_handling",
-  "affects": "Which MPEA records are in a single-phase FCC scope.",
-  "reason": "The compilation is the source; reading the original papers is a later sprint.",
-  "evidence": ["PRD 10; PRD 18 (reading papers is backlog)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.microstructure"}
-  ], "note": "The MPEA adapter keeps the label verbatim."},
-  "history": [],
-  "notes": ["Added in step 4b while writing the entries the owner listed."]
-},
-{
-  "key": "grain_size_floor",
-  "name": "Grain-size floor",
-  "state": "in_force",
-  "statement": "Records with a grain size below 0.1 µm are excluded by a plan rule, fixed before any outcome is seen.",
-  "value": {"text": "exclude below 0.1", "unit": "µm"},
-  "category": "scientific",
-  "affects": "Which records enter the primary analysis of the reference plan.",
-  "reason": "Below about 0.1 µm the Hall-Petch relation is not expected to hold.",
-  "evidence": ["PRD 5.2 (example rule); docs/reference/worked_example.py: s.gs >= 0.1."],
-  "decided": {"by": "reference script and PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "No exclusions (the reference script's sensitivity analysis).",
-  "applied": {"status": "not_yet", "step": 6, "note": "Used on the test side only."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "alloy_eligibility",
-  "name": "Alloys with two or more grain sizes",
-  "state": "in_force",
-  "statement": "Only alloys measured at two or more distinct grain sizes within the plan's scope enter a test. Others are kept and marked not eligible.",
-  "value": {"text": "at least 2 distinct grain sizes", "unit": null},
-  "category": "scientific",
-  "affects": "Which records enter the primary analysis.",
-  "reason": "An alloy with one grain size has its own baseline and says nothing about k.",
-  "evidence": ["PRD 5.7 ('Which alloys can be used'); CLAUDE.md, rule 6."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "physical_validity_checks",
-  "name": "Physical validity checks",
-  "state": "in_force",
-  "statement": "A physically impossible value (for example tensile strength below yield strength, or a negative grain size) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
-  "value": {"text": "UTS < YS or grain size < 0: invalid", "unit": null},
-  "category": "scientific",
-  "affects": "Which records are flagged invalid.",
-  "reason": "Physical checks must not involve the relationship under test.",
-  "evidence": ["PRD 5.3."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "The adapters convert such values unchanged; they do not judge them."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "tamu_test_type",
-  "name": "Texas A&M test type",
-  "state": "in_force",
-  "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
-  "value": {"text": "tension (assigned from source)", "unit": null},
-  "category": "scientific",
-  "affects": "Whether the Texas A&M records pass a tension-only rule.",
-  "reason": "The paper states it explicitly.",
-  "evidence": ["paper/main.tex line 177: \"Quasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers indentation tests provided the HV.\"", "paper/supplementary.tex line 65."],
-  "decided": {"by": "owner (Khalid El-Awady), on the step 4 rule for assigned values", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.adapters.tamu_fcc:TEST_TYPE_CITATION"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "tamu_phase_class",
-  "name": "Texas A&M phase class",
-  "state": "in_force",
-  "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
-  "value": {"text": "FCC (assigned from source)", "unit": null},
-  "category": "scientific",
-  "affects": "The alloy-class description of the Texas A&M records.",
-  "reason": "The paper states it explicitly.",
-  "evidence": ["paper/main.tex line 173: \"The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.\""],
-  "decided": {"by": "owner (Khalid El-Awady), on the step 4 rule for assigned values", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.adapters.tamu_fcc:PHASE_CITATION"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "tamu_composition_unit",
-  "name": "Texas A&M composition unit",
-  "state": "in_force",
-  "statement": "The Texas A&M element columns are atomic percent. The column headers state no unit; the paper does.",
-  "value": {"text": "at.%", "unit": "at.%"},
-  "category": "data_handling",
-  "affects": "The composition of every Texas A&M record.",
-  "reason": "The paper states it explicitly, and the Al column's range (0 to 4) matches.",
-  "evidence": ["paper/main.tex line 399: \"Al is not included in the 15\\% statement because it spans only 0--4~at.\\% and has a much wider interval.\""],
-  "decided": {"by": "owner (Khalid El-Awady), on the step 4 rule for assigned values", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.adapters.tamu_fcc:COMPOSITION_UNIT_CITATION"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "ols_alloy_intercepts",
-  "name": "Fitting",
-  "state": "in_force",
-  "statement": "The model is fitted by ordinary least squares with one intercept per alloy.",
-  "value": {"text": "ordinary least squares", "unit": null},
-  "category": "statistical",
-  "affects": "The estimate of k.",
-  "reason": "The supported model (PRD 5.7).",
-  "evidence": ["PRD 5.7 (fitting row); CLAUDE.md, rule 6."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "cluster_robust_se",
-  "name": "Grouped standard error",
-  "state": "in_force",
-  "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
-  "value": {"text": "cluster-robust by grouping unit, with small-sample correction", "unit": null},
-  "category": "statistical",
-  "affects": "The uncertainty, the p-value and the verdict.",
-  "reason": "Records from one paper share conditions, so they are not independent.",
-  "evidence": ["PRD 5.7 (uncertainty row); docs/reference/worked_example.py (statsmodels cov_type='cluster')."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": ["The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula."]
-},
-{
-  "key": "papers_independent",
-  "name": "Papers are independent groups",
-  "state": "in_force",
-  "statement": "Each paper is an independent group, including papers from the same laboratory.",
-  "value": {"text": "one group per paper", "unit": null},
-  "category": "statistical",
-  "affects": "The number of groups, the uncertainty and the degrees of freedom of the test.",
-  "reason": "Papers are the grouping unit of the supported model; links between laboratories are not recorded.",
-  "evidence": ["PRD 5.7 (uncertainty row)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.versions:SOURCES.mpea.grouping_unit", "equals": "paper"}
-  ], "note": "The grouping itself is used in step 7."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "one_sided_test",
-  "name": "The test",
-  "state": "in_force",
-  "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
-  "value": {"text": "one-sided; threshold 0.05; t with groups - 1 degrees of freedom", "unit": null},
-  "category": "statistical",
-  "affects": "The p-value and the verdict.",
-  "reason": "The claim is that grain refinement strengthens, a one-directional claim. The t reference with groups - 1 degrees of freedom suits few groups.",
-  "evidence": ["PRD 5.7 (hypotheses row); CLAUDE.md, rule 6."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "p_threshold_comparison",
-  "name": "p-value against the threshold",
-  "state": "in_force",
-  "statement": "The claim is supported when the one-sided p-value is strictly below the threshold.",
-  "value": {"text": "p < 0.05", "unit": null},
-  "category": "statistical",
-  "affects": "The verdict when the p-value equals the threshold.",
-  "reason": "The usual convention.",
-  "evidence": ["Step 3 summary, 'Step 7 acceptance requirements', item 2."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "validity_checks",
-  "name": "The two validity checks",
-  "state": "in_force",
-  "statement": "Check 1: at least one alloy measured at two distinct grain sizes, or nothing is fitted. Check 2: at least 1 residual degree of freedom and at least 2 independent groups, or the coefficient is reported alone with no uncertainty, no p-value and no verdict. Neither can be waived.",
-  "value": {"text": "check 1: 1 alloy at 2 grain sizes; check 2: 1 residual df and 2 groups", "unit": null},
-  "category": "statistical",
-  "affects": "Whether a coefficient, an uncertainty and a verdict exist, for the pooled test, each source and each sensitivity analysis.",
-  "reason": "Below these floors no coefficient, or no uncertainty, can be computed.",
-  "evidence": ["PRD 5.7; CLAUDE.md, rule 5."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": "The database already checks necessary conditions on stored counts (ck_analysis_result_check1_consistent, ck_analysis_result_check2_consistent)."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "sufficiency_options",
-  "name": "Sufficiency options and 'exploratory'",
-  "state": "in_force",
-  "statement": "Two options: fixed minimum (the default) and use what is available. A result is 'exploratory' exactly when the query uses what is available and the fixed minimums are not met. Neither option waives the validity checks.",
-  "value": {"text": "default: fixed minimum", "unit": null},
-  "category": "statistical",
-  "affects": "Whether a test runs on little data, and its label.",
-  "reason": "PRD 5.8; step 3 decision on 'exploratory'.",
-  "evidence": ["PRD 5.8; CLAUDE.md, rule 7; step 3 summary, PRD correction 5."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "sql:ck_plan_sufficiency_option"},
-    {"ref": "sql:ck_run_exploratory_needs_verdict"},
-    {"ref": "sql:hc_run_update"}
-  ], "note": "The database enforces the two options and the 'exploratory' rule. The default option is set by the plan model in step 6."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "power_information_only",
-  "name": "Estimated power is information only",
-  "state": "in_force",
-  "statement": "Estimated power may be shown, labelled 'estimated power under the stated assumptions'. It never decides whether a test runs in sprint 1.",
-  "value": {"text": "information only", "unit": null},
-  "category": "statistical",
-  "affects": "Nothing in the decision; only what is shown.",
-  "reason": "The power calculation needs assumptions that have not been written down and reviewed.",
-  "evidence": ["PRD 5.8; step 3 summary, decision 8 and PRD correction 13."],
-  "decided": {"by": "owner (Khalid El-Awady), step 3", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "sql:ck_plan_sufficiency_option"}
-  ], "note": "A power-based option cannot be stored."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "pooled_gives_verdict",
-  "name": "The pooled test gives the verdict",
-  "state": "in_force",
-  "statement": "The pooled test over all searched sources gives the verdict. Per-source results and sensitivity analyses are descriptive and never change it.",
-  "value": {"text": "pooled", "unit": null},
-  "category": "statistical",
-  "affects": "Which result is the verdict.",
-  "reason": "Stated in the plan before any outcome is seen.",
-  "evidence": ["PRD 5.1, 5.2 and 5.7."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "calibration_simulation",
-  "name": "Calibration simulation settings",
-  "state": "in_force",
-  "statement": "2,000 simulations in each of two worlds (no effect; smallest effect that matters), each share with an exact binomial 95% interval, deterministic for a stored seed. A flag, never a gate.",
-  "value": {"text": "2,000 per world; 95% exact binomial interval", "unit": null},
-  "category": "statistical",
-  "affects": "The calibration shown with the report.",
-  "reason": "PRD 5.10.",
-  "evidence": ["PRD 5.10; CLAUDE.md, rule 11."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "normal_errors_in_calibration",
-  "name": "Normal errors in the calibration",
-  "state": "in_force",
-  "statement": "The calibration simulation draws the per-record scatter and the per-paper shift from normal distributions.",
-  "value": {"text": "normal", "unit": null},
-  "category": "statistical",
-  "affects": "The calibration shares; heavier-tailed real errors would make them optimistic.",
-  "reason": "The simplest assumption; the reference calibration script uses it.",
-  "evidence": ["docs/reference/calibration_example.py."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "reference_test_tolerance",
-  "name": "Reference-test tolerance",
-  "state": "in_force",
-  "statement": "The fixed-plan reference test passes when k and its uncertainty are within ±1 of the reference values.",
-  "value": {"text": "±1 on k and on its uncertainty", "unit": "MPa·µm^0.5"},
-  "category": "statistical",
-  "affects": "Whether the statistics code passes its software-correctness test.",
-  "reason": "PRD 5.7 ('Reference test').",
-  "evidence": ["PRD 5.7."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 7, "note": null},
-  "history": [],
-  "notes": ["The reference values are recomputed before step 7 (decision 'permitted_test_types')."]
-},
-{
-  "key": "paper_grouping_by_doi",
-  "name": "Paper identity from the DOI",
-  "state": "in_force",
-  "statement": "A literature record's paper (its group) is identified by a key derived from its DOI: surrounding whitespace trimmed, one URL or 'doi:' wrapper removed, ASCII letters case-folded. The DOI as reported is kept. A blank DOI means the paper is unknown; no group is invented.",
-  "value": {"text": "normalized DOI", "unit": null},
-  "category": "data_handling",
-  "affects": "Grouping for the standard error, the paper count and duplicate matching.",
-  "reason": "Formatting differences must not split one paper.",
-  "evidence": ["Step 4 summary, review finding 1."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.normalize:doi_group_key"}
-  ], "note": null},
-  "history": [
-    {"value": "the DOI text exactly as in the file", "from": "2026-10-05", "to": "2026-10-05", "note": "First step 4 draft, before review finding 1."}
-  ],
-  "notes": []
-},
-{
-  "key": "curated_values_trusted",
-  "name": "Curated databases trusted as transcribed",
-  "state": "in_force",
-  "statement": "Values in curated source databases (the MPEA compilation) are trusted as transcribed from the original papers.",
-  "value": {"text": "trusted as transcribed", "unit": null},
-  "category": "data_handling",
-  "affects": "Every MPEA value; a transcription error would enter the analysis.",
-  "reason": "Reading the original papers is a later sprint.",
-  "evidence": ["PRD 10; PRD 18 (reading papers)."],
-  "decided": {"by": "implicit in PRD v1.6 and the reference script", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.adapters.mpea_layout:read"}
-  ], "note": "The adapter converts the values unchanged."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "duplicate_identity",
-  "name": "When two records are the same measurement",
-  "state": "in_force",
-  "statement": "Two records are duplicates only if they come from the same original paper and match on alloy, grain size, value and test conditions. Matching alloy and grain size alone is not enough.",
-  "value": {"text": "same paper, alloy, grain size, value and conditions", "unit": null},
-  "category": "data_handling",
-  "affects": "Which records are counted once.",
-  "reason": "One measurement must not be counted twice, and distinct measurements must not be merged.",
-  "evidence": ["PRD 5.3."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "Alloy under the rule 'same_alloy_rule'; paper under 'paper_grouping_by_doi'."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "duplicate_survivor_rule",
-  "name": "Which duplicate is kept in the primary analysis",
-  "state": "in_force",
-  "statement": "1) Prefer the record that comes directly from the original paper, detected by the original paper's DOI on the record. 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
-  "value": {"text": "original paper; then source order; then lowest row", "unit": null},
-  "category": "data_handling",
-  "affects": "Which copy of a duplicate enters the primary analysis; both stay in the store.",
-  "reason": "A fixed rule, not a choice made after seeing values.",
-  "evidence": ["PRD 5.3; step 1 summary, 'Survivor rule'."],
-  "decided": {"by": "owner (Khalid El-Awady), step 1", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "unresolved_duplicates",
-  "name": "Possible duplicates that cannot be resolved",
-  "state": "in_force",
-  "statement": "A possible duplicate that cannot be resolved is kept, counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis.",
-  "value": {"text": "counted once", "unit": null},
-  "category": "data_handling",
-  "affects": "The primary record set and one sensitivity analysis.",
-  "reason": "So that one measurement is not counted twice.",
-  "evidence": ["PRD 5.3."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "Both counted separately.",
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "scope_not_confirmed",
-  "name": "Scope not confirmed",
-  "state": "in_force",
-  "statement": "A record whose scope cannot be confirmed because metadata are missing is kept, left out of the primary analysis, and included in a sensitivity analysis.",
-  "value": {"text": "out of primary; in sensitivity", "unit": null},
-  "category": "data_handling",
-  "affects": "The primary record set and one sensitivity analysis.",
-  "reason": "A missing value is not evidence that the record is in scope.",
-  "evidence": ["PRD 5.3."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "Included.",
-  "applied": {"status": "not_yet", "step": 6, "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "assigned_value_statuses",
-  "name": "Values not in the data file",
-  "state": "in_force",
-  "statement": "A value not in the data file is set only with one of two statuses, each citing its basis: 'assigned from source' (an explicit statement in the source's documentation, quoted with file and line) or 'assigned by decision' (a recorded owner or expert decision). The two stay distinguishable wherever they are stored or shown. Otherwise the value is not reported.",
-  "value": {"text": "assigned from source; assigned by decision", "unit": null},
-  "category": "data_handling",
-  "affects": "Every assigned value, and the source-only sensitivity analysis.",
-  "reason": "The tool's credibility rests on code deciding from exactly what sources say, with every other basis visible.",
-  "evidence": ["Step 4 summary, question 3."],
-  "decided": {"by": "owner (Khalid El-Awady)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": "The reference plan names a sensitivity analysis that accepts only reported values and values assigned from source, so the effect of every decision-based assignment is visible.",
-  "applied": {"status": "not_yet", "step": 6, "note": "Today the code has one status, 'assigned', which requires a citation (hypocurate.sources.record.Value) and is used only for statements in the source, that is 'assigned from source'."},
-  "history": [
-    {"value": "one status 'assigned', only on an explicit quoted statement in the source", "from": "2026-10-05", "to": "2026-10-05", "note": "Step 4."}
-  ],
-  "notes": []
-},
-{
-  "key": "values_kept_as_reported",
-  "name": "Values kept as reported",
-  "state": "in_force",
-  "statement": "Nothing is corrected silently. Every cell is kept as reported text. A value that cannot be converted is marked 'not convertible' with the reason; the record and its other fields are kept. Entirely blank rows are listed, not made into records.",
-  "value": {"text": "converted, not reported, not convertible, assigned", "unit": null},
-  "category": "data_handling",
-  "affects": "Every record.",
-  "reason": "Silent fixes would bias results.",
-  "evidence": ["Step 4 summary, 'The common record format'."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.record:STATUSES", "equals": ["converted", "not_reported", "not_convertible", "assigned"]}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "malformed_files_refused",
-  "name": "Malformed files refused",
-  "state": "in_force",
-  "statement": "A file that cannot be parsed strictly (a quoting error or a row with the wrong number of fields) is refused as a whole, naming the file, the line and the reason. No partial extraction is returned.",
-  "value": {"text": "whole file refused", "unit": null},
-  "category": "data_handling",
-  "affects": "Whether a source version can be read at all.",
-  "reason": "A malformed row can silently absorb later records.",
-  "evidence": ["Step 4 summary, review finding 3."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.adapters.mpea_layout:read"},
-    {"ref": "python:hypocurate.sources.record:AdapterError"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "composition_normalization",
-  "name": "Composition in atomic percent",
-  "state": "in_force",
-  "statement": "Formula strings and percentage columns are both converted to atomic percent at full precision. A missing amount in a formula means 1. Percentages that do not sum to 100 are marked, never rescaled; the sum is accepted within 1e-6 (floating-point representation only).",
-  "value": {"text": "sum tolerance 1e-6", "unit": "at.%"},
-  "category": "data_handling",
-  "affects": "The composition of every record.",
-  "reason": "One unit for both sources; no silent rescaling.",
-  "evidence": ["PRD 10; step 4 summary, review finding 5 and re-check item 5."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.normalize:PERCENT_SUM_TOLERANCE", "equals": 1e-6},
-    {"ref": "python:hypocurate.sources.normalize:formula_to_atomic_percent"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "alloy_label_display_only",
-  "name": "Alloy label for display only",
-  "state": "in_force",
-  "statement": "Each record carries a short alloy label (elements in alphabetical order, each rounded to 0.1 at.%). It is for display only; equal labels do not mean the same alloy.",
-  "value": {"text": "display only", "unit": null},
-  "category": "data_handling",
-  "affects": "What is shown; never identity.",
-  "reason": "Rounded labels are not scientific identity (step 4 review, finding 2).",
-  "evidence": ["Step 4 summary, review finding 2."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.normalize:alloy_label"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "grain_size_transformation_at_analysis",
-  "name": "Grain-size transformation at analysis",
-  "state": "in_force",
-  "statement": "Adapters give grain size in µm only. The transformation the locked plan names (grain size^-1/2) is applied by code when the analysis dataset is built.",
-  "value": {"text": "µm in records; d^-1/2 at analysis", "unit": "µm"},
-  "category": "data_handling",
-  "affects": "Where the predictor is computed.",
-  "reason": "No plan exists when records are read.",
-  "evidence": ["Step 4 summary, question 2."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "The µm part is applied (HARMONIZED_FIELDS); the transformation comes with the analysis dataset."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "controlled_extract_disabled",
-  "name": "Controlled extract off by default",
-  "state": "in_force",
-  "statement": "The controlled duplicate extract (constructed test data) is registered as a source that is switched off. It must never enter a real analysis.",
-  "value": {"text": "enabled = false", "unit": null},
-  "category": "data_handling",
-  "affects": "Whether constructed data can reach a real analysis.",
-  "reason": "It is test data built from the MPEA dataset.",
-  "evidence": ["Step 4 summary, PRD correction 8 and open item 5."],
-  "decided": {"by": "owner (Khalid El-Awady), step 4", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.versions:SOURCES.controlled_duplicates.enabled", "equals": false}
-  ], "note": "A guard against choosing it is step 6's."},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "stored_file_limits",
-  "name": "Stored files",
-  "state": "in_force",
-  "statement": "Files stored in the database are at most 5 MiB each. Source files must be CSV or XLSX with a safe relative path.",
-  "value": {"text": "5 MiB per file; .csv or .xlsx", "unit": "bytes"},
-  "category": "operational",
-  "affects": "Which source files can be registered (the 49 MB Zenodo archive cannot).",
-  "reason": "Files live in the database in sprint 1, which has a 1 GB disk.",
-  "evidence": ["PRD 6 and 17, decision 5; step 3 summary, decision 10."],
-  "decided": {"by": "owner (Khalid El-Awady), step 3", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.sources.versions:MAX_FILE_BYTES", "equals": 5242880},
-    {"ref": "python:hypocurate.sources.versions:SAFE_STORED_PATH"},
-    {"ref": "sql:ck_source_file_max_size"},
-    {"ref": "sql:ck_source_file_safe_data_file_path"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "login_throttle",
-  "name": "Failed-login count",
-  "state": "in_force",
-  "statement": "After 5 wrong passwords within 15 minutes, further wrong attempts receive 429 instead of 401 until the oldest counted failure leaves the window. Every attempt is still checked; a correct password is never refused by the count.",
-  "value": {"text": "5 wrong attempts in 15 minutes", "unit": null},
-  "category": "operational",
-  "affects": "Responses to wrong passwords.",
-  "reason": "A lockout would let anyone keep the owner out (step 2 review, finding 2).",
-  "evidence": ["Step 2 summary, finding 2."],
-  "decided": {"by": "owner (Khalid El-Awady), step 2", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.web.login_throttle:MAX_FAILURES", "equals": 5},
-    {"ref": "python:hypocurate.web.login_throttle:WINDOW_SECONDS", "equals": 900}
-  ], "note": null},
-  "history": [
-    {"value": "a global lockout after failed attempts", "from": "2026-10-04", "to": "2026-10-04", "note": "First step 2 draft, before review finding 2."}
-  ],
-  "notes": []
-},
-{
-  "key": "session_length",
-  "name": "Session length",
-  "state": "in_force",
-  "statement": "A login lasts 12 hours (signed session cookie). Rotating SESSION_SECRET ends every session.",
-  "value": {"text": "12", "unit": "hours"},
-  "category": "operational",
-  "affects": "How long a browser stays signed in.",
-  "reason": "One working day; there is no session table in sprint 1.",
-  "evidence": ["Step 2 summary."],
-  "decided": {"by": "owner (Khalid El-Awady), step 2", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.web.app:SESSION_MAX_AGE", "equals": 43200}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "secret_lengths",
-  "name": "Password and secret lengths",
-  "state": "in_force",
-  "statement": "The login password must be at least 24 characters in production and 12 in development; the session secret at least 32. The configuration enforces the length, not the randomness.",
-  "value": {"text": "24 / 12 / 32", "unit": "characters"},
-  "category": "operational",
-  "affects": "Whether the web service starts.",
-  "reason": "Protection against guessing is a random password of at least 24 characters.",
-  "evidence": ["Step 2 summary, finding 2."],
-  "decided": {"by": "owner (Khalid El-Awady), step 2", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.config:MIN_PRODUCTION_PASSWORD_LENGTH", "equals": 24},
-    {"ref": "python:hypocurate.config:MIN_PASSWORD_LENGTH", "equals": 12},
-    {"ref": "python:hypocurate.config:MIN_SESSION_SECRET_LENGTH", "equals": 32}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "single_web_process",
-  "name": "One web process",
-  "state": "in_force",
-  "statement": "The web service runs one process, so the failed-login count is shared; a restart clears it.",
-  "value": {"text": "1", "unit": "process"},
-  "category": "operational",
-  "affects": "The failed-login count.",
-  "reason": "The count is kept in memory.",
-  "evidence": ["Step 2 summary."],
-  "decided": {"by": "owner (Khalid El-Awady), step 2", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "file:Dockerfile:--workers 1"}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "transaction_retries",
-  "name": "Transaction retries",
-  "state": "in_force",
-  "statement": "A database transaction that fails with a deadlock (40P01) or a serialization failure (40001) is rerun as a whole, at most 5 attempts in all. Other errors are not retried.",
-  "value": {"text": "5", "unit": "attempts"},
-  "category": "operational",
-  "affects": "Write paths under contention.",
-  "reason": "PostgreSQL may abort one of two concurrent transactions; the caller must retry.",
-  "evidence": ["Step 3 summary, 'The locking protocol'; step 4 summary."],
-  "decided": {"by": "step 4 (owner's approval of the plan)", "date": "2026-10-05"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.db.retry:run_transaction(attempts)", "equals": 5},
-    {"ref": "python:hypocurate.db.retry:RETRYABLE_SQLSTATES", "equals": ["40001", "40P01"]}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "worker_poll_interval",
-  "name": "Worker idle interval",
-  "state": "in_force",
-  "statement": "The idle worker checks the database and sleeps 60 seconds between checks.",
-  "value": {"text": "60", "unit": "seconds"},
-  "category": "operational",
-  "affects": "Worker logs only; it runs nothing yet.",
-  "reason": "The queue comes in step 9.",
-  "evidence": ["Step 2 summary."],
-  "decided": {"by": "owner (Khalid El-Awady), step 2", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "yes", "settings": [
-    {"ref": "python:hypocurate.worker:IDLE_SECONDS", "equals": 60}
-  ], "note": null},
-  "history": [],
-  "notes": []
-},
-{
-  "key": "spending_caps",
-  "name": "Spending caps",
-  "state": "in_force",
-  "statement": "Model calls may cost at most $2 per run and $50 per calendar month (UTC), counting calls without a reported cost at their upper bound.",
-  "value": {"text": "$2 per run; $50 per month", "unit": "USD"},
-  "category": "operational",
-  "affects": "Whether a run or a model call may proceed.",
-  "reason": "CLAUDE.md, rule 12.",
-  "evidence": ["CLAUDE.md, rule 12; step 3 summary, 'Step 9 requirements'."],
-  "decided": {"by": "PRD v1.6 (owner)", "date": "2026-10-04"},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 9, "note": null},
-  "history": [],
-  "notes": []
-}
+  },
+  {
+    "key": "tag_starting_lists",
+    "name": "Starting lists of tag values",
+    "state": "in_force",
+    "statement": "Property: yield strength, ultimate tensile strength, hardness, elongation, fatigue life. Alloy class: multi-principal-element (high-entropy) alloy, steel, aluminium alloy, titanium alloy, nickel alloy, copper alloy, magnesium alloy, other. Test condition: room-temperature tension, room-temperature compression, elevated temperature, cryogenic, hardness test, fatigue.",
+    "value": {
+      "text": "5 property values; 8 alloy classes; 6 test conditions",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The tags each run carries, and filtering and reporting by topic.",
+    "reason": "Fixed lists keep the same thing named the same way; the Planner may propose a new value, which a person approves.",
+    "evidence": [
+      "PRD 5.5; PRD 17, decision 7."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "alloy class: FCC, BCC, FCC and BCC, other; test condition: room temperature, cryogenic, elevated; tension, compression, hardness (recommended)",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "PRD 17, decision 7."
+      }
+    ],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "tamu_microstructure",
+    "name": "Texas A&M microstructure",
+    "state": "in_force",
+    "statement": "The Texas A&M records are treated as single-phase FCC. The value is 'assigned by decision': the source does not state it explicitly as a result.",
+    "value": {
+      "text": "single-phase FCC (assigned by decision)",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Whether the 94 Texas A&M records fall inside a single-phase FCC scope; with them, the pooled reference result (PRD 14.1a).",
+    "reason": "The authors describe their measured compositions as single-phase FCC, the alloys were selected under an FCC phase-stability constraint, and their phase constitution was checked by X-ray diffraction.",
+    "evidence": [
+      "ArroyaveLab/2026-mulukutla-hall-petch@11390ee5 paper/main.tex line 138: \"The 81 compositions measured here carry all three, under one processing route and one characterization protocol. This is the largest such set reported for single-phase FCC multi-principal element alloys, and it lets composition, processing and grain size be separated without correcting across studies.\"",
+      "paper/main.tex line 173: \"It explored composition under an FCC phase stability constraint while holding processing fixed.\" (BB campaign); paper/supplementary.tex line 61: \"It explored the Al--Co--Cr--Cu--Fe--Mn--Ni--V system under an FCC phase-stability constraint while holding processing fixed.\"",
+      "paper/main.tex line 175: \"Candidate alloys were iteratively selected from an FCC-constrained, manufacturable design space with the models updated after each iteration using the newly acquired data.\" (CB campaign)",
+      "paper/main.tex line 177: \"Energy-dispersive X-ray spectroscopy (EDS) and X-ray diffraction were used to check realized chemistry and phase constitution, while electron microscopy and EBSD documented the microstructure.\"; paper/supplementary.tex line 65: \"EDS and XRD checked realized chemistry and phase constitution; SEM and EBSD documented the microstructure;\"",
+      "Step 4b summary, 'Texas A&M phase constitution'."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the result without these records.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Today the adapter reports the microstructure as not reported and assigns phase class FCC from source."
+    },
+    "history": [
+      {
+        "value": "not reported: the source does not state the phases present per record (open decision)",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 4 adapter; open decision in the first step 4b register."
+      }
+    ],
+    "notes": [
+      "The paper says 81 compositions; the spreadsheet has 82 distinct compositions.",
+      "No passage states the result of the XRD phase check.",
+      "Not reviewed by an expert.",
+      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
+    ],
+    "tests": []
+  },
+  {
+    "key": "shared_coefficient",
+    "name": "One grain-size coefficient for all alloys",
+    "state": "in_force",
+    "statement": "All alloys share one grain-size coefficient k; only the baseline differs between alloys.",
+    "value": {
+      "text": "one shared k",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The tested quantity and the verdict.",
+    "reason": "The claim under test is about grain-size strengthening across the alloys in scope, and one coefficient is what the supported model estimates.",
+    "evidence": [
+      "PRD 5.7 (formula row); docs/reference/worked_example.py."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Per-source estimates.",
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The two sources' separate estimates differ: about 427 (MPEA) and about 1173 (Texas A&M)."
+    ],
+    "tests": []
+  },
+  {
+    "key": "exponent_fixed",
+    "name": "Exponent fixed at -1/2",
+    "state": "in_force",
+    "statement": "Yield strength depends on grain size through (grain size)^-1/2. The exponent is fixed, not fitted.",
+    "value": {
+      "text": "-1/2",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The predictor of the model and the meaning of k.",
+    "reason": "The Hall-Petch relation as usually stated.",
+    "evidence": [
+      "PRD 5.7 (formula row)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "model_form",
+    "name": "The supported model",
+    "state": "in_force",
+    "statement": "Yield strength = a baseline for each alloy + k x (grain size in µm)^-1/2. This is the one supported model in sprint 1.",
+    "value": {
+      "text": "YS = baseline per alloy + k x d^-1/2, d in µm",
+      "unit": "MPa"
+    },
+    "category": "scientific",
+    "affects": "Every test, the verdict and the calibration.",
+    "reason": "Sprint 1 supports one model so that the safeguards can be built and checked around it.",
+    "evidence": [
+      "PRD 5.7; CLAUDE.md, rule 6."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "baseline_per_alloy",
+    "name": "One baseline per alloy",
+    "state": "in_force",
+    "statement": "Each alloy has one baseline strength. Differences in processing, texture and laboratory are not modelled, beyond grouping the errors by paper.",
+    "value": {
+      "text": "one intercept per alloy",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The estimate of k when processing or laboratory differ between grain sizes of the same alloy.",
+    "reason": "The supported model has alloy intercepts only.",
+    "evidence": [
+      "PRD 5.7; docs/reference/worked_example.py (YS ~ x + C(comp))."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Omitted factors that vary with grain size within an alloy can bias k; see entry 'association_not_causation'."
+    ],
+    "tests": []
+  },
+  {
+    "key": "association_not_causation",
+    "name": "The coefficient is an association under the model",
+    "state": "in_force",
+    "statement": "Within one alloy, processing, texture, dislocation density and other strengthening mechanisms not in the model may vary with grain size. Grouping the errors by paper does not remove that bias. A positive fitted k supports an association between grain size and strength under the stated model; it is not, on its own, causal proof of grain-size strengthening.",
+    "value": {
+      "text": "association under the model, not causal proof",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "How a 'supported' verdict may be read and worded.",
+    "reason": "The data are observational: grain size is not varied independently of other conditions.",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "PRD 5.9 (the Commentator's checklist: hidden causes in observational data)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": [
+      "For step 10: the run screen's verdict wording must say 'supported under the stated model' and never imply proof of cause."
+    ]
+  },
+  {
+    "key": "grain_size_as_reported",
+    "name": "Grain size used as reported",
+    "state": "in_force",
+    "statement": "Grain size is used as each source reports it, with no correction for how it was measured (for example linear intercept or equivalent circle diameter) or for whether twin boundaries were counted.",
+    "value": {
+      "text": "as reported, in µm",
+      "unit": "µm"
+    },
+    "category": "scientific",
+    "affects": "The predictor; differences in measurement method between papers enter the scatter or the estimate of k.",
+    "reason": "The sources do not report the measurement method per record in a form code can harmonize.",
+    "evidence": [
+      "PRD 10; Texas A&M paper/main.tex line 177 (equivalent circle mean from EBSD)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.grain_size",
+          "equals": "µm"
+        }
+      ],
+      "note": "The adapters convert the reported number unchanged."
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_numbers_are_converted_unchanged",
+      "tests/test_adapter_tamu.py::test_every_value_is_kept_as_reported"
+    ]
+  },
+  {
+    "key": "mean_grain_size_only",
+    "name": "Mean grain size only",
+    "state": "in_force",
+    "statement": "Only the mean grain size enters the model; the width of the grain-size distribution is not used.",
+    "value": {
+      "text": "mean only",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The predictor; any effect of the distribution width is left in the scatter.",
+    "reason": "The supported model has one predictor. The Texas A&M source itself studies the distribution width as a separate predictor.",
+    "evidence": [
+      "Texas A&M paper/main.tex line 177 (mean d and SD_grain); PRD 5.7."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": "The adapters keep the reported grain-size SD where a source has one."
+    },
+    "history": [],
+    "notes": [
+      "Added in step 4b while writing the entries the owner listed."
+    ],
+    "tests": []
+  },
+  {
+    "key": "measurement_error_not_propagated",
+    "name": "Measurement error not propagated",
+    "state": "in_force",
+    "statement": "Grain size and composition are treated as known exactly. Their measurement uncertainty (for example a reported grain-size standard deviation) is not propagated into k or its uncertainty. Also, (mean grain size)^-1/2 is in general not the mean of (grain size)^-1/2 over the grains, so transforming a reported mean is an approximation.",
+    "value": {
+      "text": "not propagated",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The estimate of k and its uncertainty; errors in the predictor tend to bias a slope.",
+    "reason": "The supported model has no error-in-variables term, and most records report no predictor uncertainty.",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "PRD 5.7."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "yield_strength_as_reported",
+    "name": "Yield strength used as reported",
+    "state": "in_force",
+    "statement": "Yield strength is used as each source reports it and treated as comparable across papers (for example the definition of yield, specimen geometry and strain rate are not harmonized).",
+    "value": {
+      "text": "as reported, in MPa",
+      "unit": "MPa"
+    },
+    "category": "scientific",
+    "affects": "The outcome variable; differences in definition between papers enter the scatter or the baselines.",
+    "reason": "The sources do not report these details per record in a form code can harmonize.",
+    "evidence": [
+      "PRD 10; Texas A&M paper/main.tex line 177 (0.2% offset)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.yield_strength",
+          "equals": "MPa"
+        }
+      ],
+      "note": "The adapters convert the reported number unchanged."
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_numbers_are_converted_unchanged",
+      "tests/test_adapter_tamu.py::test_every_value_is_kept_as_reported"
+    ]
+  },
+  {
+    "key": "quasistatic_tests",
+    "name": "Tests assumed quasistatic",
+    "state": "in_force",
+    "statement": "Tests are assumed to be quasistatic. Loading rate is not filtered.",
+    "value": {
+      "text": "quasistatic; no loading-rate rule",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which records are pooled; a high-rate test would be pooled with quasistatic ones.",
+    "reason": "Neither source has a loading-rate field.",
+    "evidence": [
+      "PRD 5.2 (exclusion menu has no rate rule); the MPEA and Texas A&M column lists."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "No code applies a rate rule; step 6 states the scope."
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "composition_as_reported",
+    "name": "Composition used as reported",
+    "state": "in_force",
+    "statement": "An alloy's composition is the one its source reports. Nominal (target) and measured compositions are not distinguished.",
+    "value": {
+      "text": "as reported, in at.%",
+      "unit": "at.%"
+    },
+    "category": "scientific",
+    "affects": "Which records count as the same alloy.",
+    "reason": "The MPEA dataset gives formula strings; the sources do not say per record whether a composition is nominal or measured.",
+    "evidence": [
+      "Texas A&M paper/main.tex line 182 (figure caption: measured and target composition); PRD 10."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.composition",
+          "equals": "at.%"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Added in step 4b while writing the entries the owner listed."
+    ],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_composition_in_atomic_percent",
+      "tests/test_adapter_extract.py::test_a_renamed_formula_gives_the_same_composition"
+    ]
+  },
+  {
+    "key": "room_temperature_scope",
+    "name": "Room temperature",
+    "state": "in_force",
+    "statement": "A room-temperature scope accepts reported test temperatures from 20 to 25 °C.",
+    "value": {
+      "text": "20 to 25",
+      "unit": "°C"
+    },
+    "category": "scientific",
+    "affects": "Which records are in scope for a room-temperature claim.",
+    "reason": "The reference script's scope.",
+    "evidence": [
+      "docs/reference/worked_example.py: d['T'].between(20, 25)."
+    ],
+    "decided": {
+      "by": "reference script and PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Used on the test side only (tests/test_reference_counts_from_adapters.py)."
+    },
+    "history": [],
+    "notes": [
+      "How a record with an assigned room-temperature band (decision 'tamu_test_temperature') passes this scope is defined in step 6."
+    ],
+    "tests": []
+  },
+  {
+    "key": "fcc_microstructure_scope",
+    "name": "Single-phase FCC scope",
+    "state": "in_force",
+    "statement": "The reference plan's scope is single-phase FCC: in the MPEA dataset, microstructure exactly 'FCC'.",
+    "value": {
+      "text": "microstructure FCC",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which records are in scope for the reference claim.",
+    "reason": "The reference script's scope.",
+    "evidence": [
+      "docs/reference/worked_example.py: d.micro == 'FCC'."
+    ],
+    "decided": {
+      "by": "reference script and PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Used on the test side only."
+    },
+    "history": [],
+    "notes": [
+      "The Texas A&M records meet it by decision (entry 'tamu_microstructure')."
+    ],
+    "tests": []
+  },
+  {
+    "key": "mpea_microstructure_label_trusted",
+    "name": "MPEA microstructure label trusted",
+    "state": "in_force",
+    "statement": "The MPEA dataset's microstructure label ('FCC', 'FCC+Sec.' and so on) is taken as the phase constitution, without checking the original papers.",
+    "value": {
+      "text": "as compiled",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Which MPEA records are in a single-phase FCC scope.",
+    "reason": "The compilation is the source; reading the original papers is a later sprint.",
+    "evidence": [
+      "PRD 10; PRD 18 (reading papers is backlog)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.microstructure"
+        }
+      ],
+      "note": "The MPEA adapter keeps the label verbatim."
+    },
+    "history": [],
+    "notes": [
+      "Added in step 4b while writing the entries the owner listed."
+    ],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_every_value_is_kept_as_reported_with_its_unit",
+      "tests/test_adapter_mpea.py::test_text_is_kept_exactly_as_reported"
+    ]
+  },
+  {
+    "key": "grain_size_floor",
+    "name": "Grain-size floor",
+    "state": "in_force",
+    "statement": "Records with a grain size below 0.1 µm are excluded by a plan rule, fixed before any outcome is seen.",
+    "value": {
+      "text": "exclude below 0.1",
+      "unit": "µm"
+    },
+    "category": "scientific",
+    "affects": "Which records enter the primary analysis of the reference plan.",
+    "reason": "Below about 0.1 µm the Hall-Petch relation is not expected to hold.",
+    "evidence": [
+      "PRD 5.2 (example rule); docs/reference/worked_example.py: s.gs >= 0.1."
+    ],
+    "decided": {
+      "by": "reference script and PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "No exclusions (the reference script's sensitivity analysis).",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Used on the test side only."
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "alloy_eligibility",
+    "name": "Alloys with two or more grain sizes",
+    "state": "in_force",
+    "statement": "Only alloys measured at two or more distinct grain sizes within the plan's scope enter a test. Others are kept and marked not eligible.",
+    "value": {
+      "text": "at least 2 distinct grain sizes",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which records enter the primary analysis.",
+    "reason": "An alloy with one grain size has its own baseline and says nothing about k.",
+    "evidence": [
+      "PRD 5.7 ('Which alloys can be used'); CLAUDE.md, rule 6."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "physical_validity_checks",
+    "name": "Physical validity checks",
+    "state": "in_force",
+    "statement": "A physically impossible value (for example tensile strength below yield strength, or a negative grain size) is flagged and kept out of the analysis. Agreement with the grain-size relationship under test is never used to judge a record.",
+    "value": {
+      "text": "UTS < YS or grain size < 0: invalid",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which records are flagged invalid.",
+    "reason": "Physical checks must not involve the relationship under test.",
+    "evidence": [
+      "PRD 5.3."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "The adapters convert such values unchanged; they do not judge them."
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "tamu_test_type",
+    "name": "Texas A&M test type",
+    "state": "in_force",
+    "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
+    "value": {
+      "text": "tension (assigned from source)",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Whether the Texas A&M records pass a tension-only rule.",
+    "reason": "The paper states it explicitly.",
+    "evidence": [
+      "paper/main.tex line 177: \"Quasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers indentation tests provided the HV.\"",
+      "paper/supplementary.tex line 65."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.tamu_fcc:TEST_TYPE_CITATION"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+    ]
+  },
+  {
+    "key": "tamu_phase_class",
+    "name": "Texas A&M phase class",
+    "state": "in_force",
+    "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
+    "value": {
+      "text": "FCC (assigned from source)",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The alloy-class description of the Texas A&M records.",
+    "reason": "The paper states it explicitly.",
+    "evidence": [
+      "paper/main.tex line 173: \"The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.\""
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.tamu_fcc:PHASE_CITATION"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+    ]
+  },
+  {
+    "key": "tamu_composition_unit",
+    "name": "Texas A&M composition unit",
+    "state": "in_force",
+    "statement": "The Texas A&M element columns are atomic percent. The column headers state no unit; the paper does.",
+    "value": {
+      "text": "at.%",
+      "unit": "at.%"
+    },
+    "category": "data_handling",
+    "affects": "The composition of every Texas A&M record.",
+    "reason": "The paper states it explicitly, and the Al column's range (0 to 4) matches.",
+    "evidence": [
+      "paper/main.tex line 399: \"Al is not included in the 15\\% statement because it spans only 0--4~at.\\% and has a much wider interval.\""
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.tamu_fcc:COMPOSITION_UNIT_CITATION"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_composition_in_atomic_percent"
+    ]
+  },
+  {
+    "key": "ols_alloy_intercepts",
+    "name": "Fitting",
+    "state": "in_force",
+    "statement": "The model is fitted by ordinary least squares with one intercept per alloy.",
+    "value": {
+      "text": "ordinary least squares",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The estimate of k.",
+    "reason": "The supported model (PRD 5.7).",
+    "evidence": [
+      "PRD 5.7 (fitting row); CLAUDE.md, rule 6."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "equal_row_weights",
+    "name": "Each row weighs the same",
+    "state": "in_force",
+    "statement": "Ordinary least squares gives each retained row equal weight, not each paper or alloy. Reported uncertainties and replicate counts are not used as weights. Papers with many rows, and alloys with a wide spread of grain sizes, can dominate k.",
+    "value": {
+      "text": "equal weight per row",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The estimate of k.",
+    "reason": "The supported model is unweighted OLS (PRD 5.7).",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "PRD 5.7 (fitting row)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "cluster_robust_se",
+    "name": "Grouped standard error",
+    "state": "in_force",
+    "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
+    "value": {
+      "text": "cluster-robust by grouping unit, with small-sample correction",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The uncertainty, the p-value and the verdict.",
+    "reason": "Records from one paper share conditions, so they are not independent.",
+    "evidence": [
+      "PRD 5.7 (uncertainty row); docs/reference/worked_example.py (statsmodels cov_type='cluster')."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula."
+    ],
+    "tests": []
+  },
+  {
+    "key": "few_groups_approximate",
+    "name": "Inference with few groups is approximate",
+    "state": "in_force",
+    "statement": "Passing validity check 2 (at least two groups and one residual degree of freedom) means an uncertainty can be computed, not that it is reliable. The small-sample correction and the t reference are approximations, especially with few groups or groups of very unequal size.",
+    "value": {
+      "text": "approximate",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "How far the p-value and the verdict can be trusted when there are few papers.",
+    "reason": "Cluster-robust inference is asymptotic in the number of groups; the per-run calibration (PRD 5.10) reports how the test behaves on the run's structure.",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "PRD 5.10 and 17, decision 11 (the grouped test is somewhat over-confident on the sprint data)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "papers_independent",
+    "name": "Papers are independent groups",
+    "state": "in_force",
+    "statement": "Each paper is an independent group, including papers from the same laboratory.",
+    "value": {
+      "text": "one group per paper",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The number of groups, the uncertainty and the degrees of freedom of the test.",
+    "reason": "Papers are the grouping unit of the supported model; links between laboratories are not recorded.",
+    "evidence": [
+      "PRD 5.7 (uncertainty row)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.mpea.grouping_unit",
+          "equals": "paper"
+        }
+      ],
+      "done": "Each MPEA record's group is its paper (the source's grouping unit is 'paper').",
+      "pending": "Independence is assumed, not established; the groups are first used in inference in step 7.",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_paper_identity_is_the_doi"
+    ]
+  },
+  {
+    "key": "one_sided_test",
+    "name": "The test",
+    "state": "in_force",
+    "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
+    "value": {
+      "text": "one-sided; threshold 0.05; t with groups - 1 degrees of freedom",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The p-value and the verdict.",
+    "reason": "The claim is that grain refinement strengthens, a one-directional claim. The t reference with groups - 1 degrees of freedom suits few groups.",
+    "evidence": [
+      "PRD 5.7 (hypotheses row); CLAUDE.md, rule 6."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "p_threshold_comparison",
+    "name": "p-value against the threshold",
+    "state": "in_force",
+    "statement": "The claim is supported when the one-sided p-value is strictly below the threshold α. The threshold is 0.05 unless the plan sets another.",
+    "value": {
+      "text": "p < α (α = 0.05 by default)",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The verdict when the p-value equals the threshold.",
+    "reason": "The usual convention.",
+    "evidence": [
+      "Step 3 summary, 'Step 7 acceptance requirements', item 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "no_multiplicity_adjustment",
+    "name": "No adjustment for repeated testing",
+    "state": "in_force",
+    "statement": "The threshold applies to each locked test separately. There is no adjustment for repeated queries, narrower questions, alternative plans or sensitivity analyses, so taken together they do not keep a 5% false-positive rate.",
+    "value": {
+      "text": "none",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "How several verdicts on related questions may be read together.",
+    "reason": "Each run's plan is locked before its data are seen; across runs, nothing limits how many tests are made.",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "PRD 5.4 and 5.6."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "validity_checks",
+    "name": "The two validity checks",
+    "state": "in_force",
+    "statement": "Check 1: at least one alloy measured at two distinct grain sizes, or nothing is fitted. Check 2: at least 1 residual degree of freedom and at least 2 independent groups, or the coefficient is reported alone with no uncertainty, no p-value and no verdict. Neither can be waived.",
+    "value": {
+      "text": "check 1: 1 alloy at 2 grain sizes; check 2: 1 residual df and 2 groups",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Whether a coefficient, an uncertainty and a verdict exist, for the pooled test, each source and each sensitivity analysis.",
+    "reason": "Below these floors no coefficient, or no uncertainty, can be computed.",
+    "evidence": [
+      "PRD 5.7; CLAUDE.md, rule 5."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "sql:ck_analysis_result_check1_consistent"
+        },
+        {
+          "ref": "sql:ck_analysis_result_check2_consistent"
+        }
+      ],
+      "done": "The database checks necessary conditions on stored counts (check 1 needs an alloy; check 2 needs a residual degree of freedom and two groups).",
+      "pending": "The full rules computed by code from the frozen dataset (two distinct grain sizes; exact alloy and group counts).",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_data_model.py::test_the_validity_checks_cannot_be_waived",
+      "tests/test_data_model.py::test_check_one_failing_means_no_estimate",
+      "tests/test_data_model.py::test_stored_counts_must_be_consistent"
+    ]
+  },
+  {
+    "key": "sufficiency_options",
+    "name": "Sufficiency options and 'exploratory'",
+    "state": "in_force",
+    "statement": "Two options: fixed minimum (the default) and use what is available. A result is 'exploratory' exactly when the query uses what is available and the fixed minimums are not met. Neither option waives the validity checks.",
+    "value": {
+      "text": "default: fixed minimum",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Whether a test runs on little data, and its label.",
+    "reason": "PRD 5.8; step 3 decision on 'exploratory'.",
+    "evidence": [
+      "PRD 5.8; CLAUDE.md, rule 7; step 3 summary, PRD correction 5."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "sql:ck_plan_sufficiency_option"
+        },
+        {
+          "ref": "sql:ck_run_exploratory_needs_verdict"
+        },
+        {
+          "ref": "sql:hc_run_update"
+        }
+      ],
+      "done": "The database allows only the two options and enforces the 'exploratory' rule.",
+      "pending": "The fixed minimum as each plan's default.",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_data_model.py::test_sufficiency_option_and_minimums",
+      "tests/test_data_model.py::test_exploratory_means_use_available_and_minimums_not_met",
+      "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met"
+    ]
+  },
+  {
+    "key": "power_information_only",
+    "name": "Estimated power is information only",
+    "state": "in_force",
+    "statement": "Estimated power may be shown, labelled 'estimated power under the stated assumptions'. It never decides whether a test runs in sprint 1.",
+    "value": {
+      "text": "information only",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Nothing in the decision; only what is shown.",
+    "reason": "The power calculation needs assumptions that have not been written down and reviewed.",
+    "evidence": [
+      "PRD 5.8; step 3 summary, decision 8 and PRD correction 13."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 3",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "sql:ck_plan_sufficiency_option"
+        }
+      ],
+      "note": "A power-based option cannot be stored."
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_data_model.py::test_sufficiency_option_and_minimums",
+      "tests/test_data_model.py::test_power_assumptions_are_an_information_field"
+    ]
+  },
+  {
+    "key": "pooled_gives_verdict",
+    "name": "The pooled test gives the verdict",
+    "state": "in_force",
+    "statement": "The pooled test over all searched sources gives the verdict. Per-source results and sensitivity analyses are descriptive and never change it.",
+    "value": {
+      "text": "pooled",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Which result is the verdict.",
+    "reason": "Stated in the plan before any outcome is seen.",
+    "evidence": [
+      "PRD 5.1, 5.2 and 5.7."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "selection_and_missingness",
+    "name": "Conclusions conditional on the retained evidence",
+    "state": "in_force",
+    "statement": "The records that are available, published, convertible and eligible are not necessarily representative of all relevant alloys or experiments. The analysis does not correct for publication bias or for missing data related to the outcome; its conclusions hold for the retained evidence in the sources searched.",
+    "value": {
+      "text": "no correction",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "How a verdict generalizes beyond the sources searched.",
+    "reason": "Sprint 1 has no model of selection or missingness.",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "CLAUDE.md, rule 13 (outcomes stated 'in the sources searched')."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "calibration_simulation",
+    "name": "Calibration simulation settings",
+    "state": "in_force",
+    "statement": "2,000 simulations in each of two worlds (no effect; smallest effect that matters), each share with an exact binomial 95% interval, deterministic for a stored seed. A flag, never a gate.",
+    "value": {
+      "text": "2,000 per world; 95% exact binomial interval",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The calibration shown with the report.",
+    "reason": "PRD 5.10.",
+    "evidence": [
+      "PRD 5.10; CLAUDE.md, rule 11."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "normal_errors_in_calibration",
+    "name": "Normal errors in the calibration",
+    "state": "in_force",
+    "statement": "The calibration simulation draws the per-record scatter and the per-paper shift from normal distributions.",
+    "value": {
+      "text": "normal",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The calibration shares; real errors with heavier tails may change the calibration, in either direction.",
+    "reason": "The simplest assumption; the reference calibration script uses it.",
+    "evidence": [
+      "docs/reference/calibration_example.py."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The full error model is entry 'calibration_error_model'."
+    ],
+    "tests": []
+  },
+  {
+    "key": "calibration_error_model",
+    "name": "The calibration's full error model",
+    "state": "in_force",
+    "statement": "The simulation keeps the frozen dataset's grain sizes, groups and inclusion fixed, and draws independent, zero-mean group shifts and record errors, each with one common variance. It does not simulate source discovery, extraction mistakes, selection, correlated errors between papers, or errors that vary by alloy or grain size.",
+    "value": {
+      "text": "fixed design; independent zero-mean shifts and errors with common variances",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "What the calibration shares can and cannot say.",
+    "reason": "The reference calibration script; PRD 5.10 ('what it does and does not say').",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "docs/reference/calibration_example.py; PRD 5.10."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "reference_test_tolerance",
+    "name": "Reference-test tolerance",
+    "state": "in_force",
+    "statement": "The fixed-plan reference test passes when k and its uncertainty are within ±1 of the reference values.",
+    "value": {
+      "text": "±1 on k and on its uncertainty",
+      "unit": "MPa·µm^0.5"
+    },
+    "category": "statistical",
+    "affects": "Whether the statistics code passes its software-correctness test.",
+    "reason": "PRD 5.7 ('Reference test').",
+    "evidence": [
+      "PRD 5.7."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 7,
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The reference values are recomputed before step 7 (decision 'permitted_test_types')."
+    ],
+    "tests": []
+  },
+  {
+    "key": "paper_grouping_by_doi",
+    "name": "Paper identity from the DOI",
+    "state": "in_force",
+    "statement": "A literature record's paper (its group) is identified by a key derived from its DOI: surrounding whitespace trimmed, one URL or 'doi:' wrapper removed, ASCII letters case-folded. The DOI as reported is kept. A blank DOI means the paper is unknown; no group is invented.",
+    "value": {
+      "text": "normalized DOI",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Grouping for the standard error, the paper count and duplicate matching.",
+    "reason": "Formatting differences must not split one paper.",
+    "evidence": [
+      "Step 4 summary, review finding 1."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.normalize:doi_group_key"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "the DOI text exactly as in the file",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "First step 4 draft, before review finding 1."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_paper_identity_is_the_doi",
+      "tests/test_adapter_mpea.py::test_formatting_differences_do_not_split_a_paper",
+      "tests/test_adapter_mpea.py::test_grouping_folds_ascii_case_only",
+      "tests/test_adapter_extract.py::test_paper_unknown_is_marked_never_invented"
+    ]
+  },
+  {
+    "key": "curated_values_trusted",
+    "name": "Curated databases trusted as transcribed",
+    "state": "in_force",
+    "statement": "Values in curated source databases (the MPEA compilation) are trusted as transcribed from the original papers.",
+    "value": {
+      "text": "trusted as transcribed",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every MPEA value; a transcription error would enter the analysis.",
+    "reason": "Reading the original papers is a later sprint.",
+    "evidence": [
+      "PRD 10; PRD 18 (reading papers)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.mpea_layout:read"
+        }
+      ],
+      "note": "The adapter converts the values unchanged."
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_numbers_are_converted_unchanged"
+    ]
+  },
+  {
+    "key": "observation_unit",
+    "name": "What one source row represents",
+    "state": "in_force",
+    "statement": "One source row becomes one record, whether it reports one specimen, a mean of repeated specimens or a summarized condition. These are not distinguished today, specimen counts are not used, and nothing yet distinguishes repeated specimens from the same measurement reported twice.",
+    "value": {
+      "text": "one row = one record; not distinguished",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Weighting (each row counts once), duplicate matching and the conflict pairing rule.",
+    "reason": "The sources do not report the unit consistently (the Texas A&M file has standard deviations for some records, without replicate counts).",
+    "evidence": [
+      "Step 4b review (second model, 2026-10-05), missing assumptions.",
+      "Texas A&M paper/supplementary.tex line 91 (replicate counts and reporting definitions not consistent)."
+    ],
+    "decided": {
+      "by": "implicit in PRD v1.6 and the reference script; recorded after the step 4b review",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "tests": [],
+    "history": [],
+    "notes": [
+      "Connects to the open decision 'conflict_pairing_rule'."
+    ]
+  },
+  {
+    "key": "duplicate_identity",
+    "name": "When two records are the same measurement",
+    "state": "in_force",
+    "statement": "Two records are duplicates only if they come from the same original paper and match on alloy, grain size, value and test conditions. Matching alloy and grain size alone is not enough.",
+    "value": {
+      "text": "same paper, alloy, grain size, value and conditions",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Which records are counted once.",
+    "reason": "One measurement must not be counted twice, and distinct measurements must not be merged.",
+    "evidence": [
+      "PRD 5.3."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": "Alloy under the rule 'same_alloy_rule'; paper under 'paper_grouping_by_doi'."
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "duplicate_survivor_rule",
+    "name": "Which duplicate is kept in the primary analysis",
+    "state": "in_force",
+    "statement": "1) Prefer the record that carries the original paper reference (DOI). 2) If both or neither do, take the first source in the fixed order MPEA, Texas A&M, controlled extract. 3) Within one source, take the lowest row number.",
+    "value": {
+      "text": "the record carrying the original paper reference; then source order; then lowest row",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Which copy of a duplicate enters the primary analysis; both stay in the store.",
+    "reason": "A fixed rule, not a choice made after seeing values.",
+    "evidence": [
+      "PRD 5.3; step 1 summary, 'Survivor rule'."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 1; wording restored 2026-10-05",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "1) prefer the record that comes directly from the original paper, detected by the original paper's DOI on the record; then source order; then lowest row",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Wording of the step 1 re-check correction and of the first step 4b register; withdrawn after the step 4b review, finding 3."
+      }
+    ],
+    "notes": [
+      "A DOI identifies the cited paper, not where a record was extracted: a compilation and a copied extract can both carry it. Preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist.",
+      "The step 1 answer file and fixtures README still carry the withdrawn wording (their fingerprints are pinned); to be aligned with the owner's approval when step 6 builds duplicate handling."
+    ],
+    "tests": []
+  },
+  {
+    "key": "unresolved_duplicates",
+    "name": "Possible duplicates that cannot be resolved",
+    "state": "in_force",
+    "statement": "A possible duplicate that cannot be resolved is kept, counted once in the primary analysis by the survivor rule, and counted separately in a sensitivity analysis.",
+    "value": {
+      "text": "counted once",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The primary record set and one sensitivity analysis.",
+    "reason": "So that one measurement is not counted twice.",
+    "evidence": [
+      "PRD 5.3."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Both counted separately.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "scope_not_confirmed",
+    "name": "Scope not confirmed",
+    "state": "in_force",
+    "statement": "A record whose scope cannot be confirmed because metadata are missing is kept, left out of the primary analysis, and included in a sensitivity analysis.",
+    "value": {
+      "text": "out of primary; in sensitivity",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The primary record set and one sensitivity analysis.",
+    "reason": "A missing value is not evidence that the record is in scope.",
+    "evidence": [
+      "PRD 5.3."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "Included.",
+    "applied": {
+      "status": "not_yet",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  },
+  {
+    "key": "assigned_value_statuses",
+    "name": "Values not in the data file",
+    "state": "in_force",
+    "statement": "A value not in the data file is set only with one of two statuses, each citing its basis: 'assigned from source' (an explicit statement in the source's documentation, quoted with file and line) or 'assigned by decision' (a recorded owner or expert decision). The two stay distinguishable wherever they are stored or shown. Otherwise the value is not reported.",
+    "value": {
+      "text": "assigned from source; assigned by decision",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every assigned value, and the source-only sensitivity analysis.",
+    "reason": "The tool's credibility rests on code deciding from exactly what sources say, with every other basis visible.",
+    "evidence": [
+      "Step 4 summary, question 3."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The reference plan names a sensitivity analysis that accepts only reported values and values assigned from source, so the effect of every decision-based assignment is visible.",
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:STATUSES",
+          "equals": [
+            "converted",
+            "not_reported",
+            "not_convertible",
+            "assigned"
+          ]
+        }
+      ],
+      "done": "One status 'assigned', which needs a citation and is used only for statements in the source (that is, 'assigned from source').",
+      "pending": "The two statuses 'assigned from source' and 'assigned by decision', and the source-only sensitivity analysis.",
+      "step": 6,
+      "note": null
+    },
+    "history": [
+      {
+        "value": "one status 'assigned', only on an explicit quoted statement in the source",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 4."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+    ]
+  },
+  {
+    "key": "values_kept_as_reported",
+    "name": "Values kept as reported",
+    "state": "in_force",
+    "statement": "Nothing is corrected silently. Every cell is kept as reported text. A value that cannot be converted is marked 'not convertible' with the reason; the record and its other fields are kept. Entirely blank rows are listed, not made into records.",
+    "value": {
+      "text": "converted, not reported, not convertible, assigned",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Every record.",
+    "reason": "Silent fixes would bias results.",
+    "evidence": [
+      "Step 4 summary, 'The common record format'."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:STATUSES",
+          "equals": [
+            "converted",
+            "not_reported",
+            "not_convertible",
+            "assigned"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_one_record_per_row_none_dropped",
+      "tests/test_adapter_mpea.py::test_every_value_is_kept_as_reported_with_its_unit",
+      "tests/test_adapter_mpea.py::test_planted_values_are_kept_and_marked",
+      "tests/test_adapter_tamu.py::test_planted_values_are_kept_and_marked",
+      "tests/test_adapter_tamu.py::test_reported_text_matches_independently_written_strings"
+    ]
+  },
+  {
+    "key": "malformed_files_refused",
+    "name": "Malformed CSV files refused",
+    "state": "in_force",
+    "statement": "A CSV file that cannot be parsed strictly (a quoting error or a row with the wrong number of fields) is refused as a whole, naming the file, the line and the reason; no partial extraction is returned. Spreadsheets are handled differently: a workbook in another layout is refused, while a problem in one cell (a formula, a non-numeric value, an overflow) marks only the field it feeds and keeps the record.",
+    "value": {
+      "text": "CSV: whole file refused; spreadsheet: layout refused, cell problems marked",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Whether a source version can be read at all.",
+    "reason": "A malformed row can silently absorb later records.",
+    "evidence": [
+      "Step 4 summary, review finding 3."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.adapters.mpea_layout:read"
+        },
+        {
+          "ref": "python:hypocurate.sources.record:AdapterError"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_an_unterminated_quote_at_the_end_refuses_the_file",
+      "tests/test_adapter_mpea.py::test_an_unterminated_quote_that_swallows_later_rows_refuses_the_file",
+      "tests/test_adapter_mpea.py::test_a_malformed_quote_refuses_the_file",
+      "tests/test_adapter_mpea.py::test_a_wrong_field_count_refuses_the_file_and_names_the_line",
+      "tests/test_adapter_tamu.py::test_another_layout_is_refused",
+      "tests/test_adapter_tamu.py::test_planted_values_are_kept_and_marked"
+    ]
+  },
+  {
+    "key": "composition_normalization",
+    "name": "Composition in atomic percent",
+    "state": "in_force",
+    "statement": "Formula strings and percentage columns are both converted to atomic percent at full precision. A missing amount in a formula means 1. Percentages that do not sum to 100 are marked, never rescaled; the sum is accepted within 1e-6 (floating-point representation only).",
+    "value": {
+      "text": "sum tolerance 1e-6",
+      "unit": "at.%"
+    },
+    "category": "data_handling",
+    "affects": "The composition of every record.",
+    "reason": "One unit for both sources; no silent rescaling.",
+    "evidence": [
+      "PRD 10; step 4 summary, review finding 5 and re-check item 5."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.normalize:PERCENT_SUM_TOLERANCE",
+          "equals": 1e-06
+        },
+        {
+          "ref": "python:hypocurate.sources.normalize:formula_to_atomic_percent"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_normalize.py::test_every_converted_composition_is_finite_and_sums_to_100",
+      "tests/test_normalize.py::test_huge_finite_percentages_are_marked_not_raised",
+      "tests/test_adapter_tamu.py::test_planted_values_are_kept_and_marked"
+    ]
+  },
+  {
+    "key": "alloy_label_display_only",
+    "name": "Alloy label for display only",
+    "state": "in_force",
+    "statement": "Each record carries a short alloy label (elements in alphabetical order, each rounded to 0.1 at.%). It is for display only; equal labels do not mean the same alloy.",
+    "value": {
+      "text": "display only",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What is shown; never identity.",
+    "reason": "Rounded labels are not scientific identity (step 4 review, finding 2).",
+    "evidence": [
+      "Step 4 summary, review finding 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.normalize:alloy_label"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_display_labels_follow_the_reference_naming",
+      "tests/test_adapter_mpea.py::test_compositions_differing_below_the_rounding_step_are_not_identical"
+    ]
+  },
+  {
+    "key": "grain_size_transformation_at_analysis",
+    "name": "Grain-size transformation at analysis",
+    "state": "in_force",
+    "statement": "Adapters give grain size in µm only. The transformation the locked plan names (grain size^-1/2) is applied by code when the analysis dataset is built.",
+    "value": {
+      "text": "µm in records; d^-1/2 at analysis",
+      "unit": "µm"
+    },
+    "category": "data_handling",
+    "affects": "Where the predictor is computed.",
+    "reason": "No plan exists when records are read.",
+    "evidence": [
+      "Step 4 summary, question 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.grain_size",
+          "equals": "µm"
+        }
+      ],
+      "done": "Records carry grain size in µm only.",
+      "pending": "The transformation the locked plan names, applied when the analysis dataset is built.",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_adapter_mpea.py::test_every_record_has_the_common_fields_with_their_units"
+    ]
+  },
+  {
+    "key": "controlled_extract_disabled",
+    "name": "Controlled extract off by default",
+    "state": "in_force",
+    "statement": "The controlled duplicate extract (constructed test data) is registered as a source that is switched off. It must never enter a real analysis.",
+    "value": {
+      "text": "enabled = false",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Whether constructed data can reach a real analysis.",
+    "reason": "It is test data built from the MPEA dataset.",
+    "evidence": [
+      "Step 4 summary, PRD correction 8 and open item 5."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 4",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.controlled_duplicates.enabled",
+          "equals": false
+        }
+      ],
+      "done": "The extract is registered switched off (enabled = false).",
+      "pending": "A guard so that it cannot enter a real analysis; today no database rule prevents choosing a disabled source.",
+      "step": 6,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_source_versions.py::test_registering_seals_every_source"
+    ]
+  },
+  {
+    "key": "stored_file_limits",
+    "name": "Stored files",
+    "state": "in_force",
+    "statement": "Files stored in the database are at most 5 MiB each. Source files must be CSV or XLSX with a safe relative path.",
+    "value": {
+      "text": "5 MiB per file; .csv or .xlsx",
+      "unit": "bytes"
+    },
+    "category": "operational",
+    "affects": "Which source files can be registered (the 49 MB Zenodo archive cannot).",
+    "reason": "Files live in the database in sprint 1, which has a 1 GB disk.",
+    "evidence": [
+      "PRD 6 and 17, decision 5; step 3 summary, decision 10."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 3",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:MAX_FILE_BYTES",
+          "equals": 5242880
+        },
+        {
+          "ref": "python:hypocurate.sources.versions:SAFE_STORED_PATH"
+        },
+        {
+          "ref": "sql:ck_source_file_max_size"
+        },
+        {
+          "ref": "sql:ck_source_file_safe_data_file_path"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_data_model.py::test_source_files_are_data_files_up_to_5_mib",
+      "tests/test_data_model.py::test_unsafe_file_paths_are_rejected",
+      "tests/test_source_versions.py::test_an_unsafe_stored_path_is_refused_before_the_database"
+    ]
+  },
+  {
+    "key": "login_throttle",
+    "name": "Failed-login count",
+    "state": "in_force",
+    "statement": "After 5 wrong passwords within 15 minutes, further wrong attempts receive 429 instead of 401 until the oldest counted failure leaves the window. Every attempt is still checked; a correct password is never refused by the count.",
+    "value": {
+      "text": "5 wrong attempts in 15 minutes",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Responses to wrong passwords.",
+    "reason": "A lockout would let anyone keep the owner out (step 2 review, finding 2).",
+    "evidence": [
+      "Step 2 summary, finding 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 2",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.login_throttle:MAX_FAILURES",
+          "equals": 5
+        },
+        {
+          "ref": "python:hypocurate.web.login_throttle:WINDOW_SECONDS",
+          "equals": 900
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "a global lockout after failed attempts",
+        "from": "2026-10-04",
+        "to": "2026-10-04",
+        "note": "First step 2 draft, before review finding 2."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_login_throttle.py::test_defaults_are_as_approved",
+      "tests/test_login_throttle.py::test_wrong_attempts_counted_up_to_the_bound_then_throttled",
+      "tests/test_login_throttle.py::test_correct_password_always_accepted",
+      "tests/test_login_throttle.py::test_throttle_ends_when_failures_leave_the_window",
+      "tests/test_login.py::test_correct_password_is_accepted_while_throttled"
+    ]
+  },
+  {
+    "key": "session_length",
+    "name": "Session length",
+    "state": "in_force",
+    "statement": "A session ends 12 hours after sign-in, however much it is used. The cookie is signed with the sign-in time and sent with Max-Age 12 hours; the server rejects it once its signature is older than 12 hours. Ordinary requests do not renew it: the session middleware (Starlette 1.7.0) re-signs the cookie only when the session data change, which happens only at sign-in. Signing in again starts a new 12 hours. Signing out clears the cookie in that browser; a copied cookie stays valid until it expires. Rotating SESSION_SECRET ends every session.",
+    "value": {
+      "text": "12 hours from sign-in, not renewed by use",
+      "unit": "hours"
+    },
+    "category": "operational",
+    "affects": "How long a browser stays signed in.",
+    "reason": "One working day; there is no session table in sprint 1.",
+    "evidence": [
+      "Step 2 summary."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 2",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.app:SESSION_MAX_AGE",
+          "equals": 43200
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The step 4b review read the middleware as renewing non-empty session cookies; that holds for older Starlette versions, not for the locked 1.7.0 (test_ordinary_requests_do_not_renew_the_session)."
+    ],
+    "tests": [
+      "tests/test_login.py::test_session_expires_after_max_age",
+      "tests/test_login.py::test_ordinary_requests_do_not_renew_the_session",
+      "tests/test_login.py::test_production_cookie_is_secure_httponly_lax_with_max_age",
+      "tests/test_login.py::test_rotating_the_secret_and_password_ends_existing_sessions"
+    ]
+  },
+  {
+    "key": "secret_lengths",
+    "name": "Password and secret lengths",
+    "state": "in_force",
+    "statement": "The login password must be at least 24 characters in production and 12 in development; the session secret at least 32. The configuration enforces the length, not the randomness.",
+    "value": {
+      "text": "24 / 12 / 32",
+      "unit": "characters"
+    },
+    "category": "operational",
+    "affects": "Whether the web service starts.",
+    "reason": "Protection against guessing is a random password of at least 24 characters.",
+    "evidence": [
+      "Step 2 summary, finding 2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 2",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.config:MIN_PRODUCTION_PASSWORD_LENGTH",
+          "equals": 24
+        },
+        {
+          "ref": "python:hypocurate.config:MIN_PASSWORD_LENGTH",
+          "equals": 12
+        },
+        {
+          "ref": "python:hypocurate.config:MIN_SESSION_SECRET_LENGTH",
+          "equals": 32
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_login.py::test_production_password_must_be_at_least_24_characters",
+      "tests/test_login.py::test_development_password_must_be_at_least_12_characters",
+      "tests/test_login.py::test_web_refuses_a_short_session_secret"
+    ]
+  },
+  {
+    "key": "single_web_process",
+    "name": "One web process",
+    "state": "in_force",
+    "statement": "The web service runs one process, so the failed-login count is shared; a restart clears it.",
+    "value": {
+      "text": "1",
+      "unit": "process"
+    },
+    "category": "operational",
+    "affects": "The failed-login count.",
+    "reason": "The count is kept in memory.",
+    "evidence": [
+      "Step 2 summary."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 2",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:Dockerfile:--workers 1"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_skeleton.py::test_web_runs_one_process"
+    ]
+  },
+  {
+    "key": "transaction_retries",
+    "name": "Transaction retries",
+    "state": "in_force",
+    "statement": "A database transaction that fails with a deadlock (40P01) or a serialization failure (40001) is rerun as a whole, at most 5 attempts in all. Other errors are not retried.",
+    "value": {
+      "text": "5",
+      "unit": "attempts"
+    },
+    "category": "operational",
+    "affects": "Write paths under contention.",
+    "reason": "PostgreSQL may abort one of two concurrent transactions; the caller must retry.",
+    "evidence": [
+      "Step 3 summary, 'The locking protocol'; step 4 summary."
+    ],
+    "decided": {
+      "by": "step 4 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.retry:run_transaction(attempts)",
+          "equals": 5
+        },
+        {
+          "ref": "python:hypocurate.db.retry:RETRYABLE_SQLSTATES",
+          "equals": [
+            "40001",
+            "40P01"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_write_retry.py::test_a_retryable_failure_reruns_the_whole_transaction",
+      "tests/test_write_retry.py::test_other_errors_are_not_retried",
+      "tests/test_write_retry.py::test_it_gives_up_after_the_last_attempt",
+      "tests/test_write_retry.py::test_a_real_deadlock_is_retried_to_completion"
+    ]
+  },
+  {
+    "key": "worker_poll_interval",
+    "name": "Worker idle interval",
+    "state": "in_force",
+    "statement": "The idle worker checks the database and sleeps 60 seconds between checks.",
+    "value": {
+      "text": "60",
+      "unit": "seconds"
+    },
+    "category": "operational",
+    "affects": "Worker logs only; it runs nothing yet.",
+    "reason": "The queue comes in step 9.",
+    "evidence": [
+      "Step 2 summary."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady), step 2",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.worker:IDLE_SECONDS",
+          "equals": 60
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_health.py::test_worker_idles_and_checks_the_database"
+    ]
+  },
+  {
+    "key": "spending_caps",
+    "name": "Spending caps",
+    "state": "in_force",
+    "statement": "Model calls may cost at most $2 per run and $50 per calendar month (UTC), counting calls without a reported cost at their upper bound.",
+    "value": {
+      "text": "$2 per run; $50 per month",
+      "unit": "USD"
+    },
+    "category": "operational",
+    "affects": "Whether a run or a model call may proceed.",
+    "reason": "CLAUDE.md, rule 12.",
+    "evidence": [
+      "CLAUDE.md, rule 12; step 3 summary, 'Step 9 requirements'."
+    ],
+    "decided": {
+      "by": "PRD v1.6 (owner)",
+      "date": "2026-10-04"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 9,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": []
+  }
 ]
 ```
 
@@ -1904,17 +3683,33 @@ Pooled: 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 42
 """The assumptions register (step 4b): one source file, `hypocurate/assumptions.json`.
 
 One entry per assumption: what is assumed, its value, why, who decided it and when, the
-expert review, the sensitivity analysis that covers it, whether code applies it yet, and
+expert review, the sensitivity analysis that covers it, whether code applies it yet
+(yes, partly, or not yet), the regression tests that cover the behaviour it describes, and
 its earlier values. The /assumptions page is generated from it and nothing else.
+
+States: `in_force`; `open` (no value in force; who decides, before which step);
+`direction_approved` (the owner approved the direction; a technical review is pending
+before it is applied).
 
 Rules (CLAUDE.md, "How we work"): a new assumption or a changed default is entered here in
 the same merge; code reads a default from one named place, and an entry that code applies
-names that place in `applied.settings`. Each setting reference has one of these forms:
+(fully or partly) names that place in `applied.settings`.
+
+**What the checks establish, and what they do not** (step 4b review, finding 1). The
+settings check is a *reference and value check*: each named setting exists, and, where the
+entry gives `equals`, holds that value. It does not establish that the entry's wording
+describes what the code does: a function can change behaviour under the same name, a
+`sql:` reference matches the name anywhere in the migration text (comments included), and
+a constant can stay unchanged while code stops using it. Behaviour is covered by the
+regression tests an applied entry names in `tests`; `tests/test_assumptions.py` checks only
+that those tests exist.
+
+Each setting reference has one of these forms:
 
 - `python:<module>:<name>[.<attribute or key>…]` — a module attribute, walked by attribute
   or mapping key;
 - `python:<module>:<function>(<parameter>)` — the default of a function's parameter;
-- `sql:<name>` — a constraint, function or message in the migrations;
+- `sql:<name>` — a name in the migrations' text (a whole word; comments are not excluded);
 - `file:<repository path>:<text>` — a fixed text in a repository file (for example the
   Dockerfile's process count).
 
@@ -1940,13 +3735,16 @@ MIGRATIONS = PACKAGE / "db" / "migrations" / "versions"
 CATEGORIES = {"scientific": "Scientific", "statistical": "Statistical",
               "data_handling": "Data handling", "operational": "Operational"}
 REVIEW_STATUSES = {"not_reviewed": "Not reviewed", "accepted": "Reviewed and accepted", "disputed": "Disputed"}
-STATES = ("in_force", "open")
+STATES = {"in_force": "In force", "open": "Open decision",
+          "direction_approved": "Direction approved, pending technical review"}
+APPLIED = {"yes": "Yes", "partly": "Partly", "not_yet": "Not yet"}
 BUILD_STEPS = range(5, 13)  # PRD 15, steps still to come
 
 FIELDS = {"key", "name", "state", "statement", "value", "category", "affects", "reason", "evidence",
-          "decided", "expert_review", "sensitivity", "applied", "history", "notes"}
-OPEN_ONLY_FIELDS = {"pending"}
+          "decided", "expert_review", "sensitivity", "applied", "tests", "history", "notes"}
+PENDING_STATES = ("open", "direction_approved")  # these carry `pending: {by, before_step}`
 KEY = re.compile(r"[a-z][a-z0-9_]*")
+TEST_REF = re.compile(r"tests/(test_[a-z0-9_]+\.py)::(test_[a-z0-9_]+)")
 
 
 class RegisterError(ValueError):
@@ -2010,14 +3808,20 @@ def validate(entries: Any) -> None:
 
 
 def _validate_entry(where: str, e: Any) -> None:
-    is_open = isinstance(e, dict) and e.get("state") == "open"
-    _keys(where, e, FIELDS | (OPEN_ONLY_FIELDS if is_open else set()))
+    state = e.get("state") if isinstance(e, dict) else None
+    is_open = state == "open"
+    _keys(where, e, FIELDS | ({"pending"} if state in PENDING_STATES else set()))
     if not isinstance(e["key"], str) or not KEY.fullmatch(e["key"]):
         raise RegisterError(f"{where}.key: lower-case letters, digits and _ only")
     for f in ("name", "statement", "affects", "reason"):
         _text(f"{where}.{f}", e[f])
     if e["state"] not in STATES:
         raise RegisterError(f"{where}.state: one of {list(STATES)}")
+    if state in PENDING_STATES:
+        _keys(f"{where}.pending", e["pending"], {"by", "before_step"})
+        _text(f"{where}.pending.by", e["pending"]["by"])
+        if e["pending"]["before_step"] not in BUILD_STEPS:
+            raise RegisterError(f"{where}.pending.before_step: a build step from 5 to 12")
     if e["category"] not in CATEGORIES:
         raise RegisterError(f"{where}.category: one of {list(CATEGORIES)}")
     if not isinstance(e["evidence"], list) or not e["evidence"]:
@@ -2035,10 +3839,6 @@ def _validate_entry(where: str, e: Any) -> None:
         # An open decision has no value in force and no decision yet; it says who decides, by when.
         if e["value"] is not None or e["decided"] is not None:
             raise RegisterError(f"{where}: an open decision has value null and decided null")
-        _keys(f"{where}.pending", e["pending"], {"by", "before_step"})
-        _text(f"{where}.pending.by", e["pending"]["by"])
-        if e["pending"]["before_step"] not in BUILD_STEPS:
-            raise RegisterError(f"{where}.pending.before_step: a build step from 5 to 12")
     else:
         _keys(f"{where}.value", e["value"], {"text", "unit"})
         _text(f"{where}.value.text", e["value"]["text"])
@@ -2060,6 +3860,14 @@ def _validate_entry(where: str, e: Any) -> None:
 
     _validate_applied(f"{where}.applied", e["applied"])
 
+    if not isinstance(e["tests"], list):
+        raise RegisterError(f"{where}.tests: a list")
+    for j, t in enumerate(e["tests"]):
+        if not isinstance(t, str) or not TEST_REF.fullmatch(t):
+            raise RegisterError(f"{where}.tests[{j}]: tests/test_<file>.py::test_<name>")
+    if e["applied"]["status"] in ("yes", "partly") and not e["tests"]:
+        raise RegisterError(f"{where}.tests: an entry applied in code names the regression tests that cover it")
+
     if not isinstance(e["history"], list):
         raise RegisterError(f"{where}.history: a list")
     previous_to = None
@@ -2079,10 +3887,18 @@ def _validate_entry(where: str, e: Any) -> None:
 
 
 def _validate_applied(where: str, applied: Any) -> None:
-    if not isinstance(applied, dict) or applied.get("status") not in ("yes", "not_yet"):
-        raise RegisterError(f"{where}.status: 'yes' or 'not_yet'")
-    if applied["status"] == "yes":
-        _keys(where, applied, {"status", "settings", "note"})
+    if not isinstance(applied, dict) or applied.get("status") not in APPLIED:
+        raise RegisterError(f"{where}.status: one of {list(APPLIED)}")
+    if applied["status"] in ("yes", "partly"):
+        if applied["status"] == "yes":
+            _keys(where, applied, {"status", "settings", "note"})
+        else:
+            # Partly: what is done, what is pending, and the step that completes it.
+            _keys(where, applied, {"status", "settings", "done", "pending", "step", "note"})
+            _text(f"{where}.done", applied["done"])
+            _text(f"{where}.pending", applied["pending"])
+            if applied["step"] not in BUILD_STEPS:
+                raise RegisterError(f"{where}.step: a build step from 5 to 12")
         if not isinstance(applied["settings"], list) or not applied["settings"]:
             raise RegisterError(f"{where}.settings: applied in code needs at least one named setting")
         for j, s in enumerate(applied["settings"]):
@@ -2158,7 +3974,8 @@ def resolve_setting(ref: str) -> Any:
 
 def check_settings(entry: dict) -> list[str]:
     """Problems with an applied entry's named settings: each must resolve, and each value
-    given with `equals` must equal the code's. Empty when all is well."""
+    given with `equals` must equal the code's. Empty when all is well. A reference and
+    value check only: it does not show that the code behaves as the entry says."""
     problems = []
     for s in entry["applied"].get("settings", []):
         try:
@@ -2173,10 +3990,24 @@ def check_settings(entry: dict) -> list[str]:
 
 # --- The page ------------------------------------------------------------------------
 
+def named_tests_missing(entry: dict) -> list[str]:
+    """The entry's named regression tests that do not exist as test functions."""
+    missing = []
+    for ref in entry["tests"]:
+        file, name = TEST_REF.fullmatch(ref).groups()
+        path = REPO_ROOT / "tests" / file
+        if not path.is_file() or not re.search(rf"^def {name}\(", path.read_text(encoding="utf-8"), re.M):
+            missing.append(f"{entry['key']}: {ref} does not exist")
+    return missing
+
+
 def page_sections(entries: list[dict], *, not_reviewed_only: bool = False) -> list[tuple[str, list[dict]]]:
-    """Sections for the page: open decisions first, then the entries in force by category."""
+    """Sections for the page: open decisions first, then directions approved pending a
+    technical review, then the entries in force by category."""
     shown = [e for e in entries if not not_reviewed_only or e["expert_review"]["status"] == "not_reviewed"]
-    sections = [("Open decisions", [e for e in shown if e["state"] == "open"])]
+    sections = [("Open decisions", [e for e in shown if e["state"] == "open"]),
+                ("Direction approved, pending technical review",
+                 [e for e in shown if e["state"] == "direction_approved"])]
     sections += [(label, [e for e in shown if e["state"] == "in_force" and e["category"] == c])
                  for c, label in CATEGORIES.items()]
     return [(label, group) for label, group in sections if group]
@@ -2185,7 +4016,9 @@ def page_sections(entries: list[dict], *, not_reviewed_only: bool = False) -> li
 def summary_counts(entries: list[dict]) -> dict[str, int]:
     return {
         "total": len(entries),
+        "in_force": sum(e["state"] == "in_force" for e in entries),
         "open": sum(e["state"] == "open" for e in entries),
+        "direction_approved": sum(e["state"] == "direction_approved" for e in entries),
         "scientific_not_reviewed": sum(e["category"] == "scientific"
                                        and e["expert_review"]["status"] == "not_reviewed" for e in entries),
     }
@@ -2332,11 +4165,14 @@ def create_app(
 
 <h1>Assumptions</h1>
 <p class="summary" id="summary">
-  {{ counts.total }} entries ·
+  {{ counts.total }} entries:
+  {{ counts.in_force }} in force ·
   <strong>{{ counts.open }} open decision{{ "" if counts.open == 1 else "s" }}</strong> ·
+  <strong>{{ counts.direction_approved }} direction{{ "" if counts.direction_approved == 1 else "s" }} approved, pending technical review</strong> ·
   <strong>{{ counts.scientific_not_reviewed }} scientific assumption{{ "" if counts.scientific_not_reviewed == 1 else "s" }} not reviewed by an expert</strong>
 </p>
-<p class="muted">Read-only. Generated from <code>hypocurate/assumptions.json</code>; changes are made there, in a reviewed merge.</p>
+<p class="muted">Read-only. Generated from <code>hypocurate/assumptions.json</code>; changes are made there, in a reviewed merge.
+"Applied in code" names the settings that hold each value; the register's tests check only that those settings exist and hold the stated values, not that the code behaves as stated. Behaviour is covered by the regression tests each entry names.</p>
 <p class="filter">
   {% if not_reviewed_only %}Showing: not reviewed by an expert. <a href="/assumptions">Show all</a>
   {% else %}Showing: all. <a href="/assumptions?review=not_reviewed">Show only: not reviewed by an expert</a>{% endif %}
@@ -2348,20 +4184,23 @@ def create_app(
   <thead><tr><th>Assumption</th><th>Value</th><th>What it affects</th><th>Expert review</th><th>Applied in code</th></tr></thead>
   {% for e in entries %}
   {% set unreviewed_scientific = e.category == "scientific" and e.expert_review.status == "not_reviewed" %}
-  <tbody id="{{ e.key }}" class="entry{% if unreviewed_scientific %} unreviewed-scientific{% endif %}{% if e.state == 'open' %} open{% endif %}">
+  <tbody id="{{ e.key }}" class="entry{% if unreviewed_scientific %} unreviewed-scientific{% endif %} state-{{ e.state }}">
     <tr>
       <td>
         <strong>{{ e.name }}</strong>
         {% if e.state == "open" %}<span class="badge open-badge">Open decision</span>{% endif %}
+        {% if e.state == "direction_approved" %}<span class="badge open-badge">Direction approved, pending technical review</span>{% endif %}
         {% if unreviewed_scientific %}<span class="badge unreviewed">Not reviewed by an expert</span>{% endif %}
         <div>{{ e.statement }}</div>
-        {% if e.state == "open" %}<div class="muted">{{ categories[e.category] }}</div>{% endif %}
+        {% if e.state != "in_force" %}<div class="muted">{{ categories[e.category] }}{% if e.state == "direction_approved" %} · pending: {{ e.pending.by }}, before step {{ e.pending.before_step }}{% endif %}</div>{% endif %}
       </td>
       <td>{% if e.value %}{{ e.value.text }}{% if e.value.unit and e.value.unit not in e.value.text %} {{ e.value.unit }}{% endif %}
           {% else %}Not decided ({{ e.pending.by }}, before step {{ e.pending.before_step }}){% endif %}</td>
       <td>{{ e.affects }}</td>
       <td>{{ review_labels[e.expert_review.status] }}{% if e.expert_review.name %}: {{ e.expert_review.name }}, {{ e.expert_review.date }}{% endif %}</td>
-      <td>{% if e.applied.status == "yes" %}Yes{% else %}Not yet: step {{ e.applied.step }}{% endif %}</td>
+      <td>{% if e.applied.status == "yes" %}Yes
+          {% elif e.applied.status == "partly" %}<strong>Partly.</strong> Done: {{ e.applied.done }} <strong>Pending (step {{ e.applied.step }}):</strong> {{ e.applied.pending }}
+          {% else %}Not yet: step {{ e.applied.step }}{% endif %}</td>
     </tr>
     <tr class="more">
       <td colspan="5">
@@ -2373,9 +4212,10 @@ def create_app(
             <dt>Decided</dt><dd>{% if e.decided %}{{ e.decided.by }}, {{ e.decided.date }}{% else %}Not yet decided{% endif %}</dd>
             <dt>Sensitivity analysis</dt><dd>{{ e.sensitivity or "None" }}</dd>
             <dt>Applied in code</dt><dd>
-              {% if e.applied.status == "yes" %}Yes: {% for s in e.applied.settings %}<code>{{ s.ref }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
-              {% else %}Not yet: step {{ e.applied.step }}.{% endif %}
+              {% if e.applied.status == "yes" %}Yes.{% elif e.applied.status == "partly" %}Partly (pending: step {{ e.applied.step }}).{% else %}Not yet: step {{ e.applied.step }}.{% endif %}
               {% if e.applied.note %} {{ e.applied.note }}{% endif %}</dd>
+            {% if e.applied.settings %}<dt>Named settings (reference and value checks only)</dt><dd>{% for s in e.applied.settings %}<code>{{ s.ref }}</code>{% if s.equals is defined %} = <code>{{ s.equals }}</code>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+            <dt>Regression tests</dt><dd>{% if e.tests %}<ul>{% for t in e.tests %}<li><code>{{ t }}</code></li>{% endfor %}</ul>{% else %}None yet{% endif %}</dd>
             <dt>Earlier values</dt><dd>{% if e.history %}<ul>{% for h in e.history %}<li>{{ h.from }} to {{ h.to }}: {{ h.value }}{% if h.note %} ({{ h.note }}){% endif %}</li>{% endfor %}</ul>{% else %}None{% endif %}</dd>
             {% if e.notes %}<dt>Notes</dt><dd><ul>{% for n in e.notes %}<li>{{ n }}</li>{% endfor %}</ul></dd>{% endif %}
             <dt>Key</dt><dd><code>{{ e.key }}</code></dd>
@@ -2559,10 +4399,13 @@ if __name__ == "__main__":
 """Step 4b: the assumptions register (`hypocurate/assumptions.json`) and its read-only page.
 
 - Every entry follows the schema; the validator refuses each kind of malformed entry.
-- The owner's eight decisions of 2026-10-05 are present as decided.
-- **Every entry marked "applied: yes" names at least one setting that exists in the code,
-  and where the register gives a value, the code holds that value** (CLAUDE.md, "How we
-  work", item 12). A setting renamed or changed in code without the register fails here.
+- The owner's decisions of 2026-10-05 and the step 4b review's corrections are present.
+- **Reference and value checks:** every entry applied in code (fully or partly) names at
+  least one setting that exists, and where the register gives a value, the code holds it
+  (CLAUDE.md, "How we work", item 12). A setting renamed or changed without the register
+  fails here. These checks do **not** show that an entry's wording matches what the code
+  does (step 4b review, finding 1): behaviour is covered by the regression tests each
+  applied entry names, and this file checks only that those tests exist.
 - GET /assumptions needs the login, is generated from the register, and offers no editing.
 """
 import copy
@@ -2586,9 +4429,9 @@ OWNER = "owner (Khalid El-Awady)"
 OWNER_DECISIONS = {
     "tamu_test_temperature": ("scientific", 6),
     "permitted_test_types": ("scientific", 6),
-    "tamu_grouping_unit": ("statistical", None),  # already applied: the adapter's grouping unit
+    "tamu_grouping_unit": ("statistical", 7),  # partly applied: the adapter's grouping unit
     "same_alloy_rule": ("scientific", 6),
-    "fixed_minimums": ("statistical", 6),
+    "fixed_minimums": ("statistical", 6),  # partly applied: the database's checks
     "values_disagree_tolerance": ("data_handling", 6),
     "calibration_noise_levels": ("statistical", 7),
     "tag_starting_lists": ("data_handling", 6),
@@ -2608,17 +4451,21 @@ def test_every_category_has_entries_and_keys_are_unique():
     assert len({e["key"] for e in REGISTER}) == len(REGISTER)
 
 
+PARTLY = {"tamu_grouping_unit", "papers_independent", "sufficiency_options", "controlled_extract_disabled",
+          "validity_checks", "fixed_minimums", "grain_size_transformation_at_analysis", "assigned_value_statuses"}
+
+
 def test_the_owners_eight_decisions_are_recorded_as_decided():
     for key, (category, step) in OWNER_DECISIONS.items():
         e = BY_KEY[key]
-        assert e["state"] == "in_force", key
+        # Review finding 4: the calibration direction is approved, its technical review pending.
+        expected_state = "direction_approved" if key == "calibration_noise_levels" else "in_force"
+        assert e["state"] == expected_state, key
         assert e["category"] == category, key
         assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
         assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}, key
-        if step is None:
-            assert e["applied"]["status"] == "yes", key
-        else:
-            assert e["applied"] == {**e["applied"], "status": "not_yet", "step": step}, key
+        status = "partly" if key in PARTLY else "not_yet"
+        assert e["applied"]["status"] == status and e["applied"]["step"] == step, key
 
 
 def test_decisions_carry_the_owners_wording():
@@ -2631,18 +4478,95 @@ def test_decisions_carry_the_owners_wording():
     assert "within" not in same_alloy["statement"]  # the owner's corrected wording
     assert "1 at.%" in same_alloy["sensitivity"]
     assert "min(|a|, |b|)" in BY_KEY["values_disagree_tolerance"]["statement"]
-    assert "not final" in " ".join(BY_KEY["values_disagree_tolerance"]["notes"])
+    assert "conflict_pairing_rule" in " ".join(BY_KEY["values_disagree_tolerance"]["notes"])
     calibration = BY_KEY["calibration_noise_levels"]
     assert "fixed at the rules lock and applied by code" in calibration["statement"]
     assert "no person or agent chooses the values" in calibration["statement"]
     notes = " ".join(calibration["notes"])
     assert "PRD 5.10" in notes and "second-model review in step 7" in notes and "both ways" in notes
-    assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < 0.05"
+    assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < α (α = 0.05 by default)"
 
 
-def test_the_microstructure_decision_is_recorded_and_no_decision_is_open():
+# --- The step 4b review (second model, 2026-10-05), accepted by the owner -------------------
+
+def test_partly_applied_entries_say_what_is_done_and_what_is_pending():
+    """Finding 2: no entry says 'Yes' while its principal safeguard is pending."""
+    assert {e["key"] for e in REGISTER if e["applied"]["status"] == "partly"} == PARTLY
+    for key in PARTLY:
+        applied = BY_KEY[key]["applied"]
+        assert applied["done"] and applied["pending"] and applied["settings"], key
+
+
+def test_the_survivor_rule_has_the_owners_step_1_wording():
+    """Finding 3: a DOI identifies the cited paper, not where a record was extracted."""
+    e = BY_KEY["duplicate_survivor_rule"]
+    assert e["statement"].startswith("1) Prefer the record that carries the original paper reference (DOI).")
+    assert "directly" not in e["statement"] and "detected" not in e["statement"]
+    assert "extraction-origin metadata, which does not exist" in " ".join(e["notes"])
+    assert "detected by the original paper's DOI" in e["history"][0]["value"]  # the withdrawn wording
+
+
+def test_the_pairing_rule_is_open_and_calibration_awaits_its_technical_review():
+    """Finding 4."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["conflict_pairing_rule"]
+    pairing = BY_KEY["conflict_pairing_rule"]
+    assert pairing["pending"] == {"by": "owner", "before_step": 6} and pairing["value"] is None
+    assert "repeat specimens" in pairing["statement"]
+    assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
+    assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
+
+
+REVIEW_ADDITIONS = {
+    "association_not_causation": "scientific", "measurement_error_not_propagated": "scientific",
+    "equal_row_weights": "statistical", "selection_and_missingness": "statistical",
+    "no_multiplicity_adjustment": "statistical", "calibration_error_model": "statistical",
+    "few_groups_approximate": "statistical", "observation_unit": "data_handling",
+}
+
+
+def test_the_eight_missing_assumptions_are_added_not_reviewed():
+    for key, category in REVIEW_ADDITIONS.items():
+        e = BY_KEY[key]
+        assert e["category"] == category and e["state"] == "in_force", key
+        assert e["expert_review"]["status"] == "not_reviewed" and e["affects"], key
+    assert "never imply proof of cause" in " ".join(BY_KEY["association_not_causation"]["notes"])
+    assert "not the mean of" in BY_KEY["measurement_error_not_propagated"]["statement"]
+    assert "not each paper or alloy" in BY_KEY["equal_row_weights"]["statement"]
+    assert "publication bias" in BY_KEY["selection_and_missingness"]["statement"]
+    assert "do not keep a 5% false-positive rate" in BY_KEY["no_multiplicity_adjustment"]["statement"]
+    assert "It does not simulate source discovery" in BY_KEY["calibration_error_model"]["statement"]
+    assert "approximations" in BY_KEY["few_groups_approximate"]["statement"]
+    assert "repeated specimens" in BY_KEY["observation_unit"]["statement"]
+
+
+def test_the_small_corrections():
+    assert "CSV" in BY_KEY["malformed_files_refused"]["statement"]
+    assert "Spreadsheets are handled differently" in BY_KEY["malformed_files_refused"]["statement"]
+    assert "may change the calibration" in BY_KEY["normal_errors_in_calibration"]["affects"]
+    assert "optimistic" not in json.dumps(BY_KEY["normal_errors_in_calibration"])
+    session = BY_KEY["session_length"]["statement"]
+    assert "12 hours after sign-in" in session and "do not renew" in session
+
+
+def test_every_entry_applied_in_code_names_regression_tests_that_exist():
+    """Finding 1: behaviour is covered by named regression tests, which must exist."""
+    applied = [e for e in REGISTER if e["applied"]["status"] in ("yes", "partly")]
+    assert all(e["tests"] for e in applied)
+    missing = [m for e in REGISTER for m in a.named_tests_missing(e)]
+    assert not missing, "\n".join(missing)
+
+
+def test_a_named_test_that_does_not_exist_is_reported():
+    e = copy.deepcopy(BY_KEY["login_throttle"])
+    e["tests"] = ["tests/test_login_throttle.py::test_no_such_test", "tests/test_nothing.py::test_x",
+                  "tests/test_login_throttle.py::test_defaults_are_as_approved"]
+    assert a.named_tests_missing(e) == ["login_throttle: tests/test_login_throttle.py::test_no_such_test does not exist",
+                                        "login_throttle: tests/test_nothing.py::test_x does not exist"]
+
+
+def test_the_microstructure_decision_is_recorded():
     """Owner, 2026-10-05: the open decision 'tamu_microstructure' became a decision."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
+    assert "tamu_microstructure" not in [e["key"] for e in REGISTER if e["state"] == "open"]
     e = BY_KEY["tamu_microstructure"]
     assert e["state"] == "in_force" and e["category"] == "scientific"
     assert e["value"]["text"] == "single-phase FCC (assigned by decision)"
@@ -2662,7 +4586,7 @@ def test_the_microstructure_decision_is_recorded_and_no_decision_is_open():
 
 
 def open_entry():
-    """An open decision built for the tests (the register has none since 2026-10-05)."""
+    """An open decision built for the tests, independent of the register's own."""
     e = copy.deepcopy(BY_KEY["tamu_microstructure"])
     e.update(key="an_open_question", state="open", value=None, decided=None, history=[],
              pending={"by": "owner", "before_step": 6})
@@ -2712,6 +4636,17 @@ def entry(**changes):
     (lambda e: e.update(state="open"), "missing ['pending']"),
     (lambda e: e.update(state="open", pending={"by": "owner", "before_step": 6}), "open decision has value null"),
     (lambda e: e.update(pending={"by": "owner", "before_step": 6}), "unknown"),
+    (lambda e: e.update(state="direction_approved"), "missing ['pending']"),
+    (lambda e: e.update(state="direction_approved", pending={"by": "review", "before_step": 13}), "build step"),
+    (lambda e: e.update(tests=[]), "names the regression tests"),
+    (lambda e: e.update(tests=["tests/test_login.py:test_x"]), "tests[0]"),
+    (lambda e: e.pop("tests"), "missing"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [{"ref": "x"}], "done": "d", "pending": "p",
+                                 "note": None}), "missing ['step']"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [{"ref": "x"}], "done": " ", "pending": "p",
+                                 "step": 6, "note": None}), "applied.done"),
+    (lambda e: e.update(applied={"status": "partly", "settings": [], "done": "d", "pending": "p",
+                                 "step": 6, "note": None}), "at least one named setting"),
 ])
 def test_the_validator_refuses_malformed_entries(bad, message):
     e = entry()
@@ -2740,7 +4675,8 @@ def test_an_open_decision_needs_who_decides_and_by_when():
 # --- Applied in code: a named setting ---------------------------------------------------
 
 def test_every_applied_entry_names_settings_that_exist_and_match():
-    applied = [e for e in REGISTER if e["applied"]["status"] == "yes"]
+    """Reference and value checks only (review finding 1)."""
+    applied = [e for e in REGISTER if e["applied"]["status"] in ("yes", "partly")]
     assert len(applied) >= 20
     problems = [p for e in applied for p in a.check_settings(e)]
     assert not problems, "\n".join(problems)
@@ -2748,7 +4684,7 @@ def test_every_applied_entry_names_settings_that_exist_and_match():
 
 def test_applied_values_are_compared_where_the_register_gives_them():
     """Spot-check that `equals` is used for the numeric and categorical defaults."""
-    compared = {s["ref"]: s["equals"] for e in REGISTER if e["applied"]["status"] == "yes"
+    compared = {s["ref"]: s["equals"] for e in REGISTER if e["applied"]["status"] in ("yes", "partly")
                 for s in e["applied"]["settings"] if "equals" in s}
     assert compared["python:hypocurate.web.login_throttle:MAX_FAILURES"] == 5
     assert compared["python:hypocurate.web.login_throttle:WINDOW_SECONDS"] == 900
@@ -2812,10 +4748,14 @@ def test_the_page_needs_the_login():
         assert r.status_code == 303 and r.headers["location"] == "/login", path
 
 
-def test_the_page_shows_every_entry_grouped_by_category():
+HEADINGS = ["Open decisions", "Direction approved, pending technical review",
+            "Scientific", "Statistical", "Data handling", "Operational"]
+
+
+def test_the_page_shows_every_entry_grouped_with_pending_states_first():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == ["Scientific", "Statistical", "Data handling", "Operational"]  # no open decision now
+    assert headings == HEADINGS
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -2828,19 +4768,25 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     register = REGISTER + [open_entry()]
     html = signed_in(register).get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == ["Open decisions", "Scientific", "Statistical", "Data handling", "Operational"]
+    assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["conflict_pairing_rule", "an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert "1 open decision</strong>" in html
+    assert "2 open decisions</strong>" in html
+    second = re.split(r"<h2>", html)[2]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
+    assert "pending: second-model technical review, before step 7" in second
 
 
-def test_the_summary_line_counts_open_decisions_and_unreviewed_scientific_entries():
+def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     html = signed_in().get("/assumptions").text
-    summary = re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1)
-    n_open = sum(e["state"] == "open" for e in REGISTER)
+    summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
+    count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert n_open == 0 and "0 open decisions" in summary
+    assert count == {"in_force": len(REGISTER) - 2, "open": 1, "direction_approved": 1}
+    assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
+    assert "1 open decision</strong>" in summary
+    assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
 
@@ -2885,6 +4831,20 @@ def test_each_row_expands_to_reason_evidence_history_and_sensitivity():
     applied = re.search(r'<tbody id="session_length"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>python:hypocurate.web.app:SESSION_MAX_AGE</code>" in applied
     assert "Not yet: step 7" in re.search(r'<tbody id="exponent_fixed"(.*?)</tbody>', html, re.S).group(1)
+    assert "<code>tests/test_login.py::test_session_expires_after_max_age</code>" in applied
+    assert "Named settings (reference and value checks only)" in applied
+
+
+def test_a_partly_applied_entry_shows_done_and_pending_in_its_main_row():
+    """Finding 2: the reader sees the pending safeguard without expanding the row."""
+    html = signed_in().get("/assumptions").text
+    for key in PARTLY:
+        body = re.search(rf'<tbody id="{key}"(.*?)</tbody>', html, re.S).group(1)
+        main_row = body.split('<tr class="more">')[0]
+        applied = BY_KEY[key]["applied"]
+        assert "<strong>Partly.</strong>" in main_row, key
+        assert str(escape(applied["done"])) in main_row and str(escape(applied["pending"])) in main_row, key
+        assert f"Pending (step {applied['step']}):" in main_row, key
 
 
 def test_the_page_is_read_only():
@@ -2909,8 +4869,56 @@ def test_the_home_page_links_to_the_register():
 ## 7. Suite output
 
 ```
-$ pytest -q tests/test_assumptions.py -v   (Codespace; per-test lines)
-============================== 58 passed in 1.00s ==============================
+$ pytest -q tests/test_assumptions.py tests/test_login.py -v   (Codespace; per-test lines)
+============================= 114 passed in 1.77s ==============================
 $ pytest -q   (whole suite)
-527 passed in 61.29s (0:01:01)
+544 passed in 62.21s (0:01:02)
+```
+
+## 8. The first review, verbatim
+
+### `docs/reviews/step04b_review_chatgpt.md`
+
+```text
+No serious security or database-damage issue found. The substantive problems are overclaiming what “applied” tests prove, several misleading entries, and missing scientific assumptions. I reviewed the packet and ran a targeted validation check; I did not rerun the reported 527-test suite.
+1. “Applied: yes” can drift without the register tests failing.
+   The checks establish that a named object exists and, sometimes, equals a separately recorded value. They do not establish that the entry accurately describes its behaviour.
+   I changed grain_size_as_reported to say values are converted to nanometres, leaving its checked constant as µm. Both validation and check_settings passed.
+   Other gaps:
+   - A function’s behaviour can change while its name remains.
+   - SQL references match names in migration text—even comments or superseded migrations.
+   - A constant can remain unchanged while executable code stops using it.
+   Fix the claim, not necessarily the architecture: describe these as reference/value checks. Link behavioural entries to relevant regression tests, and use structured values to generate displayed defaults where practical. Do not claim general protection against assumption drift.
+2. Several “Yes” labels describe only partial implementation.
+   - papers_independent: the source’s grouping metadata exists; independence is neither established nor yet used in inference.
+   - sufficiency_options: database restrictions exist, but the stated default is deferred.
+   - controlled_extract_disabled: registration defaults to disabled, but the promised exclusion from real analysis is not enforced yet.
+   The expanded notes acknowledge these distinctions, but the main row still says “Yes.” Split the statements or display “Partly applied”. A reader should not need to expand a row to discover that its principal safeguard is pending.
+3. The duplicate-survivor entry confuses citation with provenance.
+   duplicate_survivor_rule says direct extraction from the original paper is “detected by the original paper’s DOI on the record.”
+   A compilation and a copied extract can both carry that DOI. It identifies the cited paper, not where the record was extracted. The earlier step-1 decision said prefer the record carrying the original reference; the register strengthens that into an unsupported provenance claim.
+   Restore the precise decision wording. If direct-source preference is intended later, it needs explicit extraction-origin metadata.
+4. “0 open decisions” conceals a genuine unresolved decision.
+   values_disagree_tolerance explicitly says record pairing is unfinished and needs owner approval. That determines whether legitimate repeat specimens become conflicts, so it deserves its own open entry.
+   The calibration change is different: the owner has chosen a direction, but implementation awaits review. Keep that distinction visible—approved direction, pending technical review—rather than implying every aspect is settled.
+The most important missing assumptions are below. These are register additions or clarifications, not requests to implement more models now.
+Missing assumption	What should be stated
+Confounding and interpretation of k	Within an alloy, processing, texture, dislocation density and other omitted strengthening mechanisms may vary with grain size. Clustered errors do not remove that bias. A positive fitted slope supports an association under the model, not isolated causal proof of grain-size strengthening. Extend baseline_per_alloy.
+Measurement error is ignored	Grain size and composition are treated as known predictors. Their measurement uncertainty is not propagated. Also, transforming a reported mean grain size is not generally equivalent to averaging the transformed grain sizes. mean_grain_size_only does not fully capture this.
+Weighting and influence	OLS gives each retained row equal weight in its objective—not each paper or alloy. Reported uncertainty and replicate counts do not determine weights. Larger studies and greater within-alloy predictor spread can dominate k. OLS documentation
+Selection and missingness	Available, published, convertible and eligible records are not necessarily representative of all relevant alloys or experiments. State that the analysis does not correct publication bias or outcome-related missingness; its conclusions are conditional on the retained evidence.
+Repeated testing	The significance threshold applies per locked test. Repeated queries, narrower questions and alternative plans do not collectively retain a 5% false-positive rate. State whether there is any multiplicity adjustment; do not leave that implicit.
+Calibration’s complete error model	The reference simulation uses independent, zero-mean group shifts and record errors with common variance components, conditional on fixed grain sizes, groups and inclusion. “Normal distributions” alone omits these assumptions. It does not simulate source discovery, extraction mistakes or selection uncertainty.
+Few-group inference is approximate	Passing the two-group computational floor does not establish reliable inference. The small-sample correction and t reference remain approximations, especially with few or highly unequal groups.
+What one observation represents	A source row might be one specimen, a replicate mean or a summarized condition. State how these are treated, whether specimen counts matter, and what evidence distinguishes repeated specimens from duplicated reporting. This connects directly to the unresolved pairing decision.
+
+
+A few smaller accuracy corrections:
+- malformed_files_refused should explicitly refer to CSV; spreadsheet handling is different.
+- p_threshold_comparison should display p < α, with 0.05 identified as the default, consistent with one_sided_test.
+- normal_errors_in_calibration says heavier tails would make results optimistic. Use may change calibration; the direction is not guaranteed.
+- “A login lasts 12 hours” suggests an absolute lifetime. The session middleware renews nonempty session cookies, so describe the expiry behaviour precisely.
+Status honesty: source-based assignments and decision-based assignments are clearly distinguished in the register. Their future implementation is labelled accordingly. All 60 entries are marked not reviewed; I found no false expert endorsement.
+Page and deployment: the route is behind the existing login, has no write handler, and only renders register contents. Failing startup on invalid JSON/schema also disables login and health for that instance. CI validates the bundled register, and a normal Render deployment retains the previous release when the new instance fails health checks. That is reasonable here, but it is not a guarantee for first startup or every restart, and it does not undo an already committed pre-deploy migration. Render deployment behaviour
+The page needs no redesign. Correct the implementation claims and add the missing scientific assumptions before treating this as an authoritative register.
 ```
