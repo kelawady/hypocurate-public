@@ -1,6 +1,6 @@
 # Build step 6 — summary for review
 
-Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed, each with tests that failed before. Not merged.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
+Date: 2026-10-06. Branch: `step-06-eligibility`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-06: "serious correctness gaps", six findings, hold step 6); the owner accepted all six with a decision on the primary set; fixes built. Re-check (2026-10-06): five findings closed, three items left (a race on per-set flags; the fixed rules bypassed through grouping and outcome; duplicate rule entries at the second enforcement point); fixed, with the owner's addition of a check on the frozen set itself, each with tests that failed on the code before it. Confirmation review (2026-10-06): two problems left (mixed groups lost definite pairs; unequal reference text treated as different papers); fixed. Second confirmation (2026-10-06): one new problem (overlapping exact pairs resolved in id order); fixed, with tests that failed before. Not merged.** PRD Section 15, step 6: "Plan, checkpoints, inclusion and checks. The plan model, the rules lock and the dataset freeze, the domain profile and tags, exclusion and eligibility rules, and the code checks that raise flags."
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`. The review is `docs/reviews/step06_review_chatgpt.md` (saved verbatim); the first packet is `docs/reviews/step06_review_packet.md`, the fix packet `docs/reviews/step06_fix_packet.md`. **It describes the state after the fixes**; section "Second-model review and fixes" maps each finding to its fix and tests.
 
@@ -66,6 +66,37 @@ The owner accepted all six findings, decided that the primary set's handling of 
 - The plan names its hypothesis version by database id, so the freeze fingerprints of runs of different versions differ, by design.
 
 **Reference numbers after the fixes:** recomputed with the same scripts; **none changed**. Records, alloys, groups, residual df, k, standard errors and p-values are identical for every set. The freeze fingerprint's value changed, because it is now computed from stable identities (`93c44b22…`, was `3440e972…`); it is not a reference number.
+
+## Second confirmation (ChatGPT, 2026-10-06) and fix
+
+The text is in `docs/reviews/step06_confirm2_chatgpt.md`; the commits and diffs in `docs/reviews/step06_fix4_packet.md`. Confirmed fixed: mixed groups, paper identity, non-unique exact matches, the "definite first" equivalence (for that change), the two label-over-pair fixes. **New problem:** overlapping exact pairs were resolved pair by pair in flag-id order, so the primary set depended on database ids. The reviewer's case: A (MPEA, DOI D), B (DOI D, reference Y), C (no DOI, reference Y); A-B exact, B-C exact, A-C possible; possible duplicates counted both. In one id order A and C survived, in another only A. Both passed the freeze check.
+
+| Item | Fix | New tests (failed before the fix) |
+|---|---|---|
+| Overlapping exact pairs | Rule 7 decides whole groups, never flag by flag. **(1)** Every pending record of an ambiguous group: `identity_unresolved`. **(2)** Records linked by a chain of exact pairs are one measurement, and a definite conflict links its records too. A connected group that touches a conflict follows the plan's conflict rule: neither (none of the chain and none of the conflicting records enters), or the survivor's value (one survivor). A group of exact duplicates only keeps exactly one survivor. **(3)** The plan's possible-duplicate choice on what remains, per connected possible group. Survivors come from the survivor rule, whose last tie-break is the source's stable identity (source, origin key, item index), never an id or an order. | `test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order` (all 6 id assignments × 3 orders; identical decisions in every set, fingerprint and freeze-check result; A survives, B and C counted once); `test_a_chain_touching_a_conflict_enters_with_none_of_its_records` |
+| The freeze check | `primary_set_problems` forms the chains itself from Checks' exact flags and allows at most one record per chain, and per group linked by a definite conflict. | `test_the_freeze_check_allows_at_most_one_record_per_chain` (A and C in, B out: no single pair is wholly inside) |
+| Permutation over the pipeline | — | `test_permuted_ids_and_insertion_order_give_the_same_frozen_result`, on the controlled extract (marked) and on the **real reference data**. Each source's records are stored shuffled, the sources in shuffled order, and unrelated records inserted first. Required: identical decisions for every record, identical membership of the primary set and every sensitivity set, identical per-set rules, identical fingerprint. Passes before and after the fix: these data have no overlapping exact pairs. |
+
+**The reviewer's case cannot arise through the sprint 1 adapters:** an exact pair needs known, equal test conditions on both sides, and Texas A&M reports no test temperature. So with only two MPEA-layout sources, no record can be exactly linked to two others. The case is tested on the same functions Checks, Inclusion and the freeze use (`raise_flags`, `set_flags`, `all_sets`, `primary_set_problems`, and `freeze_fingerprint`, factored out of the freeze unchanged for this). The pipeline permutation test covers what the adapters can produce.
+
+**Other places where an outcome could depend on ids or ordering** (looked for, as asked):
+- **The one real case:** rule 7's flag-by-flag loop, sorted by flag id. Fixed above.
+- **Order only, no effect on any decision:**
+  - the order of the rows Inclusion reads (`ORDER BY id`);
+  - the order Checks creates flags (and so their ids);
+  - the per-set flags' internal ids;
+  - union-find's internal roots (the components are the same);
+  - the order of `compared_values` numbers (audit only; not in the binding or the fingerprint).
+- **Already stable:**
+  - eligibility-rule lookup follows the plan's own order (content, not the database);
+  - survivors use the survivor rule;
+  - pairwise comparisons are symmetric;
+  - the Checks binding and the freeze fingerprint use sorted stable identities;
+  - the grain-size count is a set;
+  - sources are stored in key order.
+- **Informational, not a decision:** the Inclusion stage's stored "differences from primary" are keyed by record id (they differ between runs, as ids do). They are not in the fingerprint or the binding; the decisions themselves are compared by identity in the permutation test.
+
+**Reference numbers and fingerprint after this fix: none changed, and the freeze fingerprint is identical (`93c44b22…`).** The reference run raises no flag at all, so rule 7 never acts on it.
 
 ## Confirmation review (ChatGPT, 2026-10-06) and fixes
 
@@ -317,7 +348,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (896, all passing; 253 new in step 6; tests changed listed below)
+## Tests (901, all passing; 258 new in step 6; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
@@ -332,6 +363,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 | `tests/test_sensitivity_matching.py` | 6 | Review finding 2: the reviewer's example through the real pipeline (two compositions that merge at 1 at.%); every other set keeps the primary flags; the corrected one-change rule. |
 | `tests/test_freeze_invariants.py` | 15 | Re-check, owner's addition: the result check at the freeze, each invariant on the checker and end to end with plans built to slip past validation, including the reviewer's two cases. |
 | `tests/test_mixed_groups.py` | 2 | Confirmation: the reviewer's mixed group through the real pipeline (one of the exact pair enters, the third record follows the plan), and the freeze check refusing it with the eligibility safeguard bypassed. |
+| `tests/test_order_independence.py` | 5 | Second confirmation: the reviewer's chain with ids and order permuted; a chain touching a conflict; the chain-aware freeze check; the permutation test through the pipeline on the controlled extract and the real reference data. |
 | `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +3 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06); `primary_set_invariants` in one entry, shown on the page. |
 
 ### Tests changed (none weakened)
@@ -466,6 +498,15 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 
 "`set_flags` read without verifying the Checks coverage" first survived: the write transaction's coverage check refused the same cases a moment later. `test_the_read_itself_refuses_a_checks_result_that_does_not_cover_the_records` now shows the read itself refusing.
 
+**The second confirmation round (2026-10-06)**, four mutations:
+
+| Removed or changed in the copy | Failing tests |
+|---|---|
+| Exact pairs resolved one by one, not as chains | 2 |
+| A chain touching a conflict keeps a survivor | 1 |
+| The freeze check reads exact pairs flag by flag | 1 |
+| The survivor's last tie-break is the record id | 1 |
+
 **The confirmation round (2026-10-06)**, five mutations:
 
 | Removed or changed in the copy (confirmation fixes) | Failing tests |
@@ -480,10 +521,12 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-896 passed in 218.80s                          (after the confirmation fixes, 2026-10-06)
+901 passed in 278.36s                          (after the second confirmation's fix, 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-896 passed in 224.33s
+901 passed in 286.13s
 ```
+
+After the confirmation fixes: 896 passed locally and in the image; GitHub Actions on `8c9b062`: success (run 37374525357).
 
 After the re-check fixes: 888 passed locally and in the image.
 
@@ -562,7 +605,14 @@ Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady
 7. **At the merge:** migrations 0002 and 0003 run on Render's pre-deploy; check the live deploy with the owner (schema at 0003, 19 tag values).
 8. **Carried, unchanged:** the step 5 open items for steps 7–9; live registration of sources (owner).
 
-## Questions for the confirmation of these fixes
+## Questions for the confirmation of the second confirmation's fix
+
+1. Is any decision (primary set, sensitivity sets, survivors, fingerprint) still dependent on record ids, flag ids or insertion order?
+2. Is "a chain of exact pairs is one measurement; a chain touching a definite conflict is resolved as one group under the conflict rule" the right procedure, and does the freeze check verify it on the set itself?
+3. Is testing the three-source chain at the level of the shared functions, rather than through the adapters (which cannot produce it in sprint 1), adequate?
+4. Is any claim stronger than the code supports?
+
+## Questions for the confirmation of these fixes (answered in the second confirmation)
 
 1. Can any plan still admit an exact duplicate twice, or both records of a conflict, through a mixed group (in the primary set or a sensitivity set), and does the freeze check catch it independently?
 2. Is keeping an exact pair only when neither record has another exact match in the other's source the right line between a definite pair and an ambiguity?
