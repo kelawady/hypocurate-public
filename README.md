@@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
 
 ## Status
 
-Build step 4 of 12 (PRD Section 15): sources and harmonization. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), plus the three sources registered as sealed versions, one adapter per source and "test connection" (step 4). The access layer, the pipeline and the screens come in later steps.
+Build step 5 of 12 (PRD Section 15): the access layer. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), plus the access layer with its audit log and the file guard for pipeline processes (step 5). The pipeline, the agents and the screens come in later steps.
 
 ## Set up secrets (once)
 
@@ -138,3 +138,19 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
 - "Test connection" runs in a read-only transaction.
 - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
 - Not yet run on the live database: registering there is a later step and needs the owner.
+
+## Access layer
+
+Every agent reads data only through an access object built for its role, its stage and one run (`hypocurate/access/`; PRD 4). There is no agent yet (step 8).
+
+```python
+from hypocurate.access import Access, AccessDenied, role_input
+critic = Access(engine, run_id, "critic", "curation")
+critic.get("flags_kind")        # kind, category and record ids; never the numbers compared
+role_input(critic)              # everything the Critic may receive at this stage
+```
+
+- **Allowed fields, not blocked fields.** `hypocurate/access/allowlist.py` lists the fields each role may receive at each stage; anything else raises `AccessDenied`. Each field is built from named keys only (`fields.py`). Every field reads only the run's own rows.
+- **Stages come from the database**, on every call: before the rules lock, curation, analysis (after the freeze), closed without a freeze (gap report), final (completed). Queued and failed runs give nothing.
+- **Every read and every refusal is logged** in `audit_log` (role, stage, field, allowed or denied, and the reason; never a value). Each call is one `run_transaction` that calls `hc_write_lock(p_run => …)` first. A refusal is committed before `AccessDenied` is raised, so the row survives it. Never call the access layer while holding the same run's lock: the call would wait, and fails after 5 seconds.
+- **Pipeline runs execute in a guarded process.** `run_guarded("hypocurate.<module>:<function>", payload)` starts `python -m hypocurate.access.guarded`, which installs an irreversible audit hook: it may read only the Python installation and the package's code, and write only in a private scratch directory (`TMPDIR`, `MPLCONFIGDIR` and `XDG_CACHE_HOME` point at it). `tests/`, `docs/`, `data/` and the repository root cannot be read or listed; other programs and `ctypes` are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. Source registration refuses to run in that process. The web service, the migrations, the `sources` commands and the tests are not guarded. The hook sees what Python code opens, not what C libraries open themselves; it is not an operating-system sandbox.
