@@ -4240,7 +4240,7 @@
     "key": "conflicts_not_pooled",
     "name": "Conflicting reports are not pooled",
     "state": "in_force",
-    "statement": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and both never enter the primary analysis together: this is a fixed rule, not a plan default. By default neither enters the primary analysis; the only other choice a plan has is the survivor's value counted once. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+    "statement": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and neither enters the primary analysis: this is a fixed rule under every plan, not a default. No record connected to the conflict enters either, including one linked to it by exact duplicates. The survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value', which counts the group once by the survivor rule.",
     "value": {
       "text": "neither in primary; survivor value in a sensitivity analysis",
       "unit": null
@@ -4266,6 +4266,9 @@
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.eligibility:decide"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:conflict_survivor_allowed"
         }
       ],
       "note": null
@@ -4276,12 +4279,21 @@
         "from": "2026-10-05",
         "to": "2026-10-06",
         "note": "Step 6 wording (decision C); made a fixed rule by the owner on 2026-10-06 (the override to 'both enter' removed)."
+      },
+      {
+        "value": "When two sources report the same measurement with values beyond the tolerance, both records are kept and flagged, and both never enter the primary analysis together: this is a fixed rule, not a plan default. By default neither enters the primary analysis; the only other choice a plan has is the survivor's value counted once. The sensitivity analysis 'conflicts_survivor_value' counts the group once by the survivor rule.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Wording after it was made a fixed rule (owner, 2026-10-06) and before the third confirmation: it still called the exclusion a default and left a plan the survivor's value."
       }
     ],
     "notes": [
-      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Third confirmation (ChatGPT, 2026-10-06): a plan could still map conflicts to 'counted once' and admit one record of a conflict-connected group; the owner's rule is stricter (none, under any plan)."
     ],
     "tests": [
+      "tests/test_conflict_policy.py::test_a_plan_mapping_conflicts_to_counted_once_admits_neither_record",
+      "tests/test_conflict_policy.py::test_the_reviewers_chain_enters_primary_with_none_of_its_records",
       "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
       "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
       "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
@@ -4658,7 +4670,7 @@
     "key": "primary_set_invariants",
     "name": "What no plan can ever do to the primary set",
     "state": "in_force",
-    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) Both records of a conflict never enter: neither enters (the default), or the plan may choose the survivor's value counted once. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The only plan choices that remain: conflicts as in (2), and possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) No record connected to a definite conflict ever enters, under any plan: not both records, not one. That includes a record linked by exact duplicates to a record in conflict (the whole connected group stays out). A survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value'. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The one plan choice that remains: possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
     "value": {
       "text": "six things no plan can do",
       "unit": null
@@ -4689,6 +4701,9 @@
           "ref": "python:hypocurate.pipeline.eligibility:fixed_rule_problems"
         },
         {
+          "ref": "python:hypocurate.pipeline.eligibility:conflict_survivor_allowed"
+        },
+        {
           "ref": "sql:a model-recalled record is never eligible"
         },
         {
@@ -4698,7 +4713,7 @@
           "ref": "python:hypocurate.pipeline.eligibility:primary_set_problems"
         }
       ],
-      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…]; (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused. The result check at the freeze: test_each_invariant_is_checked_on_the_primary_set (all six) and the end-to-end tests in tests/test_freeze_invariants.py."
+      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…], tests/test_conflict_policy.py (the reviewer's chain, through the pipeline and at the freeze); (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused. The result check at the freeze: test_each_invariant_is_checked_on_the_primary_set (all six) and the end-to-end tests in tests/test_freeze_invariants.py."
     },
     "history": [
       {
@@ -4706,15 +4721,26 @@
         "from": "2026-10-06",
         "to": "2026-10-06",
         "note": "Before the re-check: enforced on the settings only."
+      },
+      {
+        "value": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) Both records of a conflict never enter: neither enters (the default), or the plan may choose the survivor's value counted once. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The only plan choices that remain: conflicts as in (2), and possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the third confirmation: point (2) let a plan choose the survivor's value counted once, and the freeze check refused only more than one record of a conflict group."
       }
     ],
     "notes": [
       "Shown on the assumptions page like every entry.",
       "Confirmation (2026-10-06): the freeze check sees every retained pairwise exact or conflict result (two-record flags inside mixed groups), not only group labels.",
-      "Confirmation round 2 (2026-10-06): the freeze check allows at most one record per chain of exact pairs, and per group linked by a definite conflict, forming the chains itself from Checks' flags."
+      "Confirmation round 2 (2026-10-06): the freeze check allows at most one record per chain of exact pairs, and per group linked by a definite conflict, forming the chains itself from Checks' flags.",
+      "Third confirmation (ChatGPT, 2026-10-06): a plan could still map conflicts to 'counted once' and admit one record of a conflict-connected group; the owner's rule is stricter (none, under any plan). Fixed at validation (FLAG_RULE_CHOICES), application (conflict_survivor_allowed) and the freeze (any record refused)."
     ],
     "tests": [
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
+      "tests/test_conflict_policy.py::test_a_plan_mapping_conflicts_to_counted_once_admits_neither_record",
+      "tests/test_conflict_policy.py::test_the_freeze_check_refuses_any_record_of_a_conflict_connected_group",
+      "tests/test_conflict_policy.py::test_the_freeze_refuses_one_conflict_record_with_every_safeguard_bypassed",
+      "tests/test_conflict_policy.py::test_the_reviewers_chain_enters_primary_with_none_of_its_records",
       "tests/test_data_model.py::test_a_model_recalled_record_is_stored_but_never_eligible",
       "tests/test_eligibility.py::test_a_conflict_enters_with_neither_record",
       "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
@@ -4722,11 +4748,11 @@
       "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
       "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
       "tests/test_eligibility.py::test_the_fixed_rules_hold_in_every_set_the_plan_names",
+      "tests/test_freeze_invariants.py::test_a_conflict_admitted_past_every_guard_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_a_constructed_record_in_an_unmarked_run_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_an_exact_duplicate_counted_twice_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_an_invalid_value_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_an_unresolved_identity_group_is_refused_at_the_freeze",
-      "tests/test_freeze_invariants.py::test_both_records_of_a_conflict_are_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_each_invariant_is_checked_on_the_primary_set",
       "tests/test_freeze_invariants.py::test_the_reviewers_grouping_case_is_refused_at_the_freeze",
       "tests/test_freeze_invariants.py::test_the_reviewers_outcome_case_is_refused_at_the_freeze",

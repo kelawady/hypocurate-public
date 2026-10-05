@@ -304,13 +304,13 @@ def _changed(path, value):
     (("scope", "phase_class"), ["BCC"], pair(1, 10.0), [], 1, "in_scope", "out_of_scope"),
     (("exclusion_rules",), [{"rule": "grain_size_range", "min": 20.0}], pair(1, 10.0), [], 1, "in_scope",
      "excluded_by_rule"),
-    # Owner, 2026-10-06: for conflicts a plan may choose only between neither record (the default)
-    # and the survivor's value counted once. (Replaces the step 6 case that mapped a conflict to
-    # in_scope, which the owner removed.)
-    (("eligibility_rules",), [{**e, "rule": "duplicate_counted_once"} if e["flag_kind"] == "values_disagree" else e
-                              for e in PLAN["eligibility_rules"]],
+    # The one plan choice left (third confirmation, owner 2026-10-06): possible duplicates counted
+    # once (default) or both. (Replaces the case that chose the survivor's value for a conflict,
+    # which is no longer a plan choice.)
+    (("eligibility_rules",), [{**e, "rule": "in_scope"} if e["flag_kind"] == "possible_duplicate"
+                              and e.get("category") is None else e for e in PLAN["eligibility_rules"]],
      [*pair(1, 10.0), cond(3, "controlled_duplicates"), cond(4, "controlled_duplicates", gs=40.0)],
-     [flag("values_disagree", "differ beyond tolerance", 1, 3)], 1, "conflict_unresolved", "in_scope"),
+     [flag("possible_duplicate", "identical values", 1, 3)], 3, "duplicate_counted_once", "in_scope"),
     (("variables", "outcome", "field"), "hardness", pair(1, 10.0), [], 1, "in_scope", "missing_value"),
 ])
 def test_each_setting_is_read_from_the_locked_plan(path, value, records, flags, record, before, after):
@@ -323,6 +323,7 @@ def test_each_setting_is_read_from_the_locked_plan(path, value, records, flags, 
 @pytest.mark.parametrize("kind, category, rule", [
     ("exact_duplicate", None, "in_scope"),  # an exact duplicate counted twice
     ("values_disagree", None, "in_scope"),  # both records of a conflict
+    ("values_disagree", None, "duplicate_counted_once"),  # one record of a conflict (third confirmation)
     ("invalid_value", None, "in_scope"),  # an invalid value
     ("possible_duplicate", "several candidates", "in_scope"),  # an unresolved-identity group
     ("possible_duplicate", "several candidates", "duplicate_counted_once"),

@@ -3,7 +3,8 @@ every item of register entry 'primary_set_invariants', using the Checks flags (i
 validity computed independently of the plan's grouping and outcome settings) and the records'
 kind and source:
 - no two members form an exact duplicate pair;
-- no two members form a conflict pair;
+- no member is connected to a definite conflict (third confirmation, owner 2026-10-06: none, not
+  "at most one");
 - no member carries an invalid-value flag;
 - no member belongs to an unresolved-identity group;
 - no member is model-recalled;
@@ -63,7 +64,8 @@ def test_what_the_invariants_allow():
     primary by default, but a plan may choose it; possible duplicates; a constructed record in a
     marked run."""
     assert problems({1, 3}, [flag("exact_duplicate", "identical values", 1, 2)]) == []
-    assert problems({1}, [flag("values_disagree", "differ beyond tolerance", 1, 2)]) == []
+    # Third confirmation (owner, 2026-10-06): no record of a conflict-connected group, not even one.
+    assert problems({1}, [flag("values_disagree", "differ beyond tolerance", 1, 2)]) != []
     assert problems({1, 2}, [flag("possible_duplicate", "identical values", 1, 2)]) == []
     assert problems({1}, [], {1: rec(1, source="controlled_duplicates")}, marked=True) == []
 
@@ -116,7 +118,11 @@ def test_an_exact_duplicate_counted_twice_is_refused_at_the_freeze(db, no_guard)
     _refused(db, _through_decisions(db, ("mpea", "controlled_duplicates"), content), "exact duplicate")
 
 
-def test_both_records_of_a_conflict_are_refused_at_the_freeze(db, no_guard):
+def test_a_conflict_admitted_past_every_guard_is_refused_at_the_freeze(db, no_guard, monkeypatch):
+    """Third confirmation (owner, 2026-10-06): conflicts are no longer a plan rule, so the
+    application's own rule is bypassed as well (a survivor allowed in primary); the one conflict
+    record that then enters is refused at the freeze."""
+    monkeypatch.setattr(eligibility, "conflict_survivor_allowed", lambda key: True)
     content = _rule(_extract_run(db), "values_disagree", None, "in_scope")
     _refused(db, _through_decisions(db, ("mpea", "controlled_duplicates"), content), "conflict")
 

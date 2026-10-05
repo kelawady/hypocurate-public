@@ -255,7 +255,8 @@ def test_what_no_plan_can_do_to_the_primary_set_is_listed_in_one_entry():
     e = BY_KEY["primary_set_invariants"]
     s = e["statement"]
     for words in ("including any plan written by a model", "exact duplicate is never counted twice",
-                  "Both records of a conflict never enter", "physically invalid value never enters",
+                  "No record connected to a definite conflict ever enters, under any plan",
+                  "physically invalid value never enters",
                   "several candidates) never enters", "model-recalled record never enters",
                   "constructed record (the controlled extract) never enters a run that is not marked as a test"):
         assert words in s, words

@@ -58,14 +58,16 @@ FLAG_STAGE_RULES = ("identity_unresolved", "conflict_unresolved", "duplicate_cou
 # flag means for the primary set. Every plan has exactly these eligibility-rule entries (flag kind,
 # category), with a rule from the allowed choices; validation refuses anything else, and so does
 # `settings` for a plan that bypassed validation. No plan, including one a model writes, can count
-# an exact duplicate twice, admit both records of a conflict, an invalid value or an unresolved-
-# identity group. The only plan choices: a conflict enters with neither record (the default) or
-# with the survivor's value counted once; a possible duplicate is counted once (the default) or
-# both records are counted.
+# an exact duplicate twice, admit any record connected to a definite conflict, an invalid value or
+# an unresolved-identity group. Conflicts are not a plan choice (third confirmation, owner
+# 2026-10-06): no record of a conflict-connected group enters primary; a survivor's value is
+# counted only in the sensitivity set 'conflicts_survivor_value' (`conflict_survivor_allowed`).
+# The one plan choice: a possible duplicate is counted once (the default) or both records are
+# counted.
 FLAG_RULE_CHOICES = {
     ("invalid_value", None): ("invalid_value",),
     ("exact_duplicate", None): ("duplicate_counted_once",),
-    ("values_disagree", None): ("conflict_unresolved", "duplicate_counted_once"),
+    ("values_disagree", None): ("conflict_unresolved",),
     ("possible_duplicate", "several candidates"): ("identity_unresolved",),
     ("possible_duplicate", None): ("duplicate_counted_once", "in_scope"),
 }
@@ -139,6 +141,13 @@ class Settings:
     survivor_order: tuple
     grouping: Mapping[str, str]
     scope_unconfirmed_ok: bool = False
+    conflict_survivor: bool = False  # only in 'conflicts_survivor_value' (`conflict_survivor_allowed`)
+
+
+def conflict_survivor_allowed(key: str) -> bool:
+    """The one place a conflict-connected group may keep a survivor (third confirmation, owner
+    2026-10-06): the sensitivity set 'conflicts_survivor_value', never primary, whatever the plan."""
+    return key == "conflicts_survivor_value"
 
 
 def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
@@ -156,7 +165,8 @@ def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
         exclusions=tuple(tuple(sorted(e.items(), key=lambda kv: kv[0])) for e in plan["exclusion_rules"]),
         flag_rules=flag_rules, decimals=r["same_alloy_decimals"], min_grain_sizes=r["min_grain_sizes"],
         survivor_order=tuple(r["survivor_source_order"]),
-        grouping={g["source"]: g["unit"] for g in r["grouping"]})
+        grouping={g["source"]: g["unit"] for g in r["grouping"]},
+        conflict_survivor=conflict_survivor_allowed(key))
     if key == PRIMARY:
         return base
     if key not in plan["sensitivity_analyses"]:
@@ -177,8 +187,7 @@ def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
         return replace(base, flag_rules=tuple((k, c, "in_scope" if k == "possible_duplicate" else rule)
                                               for k, c, rule in base.flag_rules))
     if key == "conflicts_survivor_value":
-        return replace(base, flag_rules=tuple((k, c, "duplicate_counted_once" if rule == "conflict_unresolved"
-                                               else rule) for k, c, rule in base.flag_rules))
+        return base  # its one change is `conflict_survivor`, set above
     raise KeyError(f"no change is defined for the analysis {key!r}")
 
 
@@ -340,9 +349,9 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
     from hypocurate.sources.versions import SOURCES
     out = []
     flags = list(flags)
-    # At most one record per chain of exact pairs, and per group linked by a definite conflict
-    # (confirmation round 2): the chains are formed here from Checks' flags, independently of how
-    # Inclusion resolved them.
+    # At most one record per chain of exact pairs (confirmation round 2), and no record at all of a
+    # group linked to a definite conflict (third confirmation, owner 2026-10-06): the groups are
+    # formed here from Checks' flags, independently of how Inclusion resolved them.
     exact = [f["records"] for f in flags if f["kind"] == "exact_duplicate"]
     conflicting = {i for f in flags if f["kind"] == "values_disagree" for i in f["records"]}
     for group in components(exact):
@@ -351,8 +360,8 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
             out.append(f"an exact duplicate counted twice: records {inside}")
     for group in components(exact + [f["records"] for f in flags if f["kind"] == "values_disagree"]):
         inside = sorted(i for i in group if i in members)
-        if set(group) & conflicting and len(inside) > 1:
-            out.append(f"both records of a conflict: records {inside}")
+        if set(group) & conflicting and inside:
+            out.append(f"a record connected to a conflict: records {inside}")
     for f in flags:
         inside = sorted(i for i in f["records"] if i in members)
         if f["kind"] == "invalid_value" and inside:
@@ -400,10 +409,11 @@ def _identity(records: Mapping[int, Mapping], flags: list[Mapping], rules: dict[
     the order of flags. In this order, each step a whole-group decision:
     1. unresolved identity: every pending record of an ambiguous group;
     2. definite relationships: records linked by a chain of exact-duplicate pairs are one
-       measurement, and a definite conflict links its records as well. A connected group that
-       touches a conflict follows the plan's conflict rule (neither: all its pending records are
-       `conflict_unresolved`; the survivor's value: one survivor); a group of exact duplicates
-       only keeps one survivor;
+       measurement, and a definite conflict links its records as well. In a connected group that
+       touches a conflict every pending record is `conflict_unresolved`, whatever the plan says
+       (third confirmation, owner 2026-10-06); only in 'conflicts_survivor_value'
+       (`st.conflict_survivor`) does it keep one survivor. A group of exact duplicates only keeps
+       one survivor;
     3. the plan's possible-duplicate choice on what remains: counted once, one survivor per
        connected possible group, or both counted.
     A survivor is chosen by the plan's survivor rule (`survivor_key`), whose last tie-break is the
@@ -416,13 +426,11 @@ def _identity(records: Mapping[int, Mapping], flags: list[Mapping], rules: dict[
             for i in pending(f["records"]):
                 rules[i] = "identity_unresolved"
     exact = [f["records"] for f in flags if f["kind"] == "exact_duplicate" and flag_rule(f, st) == "duplicate_counted_once"]
-    conflict = [f for f in flags if f["kind"] == "values_disagree"
-                and flag_rule(f, st) in ("conflict_unresolved", "duplicate_counted_once")]
-    in_conflict = {i: flag_rule(f, st) for f in conflict for i in f["records"]}
-    for group in components(exact + [f["records"] for f in conflict]):  # 2
+    conflict = [f["records"] for f in flags if f["kind"] == "values_disagree"]  # every one: not a plan choice
+    in_conflict = {i for c in conflict for i in c}
+    for group in components(exact + conflict):  # 2
         live = pending(group)
-        touched = sorted({in_conflict[i] for i in group if i in in_conflict})
-        if "conflict_unresolved" in touched:
+        if in_conflict & set(group) and not st.conflict_survivor:
             for i in live:
                 rules[i] = "conflict_unresolved"
         elif live:

@@ -84,9 +84,10 @@ def _set_rule(content, kind, category, rule):
 
 
 def test_the_plan_choices_that_remain():
-    """Conflicts: neither (default) or the survivor's value counted once. Possible duplicates:
-    counted once (default) or counted separately."""
-    for kind, rule in (("values_disagree", "duplicate_counted_once"), ("possible_duplicate", "in_scope")):
+    """The one choice left (third confirmation, owner 2026-10-06): possible duplicates counted once
+    (the default) or counted separately. Conflicts are no longer a choice: neither record, always;
+    the survivor's value only in the sensitivity set 'conflicts_survivor_value'."""
+    for kind, rule in (("possible_duplicate", "in_scope"),):
         content = default_plan(1)
         _set_rule(content, kind, None, rule)
         validate(content)
@@ -110,6 +111,8 @@ def test_the_plan_choices_that_remain():
     (lambda c: c["eligibility_rules"].append({"flag_kind": "values_disagree", "rule": "in_scope"}), "one eligibility"),
     # Owner, 2026-10-06: fixed rules a plan can never change (register 'primary_set_invariants').
     (lambda c: _set_rule(c, "values_disagree", None, "in_scope"), "fixed rule"),
+    # Third confirmation (owner, 2026-10-06): no record of a conflict enters primary, under any plan.
+    (lambda c: _set_rule(c, "values_disagree", None, "duplicate_counted_once"), "fixed rule"),
     (lambda c: _set_rule(c, "exact_duplicate", None, "in_scope"), "fixed rule"),
     (lambda c: _set_rule(c, "invalid_value", None, "in_scope"), "fixed rule"),
     (lambda c: _set_rule(c, "possible_duplicate", "several candidates", "in_scope"), "fixed rule"),
