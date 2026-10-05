@@ -90,7 +90,12 @@ python -m hypocurate.db.migrate downgrade <revision> # drops tables and their da
   1. Preferred: a new migration that undoes the change, deployed the normal way.
   2. Code only: revert the merge on `main`.
   3. Schema: the owner runs `python -m hypocurate.db.migrate downgrade <revision> --confirm-data-loss` in the Render Shell of a service. **This drops tables and their data**; in production it refuses without the flag. Before it, check the backups: Render's point-in-time recovery reaches back 3 days on the Hobby workspace and restores into a *new* database, which costs money.
-- **What the database enforces, and its limit.** Triggers and CHECK constraints refuse, among others: editing a locked plan; changing a frozen dataset; updating or deleting a record; a verdict on a run that is not sufficient. A refusal raises an error starting `hypocurate:`. The triggers stop the application and ordinary edits; the database owner can still drop a trigger, so they are not tamper-proof. The fingerprints are the cross-check.
+- **What the database enforces, and its limits.**
+  - Triggers and CHECK constraints refuse, among others: editing a locked plan; changing a frozen dataset; freezing a primary set that leaves out an eligible record; updating or deleting a record; extracting before the rules lock; any curation once a run has ended; adding files to a sealed source version; and a verdict on a run that is not sufficient. A refusal raises an error starting `hypocurate:`.
+  - **Locking.** Every trigger that checks or changes a run's state first locks that run's row; triggers on chosen sources and on dispatch lock the hypothesis version first (lock order: version, then run). A transaction that writes to a run therefore makes every other writer to that run wait until it commits, so long transactions on a run should be avoided.
+  - **After a run ends.** On a completed run only the commentary, the Commentator's stage and model calls, and artifacts may still be written; on a failed run only the audit log.
+  - **Validity checks.** The CHECKs on `analysis_result` are necessary conditions on the stored counts, not the full validity rules of PRD 5.7. Those, and the agreement of the verdict with the pooled result, are computed and tested in step 7.
+  - The triggers stop the application and ordinary edits. The database owner can still drop a trigger, so they are not tamper-proof; the fingerprints are the cross-check.
 - **Tests never touch the database at `DATABASE_URL`.** They create scratch databases (`hypocurate_t_…`, from a template migrated once per session) and drop them afterwards. The database user must be allowed to create databases (the local and CI containers' user is).
 
 ## Data
