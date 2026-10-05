@@ -82,11 +82,42 @@ def test_decisions_carry_the_owners_wording():
     assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < 0.05"
 
 
-def test_open_decisions_have_no_value_in_force():
-    open_entries = [e for e in REGISTER if e["state"] == "open"]
-    assert [e["key"] for e in open_entries] == ["tamu_microstructure"]
-    for e in open_entries:
-        assert e["value"] is None and e["decided"] is None and e["pending"]["by"] == "owner"
+def test_the_microstructure_decision_is_recorded_and_no_decision_is_open():
+    """Owner, 2026-10-05: the open decision 'tamu_microstructure' became a decision."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
+    e = BY_KEY["tamu_microstructure"]
+    assert e["state"] == "in_force" and e["category"] == "scientific"
+    assert e["value"]["text"] == "single-phase FCC (assigned by decision)"
+    assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}
+    assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}
+    assert e["applied"]["status"] == "not_yet" and e["applied"]["step"] == 6
+    evidence = " ".join(e["evidence"])
+    for cited in ("main.tex line 138", "main.tex line 173", "supplementary.tex line 61", "main.tex line 175",
+                  "main.tex line 177", "supplementary.tex line 65"):
+        assert cited in evidence, cited
+    notes = " ".join(e["notes"])
+    assert "81 compositions" in notes and "82" in notes
+    assert "No passage states the result of the XRD phase check." in notes
+    assert "Not reviewed by an expert." in notes
+    assert "without these records" in e["sensitivity"]
+    assert e["history"][0]["value"].endswith("(open decision)")
+
+
+def open_entry():
+    """An open decision built for the tests (the register has none since 2026-10-05)."""
+    e = copy.deepcopy(BY_KEY["tamu_microstructure"])
+    e.update(key="an_open_question", state="open", value=None, decided=None, history=[],
+             pending={"by": "owner", "before_step": 6})
+    return e
+
+
+def test_an_open_decision_has_no_value_in_force():
+    a.validate([open_entry()])
+    for field, value in (("value", {"text": "x", "unit": None}), ("decided", {"by": "owner", "date": "2026-10-05"})):
+        e = open_entry()
+        e[field] = value
+        with pytest.raises(a.RegisterError, match="open decision has value null"):
+            a.validate([e])
 
 
 def entry(**changes):
@@ -139,7 +170,7 @@ def test_the_validator_refuses_duplicate_keys_and_an_empty_register():
 
 
 def test_an_open_decision_needs_who_decides_and_by_when():
-    e = copy.deepcopy(BY_KEY["tamu_microstructure"])
+    e = open_entry()
     del e["pending"]
     with pytest.raises(a.RegisterError, match="missing"):
         a.validate([e])
@@ -223,10 +254,10 @@ def test_the_page_needs_the_login():
         assert r.status_code == 303 and r.headers["location"] == "/login", path
 
 
-def test_the_page_shows_every_entry_grouped_with_open_decisions_first():
+def test_the_page_shows_every_entry_grouped_by_category():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == ["Open decisions", "Scientific", "Statistical", "Data handling", "Operational"]
+    assert headings == ["Scientific", "Statistical", "Data handling", "Operational"]  # no open decision now
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -235,12 +266,23 @@ def test_the_page_shows_every_entry_grouped_with_open_decisions_first():
         assert re.findall(r'<tbody id="([a-z0-9_]+)"', section) == [e["key"] for e in group]
 
 
+def test_open_decisions_are_shown_first_when_there_are_any():
+    register = REGISTER + [open_entry()]
+    html = signed_in(register).get("/assumptions").text
+    headings = re.findall(r"<h2>([^<]+)</h2>", html)
+    assert headings == ["Open decisions", "Scientific", "Statistical", "Data handling", "Operational"]
+    first = re.split(r"<h2>", html)[1]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
+    assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
+    assert "1 open decision</strong>" in html
+
+
 def test_the_summary_line_counts_open_decisions_and_unreviewed_scientific_entries():
     html = signed_in().get("/assumptions").text
     summary = re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1)
     n_open = sum(e["state"] == "open" for e in REGISTER)
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert f"{n_open} open decision" in summary
+    assert n_open == 0 and "0 open decisions" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
 

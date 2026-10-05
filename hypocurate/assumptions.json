@@ -167,21 +167,52 @@
 },
 {
   "key": "tamu_microstructure",
-  "name": "Texas A&M microstructure (single-phase or not)",
-  "state": "open",
-  "statement": "Whether the Texas A&M records count as single-phase FCC for a single-phase FCC scope. The source states '94 FCC alloy conditions', not single-phase, so the microstructure is not reported.",
-  "value": null,
+  "name": "Texas A&M microstructure",
+  "state": "in_force",
+  "statement": "The Texas A&M records are treated as single-phase FCC. The value is 'assigned by decision': the source does not state it explicitly as a result.",
+  "value": {
+    "text": "single-phase FCC (assigned by decision)",
+    "unit": null
+  },
   "category": "scientific",
-  "affects": "Under a single-phase FCC scope, all 94 Texas A&M records would be 'scope not confirmed', and the pooled reference result (PRD 14.1a) would change.",
-  "reason": "Open, like the test temperature was before decision 2026-10-05.",
-  "evidence": ["Step 4 summary, open item 2; step 4b summary, 'Texas A&M phase constitution'."],
-  "decided": null,
-  "pending": {"by": "owner", "before_step": 6},
-  "expert_review": {"status": "not_reviewed", "name": null, "date": null},
-  "sensitivity": null,
-  "applied": {"status": "not_yet", "step": 6, "note": "Today the adapter reports the microstructure as not reported and assigns phase class FCC from source."},
-  "history": [],
-  "notes": []
+  "affects": "Whether the 94 Texas A&M records fall inside a single-phase FCC scope; with them, the pooled reference result (PRD 14.1a).",
+  "reason": "The authors describe their measured compositions as single-phase FCC, the alloys were selected under an FCC phase-stability constraint, and their phase constitution was checked by X-ray diffraction.",
+  "evidence": [
+    "ArroyaveLab/2026-mulukutla-hall-petch@11390ee5 paper/main.tex line 138: \"The 81 compositions measured here carry all three, under one processing route and one characterization protocol. This is the largest such set reported for single-phase FCC multi-principal element alloys, and it lets composition, processing and grain size be separated without correcting across studies.\"",
+    "paper/main.tex line 173: \"It explored composition under an FCC phase stability constraint while holding processing fixed.\" (BB campaign); paper/supplementary.tex line 61: \"It explored the Al--Co--Cr--Cu--Fe--Mn--Ni--V system under an FCC phase-stability constraint while holding processing fixed.\"",
+    "paper/main.tex line 175: \"Candidate alloys were iteratively selected from an FCC-constrained, manufacturable design space with the models updated after each iteration using the newly acquired data.\" (CB campaign)",
+    "paper/main.tex line 177: \"Energy-dispersive X-ray spectroscopy (EDS) and X-ray diffraction were used to check realized chemistry and phase constitution, while electron microscopy and EBSD documented the microstructure.\"; paper/supplementary.tex line 65: \"EDS and XRD checked realized chemistry and phase constitution; SEM and EBSD documented the microstructure;\"",
+    "Step 4b summary, 'Texas A&M phase constitution'."
+  ],
+  "decided": {
+    "by": "owner (Khalid El-Awady)",
+    "date": "2026-10-05"
+  },
+  "expert_review": {
+    "status": "not_reviewed",
+    "name": null,
+    "date": null
+  },
+  "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the result without these records.",
+  "applied": {
+    "status": "not_yet",
+    "step": 6,
+    "note": "Today the adapter reports the microstructure as not reported and assigns phase class FCC from source."
+  },
+  "history": [
+    {
+      "value": "not reported: the source does not state the phases present per record (open decision)",
+      "from": "2026-10-05",
+      "to": "2026-10-05",
+      "note": "Step 4 adapter; open decision in the first step 4b register."
+    }
+  ],
+  "notes": [
+    "The paper says 81 compositions; the spreadsheet has 82 distinct compositions.",
+    "No passage states the result of the XRD phase check.",
+    "Not reviewed by an expert.",
+    "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
+  ]
 },
 {
   "key": "shared_coefficient",
@@ -374,7 +405,7 @@
   "sensitivity": null,
   "applied": {"status": "not_yet", "step": 6, "note": "Used on the test side only."},
   "history": [],
-  "notes": ["How the Texas A&M records meet it is the open decision 'tamu_microstructure'."]
+  "notes": ["The Texas A&M records meet it by decision (entry 'tamu_microstructure')."]
 },
 {
   "key": "mpea_microstructure_label_trusted",
