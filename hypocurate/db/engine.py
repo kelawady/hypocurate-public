@@ -1,5 +1,6 @@
-"""The database engine. Step 2 creates no tables: login uses a signed cookie and
-the health page only asks whether the database answers."""
+"""The database engine. Login uses a signed cookie, not a table; the health page asks
+whether the database answers. The tables (step 3) are in `models.py` and are created
+only by the migrations (`migrate.py`)."""
 from __future__ import annotations
 
 from sqlalchemy import Engine, create_engine, text
