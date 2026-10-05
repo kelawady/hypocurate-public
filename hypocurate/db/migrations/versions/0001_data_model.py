@@ -120,10 +120,13 @@ def upgrade() -> None:
     sa.Column('data_kind', sa.Text(), nullable=False),
     sa.Column('grouping_unit', sa.Text(), nullable=False),
     sa.Column('sealed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('files_digest', sa.Text(), nullable=True),
     sa.Column('fingerprint', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.CheckConstraint("fingerprint ~ '^[0-9a-f]{64}$'", name=op.f('ck_source_version_fingerprint_format')),
     sa.CheckConstraint('(sealed_at IS NULL) = (fingerprint IS NULL)', name=op.f('ck_source_version_sealed_with_fingerprint')),
+    sa.CheckConstraint("files_digest ~ '^[0-9a-f]{64}$'", name=op.f('ck_source_version_files_digest_format')),
+    sa.CheckConstraint('(sealed_at IS NULL) = (files_digest IS NULL)', name=op.f('ck_source_version_sealed_with_files_digest')),
     sa.CheckConstraint("source_type IN ('uploaded_table', 'web_interface', 'paper_search', 'model_recall')", name=op.f('ck_source_version_source_type')),
     sa.CheckConstraint("data_kind IN ('measured', 'computed', 'model_recalled')", name=op.f('ck_source_version_data_kind')),
     sa.CheckConstraint("grouping_unit IN ('paper', 'dataset', 'batch')", name=op.f('ck_source_version_grouping_unit')),
@@ -177,7 +180,7 @@ def upgrade() -> None:
     sa.Column('path', sa.Text(), nullable=False),
     sa.Column('sha256', sa.Text(), nullable=False),
     sa.Column('content', sa.LargeBinary(), nullable=False),
-    sa.CheckConstraint("path ~ '\\.(csv|xlsx)$'", name=op.f('ck_source_file_data_file_type')),
+    sa.CheckConstraint("path ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)$'", name=op.f('ck_source_file_safe_data_file_path')),
     sa.CheckConstraint("sha256 = encode(sha256(content), 'hex')", name=op.f('ck_source_file_sha256_matches_content')),
     sa.CheckConstraint('octet_length(content) <= 5242880', name=op.f('ck_source_file_max_size')),
     sa.ForeignKeyConstraint(['source_version_id'], ['source_version.id'], name=op.f('fk_source_file_source_version_id')),
@@ -597,7 +600,8 @@ FUNCTION_NAMES = [
     "hc_lock_run(bigint)",
     "hc_lock_version(bigint)",
     "hc_write_lock(bigint, bigint)",
-    "hc_files_fingerprint(bigint)",
+    "hc_files_digest(bigint)",
+    "hc_version_identity(text, text, text, text)",
     "hc_original_domain(bigint)",
     "hc_hypothesis_insert()",
     "hc_version_insert()",
@@ -707,14 +711,26 @@ FUNCTIONS = [
         RETURN s;
     END $$
     """,
-    # A source version's fingerprint (owner, 2026-10-05): SHA-256 of its file list,
-    # one line "<sha256>  <path>\\n" per file (the sha256sum format), sorted by path
-    # bytewise. Step 4 computes the same in Python.
+    # A source version's files digest (owner, 2026-10-05; re-check item 2): SHA-256 of its
+    # file list, one line "<sha256>  <path>\n" per file (the sha256sum format), sorted by
+    # path bytewise. Paths cannot hold a line break (CHECK), so the list is unambiguous.
+    # Step 4 computes the same in Python.
     """
-    CREATE FUNCTION hc_files_fingerprint(p_version bigint) RETURNS text LANGUAGE sql STABLE AS $$
+    CREATE FUNCTION hc_files_digest(p_version bigint) RETURNS text LANGUAGE sql STABLE AS $$
         SELECT encode(sha256(convert_to(
                    string_agg(sha256 || '  ' || path || chr(10), '' ORDER BY path COLLATE "C"), 'UTF8')), 'hex')
         FROM source_file WHERE source_version_id = p_version
+    $$
+    """,
+    # A source version's identity (re-check item 2): SHA-256 of four lines, the files digest
+    # and the three interpretation settings, each "<name> <value>\n". The settings come
+    # from fixed lists (CHECK), so they hold no line break.
+    """
+    CREATE FUNCTION hc_version_identity(p_digest text, p_type text, p_kind text, p_unit text)
+    RETURNS text LANGUAGE sql IMMUTABLE AS $$
+        SELECT encode(sha256(convert_to(
+                   'files ' || p_digest || chr(10) || 'source_type ' || p_type || chr(10)
+                   || 'data_kind ' || p_kind || chr(10) || 'grouping_unit ' || p_unit || chr(10), 'UTF8')), 'hex')
     $$
     """,
     # The confirmed domain of the original question, for a narrower query; NULL otherwise.
@@ -932,7 +948,7 @@ FUNCTIONS = [
     DECLARE s source;
     BEGIN
         SELECT * INTO s FROM source WHERE id = NEW.source_id;
-        IF NEW.sealed_at IS NOT NULL OR NEW.fingerprint IS NOT NULL THEN
+        IF NEW.sealed_at IS NOT NULL OR NEW.fingerprint IS NOT NULL OR NEW.files_digest IS NOT NULL THEN
             PERFORM hc_reject('a source version is sealed after its files are added');
         END IF;
         IF NEW.source_type IS DISTINCT FROM s.source_type AND NEW.source_type IS NOT NULL
@@ -949,6 +965,7 @@ FUNCTIONS = [
     # The only change to a version is sealing it, once (owner, 2026-10-05).
     """
     CREATE FUNCTION hc_source_version_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE digest text;
     BEGIN
         IF OLD.sealed_at IS NOT NULL THEN
             PERFORM hc_reject('a sealed source version cannot change');
@@ -965,8 +982,14 @@ FUNCTIONS = [
         IF NOT EXISTS (SELECT 1 FROM source_file WHERE source_version_id = NEW.id) THEN
             PERFORM hc_reject('a source version needs at least one file before sealing');
         END IF;
-        IF NEW.fingerprint IS DISTINCT FROM hc_files_fingerprint(NEW.id) THEN
-            PERFORM hc_reject('the fingerprint must be the SHA-256 of the sorted file list');
+        digest := hc_files_digest(NEW.id);
+        IF NEW.files_digest IS NOT NULL AND NEW.files_digest <> digest THEN
+            PERFORM hc_reject('files_digest must be the SHA-256 of the sorted file list');
+        END IF;
+        NEW.files_digest := digest;
+        IF NEW.fingerprint IS DISTINCT FROM hc_version_identity(digest, NEW.source_type, NEW.data_kind,
+                                                                NEW.grouping_unit) THEN
+            PERFORM hc_reject('the fingerprint must be the SHA-256 of the files digest and the interpretation settings');
         END IF;
         RETURN NEW;
     END $$

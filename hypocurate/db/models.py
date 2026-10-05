@@ -168,7 +168,11 @@ class SourceVersion(Base):
     that change how records are read, copied from `source` at insert. Files are added,
     then the version is sealed once: the database sets `sealed_at` and checks that
     `fingerprint` is the SHA-256 of the sorted file list. Only a sealed version can be
-    used by a run. Nothing changes after sealing; it is never deleted."""
+    used by a run. Nothing changes after sealing; it is never deleted.
+    At sealing (re-check item 2) the database sets `files_digest`, the SHA-256 of the
+    sorted file list, and requires `fingerprint` to be the SHA-256 of that digest plus
+    the interpretation settings. `fingerprint` is the version's identity (unique per
+    source), so the same files under revised settings seal as a new version."""
     __tablename__ = "source_version"
     id: Mapped[int] = pk()
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id"))
@@ -178,6 +182,7 @@ class SourceVersion(Base):
     data_kind: Mapped[str] = mapped_column(Text)
     grouping_unit: Mapped[str] = mapped_column(Text)
     sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    files_digest: Mapped[str | None] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created()
     __table_args__ = (
@@ -185,6 +190,8 @@ class SourceVersion(Base):
         UniqueConstraint("id", "source_id"),
         CheckConstraint(f"fingerprint {SHA256}", name="fingerprint_format"),
         CheckConstraint("(sealed_at IS NULL) = (fingerprint IS NULL)", name="sealed_with_fingerprint"),
+        CheckConstraint(f"files_digest {SHA256}", name="files_digest_format"),
+        CheckConstraint("(sealed_at IS NULL) = (files_digest IS NULL)", name="sealed_with_files_digest"),
         CheckConstraint(one_of("source_type", SOURCE_TYPES), name="source_type"),
         CheckConstraint(one_of("data_kind", DATA_KINDS), name="data_kind"),
         CheckConstraint(one_of("grouping_unit", ("paper", "dataset", "batch")), name="grouping_unit"),
@@ -203,7 +210,9 @@ class SourceFile(Base):
     __table_args__ = (
         UniqueConstraint("source_version_id", "path"),
         CheckConstraint(f"octet_length(content) <= {MAX_FILE_BYTES}", name="max_size"),
-        CheckConstraint(r"path ~ '\.(csv|xlsx)$'", name="data_file_type"),
+        # Re-check item 2: a safe character set, anchored at both ends, so a path holds no
+        # line break and the sealed file list has one unambiguous line per file.
+        CheckConstraint("path ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)$'", name="safe_data_file_path"),
         CheckConstraint("sha256 = encode(sha256(content), 'hex')", name="sha256_matches_content"),
     )
 

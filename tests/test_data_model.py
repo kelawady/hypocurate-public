@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from hypocurate.db.models import MAX_FILE_BYTES
-from model_builder import FP, World, files_fingerprint, sha
+from model_builder import FP, World, files_digest, sha
 
 
 @pytest.fixture
@@ -1148,7 +1148,7 @@ def test_source_files_are_data_files_up_to_5_mib(w):
     at_limit, over = b"x" * MAX_FILE_BYTES, b"x" * (MAX_FILE_BYTES + 1)
     w.run_sql(SOURCE_FILE, sv=sv, p="MPEA_dataset.csv", h=sha(at_limit), c=at_limit)
     w.rejected(SOURCE_FILE, "ck_source_file_max_size", sv=sv, p="big.csv", h=sha(over), c=over)
-    w.rejected(SOURCE_FILE, "ck_source_file_data_file_type", sv=sv, p="zenodo_archive.zip", h=sha(b"z"), c=b"z")
+    w.rejected(SOURCE_FILE, "ck_source_file_safe_data_file_path", sv=sv, p="zenodo_archive.zip", h=sha(b"z"), c=b"z")
     w.rejected(SOURCE_FILE, "ck_source_file_sha256_matches_content", sv=sv, p="other.csv", h=sha(b"a"), c=b"b")
     w.run_sql(SOURCE_FILE, sv=sv, p="Grain_Size_Summary_v3.xlsx", h=sha(b"x"), c=b"x")
     w.rejected("UPDATE source_file SET content = 'y'", "append-only")
@@ -1175,15 +1175,50 @@ def test_sealing_needs_files_and_the_fingerprint_of_the_file_list(w):
     files = {"b.csv": b"second", "a.csv": b"first"}
     for path, content in files.items():
         w.add_file(sv, path, content)
-    with pytest.raises(IntegrityError, match="SHA-256 of the sorted file list"):
+    with pytest.raises(IntegrityError, match="files digest and the interpretation settings"):
         w.seal(sv, fingerprint="0" * 64)
     w.rejected("UPDATE source_version SET sealed_at = now() - interval '1 day', fingerprint = :fp WHERE id = :v",
-               "set by the database", v=sv, fp=files_fingerprint(files))
+               "set by the database", v=sv, fp=w.fingerprint(sv))
+    w.rejected("UPDATE source_version SET sealed_at = now(), fingerprint = :fp, files_digest = :d WHERE id = :v",
+               "files_digest must be the SHA-256", v=sv, fp=w.fingerprint(sv), d="0" * 64)
     w.seal(sv)
-    assert w.val("SELECT fingerprint FROM source_version WHERE id = :v", v=sv) == files_fingerprint(files)
+    assert w.rows("SELECT files_digest, fingerprint FROM source_version WHERE id = :v", v=sv) == [
+        (files_digest(files), w.fingerprint(sv, files))]
     with pytest.raises(IntegrityError, match="sealed source version cannot change"):
         w.seal(sv)
     w.rejected("DELETE FROM source_version WHERE id = :v", "never deleted", v=sv)
+
+
+@pytest.mark.parametrize("path", [
+    "a.csv\n" + "0" * 64 + "  b.csv",   # the re-check's collision: a line break inside a path
+    "a.csv\r", "a b.csv", "../outside.csv", "/abs.csv", "a.csv.zip", "café.csv", "",
+])
+def test_unsafe_file_paths_are_rejected(w, path):
+    """Re-check item 2: a safe character set, anchored at both ends."""
+    with pytest.raises(IntegrityError, match="ck_source_file_safe_data_file_path"):
+        w.add_file(w.new_version("mpea", "v2"), path, b"x")
+
+
+def test_the_same_files_under_revised_settings_seal_as_a_new_version(w):
+    """Re-check item 2: the identity covers the interpretation settings, so a corrected
+    grouping unit can be sealed with the same files; identical files and settings are
+    still a duplicate."""
+    files = {"tamu_fcc.csv": b"tamu_fcc,data\n"}
+    first = w.version["tamu_fcc"]
+    assert w.files(first) == files and w.settings(first)[2] == "dataset"
+    w.run_sql("UPDATE source SET grouping_unit = 'batch' WHERE key = 'tamu_fcc'")
+    revised = w.new_version("tamu_fcc", "v1-batches")
+    w.add_file(revised, "tamu_fcc.csv", files["tamu_fcc.csv"])
+    w.seal(revised)
+    rows = w.rows("SELECT files_digest, fingerprint, grouping_unit FROM source_version WHERE id IN (:a, :b) "
+                  "ORDER BY id", a=first, b=revised)
+    assert rows[0][0] == rows[1][0] == files_digest(files)  # the same files
+    assert rows[0][1] != rows[1][1]                          # a different identity
+    assert [r[2] for r in rows] == ["dataset", "batch"]
+    duplicate = w.new_version("tamu_fcc", "v1-batches-again")
+    w.add_file(duplicate, "tamu_fcc.csv", files["tamu_fcc.csv"])
+    with pytest.raises(IntegrityError, match="uq_source_version_source_id_fingerprint"):
+        w.seal(duplicate)
 
 
 def test_a_new_version_starts_unsealed(w):

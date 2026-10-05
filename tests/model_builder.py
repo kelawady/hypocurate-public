@@ -15,11 +15,19 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def files_fingerprint(files: dict[str, bytes]) -> str:
-    """A source version's fingerprint (owner, 2026-10-05): SHA-256 of one line
+def files_digest(files: dict[str, bytes]) -> str:
+    """A source version's files digest (owner, 2026-10-05): SHA-256 of one line
     "<sha256>  <path>\\n" per file, sorted by path (the sha256sum format)."""
     listing = "".join(f"{sha(files[path])}  {path}\n" for path in sorted(files))
     return sha(listing.encode())
+
+
+def version_fingerprint(files: dict[str, bytes], source_type: str, data_kind: str, grouping_unit: str) -> str:
+    """A source version's identity (re-check item 2): the files digest plus the
+    interpretation settings, one "<name> <value>\\n" line each."""
+    text = (f"files {files_digest(files)}\nsource_type {source_type}\n"
+            f"data_kind {data_kind}\ngrouping_unit {grouping_unit}\n")
+    return sha(text.encode())
 
 
 class World:
@@ -54,8 +62,15 @@ class World:
         return {p: bytes(c) for p, c in self.rows(
             "SELECT path, content FROM source_file WHERE source_version_id = :v", v=version)}
 
+    def settings(self, version):
+        return self.rows("SELECT source_type, data_kind, grouping_unit FROM source_version WHERE id = :v",
+                         v=version)[0]
+
+    def fingerprint(self, version, files=None):
+        return version_fingerprint(files if files is not None else self.files(version), *self.settings(version))
+
     def seal(self, version, fingerprint=None):
-        fingerprint = fingerprint or files_fingerprint(self.files(version))
+        fingerprint = fingerprint or self.fingerprint(version)
         self.run_sql("UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v",
                      v=version, fp=fingerprint)
 

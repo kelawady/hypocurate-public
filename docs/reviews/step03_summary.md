@@ -159,12 +159,14 @@ Every rejection by a trigger raises SQLSTATE 23514 with a message starting `hypo
      
      They are computed and tested in step 7 (see "Step 7 acceptance requirements").
 10. **Files and source versions** (item 12; finding 4).
-    - `source_file` and `artifact`: at most 5 MiB, and `sha256` must match the bytes. Source files must be `.csv` or `.xlsx`, so the 49 MB Zenodo archive cannot be stored.
+    - `source_file` and `artifact`: at most 5 MiB, and `sha256` must match the bytes.
+    - A source file's path must match `^[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)$`: a safe character set, anchored at both ends, with no line break (re-check item 2). So the 49 MB Zenodo archive cannot be stored.
     - A `source_version` **copies `source_type`, `data_kind` and `grouping_unit`** from its source at insert; a different caller-supplied value is rejected. Changing `source` afterwards affects only later versions. Operational settings stay mutable on `source`: enabled, adapter status, address, licence, properties.
     - Files are added, then the version is **sealed once**:
       - the database sets `sealed_at`;
       - at least one file is required;
-      - the database requires `fingerprint` to equal the SHA-256 of the sorted file list, one line `<sha256>  <path>\n` per file, sorted bytewise by path (owner, 2026-10-05; step 4 computes the same).
+      - the database sets `files_digest` to the SHA-256 of the sorted file list, one line `<sha256>  <path>\n` per file, sorted bytewise by path (owner, 2026-10-05). Paths hold no line break, so the list is unambiguous;
+      - the database requires `fingerprint`, the version's **identity** (unique per source), to equal the SHA-256 of four lines: `files <files_digest>`, `source_type <…>`, `data_kind <…>` and `grouping_unit <…>`, each ending in `\n` (re-check item 2). The same files under corrected settings therefore seal as a new version, while identical files and settings are rejected as a duplicate. Step 4 computes both values the same way.
       
       After sealing nothing changes; no file can be added.
     - **Only a sealed version can be used by a run.**
@@ -278,7 +280,7 @@ The review's remark on migration safety and the limits of the up/down/up proof i
 11. **PRD 7:** records are extracted per run, after the rules lock, and carry an origin identifier.
 12. **PRD 6, 7 and 10:**
     - files are `bytea`, at most 5 MiB each; source files are a separate table, and only data files are stored;
-    - a source version copies the settings that change how records are read, and is sealed once with a fingerprint of its file list computed by the database;
+    - a source version copies the settings that change how records are read, and is sealed once. The database computes its files digest and checks its identity: the digest plus the interpretation settings;
     - only sealed versions are used.
 13. **PRD 5.8 and 9.2:** power-based sufficiency is not an option in sprint 1. It is an "estimated power report (information only)"; as a gate it stays in the backlog.
 14. **PRD 8 (new):** what may be written to a run in each state, as in the table above. After completion: commentary, the Commentator's stage and calls, and artifacts. After failure: only the audit log. A run ends only with no stage running and no call open.
@@ -361,7 +363,7 @@ Local checks beyond the suite:
 1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and live `/health` shows `"schema":{"revision":"0001","at_head":true}`. This is the first time a pre-deploy command runs with our Docker services. The merge also syncs the Blueprint.
 2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
 3. **Step 4 onwards: every write path follows the locking protocol.** It calls `hc_write_lock` first and retries the whole transaction on `40P01` or `40001`. Code review of each later step checks this.
-4. **Step 4** adopts the source-version identity defined above, seals every version before use, and loads the two frozen sources.
+4. **Step 4** computes the source-version files digest and identity as defined above, seals every version before use, and loads the two frozen sources. The source file paths stored must match the safe pattern.
 5. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
 6. **Step 7 and step 9 requirements** are listed above.
 7. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.

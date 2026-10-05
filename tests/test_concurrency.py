@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from model_builder import FP, World, files_fingerprint, sha
+from model_builder import FP, World, sha
 
 
 @pytest.fixture
@@ -216,7 +216,7 @@ def test_freeze_first_then_no_dataset_is_rejected(w):
 def test_file_first_then_sealing_includes_it(w):
     sv = w.new_version("mpea", "v2")
     w.add_file(sv, "a.csv", b"a")
-    both = files_fingerprint({"a.csv": b"a", "b.csv": b"b"})
+    both = w.fingerprint(sv, {"a.csv": b"a", "b.csv": b"b"})
     error = race(w.e, "INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, 'b.csv', :h, :c)",
                  "UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v",
                  dict(v=sv, h=sha(b"b"), c=b"b"), dict(v=sv, fp=both))
@@ -228,7 +228,7 @@ def test_sealing_first_then_file_is_rejected(w):
     w.add_file(sv, "a.csv", b"a")
     error = race(w.e, "UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v",
                  "INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, 'b.csv', :h, :c)",
-                 dict(v=sv, fp=files_fingerprint({"a.csv": b"a"})), dict(v=sv, h=sha(b"b"), c=b"b"))
+                 dict(v=sv, fp=w.fingerprint(sv)), dict(v=sv, h=sha(b"b"), c=b"b"))
     rejected(error, "sealed source version")
     assert w.val("SELECT count(*) FROM source_file WHERE source_version_id = :v", v=sv) == 1
 
