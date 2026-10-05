@@ -21,7 +21,11 @@ TOP_LEVEL = {"hypocurate", "data", "requirements.lock"}
 REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.json", "requirements.lock",
             # Step 3: Render's pre-deploy command migrates from inside the deployed image.
             "hypocurate/db/migrate.py", "hypocurate/db/migrations/env.py",
-            "hypocurate/db/migrations/versions/0001_data_model.py"]
+            "hypocurate/db/migrations/versions/0001_data_model.py",
+            # Step 4: the sources are registered and read from inside the deployed image.
+            "hypocurate/sources/versions.py", "hypocurate/sources/adapters/__init__.py",
+            "data/sources/mpea/MPEA_dataset.csv", "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx",
+            "data/controlled_duplicates/extract.csv"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 
