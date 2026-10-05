@@ -1,6 +1,6 @@
 # Build step 4b — summary for review
 
-Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: second-model review received (2026-10-05): no serious issue, four findings, eight missing assumptions and four small corrections, all accepted by the owner and applied (section "Second-model review and fixes"). Awaiting the owner's sign-off.** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
+Date: 2026-10-05. Branch: `step-04b-assumptions`. **Status: second-model review received (2026-10-05): no serious issue, four findings, eight missing assumptions and four small corrections, all accepted by the owner and applied (section "Second-model review and fixes"). Signed off by the owner, merged into `main` (`1bdba38`, 2026-10-05) and live (see "Live deployment").** A small step before step 5, on the owner's instruction: an assumptions register and a read-only page for it. It is not a PRD Section 15 step.
 
 The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
 
@@ -411,6 +411,22 @@ The review's note on startup failure is reflected in "Deviations", item 2. No co
 8. **PRD 10 (Texas A&M):** "82 single-phase FCC compositions" now rests on the owner's decision (assigned by decision), not on a statement in the source; the source says 81 compositions, and no passage states the XRD result. Step 4's correction 3 is resolved this way.
 9. **PRD 10 (same alloy):** the rule is 0.1 at.% rounding with identical rounded compositions, with a 1 at.% sensitivity analysis. Step 4's correction 6 is resolved.
 10. **PRD 9 and 15:** a read-only Assumptions page (step 4b), with the per-run "assumptions in force" panel at step 10; and CLAUDE.md "How we work", items 11 and 12.
+
+## Live deployment (2026-10-05)
+
+**Merge:** `step-04b-assumptions` into `main` with `--no-ff` (`1bdba38`), after the branch run on its head `8386d71` was green (https://github.com/kelawady/hypocurate/actions/runs/37264487958). Checked before merging (`git diff --name-only origin/main...step-04b-assumptions`): 14 files, all package code, templates, the stylesheet, the image check, tests, CLAUDE.md and review documents; no `render.yaml`, workflow, migration, Dockerfile, Compose or dependency change. The suite passed on `main` locally (544), and `main`'s run was green (https://github.com/kelawady/hypocurate/actions/runs/37264916552; started 04:45:40 UTC, passed 04:47:16 UTC). Times are UTC.
+
+| Check | How | Result |
+|---|---|---|
+| Live `/health` before the merge | `curl` | `version` `355e2c3…`, `schema` `0001`, at head |
+| Live `/health` after the deploy | `curl`, 04:48:09 UTC | `{"web":"ok","database":"ok","version":"1bdba38164ab9f2b81fc32b111359b17e78c6442","schema":{"revision":"0001","at_head":true}}` |
+| `/assumptions` signed out | `curl` | 303 to `/login` |
+| `/assumptions?review=not_reviewed` signed out | `curl` | 303 to `/login` |
+| `/` signed out | `curl` | 303 to `/login` |
+
+That the service started on the new commit also shows that the deployed register passed validation at start-up (an invalid register stops the service starting). The signed-in page was not checked on the live site: that needs the production password, which only the owner uses.
+
+No migration ran (schema still `0001`), and no Blueprint sync was expected, because `render.yaml` did not change.
 
 ## Open items
 
