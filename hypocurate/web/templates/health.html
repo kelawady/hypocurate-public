@@ -6,5 +6,6 @@
   <tr><th>Web service</th><td>{{ status.web }}</td></tr>
   <tr><th>Database</th><td class="{{ 'ok' if status.database == 'ok' else 'error' }}">{{ status.database }}</td></tr>
   <tr><th>Version</th><td><code>{{ status.version }}</code></td></tr>
+  <tr><th>Schema</th><td class="{{ 'ok' if status.schema.at_head else 'error' }}"><code>{{ status.schema.revision or 'none' }}</code>{{ ' (latest)' if status.schema.at_head else ' (not the latest)' }}</td></tr>
 </table>
 {% endblock %}

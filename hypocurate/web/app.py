@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from hypocurate.config import Settings, load_settings
 from hypocurate.db.engine import database_reachable, make_engine
+from hypocurate.db.migrate import schema_status
 from hypocurate.web.login_throttle import Attempt, LoginThrottle
 
 HERE = Path(__file__).resolve().parent
@@ -93,7 +94,9 @@ def create_app(
     @app.get("/health")
     def health(request: Request) -> Response:
         db_ok = database_reachable(engine)
-        status = {"web": "ok", "database": "ok" if db_ok else "unreachable", "version": settings.version}
+        status = {"web": "ok", "database": "ok" if db_ok else "unreachable", "version": settings.version,
+                  # Informational (step 3): confirms a deploy migrated; never changes the status code.
+                  "schema": schema_status(engine) if db_ok else {"revision": None, "at_head": False}}
         code = 200 if db_ok else 503
         if "text/html" in request.headers.get("accept", ""):
             return templates.TemplateResponse(request, "health.html", {"status": status}, status_code=code)

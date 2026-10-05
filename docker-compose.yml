@@ -30,8 +30,22 @@ services:
       timeout: 3s
       retries: 30
 
+  # Applies the migrations once, as Render's pre-deploy command does; web and
+  # worker start only after it has succeeded.
+  migrate:
+    <<: *app
+    command: ["python", "-m", "hypocurate.db.migrate", "upgrade"]
+    environment:
+      HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
+      DATABASE_URL: *database-url
+
   web:
     <<: *app
+    depends_on: &after-migrate
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
       DATABASE_URL: *database-url
@@ -43,6 +57,7 @@ services:
 
   worker:
     <<: *app
+    depends_on: *after-migrate
     command: ["python", "-m", "hypocurate.worker"]
     environment:
       HYPOCURATE_ENV: ${HYPOCURATE_ENV:-development}
