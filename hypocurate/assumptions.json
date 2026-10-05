@@ -101,7 +101,8 @@
       }
     ],
     "notes": [
-      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."
+      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7.",
+      "Recomputed in step 6 and approved by the owner on 2026-10-06 (entry 'reference_numbers')."
     ],
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_rows_15_and_16_enter_together_when_compression_is_permitted",
@@ -4404,7 +4405,9 @@
       "note": "The guard is in code; the database itself does not refuse a constructed record."
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1."
+    ],
     "tests": [
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
       "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records"
@@ -4518,5 +4521,62 @@
       "by": "owner",
       "before_step": 8
     }
+  },
+  {
+    "key": "reference_numbers",
+    "name": "Reference numbers of the fixed-plan test",
+    "state": "in_force",
+    "statement": "Under the reference plan (tension only; Texas A&M room temperature and single-phase FCC assigned by decision): pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M alone 21 records, 9 alloys, one group, coefficient ≈ 1173 with no uncertainty and no verdict. The statistics module (step 7) must reproduce them independently.",
+    "value": {
+      "text": "pooled 97 / 22 / 20 / 74, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA 76 / 13 / 19, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M 21 / 9 / 1, k ≈ 1173",
+      "unit": "MPa·µm^½"
+    },
+    "category": "statistical",
+    "affects": "The fixed reference run (PRD 13.1, 14.1a) and every statistics regression test from step 7.",
+    "reason": "The owner's step 6 decisions (tension only removes MPEA row 139) changed the reference set; the numbers were recomputed on the sets frozen by the step 6 pipeline.",
+    "evidence": [
+      "docs/reviews/step06_summary.md, 'Reference sets and numbers': recomputed test-side (statsmodels 0.15.0) with the method of docs/reference/worked_example.py; scripts and output in docs/reviews/step06_review_packet.md, section 13.",
+      "The set 'tension_and_compression' reproduces the earlier values exactly (pooled 428.0 ± 63.5, p = 7.4e-7; MPEA 427.2 ± 61.4, p = 6.2e-7)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary.",
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "file:CLAUDE.md:Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6"
+        },
+        {
+          "ref": "file:CLAUDE.md:First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6"
+        }
+      ],
+      "done": "The record counts, alloys, groups and residual degrees of freedom are regression tests on the pipeline's frozen sets (step 6).",
+      "pending": "The coefficients, uncertainties and p-values, reproduced independently by the statistics module and made regression tests (step 7).",
+      "step": 7,
+      "note": "The step 6 values come from a test-side script, not from package code."
+    },
+    "history": [
+      {
+        "value": "pooled 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 428 ± 64, p ≈ 8e-7 (recomputed 7.4e-7); MPEA alone 77 records, 20 papers, k = 427 ± 61, p ≈ 6e-7; Texas A&M alone ≈ 1173, one group",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "PRD v1.6 and CLAUDE.md, before the tension-only decision; it included MPEA row 139, a compression test."
+      }
+    ],
+    "notes": [
+      "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day."
+    ],
+    "tests": [
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+    ]
   }
 ]

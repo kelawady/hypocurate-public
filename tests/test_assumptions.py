@@ -58,7 +58,8 @@ def test_every_category_has_entries_and_keys_are_unique():
 # Step 6 completed same_alloy_rule, sufficiency_options, controlled_extract_disabled and
 # assigned_value_statuses, and added constructed_test_runs (its label and exclusion: steps 7, 10).
 PARTLY = {"tamu_grouping_unit", "papers_independent", "validity_checks", "fixed_minimums",
-          "grain_size_transformation_at_analysis", "constructed_test_runs"}
+          "grain_size_transformation_at_analysis", "constructed_test_runs",
+          "reference_numbers"}  # owner, 2026-10-06: coefficients reproduced by the statistics module in step 7
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -234,6 +235,17 @@ def test_the_step_6_decisions_carry_the_owners_wording():
                 "eligibility_rule_order", "conflicts_not_pooled", "freeze_counts"):
         e = BY_KEY[key]
         assert e["decided"] == {"by": OWNER, "date": "2026-10-05"} and e["expert_review"]["status"] == "not_reviewed"
+
+
+def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history():
+    """Owner, 2026-10-06: the recomputed reference numbers are approved; step 7 must reproduce them."""
+    e = BY_KEY["reference_numbers"]
+    assert e["decided"] == {"by": OWNER, "date": "2026-10-06"} and e["state"] == "in_force"
+    assert "k = 424.9 ± 64.4" in e["statement"] and "k = 424.1 ± 62.2" in e["statement"]
+    assert "must reproduce them independently" in e["statement"]
+    assert e["applied"]["status"] == "partly" and e["applied"]["step"] == 7
+    assert "k = 428 ± 64" in e["history"][0]["value"] and "77 records" in e["history"][0]["value"]
+    assert "database rule" in " ".join(BY_KEY["constructed_test_runs"]["notes"])
 
 
 def open_entry():

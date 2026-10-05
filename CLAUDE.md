@@ -68,4 +68,4 @@ The access layer and its tests guard against **our own code** leaking data to a 
 
 ## Reference numbers (fixed-plan test, PRD 14.1a)
 
-Pooled: 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 428 ± 64, p ≈ 8e-7. First source alone (MPEA): 77 records, 20 papers, k = 427 ± 61, p ≈ 6e-7. Second source alone (Texas A&M): coefficient ≈ 1173, one group, no uncertainty, no verdict.
+Under the owner's decisions of 2026-10-05 (tension only; Texas A&M room temperature and single-phase FCC assigned by decision); recomputed test-side in step 6 and approved by the owner on 2026-10-06 (register entry `reference_numbers`, which keeps the earlier values in its history). Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6. First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6. Second source alone (Texas A&M): 21 records, 9 alloys, coefficient ≈ 1173, one group, no uncertainty, no verdict. The statistics module (step 7) must reproduce these independently; the step 6 values come from a test-side script, not from package code.
