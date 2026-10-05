@@ -199,15 +199,13 @@ Each change was made in a scratch copy of the branch (`git archive`), and only t
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
 615 passed in 104.24s
-$ docker run --rm --network host hypocurate:test     (the test image, rebuilt; see below)
-615 passed in 123.25s
+$ docker compose run --rm test                 (the test image, rebuilt)
+615 passed in 112.94s
 ```
 
 GitHub Actions, commit `72355e6` (the last code change): success; "Run the suite in the test image": 615 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
 https://github.com/kelawady/hypocurate/actions/runs/37319439565
 The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
-
-**`docker compose run --rm test` could not reach the database in this Codespace**: containers on the Compose bridge network cannot reach each other. Even a plain `busybox` container times out to `db:5432`, while DNS resolves. Restarting the database and recreating the network did not help, and `iptables` warns of mixed legacy and nft tables. I did not change the firewall. The same test image was run on the host network against the same database instead (615 passed). CI runs the Compose path on GitHub.
 
 ## Audit-log volume (addition D)
 
@@ -228,7 +226,6 @@ The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchange
 4. **The plan's list of fields to extract is filtered for every role**, not only the Curator. The first planted run found the planted value in the gap report's `plan`, because I had planted it in that list.
 5. **`guard_probe.py` is in the package**, not in `tests/`. A guarded process imports only package code, and `tests/` is unreachable under the guard by design.
 6. **The first access commit (`432cb35`) does not pass the suite alone**: its static test expects `guarded.py`, which comes in the next commit. The branch head passes.
-7. **The test image was run on the host network**, not through Compose (above).
 
 ## PRD corrections and clarifications for the next PRD update
 
@@ -257,8 +254,7 @@ The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchange
 5. **The Commentator on an insufficient run** receives `records_full`, including outcome values of records never analysed. The PRD's "complete output" reads that way; the owner may prefer otherwise.
 6. **Category values and paper references** reach the Critic as the source gives them (text from the source). They are metadata the owner approved, but they are source text.
 7. **Backlog (PRD 18):** the experiment flag that relaxes the access contract.
-8. **Codespace:** Compose containers cannot reach each other (above); CI is unaffected.
-9. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
+8. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
 
 ## Questions for the reviewer
 
