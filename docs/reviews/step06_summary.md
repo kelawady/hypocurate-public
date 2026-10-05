@@ -35,7 +35,15 @@ The owner decided: **neither enters the primary set**; a new eighth set `conflic
 - **Open owner decision for step 7:** what a run below the fixed minimums may show. The owner's starting position: the counts and which minimums were not met, and nothing derived from outcome values, not even a coefficient, so that the sufficiency option cannot be chosen after seeing an estimate. Not built.
 - "Seven" became "eight" everywhere; the eight sets are listed in one place below.
 
-## What was built
+## The owner's decisions after the first build (2026-10-06)
+
+1. **The recomputed reference numbers are approved.** CLAUDE.md's "Reference numbers" now state them. A new register entry, `reference_numbers` (statistical; decided by the owner on 2026-10-06; partly applied), holds them, with the earlier values (98 / 77 records, k = 428 ± 64 and 427 ± 61) in its history. The statistics module in step 7 must reproduce them independently: the step 6 values come from a test-side script, not from package code. The record counts are regression tests already; the coefficients become tests in step 7.
+2. **The answer file's rows 15–16** now describe the reference plan with its test-type rule. In both rows:
+   - `prd_5_3_class` "Within scope under the reference plan: distinct measurements, not duplicates" → "Incompatible measurements: outside the plan's scope (test-type rule: tension only)";
+   - `primary_analysis` "both enter under the reference plan (it sets no test-type rule)" → "not eligible: excluded by the test-type rule (tension only)".
+   The pinned fingerprint is updated (`8ff53837…`), and the extract is unchanged. The rows' `explanation` cells still describe the step 1 plan; they were not part of this decision (see "Open items").
+3. **The constructed-data guard stays in code.** A database rule goes to the backlog: a note in register entry `constructed_test_runs`, and PRD correction 16.
+
 
 | Path | What it is |
 |---|---|
@@ -209,11 +217,11 @@ Reading the table:
 - **The two duplicate sets** equal the primary set on the real sources (they share no measurement).
 - **The pooled p-value** is 1.3e-6, against "≈ 8e-7" in the PRD for the old set (recomputed 7.4e-7; step 1 open item 1).
 
-The counts are regression tests now (`tests/test_reference_sets.py`). The coefficients, uncertainties and p-values become tests with the statistics module in step 7. **CLAUDE.md's "Reference numbers" are not changed** until the owner approves these numbers.
+The counts are regression tests now (`tests/test_reference_sets.py`). The coefficients, uncertainties and p-values become tests with the statistics module in step 7, which must reproduce them independently. **Approved by the owner on 2026-10-06**: CLAUDE.md and register entry `reference_numbers` state them.
 
 ## Assumptions register
 
-95 entries: 92 in force, 2 open, 1 direction approved. Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
+96 entries: 93 in force, 2 open, 1 direction approved (after the owner's decisions of 2026-10-06). Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
 
 **Applied in step 6, with named settings and tests:**
 - **Moved to "yes":** `tamu_test_temperature`, `tamu_microstructure`, `permitted_test_types`, `same_alloy_rule`, `values_disagree_tolerance`, `conflict_pairing_rule`, `tag_starting_lists`, `room_temperature_scope`, `fcc_microstructure_scope`, `grain_size_floor`, `alloy_eligibility`, `physical_validity_checks`, `sufficiency_options`, `duplicate_identity`, `duplicate_survivor_rule`, `unresolved_duplicates`, `scope_not_confirmed`, `assigned_value_statuses`, `controlled_extract_disabled`, `observation_unit`, `quasistatic_tests`.
@@ -234,13 +242,14 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 
 **New entries:**
 - `eligibility_rule_order`, `conflicts_not_pooled`, `sensitivity_one_change`, `code_role_access`, `record_extraction_provenance`, `freeze_counts`;
-- `constructed_test_runs` (partly: the label and the exclusion are steps 7 and 10).
+- `constructed_test_runs` (partly: the label and the exclusion are steps 7 and 10; a backlog note for a database rule, 2026-10-06);
+- `reference_numbers` (2026-10-06; partly: the coefficients are reproduced by the statistics module in step 7; the earlier values in its history).
 
 **Open owner decisions:**
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (815, all passing; 172 new; tests changed listed below)
+## Tests (816, all passing; 173 new; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
@@ -252,7 +261,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 | `tests/test_reference_sets.py` | 6 | The primary set equals the reference selection without row 139; one decision per record (Texas A&M 21/72/1); no shared measurement; the freeze counts; **one change per sensitivity set**, on the reference run and on a marked run with duplicates and conflicts. |
 | `tests/test_access_code_roles.py` | 12 | The code lists; binds only at curation (five other stages); only code roles; an agent setting cannot bind as one; **Inclusion receives no planted outcome value** (Checks as positive control); `record_conditions` contents and hashes. |
 | `tests/test_migrations_step6.py` | 7 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
-| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +1 | The decision citations quote the register; the step 6 decisions' wording. |
+| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +2 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06). |
 
 ### Tests changed (none weakened)
 
@@ -275,6 +284,11 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review` expects the two new open entries, the new statement, and the step 5 statement in its history;
   - `test_the_microstructure_decision_is_recorded` expects "yes";
   - the page tests expect the "Open decisions" section (2 open; 3 with the fixture).
+
+- **The owner's decisions of 2026-10-06:**
+  - `test_controlled_duplicates.py`: the pinned fingerprint; `test_other_test_type_rows_are_compression_copies_of_tension_records` and `EXPECTED` expect the corrected cells of rows 15–16;
+  - `test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files` reads `primary_analysis` for every row, where it read the tension-only column for rows 15–16;
+  - `test_assumptions.py`: `PARTLY` gains `reference_numbers`.
 
 No test was removed.
 
@@ -317,13 +331,14 @@ Each change was made in a scratch copy of the package (the copy's import checked
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-815 passed in 178.83s
+816 passed in 179.58s    (after the owner's decisions of 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-815 passed in 194.83s
+816 passed in 182.96s
 ```
 
-GitHub Actions, commit `8ccfd36` (the last code commit): success; "Run the suite in the test image": 815 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37352154249
+GitHub Actions, commit `b11e7c8` (the owner's decisions of 2026-10-06, last change to code, tests or data): success; "Run the suite in the test image": 816 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37354762927
+Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady/hypocurate/actions/runs/37352154249
 
 ## Deviations from the approved plan
 
@@ -334,7 +349,7 @@ https://github.com/kelawady/hypocurate/actions/runs/37352154249
 5. **Record storage reads sealed versions directly** (code, approved under (c)), not through an access object.
 6. **The variation of each sensitivity key is fixed by the key**, not by plan numbers.
 7. **Sprint 1 plans accept only the room-temperature band**; any other band is refused by `validate`.
-8. **The answer file's rows 15–16:** the columns `prd_5_3_class` and `primary_analysis` still describe the step 1 plan without a test-type rule ("both enter under the reference plan"). Under today's reference plan the column `handling_under_tension_only_plan` applies, and the test uses it. Aligning those two cells needs the owner's approval (open item).
+8. **The answer file's rows 15–16:** corrected by the owner's decision of 2026-10-06 (two cells per row).
 9. **The register's reworded entries are recorded as decided by the owner on 2026-10-05** (the approval of this plan); their earlier deciders and dates are kept in their history.
 
 ## Things found unclear or contradictory while building
@@ -369,14 +384,13 @@ https://github.com/kelawady/hypocurate/actions/runs/37352154249
 13. **PRD 3 step 7 / 5.6:** the counts for the fixed minimums are computed at the freeze from structure and grain sizes; a dataset below the minimums is still frozen; the outcome is decided in step 7.
 14. **PRD 14.2:** refused changes after a checkpoint are rejected and logged by the write paths as well as the database.
 15. **PRD 2.1 / 10 (controlled extract):** runs that include constructed data are marked at dispatch, may complete, are labelled "test run: includes constructed data", and are excluded from aggregates and lists of real results.
+16. **PRD 18 (backlog; owner, 2026-10-06):** a database rule that refuses a constructed source's records in a run not marked as a test. In sprint 1 the guard is in code only.
 
 ## Open items
 
 1. **Owner:**
-   - approve the recomputed reference numbers before CLAUDE.md changes;
    - the open decisions `below_minimum_display` (before step 7) and `curator_tabular_sources` (before step 8);
-   - whether to align the answer file's rows 15–16 cells with the tension-only plan;
-   - whether the constructed-data guard should also be a database rule (a migration).
+   - the answer file's rows 15–16 `explanation` cells still say "The reference plan sets no test-type rule, so both enter"; correcting them was not part of the 2026-10-06 decision.
 2. **Step 7:**
    - the statistics on the frozen sets; the coefficients above become tests;
    - the fixed-minimum check that decides the outcome;

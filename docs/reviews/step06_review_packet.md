@@ -1,6 +1,6 @@
 # Build step 6 — review packet for the second model
 
-Date: 2026-10-05. Branch: `step-06-eligibility`. Code reviewed: commit `8ccfd36` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 815 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37352154249.
+Date: 2026-10-06. Branch: `step-06-eligibility`. Code reviewed: commit `b11e7c8` (this packet and the summary are added in the next commit and change no code). GitHub Actions on that commit: success, 816 passed, runtime image OK, https://github.com/kelawady/hypocurate/actions/runs/37354762927.
 
 Generated from the files on disk by a script, so every file below is quoted exactly. The frozen data and the test-image lock are left out.
 
@@ -39,7 +39,10 @@ Please check in particular:
 ## Files added, modified or deleted since `main` (`209febc`, the step 5 live record)
 
 ```
+M	CLAUDE.md
 M	README.md
+A	docs/reviews/step06_review_packet.md
+A	docs/reviews/step06_summary.md
 M	hypocurate/access/allowlist.py
 M	hypocurate/access/dispatch.py
 M	hypocurate/access/fields.py
@@ -138,7 +141,15 @@ The owner decided: **neither enters the primary set**; a new eighth set `conflic
 - **Open owner decision for step 7:** what a run below the fixed minimums may show. The owner's starting position: the counts and which minimums were not met, and nothing derived from outcome values, not even a coefficient, so that the sufficiency option cannot be chosen after seeing an estimate. Not built.
 - "Seven" became "eight" everywhere; the eight sets are listed in one place below.
 
-## What was built
+## The owner's decisions after the first build (2026-10-06)
+
+1. **The recomputed reference numbers are approved.** CLAUDE.md's "Reference numbers" now state them. A new register entry, `reference_numbers` (statistical; decided by the owner on 2026-10-06; partly applied), holds them, with the earlier values (98 / 77 records, k = 428 ± 64 and 427 ± 61) in its history. The statistics module in step 7 must reproduce them independently: the step 6 values come from a test-side script, not from package code. The record counts are regression tests already; the coefficients become tests in step 7.
+2. **The answer file's rows 15–16** now describe the reference plan with its test-type rule. In both rows:
+   - `prd_5_3_class` "Within scope under the reference plan: distinct measurements, not duplicates" → "Incompatible measurements: outside the plan's scope (test-type rule: tension only)";
+   - `primary_analysis` "both enter under the reference plan (it sets no test-type rule)" → "not eligible: excluded by the test-type rule (tension only)".
+   The pinned fingerprint is updated (`8ff53837…`), and the extract is unchanged. The rows' `explanation` cells still describe the step 1 plan; they were not part of this decision (see "Open items").
+3. **The constructed-data guard stays in code.** A database rule goes to the backlog: a note in register entry `constructed_test_runs`, and PRD correction 16.
+
 
 | Path | What it is |
 |---|---|
@@ -312,11 +323,11 @@ Reading the table:
 - **The two duplicate sets** equal the primary set on the real sources (they share no measurement).
 - **The pooled p-value** is 1.3e-6, against "≈ 8e-7" in the PRD for the old set (recomputed 7.4e-7; step 1 open item 1).
 
-The counts are regression tests now (`tests/test_reference_sets.py`). The coefficients, uncertainties and p-values become tests with the statistics module in step 7. **CLAUDE.md's "Reference numbers" are not changed** until the owner approves these numbers.
+The counts are regression tests now (`tests/test_reference_sets.py`). The coefficients, uncertainties and p-values become tests with the statistics module in step 7, which must reproduce them independently. **Approved by the owner on 2026-10-06**: CLAUDE.md and register entry `reference_numbers` state them.
 
 ## Assumptions register
 
-95 entries: 92 in force, 2 open, 1 direction approved. Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
+96 entries: 93 in force, 2 open, 1 direction approved (after the owner's decisions of 2026-10-06). Every entry decided in step 6 is by the owner on 2026-10-05, not reviewed by an expert.
 
 **Applied in step 6, with named settings and tests:**
 - **Moved to "yes":** `tamu_test_temperature`, `tamu_microstructure`, `permitted_test_types`, `same_alloy_rule`, `values_disagree_tolerance`, `conflict_pairing_rule`, `tag_starting_lists`, `room_temperature_scope`, `fcc_microstructure_scope`, `grain_size_floor`, `alloy_eligibility`, `physical_validity_checks`, `sufficiency_options`, `duplicate_identity`, `duplicate_survivor_rule`, `unresolved_duplicates`, `scope_not_confirmed`, `assigned_value_statuses`, `controlled_extract_disabled`, `observation_unit`, `quasistatic_tests`.
@@ -337,13 +348,14 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 
 **New entries:**
 - `eligibility_rule_order`, `conflicts_not_pooled`, `sensitivity_one_change`, `code_role_access`, `record_extraction_provenance`, `freeze_counts`;
-- `constructed_test_runs` (partly: the label and the exclusion are steps 7 and 10).
+- `constructed_test_runs` (partly: the label and the exclusion are steps 7 and 10; a backlog note for a database rule, 2026-10-06);
+- `reference_numbers` (2026-10-06; partly: the coefficients are reproduced by the statistics module in step 7; the earlier values in its history).
 
 **Open owner decisions:**
 - `below_minimum_display` (before step 7), with the owner's starting position;
 - `curator_tabular_sources` (before step 8).
 
-## Tests (815, all passing; 172 new; tests changed listed below)
+## Tests (816, all passing; 173 new; tests changed listed below)
 
 | File | Tests | What |
 |---|---|---|
@@ -355,7 +367,7 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
 | `tests/test_reference_sets.py` | 6 | The primary set equals the reference selection without row 139; one decision per record (Texas A&M 21/72/1); no shared measurement; the freeze counts; **one change per sensitivity set**, on the reference run and on a marked run with duplicates and conflicts. |
 | `tests/test_access_code_roles.py` | 12 | The code lists; binds only at curation (five other stages); only code roles; an agent setting cannot bind as one; **Inclusion receives no planted outcome value** (Checks as positive control); `record_conditions` contents and hashes. |
 | `tests/test_migrations_step6.py` | 7 | Lists = register = profile; 0002 changes no schema; safe with existing values; up/down/up through each revision; failure rollback across both; 0003 keeps 0001's checks and adds one; a record states its extraction. |
-| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +1 | The decision citations quote the register; the step 6 decisions' wording. |
+| `tests/test_adapter_tamu.py`, `tests/test_assumptions.py` | +1, +2 | The decision citations quote the register; the step 6 decisions' wording; the approved reference numbers with the earlier values in their history (2026-10-06). |
 
 ### Tests changed (none weakened)
 
@@ -378,6 +390,11 @@ The counts are regression tests now (`tests/test_reference_sets.py`). The coeffi
   - `test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review` expects the two new open entries, the new statement, and the step 5 statement in its history;
   - `test_the_microstructure_decision_is_recorded` expects "yes";
   - the page tests expect the "Open decisions" section (2 open; 3 with the fixture).
+
+- **The owner's decisions of 2026-10-06:**
+  - `test_controlled_duplicates.py`: the pinned fingerprint; `test_other_test_type_rows_are_compression_copies_of_tension_records` and `EXPECTED` expect the corrected cells of rows 15–16;
+  - `test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files` reads `primary_analysis` for every row, where it read the tension-only column for rows 15–16;
+  - `test_assumptions.py`: `PARTLY` gains `reference_numbers`.
 
 No test was removed.
 
@@ -420,13 +437,14 @@ Each change was made in a scratch copy of the package (the copy's import checked
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-815 passed in 178.83s
+816 passed in 179.58s    (after the owner's decisions of 2026-10-06)
 $ docker compose run --rm test                 (the test image, rebuilt)
-815 passed in 194.83s
+816 passed in 182.96s
 ```
 
-GitHub Actions, commit `8ccfd36` (the last code commit): success; "Run the suite in the test image": 815 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37352154249
+GitHub Actions, commit `b11e7c8` (the owner's decisions of 2026-10-06, last change to code, tests or data): success; "Run the suite in the test image": 816 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37354762927
+Earlier: commit `8ccfd36` (first build), 815 passed, https://github.com/kelawady/hypocurate/actions/runs/37352154249
 
 ## Deviations from the approved plan
 
@@ -437,7 +455,7 @@ https://github.com/kelawady/hypocurate/actions/runs/37352154249
 5. **Record storage reads sealed versions directly** (code, approved under (c)), not through an access object.
 6. **The variation of each sensitivity key is fixed by the key**, not by plan numbers.
 7. **Sprint 1 plans accept only the room-temperature band**; any other band is refused by `validate`.
-8. **The answer file's rows 15–16:** the columns `prd_5_3_class` and `primary_analysis` still describe the step 1 plan without a test-type rule ("both enter under the reference plan"). Under today's reference plan the column `handling_under_tension_only_plan` applies, and the test uses it. Aligning those two cells needs the owner's approval (open item).
+8. **The answer file's rows 15–16:** corrected by the owner's decision of 2026-10-06 (two cells per row).
 9. **The register's reworded entries are recorded as decided by the owner on 2026-10-05** (the approval of this plan); their earlier deciders and dates are kept in their history.
 
 ## Things found unclear or contradictory while building
@@ -472,14 +490,13 @@ https://github.com/kelawady/hypocurate/actions/runs/37352154249
 13. **PRD 3 step 7 / 5.6:** the counts for the fixed minimums are computed at the freeze from structure and grain sizes; a dataset below the minimums is still frozen; the outcome is decided in step 7.
 14. **PRD 14.2:** refused changes after a checkpoint are rejected and logged by the write paths as well as the database.
 15. **PRD 2.1 / 10 (controlled extract):** runs that include constructed data are marked at dispatch, may complete, are labelled "test run: includes constructed data", and are excluded from aggregates and lists of real results.
+16. **PRD 18 (backlog; owner, 2026-10-06):** a database rule that refuses a constructed source's records in a run not marked as a test. In sprint 1 the guard is in code only.
 
 ## Open items
 
 1. **Owner:**
-   - approve the recomputed reference numbers before CLAUDE.md changes;
    - the open decisions `below_minimum_display` (before step 7) and `curator_tabular_sources` (before step 8);
-   - whether to align the answer file's rows 15–16 cells with the tension-only plan;
-   - whether the constructed-data guard should also be a database rule (a migration).
+   - the answer file's rows 15–16 `explanation` cells still say "The reference plan sets no test-type rule, so both enter"; correcting them was not part of the 2026-10-06 decision.
 2. **Step 7:**
    - the statistics on the frozen sets; the coefficients above become tests;
    - the fixed-minimum check that decides the outcome;
@@ -691,7 +708,7 @@ The access layer and its tests guard against **our own code** leaking data to a 
 
 ## Reference numbers (fixed-plan test, PRD 14.1a)
 
-Pooled: 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 428 ± 64, p ≈ 8e-7. First source alone (MPEA): 77 records, 20 papers, k = 427 ± 61, p ≈ 6e-7. Second source alone (Texas A&M): coefficient ≈ 1173, one group, no uncertainty, no verdict.
+Under the owner's decisions of 2026-10-05 (tension only; Texas A&M room temperature and single-phase FCC assigned by decision); recomputed test-side in step 6 and approved by the owner on 2026-10-06 (register entry `reference_numbers`, which keeps the earlier values in its history). Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6. First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6. Second source alone (Texas A&M): 21 records, 9 alloys, coefficient ≈ 1173, one group, no uncertainty, no verdict. The statistics module (step 7) must reproduce these independently; the step 6 values come from a test-side script, not from package code.
 ```
 
 ## 4. Core rules (from `docs/PRD_sprint1.md`)
@@ -3063,7 +3080,7 @@ index 6a5b4dd..654730d 100644
 
 ```diff
 diff --git a/hypocurate/assumptions.json b/hypocurate/assumptions.json
-index 48dacbb..8ba5be8 100644
+index 48dacbb..1b0cf7f 100644
 --- a/hypocurate/assumptions.json
 +++ b/hypocurate/assumptions.json
 @@ -27,9 +27,14 @@
@@ -3119,9 +3136,13 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -85,7 +103,12 @@
+@@ -83,9 +101,15 @@
+       }
+     ],
      "notes": [
-       "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."
+-      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7."
++      "This removes MPEA_dataset.csv:row:139 (a compression test) from the primary analysis, so the reference numbers (77 / 98 records, k = 427 and 428) must be recomputed before step 7.",
++      "Recomputed in step 6 and approved by the owner on 2026-10-06 (entry 'reference_numbers')."
      ],
 -    "tests": []
 +    "tests": [
@@ -3133,7 +3154,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "tamu_grouping_unit",
-@@ -118,10 +141,14 @@
+@@ -118,10 +142,14 @@
          {
            "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.grouping_unit",
            "equals": "dataset"
@@ -3150,7 +3171,7 @@ index 48dacbb..8ba5be8 100644
        "step": 7,
        "note": null
      },
-@@ -133,10 +160,14 @@
+@@ -133,10 +161,14 @@
          "note": "PRD 17, decision 9."
        }
      ],
@@ -3167,7 +3188,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -166,16 +197,17 @@
+@@ -166,16 +198,17 @@
      },
      "sensitivity": "The same rule with a rounding step of 1 at.%.",
      "applied": {
@@ -3189,7 +3210,7 @@ index 48dacbb..8ba5be8 100644
        "note": "The adapters give the full-precision composition; the display label (normalize.alloy_label) is not this rule."
      },
      "history": [
-@@ -189,11 +221,14 @@
+@@ -189,11 +222,14 @@
      "notes": [
        "Known weakness: compositions closer than the step can fall into different bins at a boundary.",
        "Ties follow the reference script's rounding (Python round on the computed percentage) unless step 6 states otherwise.",
@@ -3206,7 +3227,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -224,13 +259,22 @@
+@@ -224,13 +260,22 @@
      "applied": {
        "status": "partly",
        "settings": [
@@ -3232,7 +3253,7 @@ index 48dacbb..8ba5be8 100644
        "note": null
      },
      "history": [
-@@ -243,15 +287,18 @@
+@@ -243,15 +288,18 @@
      ],
      "notes": [],
      "tests": [
@@ -3253,7 +3274,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "2% relative difference, relative to the smaller value",
        "unit": "%"
-@@ -273,9 +320,14 @@
+@@ -273,9 +321,14 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3271,7 +3292,7 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -283,18 +335,29 @@
+@@ -283,18 +336,29 @@
          "from": "2026-10-04",
          "to": "2026-10-05",
          "note": "PRD 17, decision 4."
@@ -3304,7 +3325,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "different sources citing the same paper, with the same alloy, grain size and test conditions; rows within one source are separate measurements",
        "unit": null
-@@ -319,23 +382,48 @@
+@@ -319,23 +383,48 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3357,7 +3378,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -413,9 +501,16 @@
+@@ -413,9 +502,16 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3377,7 +3398,7 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -426,7 +521,13 @@
+@@ -426,7 +522,13 @@
        }
      ],
      "notes": [],
@@ -3392,7 +3413,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "tamu_microstructure",
-@@ -458,9 +559,14 @@
+@@ -458,9 +560,14 @@
      },
      "sensitivity": "The source-only analysis (reported values and values assigned from source only) shows the result without these records.",
      "applied": {
@@ -3410,7 +3431,7 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -476,7 +582,11 @@
+@@ -476,7 +583,11 @@
        "Not reviewed by an expert.",
        "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
      ],
@@ -3423,7 +3444,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "shared_coefficient",
-@@ -836,13 +946,19 @@
+@@ -836,13 +947,19 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3447,7 +3468,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "composition_as_reported",
-@@ -892,7 +1008,7 @@
+@@ -892,7 +1009,7 @@
      "key": "room_temperature_scope",
      "name": "Room temperature",
      "state": "in_force",
@@ -3456,7 +3477,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "20 to 25",
        "unit": "°C"
-@@ -904,8 +1020,8 @@
+@@ -904,8 +1021,8 @@
        "docs/reference/worked_example.py: d['T'].between(20, 25)."
      ],
      "decided": {
@@ -3467,7 +3488,7 @@ index 48dacbb..8ba5be8 100644
      },
      "expert_review": {
        "status": "not_reviewed",
-@@ -914,15 +1030,35 @@
+@@ -914,15 +1031,35 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3508,7 +3529,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "fcc_microstructure_scope",
-@@ -950,15 +1086,30 @@
+@@ -950,15 +1087,30 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3543,7 +3564,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "mpea_microstructure_label_trusted",
-@@ -1029,19 +1180,28 @@
+@@ -1029,19 +1181,28 @@
      },
      "sensitivity": "No exclusions (the reference script's sensitivity analysis).",
      "applied": {
@@ -3577,7 +3598,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "at least 2 distinct grain sizes",
        "unit": null
-@@ -1053,8 +1213,8 @@
+@@ -1053,8 +1214,8 @@
        "PRD 5.7 ('Which alloys can be used'); CLAUDE.md, rule 6."
      ],
      "decided": {
@@ -3588,7 +3609,7 @@ index 48dacbb..8ba5be8 100644
      },
      "expert_review": {
        "status": "not_reviewed",
-@@ -1063,21 +1223,37 @@
+@@ -1063,21 +1224,37 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3632,7 +3653,7 @@ index 48dacbb..8ba5be8 100644
        "unit": null
      },
      "category": "scientific",
-@@ -1087,8 +1263,8 @@
+@@ -1087,8 +1264,8 @@
        "PRD 5.3."
      ],
      "decided": {
@@ -3643,7 +3664,7 @@ index 48dacbb..8ba5be8 100644
      },
      "expert_review": {
        "status": "not_reviewed",
-@@ -1097,13 +1273,28 @@
+@@ -1097,13 +1274,28 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3677,7 +3698,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "tamu_test_type",
-@@ -1590,7 +1781,7 @@
+@@ -1590,7 +1782,7 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3686,7 +3707,7 @@ index 48dacbb..8ba5be8 100644
        "settings": [
          {
            "ref": "sql:ck_plan_sufficiency_option"
-@@ -1600,19 +1791,21 @@
+@@ -1600,19 +1792,21 @@
          },
          {
            "ref": "sql:hc_run_update"
@@ -3713,7 +3734,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -1983,11 +2176,17 @@
+@@ -1983,11 +2177,17 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3734,7 +3755,7 @@ index 48dacbb..8ba5be8 100644
      "history": [],
      "notes": [
        "Connects to entry 'conflict_pairing_rule' (decided 2026-10-05): rows within one source are always separate measurements."
-@@ -1997,7 +2196,7 @@
+@@ -1997,7 +2197,7 @@
      "key": "duplicate_identity",
      "name": "When two records are the same measurement",
      "state": "in_force",
@@ -3743,7 +3764,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "same paper, alloy, grain size, value and conditions",
        "unit": null
-@@ -2009,8 +2208,8 @@
+@@ -2009,8 +2209,8 @@
        "PRD 5.3."
      ],
      "decided": {
@@ -3754,7 +3775,7 @@ index 48dacbb..8ba5be8 100644
      },
      "expert_review": {
        "status": "not_reviewed",
-@@ -2019,13 +2218,28 @@
+@@ -2019,13 +2219,28 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3788,7 +3809,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "duplicate_survivor_rule",
-@@ -2053,9 +2267,18 @@
+@@ -2053,9 +2268,18 @@
      },
      "sensitivity": null,
      "applied": {
@@ -3810,7 +3831,7 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -2067,15 +2290,21 @@
+@@ -2067,15 +2291,21 @@
      ],
      "notes": [
        "A DOI identifies the cited paper, not where a record was extracted: a compilation and a copied extract can both carry it. Preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist.",
@@ -3835,7 +3856,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "counted once",
        "unit": null
-@@ -2087,8 +2316,8 @@
+@@ -2087,8 +2317,8 @@
        "PRD 5.3."
      ],
      "decided": {
@@ -3846,7 +3867,7 @@ index 48dacbb..8ba5be8 100644
      },
      "expert_review": {
        "status": "not_reviewed",
-@@ -2097,13 +2326,28 @@
+@@ -2097,13 +2327,28 @@
      },
      "sensitivity": "Both counted separately.",
      "applied": {
@@ -3879,7 +3900,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "scope_not_confirmed",
-@@ -2131,13 +2375,21 @@
+@@ -2131,13 +2376,21 @@
      },
      "sensitivity": "Included.",
      "applied": {
@@ -3904,7 +3925,7 @@ index 48dacbb..8ba5be8 100644
    },
    {
      "key": "assigned_value_statuses",
-@@ -2165,7 +2417,7 @@
+@@ -2165,7 +2418,7 @@
      },
      "sensitivity": "The reference plan names a sensitivity analysis that accepts only reported values and values assigned from source, so the effect of every decision-based assignment is visible.",
      "applied": {
@@ -3913,7 +3934,7 @@ index 48dacbb..8ba5be8 100644
        "settings": [
          {
            "ref": "python:hypocurate.sources.record:STATUSES",
-@@ -2173,14 +2425,20 @@
+@@ -2173,14 +2426,20 @@
              "converted",
              "not_reported",
              "not_convertible",
@@ -3939,7 +3960,7 @@ index 48dacbb..8ba5be8 100644
      },
      "history": [
        {
-@@ -2192,8 +2450,10 @@
+@@ -2192,8 +2451,10 @@
      ],
      "notes": [],
      "tests": [
@@ -3951,7 +3972,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -2230,7 +2490,8 @@
+@@ -2230,7 +2491,8 @@
              "converted",
              "not_reported",
              "not_convertible",
@@ -3961,7 +3982,7 @@ index 48dacbb..8ba5be8 100644
            ]
          }
        ],
-@@ -2415,8 +2676,8 @@
+@@ -2415,8 +2677,8 @@
          }
        ],
        "done": "Records carry grain size in µm only.",
@@ -3972,7 +3993,7 @@ index 48dacbb..8ba5be8 100644
        "note": null
      },
      "history": [],
-@@ -2451,21 +2712,24 @@
+@@ -2451,21 +2713,24 @@
      },
      "sensitivity": null,
      "applied": {
@@ -4002,7 +4023,7 @@ index 48dacbb..8ba5be8 100644
        "tests/test_source_versions.py::test_registering_seals_every_source"
      ]
    },
-@@ -3144,7 +3408,7 @@
+@@ -3144,7 +3409,7 @@
      "key": "plan_named_parts",
      "name": "The plan's schema",
      "state": "in_force",
@@ -4011,7 +4032,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "PLAN_SCHEMA (nested, named keys and vocabulary leaves)",
        "unit": null
-@@ -3184,14 +3448,24 @@
+@@ -3184,14 +3449,24 @@
          "from": "2026-10-05",
          "to": "2026-10-05",
          "note": "Step 5 first build; changed after the second-model review."
@@ -4037,7 +4058,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -3548,7 +3822,7 @@
+@@ -3548,7 +3823,7 @@
      "key": "audit_failure_rows_without_run_lock",
      "name": "Failure rows: a named exception to the locking protocol",
      "state": "in_force",
@@ -4046,7 +4067,7 @@ index 48dacbb..8ba5be8 100644
      "value": {
        "text": "failure rows without hc_write_lock",
        "unit": null
-@@ -3578,13 +3852,22 @@
+@@ -3578,13 +3853,22 @@
        ],
        "note": null
      },
@@ -4071,7 +4092,7 @@ index 48dacbb..8ba5be8 100644
      ]
    },
    {
-@@ -3682,9 +3965,9 @@
+@@ -3682,9 +3966,9 @@
      "key": "code_vocabularies",
      "name": "Vocabularies of codes our own code writes",
      "state": "in_force",
@@ -4083,7 +4104,7 @@ index 48dacbb..8ba5be8 100644
        "unit": null
      },
      "category": "data_handling",
-@@ -3726,16 +4009,20 @@
+@@ -3726,16 +4010,20 @@
              "outside scope",
              "physically impossible",
              "scope not confirmed",
@@ -4104,7 +4125,7 @@ index 48dacbb..8ba5be8 100644
              "model_recalled",
              "out_of_scope",
              "scope_not_confirmed",
-@@ -3745,6 +4032,8 @@
+@@ -3745,6 +4033,8 @@
          {
            "ref": "python:hypocurate.access.vocabulary:SENSITIVITY_KEYS",
            "equals": [
@@ -4113,7 +4134,7 @@ index 48dacbb..8ba5be8 100644
              "possible_duplicates_separate",
              "removal_after_lock",
              "same_alloy_1_at_pct",
-@@ -3753,11 +4042,55 @@
+@@ -3753,11 +4043,55 @@
              "source_only_assignments",
              "tension_and_compression"
            ]
@@ -4170,7 +4191,7 @@ index 48dacbb..8ba5be8 100644
      "notes": [],
      "tests": [
        "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
-@@ -3804,5 +4137,386 @@
+@@ -3804,5 +4138,445 @@
        "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
        "tests/test_access_dispatch.py::test_a_doi_with_doi_syntax_passes_even_with_digits_an_accepted_disclosure"
      ]
@@ -4441,7 +4462,9 @@ index 48dacbb..8ba5be8 100644
 +      "note": "The guard is in code; the database itself does not refuse a constructed record."
 +    },
 +    "history": [],
-+    "notes": [],
++    "notes": [
++      "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1."
++    ],
 +    "tests": [
 +      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
 +      "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records"
@@ -4555,6 +4578,63 @@ index 48dacbb..8ba5be8 100644
 +      "by": "owner",
 +      "before_step": 8
 +    }
++  },
++  {
++    "key": "reference_numbers",
++    "name": "Reference numbers of the fixed-plan test",
++    "state": "in_force",
++    "statement": "Under the reference plan (tension only; Texas A&M room temperature and single-phase FCC assigned by decision): pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M alone 21 records, 9 alloys, one group, coefficient ≈ 1173 with no uncertainty and no verdict. The statistics module (step 7) must reproduce them independently.",
++    "value": {
++      "text": "pooled 97 / 22 / 20 / 74, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA 76 / 13 / 19, k = 424.1 ± 62.2, p ≈ 1.1e-6; Texas A&M 21 / 9 / 1, k ≈ 1173",
++      "unit": "MPa·µm^½"
++    },
++    "category": "statistical",
++    "affects": "The fixed reference run (PRD 13.1, 14.1a) and every statistics regression test from step 7.",
++    "reason": "The owner's step 6 decisions (tension only removes MPEA row 139) changed the reference set; the numbers were recomputed on the sets frozen by the step 6 pipeline.",
++    "evidence": [
++      "docs/reviews/step06_summary.md, 'Reference sets and numbers': recomputed test-side (statsmodels 0.15.0) with the method of docs/reference/worked_example.py; scripts and output in docs/reviews/step06_review_packet.md, section 13.",
++      "The set 'tension_and_compression' reproduces the earlier values exactly (pooled 428.0 ± 63.5, p = 7.4e-7; MPEA 427.2 ± 61.4, p = 6.2e-7)."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-06"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary.",
++    "applied": {
++      "status": "partly",
++      "settings": [
++        {
++          "ref": "file:CLAUDE.md:Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6"
++        },
++        {
++          "ref": "file:CLAUDE.md:First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6"
++        }
++      ],
++      "done": "The record counts, alloys, groups and residual degrees of freedom are regression tests on the pipeline's frozen sets (step 6).",
++      "pending": "The coefficients, uncertainties and p-values, reproduced independently by the statistics module and made regression tests (step 7).",
++      "step": 7,
++      "note": "The step 6 values come from a test-side script, not from package code."
++    },
++    "history": [
++      {
++        "value": "pooled 98 records, 22 alloys, 21 groups, 75 residual degrees of freedom, k = 428 ± 64, p ≈ 8e-7 (recomputed 7.4e-7); MPEA alone 77 records, 20 papers, k = 427 ± 61, p ≈ 6e-7; Texas A&M alone ≈ 1173, one group",
++        "from": "2026-10-04",
++        "to": "2026-10-06",
++        "note": "PRD v1.6 and CLAUDE.md, before the tension-only decision; it included MPEA row 139, a compression test."
++      }
++    ],
++    "notes": [
++      "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day."
++    ],
++    "tests": [
++      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
++      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
++    ]
    }
  ]
 ```
@@ -5715,8 +5795,8 @@ and goes through the freeze under the reference plan. For each of the 16 extract
 answer file states the flag, the handling in the primary analysis, the survivor and the
 sensitivity handling; every record is kept in the store.
 
-The reference plan accepts tension tests only (owner, 2026-10-05), so for rows 15–16 the
-answer file's column `handling_under_tension_only_plan` applies. For rows 13–14 the answer
+The reference plan accepts tension tests only (owner, 2026-10-05); since 2026-10-06 the answer
+file's rows 15–16 describe that plan in their own columns. For rows 13–14 the answer
 file's "included" in the sensitivity analysis is read as decided by the owner (2026-10-05): in
 `scope_not_confirmed_included` the scope no longer excludes the record, and the duplicate rule
 still counts the measurement once.
@@ -5772,16 +5852,14 @@ def test_the_flag_is_the_answer_files(run, t):
 def test_the_primary_handling_and_the_survivor_are_the_answer_files(run, t):
     extract_id, mpea_id = ids(run, t)
     rules = run["rules"]["primary"]
-    primary = t["primary_analysis"] if t["handling_under_tension_only_plan"] == "same as under the reference plan" \
-        else t["handling_under_tension_only_plan"]
+    primary = t["primary_analysis"]
     expected = {
         "counted once": ("in_scope", "duplicate_counted_once"),
         "neither enters: conflict unresolved": ("conflict_unresolved", "conflict_unresolved"),
         "both enter": ("in_scope", "in_scope"),
         "not eligible under a room-temperature plan": ("in_scope", "out_of_scope"),
         "not eligible: scope not confirmed": ("in_scope", "scope_not_confirmed"),
-        "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')":
-            ("in_scope", "out_of_scope"),
+        "not eligible: excluded by the test-type rule (tension only)": ("in_scope", "out_of_scope"),
     }[primary]
     assert (rules[mpea_id], rules[extract_id]) == expected
     if t["survivor_in_primary"].startswith("MPEA row"):
@@ -6567,7 +6645,7 @@ index e4e1436..d7c98e6 100644
      assert h(4, "test_temperature").reason == tamu_fcc.TEMPERATURE_NOT_REPORTED
      assert by_row[4].alloy == by_row[0].alloy
 diff --git a/tests/test_assumptions.py b/tests/test_assumptions.py
-index f8ffe4c..b8c6100 100644
+index f8ffe4c..4ce2b66 100644
 --- a/tests/test_assumptions.py
 +++ b/tests/test_assumptions.py
 @@ -27,16 +27,18 @@ REGISTER = a.load_register()
@@ -6598,7 +6676,7 @@ index f8ffe4c..b8c6100 100644
  }
  
  
-@@ -53,13 +55,14 @@ def test_every_category_has_entries_and_keys_are_unique():
+@@ -53,13 +55,15 @@ def test_every_category_has_entries_and_keys_are_unique():
      assert len({e["key"] for e in REGISTER}) == len(REGISTER)
  
  
@@ -6608,7 +6686,8 @@ index f8ffe4c..b8c6100 100644
 +# Step 6 completed same_alloy_rule, sufficiency_options, controlled_extract_disabled and
 +# assigned_value_statuses, and added constructed_test_runs (its label and exclusion: steps 7, 10).
 +PARTLY = {"tamu_grouping_unit", "papers_independent", "validity_checks", "fixed_minimums",
-+          "grain_size_transformation_at_analysis", "constructed_test_runs"}
++          "grain_size_transformation_at_analysis", "constructed_test_runs",
++          "reference_numbers"}  # owner, 2026-10-06: coefficients reproduced by the statistics module in step 7
  
  
  def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -6617,7 +6696,7 @@ index f8ffe4c..b8c6100 100644
          e = BY_KEY[key]
          # Review finding 4: the calibration direction is approved, its technical review pending.
          expected_state = "direction_approved" if key == "calibration_noise_levels" else "in_force"
-@@ -67,8 +70,8 @@ def test_the_owners_eight_decisions_are_recorded_as_decided():
+@@ -67,8 +71,8 @@ def test_the_owners_eight_decisions_are_recorded_as_decided():
          assert e["category"] == category, key
          assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
          assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}, key
@@ -6628,7 +6707,7 @@ index f8ffe4c..b8c6100 100644
  
  
  def test_decisions_carry_the_owners_wording():
-@@ -110,21 +113,30 @@ def test_the_survivor_rule_has_the_owners_step_1_wording():
+@@ -110,21 +114,30 @@ def test_the_survivor_rule_has_the_owners_step_1_wording():
  
  
  def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review():
@@ -6666,7 +6745,7 @@ index f8ffe4c..b8c6100 100644
      assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
      assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
  
-@@ -185,7 +197,7 @@ def test_the_microstructure_decision_is_recorded():
+@@ -185,7 +198,7 @@ def test_the_microstructure_decision_is_recorded():
      assert e["value"]["text"] == "single-phase FCC (assigned by decision)"
      assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}
      assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}
@@ -6675,7 +6754,7 @@ index f8ffe4c..b8c6100 100644
      evidence = " ".join(e["evidence"])
      for cited in ("main.tex line 138", "main.tex line 173", "supplementary.tex line 61", "main.tex line 175",
                    "main.tex line 177", "supplementary.tex line 65"):
-@@ -198,6 +210,32 @@ def test_the_microstructure_decision_is_recorded():
+@@ -198,6 +211,43 @@ def test_the_microstructure_decision_is_recorded():
      assert e["history"][0]["value"].endswith("(open decision)")
  
  
@@ -6705,10 +6784,21 @@ index f8ffe4c..b8c6100 100644
 +        assert e["decided"] == {"by": OWNER, "date": "2026-10-05"} and e["expert_review"]["status"] == "not_reviewed"
 +
 +
++def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history():
++    """Owner, 2026-10-06: the recomputed reference numbers are approved; step 7 must reproduce them."""
++    e = BY_KEY["reference_numbers"]
++    assert e["decided"] == {"by": OWNER, "date": "2026-10-06"} and e["state"] == "in_force"
++    assert "k = 424.9 ± 64.4" in e["statement"] and "k = 424.1 ± 62.2" in e["statement"]
++    assert "must reproduce them independently" in e["statement"]
++    assert e["applied"]["status"] == "partly" and e["applied"]["step"] == 7
++    assert "k = 428 ± 64" in e["history"][0]["value"] and "77 records" in e["history"][0]["value"]
++    assert "database rule" in " ".join(BY_KEY["constructed_test_runs"]["notes"])
++
++
  def open_entry():
      """An open decision built for the tests, independent of the register's own."""
      e = copy.deepcopy(BY_KEY["tamu_microstructure"])
-@@ -337,7 +375,7 @@ def test_a_wrong_value_or_a_missing_setting_is_reported():
+@@ -337,7 +387,7 @@ def test_a_wrong_value_or_a_missing_setting_is_reported():
  def test_resolved_values_use_json_terms():
      assert a.resolve_setting("python:hypocurate.db.retry:RETRYABLE_SQLSTATES") == ["40001", "40P01"]
      assert a.resolve_setting("python:hypocurate.sources.record:STATUSES") == [
@@ -6717,7 +6807,7 @@ index f8ffe4c..b8c6100 100644
  
  
  # --- The page ----------------------------------------------------------------------------
-@@ -368,7 +406,7 @@ HEADINGS = ["Open decisions", "Direction approved, pending technical review",
+@@ -368,7 +418,7 @@ HEADINGS = ["Open decisions", "Direction approved, pending technical review",
  def test_the_page_shows_every_entry_grouped_with_pending_states_first():
      html = signed_in().get("/assumptions").text
      headings = re.findall(r"<h2>([^<]+)</h2>", html)
@@ -6726,7 +6816,7 @@ index f8ffe4c..b8c6100 100644
      for e in REGISTER:
          assert f'id="{e["key"]}"' in html, e["key"]
      sections = re.split(r"<h2>", html)[1:]
-@@ -383,9 +421,11 @@ def test_open_decisions_are_shown_first_when_there_are_any():
+@@ -383,9 +433,11 @@ def test_open_decisions_are_shown_first_when_there_are_any():
      headings = re.findall(r"<h2>([^<]+)</h2>", html)
      assert headings == HEADINGS
      first = re.split(r"<h2>", html)[1]
@@ -6740,7 +6830,7 @@ index f8ffe4c..b8c6100 100644
      second = re.split(r"<h2>", html)[2]
      assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
      assert "pending: second-model technical review, before step 7" in second
-@@ -396,9 +436,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
+@@ -396,9 +448,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
      summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
      count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
      n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
@@ -6753,20 +6843,21 @@ index f8ffe4c..b8c6100 100644
      assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
      assert html.index('id="summary"') < html.index("<h2>")
 diff --git a/tests/test_controlled_duplicates.py b/tests/test_controlled_duplicates.py
-index fb3f210..9bc0d98 100644
+index fb3f210..d66f88b 100644
 --- a/tests/test_controlled_duplicates.py
 +++ b/tests/test_controlled_duplicates.py
-@@ -13,7 +13,8 @@ EXTRACT = REPO_ROOT / "data/controlled_duplicates/extract.csv"
+@@ -13,7 +13,9 @@ EXTRACT = REPO_ROOT / "data/controlled_duplicates/extract.csv"
  FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
  TRUTH = FIXTURES / "truth.csv"
  # Pinned here, outside data/, so the answer file cannot change without changing a test.
 -TRUTH_SHA256 = "e64b1035f0e1a69198ad690dedec73c8fdc1331b08148f8a19f8701c93861f2e"
 +# Step 6 (owner, 2026-10-05): the restored survivor wording and decision C (rows 7-8 are a conflict).
-+TRUTH_SHA256 = "8b293ddd4e760cc2c58e3515be5aefe6b0e9b5d3ed7d3425957fe82d1e113f7f"
++# Owner, 2026-10-06: rows 15-16 describe the reference plan with its test-type rule (tension only).
++TRUTH_SHA256 = "8ff5383783726824faa03a724d3333e519ca2afa9b2ac33146f3c793e2b9a0f9"
  # The frozen source files: fingerprint-pinned, and not written by us, so they
  # cannot hold our answers. Everything else under data/ is scanned.
  FROZEN_SOURCE_FILES = {
-@@ -162,7 +163,7 @@ def test_every_case_is_present_twice():
+@@ -162,7 +164,7 @@ def test_every_case_is_present_twice():
          "exact_duplicate_verbatim": 2,
          "exact_duplicate_renamed_alloy": 2,
          "possible_duplicate_unknown_paper": 2,
@@ -6775,7 +6866,7 @@ index fb3f210..9bc0d98 100644
          "not_duplicate_other_paper": 2,
          "not_duplicate_other_temperature": 2,
          "missing_test_condition": 2,
-@@ -230,7 +231,7 @@ def test_changed_values_are_as_stated():
+@@ -230,7 +232,7 @@ def test_changed_values_are_as_stated():
      ys, temp = COL["PROPERTY: YS (MPa)"], COL["PROPERTY: Test temperature ($^\\circ$C)"]
      for t in TRUTH_ROWS:
          src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
@@ -6784,7 +6875,20 @@ index fb3f210..9bc0d98 100644
              assert float(row[ys]) == pytest.approx(1.3 * float(src[ys]), abs=0.05)
          if t["case"] == "not_duplicate_other_temperature":
              assert float(row[temp]) == -196.0
-@@ -283,7 +284,9 @@ EXPECTED = {
+@@ -256,9 +258,9 @@ def test_other_test_type_rows_are_compression_copies_of_tension_records():
+         src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
+         assert (src[tt], row[tt]) == ("T", "C")
+         assert t["duplicate_status"] == "not_duplicate"  # known different, not a possible duplicate
+-        # The reference plan sets no test-type rule: within scope, and both enter.
+-        assert t["prd_5_3_class"] == "Within scope under the reference plan: distinct measurements, not duplicates"
+-        assert t["primary_analysis"] == "both enter under the reference plan (it sets no test-type rule)"
++        # The reference plan accepts tension only (owner, 2026-10-05): the compression copy is out of scope.
++        assert t["prd_5_3_class"] == "Incompatible measurements: outside the plan's scope (test-type rule: tension only)"
++        assert t["primary_analysis"] == "not eligible: excluded by the test-type rule (tension only)"
+         # Under a tension-only plan the compression record is out of scope.
+         assert t["handling_under_tension_only_plan"] == (
+             "excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements')")
+@@ -283,16 +285,18 @@ EXPECTED = {
      "exact_duplicate_verbatim": ("exact_duplicate", "counted once", "none"),
      "exact_duplicate_renamed_alloy": ("exact_duplicate", "counted once", "none"),
      "possible_duplicate_unknown_paper": ("possible_duplicate", "counted once", "both counted separately"),
@@ -6795,7 +6899,9 @@ index fb3f210..9bc0d98 100644
      "not_duplicate_other_paper": ("not_duplicate", "both enter", "none"),
      "not_duplicate_other_temperature": ("not_duplicate", "not eligible under a room-temperature plan", "none"),
      "missing_test_condition": ("possible_duplicate", "not eligible: scope not confirmed", "included"),
-@@ -292,7 +295,7 @@ EXPECTED = {
+     "not_duplicate_other_test_type": (
+-        "not_duplicate", "both enter under the reference plan (it sets no test-type rule)", "none"),
++        "not_duplicate", "not eligible: excluded by the test-type rule (tension only)", "none"),
  }
  
  SURVIVOR_RULE = (
@@ -6804,7 +6910,7 @@ index fb3f210..9bc0d98 100644
      "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
      "3) within one source, the lowest row number"
  )
-@@ -330,5 +333,10 @@ def test_survivor_is_stated(t):
+@@ -330,5 +334,10 @@ def test_survivor_is_stated(t):
          else:
              assert row[doi] == src[doi]
              assert t["survivor_reason"].startswith("rule 2:")  # both carry it; MPEA is first in order
@@ -6939,10 +7045,10 @@ The frozen extract (`data/controlled_duplicates/extract.csv`) is unchanged.
 
 ```diff
 diff --git a/tests/fixtures/controlled_duplicates/README.md b/tests/fixtures/controlled_duplicates/README.md
-index 9909022..99af2e6 100644
+index 9909022..88d7b10 100644
 --- a/tests/fixtures/controlled_duplicates/README.md
 +++ b/tests/fixtures/controlled_duplicates/README.md
-@@ -18,7 +18,7 @@ All 16 source rows are among the records eligible under the reference plan, from
+@@ -18,11 +18,11 @@ All 16 source rows are among the records eligible under the reference plan, from
  | 1–2 | `exact_duplicate_verbatim` | nothing (byte-for-byte copy) | yes | counted once | none |
  | 3–4 | `exact_duplicate_renamed_alloy` | formula written differently (`CoCrFeMnNi`, `Co4Cr1Ni4`); same atomic % | yes | counted once | none |
  | 5–6 | `possible_duplicate_unknown_paper` | reference ID, DOI, year, title blanked | possible: flagged, kept, not removed | counted once | both counted separately |
@@ -6951,6 +7057,11 @@ index 9909022..99af2e6 100644
  | 9–10 | `not_duplicate_other_paper` | DOI → constructed `10.5555/hypocurate-test-…` | no | both enter | none |
  | 11–12 | `not_duplicate_other_temperature` | 25 °C → −196 °C | no (conditions differ) | not eligible under a room-temperature plan | none |
  | 13–14 | `missing_test_condition` | test temperature blanked | possible (conditions cannot be confirmed); kept, not removed | not eligible: scope not confirmed | included |
+-| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | within scope under the reference plan (it sets no test-type rule): distinct measurements, both enter. Under a tension-only plan: excluded by the test-type rule | none |
++| 15–16 | `not_duplicate_other_test_type` | tension → compression | no (conditions known to differ; not a possible duplicate) | not eligible: excluded by the reference plan's test-type rule (tension only). With tension and compression together, both enter as distinct measurements | none |
+ 
+ **Missing paper vs missing test condition (PRD 5.3).**
+ - Rows 5–6: the paper is unknown but the conditions match. This is a possible duplicate that cannot be resolved.
 @@ -32,8 +32,8 @@ Every row is kept in the store and none is removed.
  
  ## Which record survives in the primary analysis
@@ -6977,12 +7088,12 @@ index 9909022..99af2e6 100644
 +## Permitted test types (decided)
  
 -The reference plan's 77 MPEA records include one compression test (MPEA row 139). The reference plan does not yet state its permitted test types, and membership in that result set must not define the rule. The plan must state them explicitly before eligibility is implemented in step 6. This is pending the owner's decision. Rows 15–16 give the expected handling both ways: under the reference plan as it stands (no test-type rule), and under a tension-only plan.
-+The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. For rows 15–16 the column `handling_under_tension_only_plan` therefore gives the handling under today's reference plan; the columns `prd_5_3_class` and `primary_analysis` still describe the step 1 plan without a test-type rule. Aligning them is an open item for the owner (step 6 summary).
++The owner decided on 2026-10-05 that the reference plan accepts tension tests only (register entry 'permitted_test_types'), which removes MPEA row 139 (a compression test) from its primary analysis. Since 2026-10-06 (owner's decision) the columns `prd_5_3_class` and `primary_analysis` of rows 15–16 describe this plan; the column `handling_under_tension_only_plan` agrees with them. The rows' `explanation` text still describes the step 1 plan without a test-type rule.
  
  ## Rebuilding
  
 diff --git a/tests/fixtures/controlled_duplicates/build.py b/tests/fixtures/controlled_duplicates/build.py
-index ceabdf9..eb44644 100644
+index ceabdf9..7a2a50d 100644
 --- a/tests/fixtures/controlled_duplicates/build.py
 +++ b/tests/fixtures/controlled_duplicates/build.py
 @@ -50,20 +50,28 @@ NOT_REMOVED = "no"
@@ -7043,7 +7154,20 @@ index ceabdf9..eb44644 100644
      ),
      "not_duplicate_other_paper": dict(
          duplicate_status="not_duplicate",
-@@ -159,8 +168,8 @@ SPEC: list[tuple[str, int, dict[int, str]]] = [
+@@ -137,9 +146,10 @@ CASES = {
+     ),
+     "not_duplicate_other_test_type": dict(
+         duplicate_status="not_duplicate",
+-        prd_class="Within scope under the reference plan: distinct measurements, not duplicates",
++        # Owner, 2026-10-06: the reference plan has a test-type rule (tension only, 2026-10-05).
++        prd_class="Incompatible measurements: outside the plan's scope (test-type rule: tension only)",
+         tension_only=TENSION_ONLY_EXCLUDED,
+-        primary_analysis="both enter under the reference plan (it sets no test-type rule)",
++        primary_analysis="not eligible: excluded by the test-type rule (tension only)",
+         sensitivity_analysis="none",
+         pair=None,
+         explanation="Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope.",
+@@ -159,8 +169,8 @@ SPEC: list[tuple[str, int, dict[int, str]]] = [
      ("exact_duplicate_renamed_alloy", 1007, {FORMULA: "Co4Cr1Ni4"}),
      ("possible_duplicate_unknown_paper", 998, {REF_ID: "", DOI: "", YEAR: "", TITLE: ""}),
      ("possible_duplicate_unknown_paper", 1085, {REF_ID: "", DOI: "", YEAR: "", TITLE: ""}),
@@ -7054,7 +7178,7 @@ index ceabdf9..eb44644 100644
      ("not_duplicate_other_paper", 1035, {REF_ID: "", DOI: TEST_DOI_PREFIX + "0001", TITLE: CONSTRUCTED_TITLE}),
      ("not_duplicate_other_paper", 764, {REF_ID: "", DOI: TEST_DOI_PREFIX + "0002", TITLE: CONSTRUCTED_TITLE}),
      ("not_duplicate_other_temperature", 1313, {TEMPERATURE: "-196.0"}),
-@@ -178,7 +187,7 @@ TRUTH_COLUMNS = [
+@@ -178,7 +188,7 @@ TRUTH_COLUMNS = [
      "mpea_reference_id",
      "mpea_doi",
      "changed_columns",  # MPEA header names, separated by "; "
@@ -7063,7 +7187,7 @@ index ceabdf9..eb44644 100644
      "prd_5_3_class",
      "kept_in_store",
      "removed_from_store",
-@@ -226,7 +235,7 @@ def build(mpea_path: Path = MPEA_PATH) -> tuple[str, str]:
+@@ -226,7 +236,7 @@ def build(mpea_path: Path = MPEA_PATH) -> tuple[str, str]:
          if c["pair"] is None:
              survivor, reason = NO_PAIR, NOT_SAME_MEASUREMENT
          else:
@@ -7073,7 +7197,7 @@ index ceabdf9..eb44644 100644
              str(n),
              case,
 diff --git a/tests/fixtures/controlled_duplicates/truth.csv b/tests/fixtures/controlled_duplicates/truth.csv
-index e73ad80..4991812 100644
+index e73ad80..5b55fa5 100644
 --- a/tests/fixtures/controlled_duplicates/truth.csv
 +++ b/tests/fixtures/controlled_duplicates/truth.csv
 @@ -1,17 +1,17 @@
@@ -7108,8 +7232,8 @@ index e73ad80..4991812 100644
 +12,not_duplicate_other_temperature,1086,221,10.1016/j.msea.2018.12.077,PROPERTY: Test temperature ($^\circ$C),not_duplicate,Incompatible measurements: outside the plan's scope,yes,no,not eligible under a room-temperature plan,none,same as under the reference plan,no pair: both kept,not the same measurement,"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size and value, but the test temperature is -196 C instead of 25 C. Test conditions differ, so it is not a duplicate."
 +13,missing_test_condition,1036,211,10.1016/j.msea.2019.04.025,PROPERTY: Test temperature ($^\circ$C),possible_duplicate,Difference explained by missing metadata: scope cannot be confirmed,yes,no,not eligible: scope not confirmed,included,same as under the reference plan,MPEA row 1036,rule 2: both records carry the original paper reference (DOI); MPEA comes first in the fixed source order; this record is not eligible in any case (scope not confirmed),"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size and value, but the test temperature is blank, so neither the scope (room temperature) nor the same measurement can be confirmed. Distinct from a missing paper: the paper is known, the test condition is not. Kept, not removed; not in the primary analysis; included in the sensitivity analysis."
 +14,missing_test_condition,813,144,10.1016/j.ijplas.2018.10.005,PROPERTY: Test temperature ($^\circ$C),possible_duplicate,Difference explained by missing metadata: scope cannot be confirmed,yes,no,not eligible: scope not confirmed,included,same as under the reference plan,MPEA row 813,rule 2: both records carry the original paper reference (DOI); MPEA comes first in the fixed source order; this record is not eligible in any case (scope not confirmed),"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size and value, but the test temperature is blank, so neither the scope (room temperature) nor the same measurement can be confirmed. Distinct from a missing paper: the paper is known, the test condition is not. Kept, not removed; not in the primary analysis; included in the sensitivity analysis."
-+15,not_duplicate_other_test_type,1004,208,10.1016/j.actamat.2019.04.017,PROPERTY: Type of test,not_duplicate,"Within scope under the reference plan: distinct measurements, not duplicates",yes,no,both enter under the reference plan (it sets no test-type rule),none,excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements'),no pair: both kept,not the same measurement,"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope."
-+16,not_duplicate_other_test_type,765,98,10.1016/j.actamat.2018.12.015,PROPERTY: Type of test,not_duplicate,"Within scope under the reference plan: distinct measurements, not duplicates",yes,no,both enter under the reference plan (it sets no test-type rule),none,excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements'),no pair: both kept,not the same measurement,"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope."
++15,not_duplicate_other_test_type,1004,208,10.1016/j.actamat.2019.04.017,PROPERTY: Type of test,not_duplicate,Incompatible measurements: outside the plan's scope (test-type rule: tension only),yes,no,not eligible: excluded by the test-type rule (tension only),none,excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements'),no pair: both kept,not the same measurement,"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope."
++16,not_duplicate_other_test_type,765,98,10.1016/j.actamat.2018.12.015,PROPERTY: Type of test,not_duplicate,Incompatible measurements: outside the plan's scope (test-type rule: tension only),yes,no,not eligible: excluded by the test-type rule (tension only),none,excluded by the test-type rule: outside the plan's scope (PRD 5.3 'Incompatible measurements'),no pair: both kept,not the same measurement,"1) prefer the record that carries the original paper reference (DOI); 2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; 3) within one source, the lowest row number","Same paper, alloy, grain size, value and temperature, but a compression test instead of tension. The test conditions are known to differ, so it is not a duplicate and not a possible duplicate. The reference plan sets no test-type rule, so both enter; a plan restricted to tension would exclude this record as out of scope."
 ```
 
 ## 12. README (diff)
