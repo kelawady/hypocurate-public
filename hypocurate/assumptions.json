@@ -4395,11 +4395,14 @@
       "note": "Migration 0003."
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Step 6 review, finding 6 (2026-10-06): the check requires method, name and version as present JSON strings and is made explicitly true or false; migration 0003 was changed in place, before it ran on the live database."
+    ],
     "tests": [
+      "tests/test_checkpoints.py::test_records_are_stored_only_after_the_lock_with_how_they_were_extracted",
       "tests/test_migrations_step6.py::test_0003_a_new_record_states_its_extraction",
       "tests/test_migrations_step6.py::test_0003_keeps_every_check_of_0001_and_adds_one",
-      "tests/test_checkpoints.py::test_records_are_stored_only_after_the_lock_with_how_they_were_extracted"
+      "tests/test_migrations_step6.py::test_0003_refuses_a_missing_null_or_wrongly_typed_extraction_field"
     ]
   },
   {

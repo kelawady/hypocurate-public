@@ -160,6 +160,37 @@ def _record(conn, run, version, key, extraction):
                  dict(r=run, v=version, k=key, x=extraction))
 
 
+GOOD = {"method": "adapter", "name": "mpea_layout", "version": "1"}
+
+
+@pytest.mark.parametrize("extraction", [
+    {"name": "mpea_layout", "version": "1"},  # method missing (review finding 6)
+    {"method": None, "name": "mpea_layout", "version": "1"},
+    {"method": 1, "name": "mpea_layout", "version": "1"},
+    {"method": "adapter", "version": "1"},  # name missing
+    {"method": "adapter", "name": None, "version": "1"},
+    {"method": "adapter", "name": 5, "version": "1"},
+    {"method": "adapter", "name": {"a": 1}, "version": "1"},
+    {"method": "adapter", "name": "mpea_layout"},  # version missing
+    {"method": "adapter", "name": "mpea_layout", "version": None},
+    {"method": "adapter", "name": "mpea_layout", "version": 1},
+    {"method": "adapter", "name": "mpea_layout", "version": ["1"]},
+    {"method": "adapter", "name": "", "version": "1"},
+    "adapter",
+], ids=lambda x: json.dumps(x))
+def test_0003_refuses_a_missing_null_or_wrongly_typed_extraction_field(db, extraction):
+    """Review finding 6: every key present, a JSON string, and the whole check true (a missing
+    value must not pass as SQL NULL)."""
+    from model_builder import World
+    w = World(db)
+    rid = w.locked()
+    with pytest.raises(IntegrityError, match="ck_record_extraction_shape"):
+        with db.begin() as conn:
+            _record(conn, rid, w.version["mpea"], "row-x", json.dumps(extraction))
+    with db.begin() as conn:
+        _record(conn, rid, w.version["mpea"], "row-ok", json.dumps(GOOD))
+
+
 def test_0003_a_new_record_states_its_extraction(db):
     from model_builder import World
     w = World(db)

@@ -9,7 +9,8 @@ adapter's name and version) or, from step 8, by an agent, so that records extrac
 can always be told apart from records an agent extracts later (owner, 2026-10-05).
 
 - A new nullable column `record.extraction` (JSONB) with a CHECK on its shape: an object
-  whose `method` is 'adapter' or 'agent', with a non-empty `name` and `version`. Existing
+  whose `method`, `name` and `version` are present JSON strings, `method` 'adapter' or 'agent',
+  `name` and `version` non-empty; the check is made explicitly true or false. Existing
   rows keep NULL (the live database has none; every record before this step was a test row).
 - `hc_record_insert` is replaced: **every check of 0001 is kept unchanged, in the same
   order**, and one is added at the end: a new record must carry `extraction`.
@@ -31,10 +32,14 @@ down_revision = '0002'
 branch_labels = None
 depends_on = None
 
-SHAPE = ("extraction IS NULL OR (jsonb_typeof(extraction) = 'object' "
+# Every key present and a JSON string, and the whole condition true: a missing key or a JSON null
+# gives SQL NULL inside, which coalesce turns into false, so it cannot pass as an unknown result
+# (step 6 review, finding 6; changed in place before 0003 ran on the live database).
+SHAPE = ("extraction IS NULL OR coalesce(jsonb_typeof(extraction) = 'object' "
+         "AND jsonb_typeof(extraction->'method') = 'string' AND jsonb_typeof(extraction->'name') = 'string' "
+         "AND jsonb_typeof(extraction->'version') = 'string' "
          "AND (extraction->>'method') IN ('adapter', 'agent') "
-         "AND length(coalesce(extraction->>'name', '')) > 0 "
-         "AND length(coalesce(extraction->>'version', '')) > 0)")
+         "AND length(extraction->>'name') > 0 AND length(extraction->>'version') > 0, false)")
 
 # 0001's function, verbatim (restored by the downgrade).
 RECORD_INSERT_0001 = """
