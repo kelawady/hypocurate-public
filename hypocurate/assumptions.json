@@ -398,6 +398,7 @@
     },
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_flag_is_the_answer_files",
+      "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
       "tests/test_flags.py::test_a_dataset_source_is_its_own_paper",
       "tests/test_flags.py::test_a_group_whose_records_are_not_all_linked_is_ambiguous",
       "tests/test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict",
@@ -425,7 +426,8 @@
       "Not reviewed by an expert.",
       "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance).",
       "A record with a missing test condition is also 'scope not confirmed': Checks still raises the possible-duplicate flag, and Inclusion applies the scope rule before the duplicate rule (owner, 2026-10-05).",
-      "A paper is identified by its DOI (derived key); a source grouped by dataset (Texas A&M) cites itself."
+      "A paper is identified by its DOI (derived key); a source grouped by dataset (Texas A&M) cites itself.",
+      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'."
     ]
   },
   {
@@ -2371,11 +2373,13 @@
       }
     ],
     "notes": [
-      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'."
     ],
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_sensitivity_handling_is_the_answer_files",
       "tests/test_eligibility.py::test_an_ambiguous_group_enters_with_none_of_its_records",
+      "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
       "tests/test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule",
       "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set"
     ]

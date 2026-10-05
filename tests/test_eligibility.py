@@ -198,6 +198,31 @@ def test_an_ambiguous_group_enters_with_none_of_its_records():
     assert decide(records, ambiguous, key="conflicts_survivor_value") == got
 
 
+def test_an_ambiguous_group_keeps_its_conflict_in_every_set():
+    """Review finding 4, the reviewer's example: A reports 400 with a DOI, B 400 without, C 440 with
+    A's DOI (three sources), and A's alloy has another grain size. A-C is a definite conflict, A-B a
+    possible duplicate, B-C no link: the group is ambiguous. The flags come from Checks' rules
+    (`flags.raise_flags`), and the resulting sets are checked, not only the labels."""
+    from test_flags import rec
+    plan = copy.deepcopy(PLAN)
+    plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "controlled_duplicates", "unit": "paper"},
+                                 {"source": "tamu_fcc", "unit": "paper"}]
+    full = [rec(1, "mpea", ys=400.0), rec(2, "controlled_duplicates", ys=400.0, doi=None),
+            rec(3, "tamu_fcc", ys=440.0), rec(4, "mpea", gs=40.0, ys=300.0)]
+    from hypocurate.pipeline.flags import raise_flags
+    flags = [{"id": n, "kind": f.kind, "category": f.category, "records": f.records}
+             for n, f in enumerate(raise_flags(plan, full), start=1)]
+    records = [cond(1, "mpea"), cond(2, "controlled_duplicates", doi=False), cond(3, "tamu_fcc"),
+               cond(4, "mpea", gs=40.0)]
+    primary = decide(records, flags, plan)
+    assert {i: primary[i] for i in (1, 2, 3)} == {i: "identity_unresolved" for i in (1, 2, 3)}
+    separate = decide(records, flags, plan, "possible_duplicates_separate")
+    # The unresolved identity is lifted, the conflict is not: A and C stay out, B enters.
+    assert {i: separate[i] for i in (1, 2, 3)} == {1: "conflict_unresolved", 2: "in_scope", 3: "conflict_unresolved"}
+    survivor = decide(records, flags, plan, "conflicts_survivor_value")
+    assert {i: survivor[i] for i in (1, 2, 3)} == {i: "identity_unresolved" for i in (1, 2, 3)}
+
+
 def test_identity_applies_only_among_records_that_passed_the_earlier_rules():
     """Extract rows 13–14 (owner, 2026-10-05): the extract record is 'scope not confirmed'
     (rule 5 before rule 7); its MPEA twin survives. With scope not confirmed included, the

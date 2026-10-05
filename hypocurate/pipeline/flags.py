@@ -21,9 +21,10 @@ Flags (owner, 2026-10-05):
     possible duplicate; beyond it → not a candidate (nothing says it is the same measurement).
   Candidate links form groups (connected components). A group with two or more records from
   one source, or one in which some pair is not linked, is ambiguous: `possible_duplicate`,
-  "several candidates" (nothing is paired on a guess). Otherwise a group with any conflicting
+  "several candidates" (nothing is paired on a guess); its definite conflicts, if any, get a
+  `values_disagree` flag of their own (review finding 4). Otherwise a group with any conflicting
   pair is a conflict, else a possible duplicate if any link is possible, else an exact
-  duplicate. One flag per group, naming all its records.
+  duplicate. One flag per group, naming all its records (plus that conflict flag).
 - Relative difference: |a − b| / min(|a|, |b|) (register 'values_disagree_tolerance').
 - The numbers compared are stored with the flag for audit (`compared_values`) and never
   returned to the Critic (step 5).
@@ -158,6 +159,12 @@ def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any]) -> list[Fl
         kinds = {kind for kind, _ in pairs.values()}
         if len(set(sources)) < len(sources) or len(pairs) < len(ids) * (len(ids) - 1) // 2:
             flags.append(Flag("possible_duplicate", "several candidates", ids, compared))
+            # Review finding 4: a definite conflict inside an ambiguous group is kept as its own
+            # flag, so that a set that counts the group separately still excludes it.
+            conflicting = sorted({i for (a, b), (kind, _) in pairs.items() if kind == "conflict" for i in (a, b)})
+            if conflicting:
+                flags.append(Flag("values_disagree", "differ beyond tolerance", conflicting,
+                                  {k: v for k, v in compared.items() if v["link"] == "conflict"}))
         elif "conflict" in kinds:
             flags.append(Flag("values_disagree", "differ beyond tolerance", ids, compared))
         else:

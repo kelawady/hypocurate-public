@@ -256,7 +256,10 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
             rules[r["id"]] = "scope_not_confirmed"
         elif _excluded(r, st):
             rules[r["id"]] = "excluded_by_rule"
-    for f in flags:  # 7
+    # 7, in a fixed order (review finding 4): unresolved identity, then conflicts, then counted once,
+    # so that a record in an ambiguous group and in a conflict gets the first that applies.
+    order = {"identity_unresolved": 0, "conflict_unresolved": 1, "duplicate_counted_once": 2}
+    for f in sorted(flags, key=lambda f: (order.get(flag_rule(f, st), 3), f["id"])):
         rule = flag_rule(f, st)
         members = [rid for rid in f["records"] if rid in records and rid not in rules]
         if rule in ("identity_unresolved", "conflict_unresolved"):

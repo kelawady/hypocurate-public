@@ -135,7 +135,9 @@ def test_a_group_with_one_conflicting_pair_is_a_conflict():
     # A possible link (paper unknown on 2) and a conflicting pair (1, 3) in one group: a conflict.
     got = kinds([rec(1, ys=400.0), rec(2, "controlled_duplicates", ys=400.0, doi=None),
                  rec(3, "tamu_fcc", ys=440.0)], plan)
-    assert got[0][0] == "possible_duplicate" and got[0][1] == "several candidates"  # 2-3 not linked
+    # 2-3 not linked: ambiguous; the definite conflict 1-3 is kept as its own flag (review finding 4).
+    assert got == [("possible_duplicate", "several candidates", [1, 2, 3]),
+                   ("values_disagree", "differ beyond tolerance", [1, 3])]
 
 
 def test_a_dataset_source_is_its_own_paper():
