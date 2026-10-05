@@ -54,6 +54,30 @@ def test_every_value_is_kept_as_reported(records, sheet_rows):
     assert units["Al"].unit is None  # the header states none; the paper does (citation on the value)
 
 
+# Review, test weakness: expected strings written out by hand, not computed with the
+# adapter's own formatter. Source: the cell values in the file's XML
+# (xl/worksheets/sheet1.xml, rows 2, 3 and 9). The XML stores some doubles at 17
+# significant digits (K2 "140.19999999999999", N2 "34.299999999999997"); the reported text
+# is the shortest decimal that reads back as the same double ("140.2", "34.3"). Integer
+# cells read as integers ("4", "301"), and an empty cell is "".
+EXPECTED_TEXT = {
+    "BBA01": {"Iteration": "BBA", "Alloy Name": "BBA01", "Al": "4", "Co": "8", "Cr": "4", "Ni": "48",
+              "Hardness, HV": "140.2", "SD, HV": "3.8", "YS (MPa)": "284.2", "SD, YS": "34.3",
+              "Cold Work (%Reduction)": "60", "Recrystallization Temp(℃)": "950", "Holding time (h)": "0.5",
+              "Grain Size(µm)": "23", "SD, Grain Size(µm)": "13"},
+    "BBA02": {"Cr": "0", "Ni": "52", "Hardness, HV": "151.5", "YS (MPa)": "301", "SD, YS": "6.6",
+              "Grain Size(µm)": "31.94", "SD, Grain Size(µm)": "18.45"},
+    "BBA09": {"Cu": "0", "V": "12", "Hardness, HV": "200.9", "SD, HV": "8", "YS (MPa)": "", "SD, YS": "",
+              "Grain Size(µm)": "30.79", "SD, Grain Size(µm)": "22.57"},
+}
+
+
+def test_reported_text_matches_independently_written_strings(records):
+    by_name = {r.reported["Alloy Name"].text: r for r in records}
+    for name, expected in EXPECTED_TEXT.items():
+        assert {col: by_name[name].reported[col].text for col in expected} == expected, name
+
+
 def test_the_sample_without_yield_strength_is_kept(records):
     missing = [r for r in records if r.harmonized["yield_strength"].status != "converted"]
     assert [r.reported["Alloy Name"].text for r in missing] == ["BBA09"]
