@@ -1,0 +1,26 @@
+# Step 5 — second-model re-check (ChatGPT, 2026-10-05)
+
+Re-check of `docs/reviews/step05_review_packet.md` (re-check packet; branch `step-05-access`, code commit `2c639be`). Saved verbatim as the owner gave it. The owner accepted the threat model's assessment and asked for the three remaining items to be fixed and merged on their regression tests, without a further review round (see `docs/reviews/step05_summary.md`, "Re-check").
+
+---
+
+Not quite ready to merge: two failure-handling gaps remain. The text-only-agent threat model is reasonable for sprint 1. It does not require an operating-system sandbox, provided model responses cannot choose the access context or become executable instructions.
+The six findings, in seriousness order:
+5. Denial and failure logging — partly closed. Two fixes remain:
+- A child timeout loses file-guard refusal records. run_guarded() calls _report_refusals() only after subprocess.run() returns normally. If the child emits a refusal and subsequently times out, its captured stderr never reaches that reporter. Catch TimeoutExpired, report its captured stderr—including its possible bytes representation—and then propagate the failure. Add a refusal-followed-by-timeout test.
+- Sanitized access errors retain the original potentially sensitive exception. _read() raises AccessFailed explicitly chained from the reader/database exception. Its short message is safe, but a formatted traceback exposes the original message, potentially including forbidden values. A trusted retry/error formatter could accidentally forward this to a model. The existing reader-error test plants a value but checks only str(error). Suppress the original chain from the model-facing error representation and test the representation actually forwarded.
+I reproduced both behaviors using the packet’s extracted functions with controlled substitutes.
+The exception allowing failure rows to skip the run lock is sound under the stated locking protocol: these append-only audit inserts do not change the run’s state, and their foreign-key key-share lock is compatible with the protocol’s NO KEY UPDATE lock. The process-log fallback also appropriately qualifies database durability.
+1. File guard described as a tripwire — partly closed; documentation only. The main description now states the limitations honestly. One overclaim remains in the PRELOADED comment in guarded.py: it still says every ctypes load, symbol lookup and call is refused. That contradicts the documented preloaded-memory-access limitation. Replace that sentence with the narrower claim about intercepted audit events. No additional sandbox engineering is warranted for this sprint.
+2. Immutable dispatcher-created context — closed for this layer. Role and stage come from database state; run/setting membership and source membership are checked; the context cannot drift between locking and reading.
+There is an unavoidable remaining integration responsibility: passing the wrong but valid run/setting/source combination still succeeds. These checks establish authorization, not the caller’s intention. Step 8 must derive those arguments from the same invocation assignment rather than assemble them independently.
+3. Free-text filtering and disclosures — closed within the stated policy. Fixed vocabularies, removal of titles/origin keys, and recursive plan projection address the identified uncontrolled fields.
+Outcome-bearing text can still occur in the deliberately accepted human claim/approved tags and the Analyst’s gap report delivered to the Commentator. DOI identifiers, numeric plan values, composition and counts also remain information channels. The packet now acknowledges these exceptions sufficiently; the planted-value tests should not be described as proving universal absence of outcome information.
+4. Source descriptions — closed. Interpretation settings come from the sealed version, while descriptive fields come from code definitions. Editing the live source registry no longer changes these inputs for an existing run.
+6. Projected-data test and outbound-request requirement — closed for step 5. The renamed test now describes what it actually checks. Requiring step 8 to test the real outbound request—including instructions, history, errors, retries and attachments—is the correct remaining acceptance condition.
+The new checkpoint tests meaningfully exercise a waiting Planner/Critic read across actual checkpoint commits. The Analyst assertion demonstrates access after freeze; it does not independently demonstrate a waiting Analyst transition. The single-transaction read_all() also fixes the earlier whole-input consistency gap for run data protected by the locking protocol. Matching audit xmin values supports that test, but alone would not prove payload consistency.
+For later steps:
+- Test invocation-to-context binding with two valid runs and two selected sources.
+- Include formatted failures in the real outbound-request leakage test.
+- Keep the “one snapshot” claim scoped to data protected by the run-lock protocol.
+Fix the two failure paths and the stale ctypes sentence before merging step 5. I found no further blocker under the agreed threat model. I reviewed the supplied tests and ran the targeted reproductions above; I did not independently rerun the reported PostgreSQL suite.
