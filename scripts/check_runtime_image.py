@@ -28,7 +28,11 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
             "data/controlled_duplicates/extract.csv",
             # Step 4b: the assumptions register and its page.
             "hypocurate/assumptions.json", "hypocurate/assumptions.py",
-            "hypocurate/web/templates/assumptions.html"]
+            "hypocurate/web/templates/assumptions.html",
+            # Step 5: the access layer and the guarded process that pipeline runs use.
+            "hypocurate/access/allowlist.py", "hypocurate/access/layer.py", "hypocurate/access/fields.py",
+            "hypocurate/access/stage.py", "hypocurate/access/inputs.py", "hypocurate/access/file_guard.py",
+            "hypocurate/access/guarded.py", "hypocurate/access/guard_probe.py"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 

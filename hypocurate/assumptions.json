@@ -166,7 +166,15 @@
     },
     "sensitivity": "The same rule with a rounding step of 1 at.%.",
     "applied": {
-      "status": "not_yet",
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.normalize:SAME_ALLOY_DECIMALS",
+          "equals": 1
+        }
+      ],
+      "done": "The gap report's condition summaries group records by alloy under this rule (normalize.same_alloy_key, step 5).",
+      "pending": "The plan setting that applies it to the analysis, eligibility and duplicate matching.",
       "step": 6,
       "note": "The adapters give the full-precision composition; the display label (normalize.alloy_label) is not this rule."
     },
@@ -183,7 +191,10 @@
       "Ties follow the reference script's rounding (Python round on the computed percentage) unless step 6 states otherwise.",
       "Possible improvement for step 6, not a decision: a tolerance-based grouping, which would need a stated rule for chains and the owner's approval."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
+      "tests/test_access_layer.py::test_condition_summaries_group_alloys_by_the_same_alloy_rule"
+    ]
   },
   {
     "key": "fixed_minimums",
@@ -2828,5 +2839,515 @@
     "history": [],
     "notes": [],
     "tests": []
+  },
+  {
+    "key": "access_allow_lists",
+    "name": "Allowed fields per role and stage",
+    "state": "in_force",
+    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+    "value": {
+      "text": "the table in hypocurate/access/allowlist.py (ALLOWED)",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Everything an agent can receive (PRD 4), from step 8 on.",
+    "reason": "PRD 4 lists what each role can see in general terms; the fields the PRD does not assign (the plan for the Critic, tag lists, coverage, handovers, cost, eligibility decisions, the domain for the Curator) were assigned in the step 5 plan.",
+    "evidence": [
+      "PRD 4; step 5 plan approved by the owner, 2026-10-05, with additions A (single-run scope) and B (named source fields)."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:ALLOWED"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:ROLES",
+          "equals": [
+            "planner",
+            "curator",
+            "critic",
+            "analyst",
+            "commentator"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:STAGES",
+          "equals": [
+            "none",
+            "before_lock",
+            "curation",
+            "analysis",
+            "closed_without_freeze",
+            "final"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Two fields are reference lists, not run data: the confirmed domain and the approved tag values (without the run that proposed them)."
+    ],
+    "tests": [
+      "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
+      "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
+      "tests/test_access_planted.py::test_nothing_from_another_run_reaches_any_role"
+    ]
+  },
+  {
+    "key": "outcome_fields_withheld",
+    "name": "Which fields count as outcomes",
+    "state": "in_force",
+    "statement": "Yield strength, its spread, tensile strength, hardness and its spread are all treated as outcomes wherever outcomes are withheld: their values never reach the Planner, the Critic or the gap report, and no count is broken down by them. The Planner does not know before the lock which one its plan will choose.",
+    "value": {
+      "text": "yield_strength, yield_strength_sd, ultimate_tensile_strength, hardness, hardness_sd",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The Planner's record counts, the Critic's record metadata and the gap report's input.",
+    "reason": "Before the rules lock the outcome variable is not chosen yet, so every property that could be one is withheld.",
+    "evidence": [
+      "Step 5 plan, point 7 (approved by the owner, 2026-10-05)."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:OUTCOME_FIELDS",
+          "equals": [
+            "hardness",
+            "hardness_sd",
+            "ultimate_tensile_strength",
+            "yield_strength",
+            "yield_strength_sd"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_record_counts_are_counts_from_the_sealed_source",
+      "tests/test_access_planted.py::test_no_planted_value_in_the_planners_complete_input"
+    ]
+  },
+  {
+    "key": "critic_metadata_without_numbers",
+    "name": "What the Critic sees about records",
+    "state": "in_force",
+    "statement": "The Critic sees source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field, not grain size and not temperature. Flags: kind, category and record ids, never the numbers compared.",
+    "value": {
+      "text": "metadata, statuses and categories; no measured numbers",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The Critic's classification of flags (step 8).",
+    "reason": "PRD 4: the Critic is told the kind of flag, never the numbers compared; and the source files contain the outcome values.",
+    "evidence": [
+      "Owner's answer to step 5 question 1, 2026-10-05."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:CATEGORY_FIELDS",
+          "equals": [
+            "test_type",
+            "test_temperature_band",
+            "phase_class",
+            "microstructure",
+            "processing_method"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Category values and paper references are the source's text, shown as the source gives them."
+    ],
+    "tests": [
+      "tests/test_access_layer.py::test_record_metadata_carries_no_number_but_identity_and_composition",
+      "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
+      "tests/test_access_planted.py::test_no_planted_value_in_the_critics_complete_input"
+    ]
+  },
+  {
+    "key": "gap_report_condition_summaries",
+    "name": "What the gap report's Analyst sees",
+    "state": "in_force",
+    "statement": "When a run ends with no dataset frozen, the Analyst gets everything except outcomes, plus summaries computed by code of the non-outcome conditions the stored records cover: per alloy (same-alloy rule) and overall, the count and the minimum and maximum of grain size and of test temperature, and the counts by test type and by phase. Never a row-level value, an outcome value or a statistic derived from outcomes.",
+    "value": {
+      "text": "counts and ranges of grain size and test temperature; counts by test type and phase",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The gap report of an insufficient run.",
+    "reason": "PRD 3 step 8 has the Analyst write the gap report, while PRD 4 and 5.6 show outcome values only after a freeze, which an insufficient run never has.",
+    "evidence": [
+      "Owner's answer to step 5 question 2, 2026-10-05."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:CONDITION_RANGE_FIELDS",
+          "equals": [
+            "grain_size",
+            "test_temperature"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:CONDITION_COUNT_FIELDS",
+          "equals": [
+            "test_type",
+            "phase_class"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_condition_summaries_are_ranges_and_counts_of_conditions_only",
+      "tests/test_access_planted.py::test_no_planted_value_in_the_gap_report_input",
+      "tests/test_access_layer.py::test_ending_without_a_freeze_opens_only_the_gap_report_input"
+    ]
+  },
+  {
+    "key": "source_meta_fields",
+    "name": "What a role sees about a source",
+    "state": "in_force",
+    "statement": "A source is described by a fixed set of named plain fields: key, name, type, kind of data, licence, grouping unit and fields available. Free text such as the address, the version label or notes never reaches the Planner or the Critic.",
+    "value": {
+      "text": "key, name, source_type, data_kind, licence, grouping_unit, fields_available",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The source descriptions every role receives.",
+    "reason": "Free text could carry anything, including an outcome value.",
+    "evidence": [
+      "Owner's addition B at the approval of the step 5 plan, 2026-10-05."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:SOURCE_META_FIELDS",
+          "equals": [
+            "key",
+            "name",
+            "source_type",
+            "data_kind",
+            "licence",
+            "grouping_unit",
+            "fields_available"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Name and licence are text; they are set from the code's source definitions (SOURCES in hypocurate/sources/versions.py), not from source content."
+    ],
+    "tests": [
+      "tests/test_access_layer.py::test_sources_meta_is_exactly_the_named_plain_fields",
+      "tests/test_access_planted.py::test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic"
+    ]
+  },
+  {
+    "key": "plan_named_parts",
+    "name": "The named parts of a plan",
+    "state": "in_force",
+    "statement": "A plan's content is read only under its named parts (PRD 5.1): claim, hypothesis version, variables, scope, model, sufficiency, fields to extract, exclusion rules, eligibility rules, verdict statement, sensitivity analyses. Any other key is withheld from every role. The list of fields to extract keeps only names of the common fields.",
+    "value": {
+      "text": "the eleven named parts of PRD 5.1",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What any role receives of a plan; the plan model (step 6) stores its content under these names.",
+    "reason": "Allowed fields, not blocked fields (PRD 4).",
+    "evidence": [
+      "PRD 5.1; step 5 plan, point 9 (approved by the owner, 2026-10-05)."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:PLAN_KEYS",
+          "equals": [
+            "claim",
+            "hypothesis_version",
+            "variables",
+            "scope",
+            "model",
+            "sufficiency",
+            "fields_to_extract",
+            "exclusion_rules",
+            "eligibility_rules",
+            "verdict_statement",
+            "sensitivity_analyses"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The parts other than the field list are passed as written at the rules lock; step 6 defines their structure and must project each part from named keys too."
+    ],
+    "tests": [
+      "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
+      "tests/test_access_layer.py::test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim"
+    ]
+  },
+  {
+    "key": "access_stage_from_database",
+    "name": "A role's stage is the run's, read from the database",
+    "state": "in_force",
+    "statement": "Every access call reads the run's stage from the database inside its own transaction, after locking the run, and refuses when the role's declared stage differs. An access object built for one stage stops working when the run passes a checkpoint.",
+    "value": {
+      "text": "read on every call",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "When each role's access opens and closes (rules lock, freeze, end without freeze, completion).",
+    "reason": "A stage taken from the caller could be wrong or stale.",
+    "evidence": [
+      "Step 5 plan (approved by the owner, 2026-10-05)."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.stage:actual_stage"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_a_declared_stage_is_checked_against_the_database",
+      "tests/test_access_layer.py::test_the_rules_lock_changes_what_each_role_may_see",
+      "tests/test_access_layer.py::test_the_dataset_freeze_changes_what_each_role_may_see",
+      "tests/test_access_layer.py::test_completion_moves_access_to_the_commentator_only"
+    ]
+  },
+  {
+    "key": "access_lock_timeout",
+    "name": "How long an access call waits for a run's lock",
+    "state": "in_force",
+    "statement": "An access call takes the run's lock first (hc_write_lock), and waits at most 5 seconds for it; then it fails with an error instead of hanging. Code must never call the access layer while holding the same run's lock.",
+    "value": {
+      "text": "5000",
+      "unit": "ms"
+    },
+    "category": "operational",
+    "affects": "Access calls while another transaction writes to the run.",
+    "reason": "The audit row is a write to the run, so the locking protocol applies; a caller that holds the run's lock and calls the access layer would otherwise wait on itself.",
+    "evidence": [
+      "Step 5 plan, point 8 (approved by the owner, 2026-10-05)."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.layer:ACCESS_LOCK_TIMEOUT_MS",
+          "equals": 5000
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_an_access_call_takes_the_run_lock_first_and_times_out_instead_of_hanging",
+      "tests/test_access_layer.py::test_an_access_call_waits_for_a_writer_holding_the_run_lock",
+      "tests/test_access_layer.py::test_every_access_call_runs_in_run_transaction"
+    ]
+  },
+  {
+    "key": "no_experiment_relaxation",
+    "name": "No relaxation of the access contract",
+    "state": "in_force",
+    "statement": "No experiment flag relaxes the access contract in sprint 1: the lists are the same whatever the run's experiment flags say.",
+    "value": {
+      "text": "none",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run.",
+    "reason": "PRD 4 allows a recorded experiment flag to relax the contract; it is not needed in sprint 1, so it is not built (backlog).",
+    "evidence": [
+      "Step 5 plan, point 5 (approved by the owner, 2026-10-05); PRD 4."
+    ],
+    "decided": {
+      "by": "step 5 (owner's approval of the plan)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:ALLOWED"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_access_layer.py::test_experiment_flags_relax_nothing"
+    ]
+  },
+  {
+    "key": "pipeline_file_guard",
+    "name": "Approved input files of pipeline code",
+    "state": "in_force",
+    "statement": "A pipeline run executes in a fresh process (python -m hypocurate.access.guarded) under an irreversible guard: it may read only the Python installation and the package's code, and write only in a private scratch directory (an empty, 0700 hc-run-* directory in the system temporary directory, removed afterwards). tests/, docs/, data/ and the repository root cannot be read or listed; other programs and native code through ctypes are refused. Source data reach pipeline code only as the sealed bytes of the run's source versions, through the access layer. The database driver is imported before the guard is installed.",
+    "value": {
+      "text": "read: Python installation and package code; write: private scratch directory only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every pipeline run (the command line's run command, step 8; the worker, step 9).",
+    "reason": "Answer material and review documents must be unreachable by construction, not by convention (step 1 open item 4).",
+    "evidence": [
+      "Step 1 summary, open item 4; step 5 plan and owner's addition C, 2026-10-05."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.file_guard:GUARDED_MAIN",
+          "equals": "hypocurate.access.guarded"
+        },
+        {
+          "ref": "python:hypocurate.access.file_guard:SCRATCH_PREFIX",
+          "equals": "hc-run-"
+        },
+        {
+          "ref": "python:hypocurate.access.guarded:PRELOADED",
+          "equals": [
+            "psycopg"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Limit: an audit hook sees what Python code opens; files that C libraries open themselves (libpq, OpenSSL) are not seen. It is an in-process guard, not an operating-system sandbox.",
+      "A library that imports ctypes after the guard is installed is refused; such a library (for example the plotting library, step 7) must be added to PRELOADED with the owner's approval."
+    ],
+    "tests": [
+      "tests/test_access_files.py::test_answers_reviews_data_and_the_repository_root_cannot_be_read",
+      "tests/test_access_files.py::test_writes_outside_the_scratch_directory_are_refused",
+      "tests/test_access_files.py::test_templates_database_and_certificates_work_under_the_guard",
+      "tests/test_access_files.py::test_source_registration_cannot_run_under_the_guard",
+      "tests/test_access_files.py::test_the_guarded_process_refuses_a_scratch_directory_that_would_open_anything_else",
+      "tests/test_access_layer.py::test_the_guard_is_installed_in_one_place"
+    ]
   }
 ]

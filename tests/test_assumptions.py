@@ -32,7 +32,7 @@ OWNER_DECISIONS = {
     "tamu_test_temperature": ("scientific", 6),
     "permitted_test_types": ("scientific", 6),
     "tamu_grouping_unit": ("statistical", 7),  # partly applied: the adapter's grouping unit
-    "same_alloy_rule": ("scientific", 6),
+    "same_alloy_rule": ("scientific", 6),  # partly applied from step 5: the gap report's summaries
     "fixed_minimums": ("statistical", 6),  # partly applied: the database's checks
     "values_disagree_tolerance": ("data_handling", 6),
     "calibration_noise_levels": ("statistical", 7),
@@ -54,7 +54,8 @@ def test_every_category_has_entries_and_keys_are_unique():
 
 
 PARTLY = {"tamu_grouping_unit", "papers_independent", "sufficiency_options", "controlled_extract_disabled",
-          "validity_checks", "fixed_minimums", "grain_size_transformation_at_analysis", "assigned_value_statuses"}
+          "validity_checks", "fixed_minimums", "grain_size_transformation_at_analysis", "assigned_value_statuses",
+          "same_alloy_rule"}  # step 5: the gap report's condition summaries group alloys under the rule
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
