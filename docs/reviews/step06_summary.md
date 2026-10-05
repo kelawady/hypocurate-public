@@ -543,12 +543,12 @@ In the review round, **"storage allowed after Checks" first survived**: Checks n
 | Removed or changed in the copy | Failing tests |
 |---|---|
 | Validation allows conflicts counted once again | 2 |
-| The application lets primary keep a conflict survivor | 5 |
-| The freeze check refuses only more than one conflict record | 4 |
-| `conflicts_survivor_value` loses its survivor | 4 |
+| The application lets primary keep a conflict survivor | 6 |
+| The freeze check refuses only more than one conflict record | 5 |
+| `conflicts_survivor_value` loses its survivor | 5 |
 | Only records named by a conflict flag are excluded, not the exact-linked rest | 1 |
 
-The fifth first survived: the chain fixture gave A, B and C one DOI, so A was in the conflict flag itself. The "only through B" shape (A linked to the conflict only through B) was added and catches it.
+The fifth first survived: the chain fixture gave A, B and C one DOI, so A was in the conflict flag itself. The "only through B" shape (A linked to the conflict only through B) was added and catches it. The counts are from a final run of all five on the final tests.
 
 **The second confirmation round (2026-10-06)**, four mutations:
 
