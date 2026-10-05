@@ -49,7 +49,8 @@ def _sources(args, engine) -> int:
                 print(f"{r.key}: {state}; version {r.version_id} ({r.label}); fingerprint {r.fingerprint}")
             return 0
         report = test_connection(engine, args.key, args.n)
-        # Assigned values carry status "assigned" and their citation in this output.
+        # Assigned values carry status "assigned_from_source" or "assigned_by_decision" and their
+        # citation in this output.
         print(json.dumps(report.to_json(), indent=2, ensure_ascii=False))
         return 0
     except (RegistrationError, UnsealedVersion, AdapterError) as error:

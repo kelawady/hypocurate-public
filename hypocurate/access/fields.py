@@ -31,10 +31,10 @@ from hypocurate.access.allowlist import (CATEGORY_FIELDS, CONDITION_COUNT_FIELDS
 from hypocurate.access.context import AccessContext as Context
 from hypocurate.sources import adapters
 from hypocurate.sources.normalize import alloy_label, same_alloy_key
-from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, AdapterError
+from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, VALUE_STATUSES, AdapterError
 from hypocurate.sources.versions import SOURCES, UnsealedVersion, load_sealed_version
 
-HAS_VALUE = ("converted", "assigned")
+HAS_VALUE = VALUE_STATUSES
 UNITS = frozenset(u for u in HARMONIZED_FIELDS.values() if u)
 
 

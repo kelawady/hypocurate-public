@@ -16,7 +16,7 @@ from sqlalchemy import Engine, text
 
 from hypocurate.access import vocabulary
 from hypocurate.sources import adapters
-from hypocurate.sources.record import CommonRecord
+from hypocurate.sources.record import VALUE_STATUSES, CommonRecord
 from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
 
 
@@ -52,7 +52,7 @@ def test_connection(engine: Engine, key: str, n: int = 5) -> ConnectionReport:
     counts = Counter(v.status for r in result.records for v in r.harmonized.values())
     unrecognized = vocabulary.unrecognized_counts(
         (f, r.harmonized[f].value) for r in result.records for f in vocabulary.CATEGORY_FIELDS
-        if r.harmonized[f].status in ("converted", "assigned"))
+        if r.harmonized[f].status in VALUE_STATUSES)
     return ConnectionReport(key, version.id, version.label, version.fingerprint, len(result.records),
                             len(result.blank_rows), dict(sorted(counts.items())), result.records[:n], unrecognized)
 

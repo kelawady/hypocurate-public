@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 def value(record, field):
     v = record.harmonized[field]
-    return v.value if v.status in ("converted", "assigned") else None
+    return v.value if v.status in ("converted", "assigned_from_source", "assigned_by_decision") else None
 
 
 def at_least_two_grain_sizes(records):

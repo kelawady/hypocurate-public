@@ -337,7 +337,7 @@ def test_a_wrong_value_or_a_missing_setting_is_reported():
 def test_resolved_values_use_json_terms():
     assert a.resolve_setting("python:hypocurate.db.retry:RETRYABLE_SQLSTATES") == ["40001", "40P01"]
     assert a.resolve_setting("python:hypocurate.sources.record:STATUSES") == [
-        "converted", "not_reported", "not_convertible", "assigned"]
+        "converted", "not_reported", "not_convertible", "assigned_from_source", "assigned_by_decision"]
 
 
 # --- The page ----------------------------------------------------------------------------

@@ -371,7 +371,8 @@ def test_record_metadata_carries_no_number_but_identity_and_composition(engine):
         assert set(r) == {"id", "source", "item_index", "kind", "alloy", "composition", "paper_doi", "status",
                           "categories"}  # no origin key, no paper title (review finding 3)
         assert set(r["status"]) == set(HARMONIZED_FIELDS)
-        assert set(r["status"].values()) <= {"converted", "not_reported", "not_convertible", "assigned", None}
+        assert set(r["status"].values()) <= {"converted", "not_reported", "not_convertible", "assigned_from_source",
+                                             "assigned_by_decision", None}
         for f, v in r["categories"].items():
             assert v is None or v == "unrecognized" or vocabulary.category(f, v) == v, (f, v)
     planted = [r for r in got if r["status"]["yield_strength"] == "not_convertible"]

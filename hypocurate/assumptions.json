@@ -2173,7 +2173,8 @@
             "converted",
             "not_reported",
             "not_convertible",
-            "assigned"
+            "assigned_from_source",
+            "assigned_by_decision"
           ]
         }
       ],
@@ -2230,7 +2231,8 @@
             "converted",
             "not_reported",
             "not_convertible",
-            "assigned"
+            "assigned_from_source",
+            "assigned_by_decision"
           ]
         }
       ],
