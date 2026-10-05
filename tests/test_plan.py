@@ -125,6 +125,9 @@ def test_the_plan_choices_that_remain():
     (lambda c: c["sensitivity_analyses"].append("removal_after_lock"), "named once each"),
     (lambda c: c["model"].update(alpha=1.5), "threshold"),
     (lambda c: c["variables"]["predictor"].update(field="hardness"), "grain size"),
+    # Re-check finding 2b: sprint 1 supports one model, whose outcome is yield strength.
+    (lambda c: c["variables"]["outcome"].update(field="ultimate_tensile_strength"), "supported outcome"),
+    (lambda c: c["variables"]["outcome"].update(field="hardness", unit="HV"), "supported outcome"),
 ])
 def test_invalid_plans_are_refused(change, message):
     content = default_plan(1)

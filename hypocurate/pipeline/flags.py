@@ -72,21 +72,43 @@ def _number(rec: Mapping, f: str, statuses=VALUE_STATUSES) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
 
-def paper(rec: Mapping, grouping: Mapping[str, str]) -> str | None:
-    """The paper a record cites: from its DOI for a source grouped by paper; the dataset
-    itself for a source that is its own paper (grouped by dataset)."""
-    if grouping.get(rec["source"]) in ("dataset", "batch"):
-        return f"dataset:{rec['source']}"
+# The outcome Checks compares: the one supported model's (re-check finding 2b; plans with
+# another outcome are refused at validation, `eligibility.SUPPORTED_OUTCOMES`).
+COMPARED_OUTCOME = "yield_strength"
+
+
+def _doi(rec: Mapping) -> str | None:
     doi = rec.get("paper_doi")
-    return identity_hash(doi_group_key(doi)) if isinstance(doi, str) and doi.strip() else None
+    return doi_group_key(doi) if isinstance(doi, str) and doi.strip() else None
 
 
-def invalid_values(records: Iterable[Mapping], outcome: str) -> list[Flag]:
+def _reference(rec: Mapping) -> str | None:
+    """The paper reference as reported, normalized: spaces collapsed, case-folded."""
+    ref = rec.get("paper_reference")
+    return " ".join(ref.split()).casefold() if isinstance(ref, str) and ref.strip() else None
+
+
+def same_paper(a: Mapping, b: Mapping) -> bool | None:
+    """Whether two records cite the same paper, from their own normalized paper references only
+    (re-check finding 2a: never from the plan's grouping, which is for clustering): both DOIs
+    known, compare them; else both references known, compare them; else unknown (None)."""
+    da, db = _doi(a), _doi(b)
+    if da and db:
+        return da == db
+    ra, rb = _reference(a), _reference(b)
+    if ra and rb:
+        return ra == rb
+    return None
+
+
+def invalid_values(records: Iterable[Mapping], outcome: str | None = None) -> list[Flag]:
+    """Physically impossible values, on every record whatever the plan's outcome (re-check
+    finding 2b): tensile strength below yield strength; a grain size of zero or less."""
     out = []
     for r in records:
-        ys, uts, gs = _number(r, outcome), _number(r, "ultimate_tensile_strength"), _number(r, "grain_size")
+        ys, uts, gs = _number(r, "yield_strength"), _number(r, "ultimate_tensile_strength"), _number(r, "grain_size")
         reasons = {}
-        if outcome == "yield_strength" and ys is not None and uts is not None and uts < ys:
+        if ys is not None and uts is not None and uts < ys:
             reasons["ultimate_tensile_strength_below_yield_strength"] = [uts, ys]
         if gs is not None and gs <= 0:
             reasons["grain_size_not_positive"] = [gs]
@@ -98,11 +120,10 @@ def invalid_values(records: Iterable[Mapping], outcome: str) -> list[Flag]:
 @dataclass(frozen=True)
 class Matching:
     """The settings that decide which records are compared (step 6 review, finding 2): the
-    same-alloy step, the tolerance, the grouping (a dataset cites itself) and the value statuses
-    that count as known."""
+    same-alloy step, the tolerance and the value statuses that count as known. Not the grouping,
+    which is for clustering only (re-check finding 2a)."""
     decimals: int
     tolerance: float
-    grouping: tuple
     statuses: tuple
 
 
@@ -110,8 +131,7 @@ def matching(plan: Mapping[str, Any], key: str = "primary") -> Matching:
     """The matching settings of set `key` under the locked plan (its own change applied)."""
     from hypocurate.pipeline.eligibility import settings
     st = settings(plan, key)
-    return Matching(st.decimals, plan["rules"]["duplicate_tolerance"], tuple(sorted(st.grouping.items())),
-                    tuple(sorted(st.statuses)))
+    return Matching(st.decimals, plan["rules"]["duplicate_tolerance"], tuple(sorted(st.statuses)))
 
 
 def _condition(a: Mapping, b: Mapping, statuses=VALUE_STATUSES) -> str:
@@ -128,20 +148,20 @@ def _condition(a: Mapping, b: Mapping, statuses=VALUE_STATUSES) -> str:
 
 def _link(a: Mapping, b: Mapping, plan: Mapping, m: Matching) -> tuple[str, dict] | None:
     """The candidate link between two records of different sources, or None."""
-    tol, outcome, st, grouping = m.tolerance, plan["variables"]["outcome"]["field"], m.statuses, dict(m.grouping)
+    tol, outcome, st = m.tolerance, COMPARED_OUTCOME, m.statuses
     ga, gb, ya, yb = (_number(a, "grain_size", st), _number(b, "grain_size", st), _number(a, outcome, st),
                       _number(b, outcome, st))
     if None in (ga, gb, ya, yb) or relative_difference(ga, gb) > tol:
         return None
-    pa, pb = paper(a, grouping), paper(b, grouping)
-    if pa is not None and pb is not None and pa != pb:
+    paper = same_paper(a, b)
+    if paper is False:
         return None
     cond = _condition(a, b, st)
     if cond == "differs":
         return None
     numbers = {"grain_size": [ga, gb], outcome: [ya, yb], "relative_difference": relative_difference(ya, yb)}
     within = numbers["relative_difference"] <= tol
-    if pa is not None and pb is not None and cond == "same":
+    if paper is True and cond == "same":
         return ("exact" if within else "conflict"), numbers
     return ("possible", numbers) if within else None
 
@@ -200,7 +220,7 @@ def duplicate_groups(records: list[Mapping], plan: Mapping[str, Any], m: Matchin
 
 def raise_flags(plan: Mapping[str, Any], records: list[Mapping]) -> list[Flag]:
     """Every flag for the run's records under the locked plan, in a fixed order."""
-    return invalid_values(records, plan["variables"]["outcome"]["field"]) + duplicate_groups(records, plan)
+    return invalid_values(records) + duplicate_groups(records, plan)
 
 
 def set_flags(plan: Mapping[str, Any], records: list[Mapping]) -> dict[str, list[Flag]]:

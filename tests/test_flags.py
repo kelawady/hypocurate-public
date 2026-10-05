@@ -24,12 +24,13 @@ PLAN = default_plan(1)
 DOI = "10.1016/j.test.2020.001"
 
 
-def rec(i, source="mpea", comp=None, gs=10.0, ys=400.0, uts=None, doi=DOI, test_type="tension", temp=25.0):
+def rec(i, source="mpea", comp=None, gs=10.0, ys=400.0, uts=None, doi=DOI, test_type="tension", temp=25.0,
+        reference=None):
     def v(value, unit=None):
         return {"value": value, "unit": unit, "status": "converted"} if value is not None else \
             {"value": None, "unit": unit, "status": "not_reported", "reason": "blank in the source"}
     return {"id": i, "source": source, "origin": f"{source}.csv:row:{i}", "item_index": 0, "kind": "measured",
-            "alloy": "x", "paper_reference": None, "paper_doi": doi, "version_fingerprint": "f" * 64, "reported": {},
+            "alloy": "x", "paper_reference": reference, "paper_doi": doi, "version_fingerprint": "f" * 64, "reported": {},
             "harmonized": {"composition": v(comp or {"Co": 50.0, "Ni": 50.0}, "at.%"), "grain_size": v(gs, "µm"),
                            "yield_strength": v(ys, "MPa"), "ultimate_tensile_strength": v(uts, "MPa"),
                            "test_type": v(test_type), "test_temperature": v(temp, "°C")}}
@@ -141,9 +142,46 @@ def test_a_group_with_one_conflicting_pair_is_a_conflict():
                    ("values_disagree", "differ beyond tolerance", [1, 3])]
 
 
-def test_a_dataset_source_is_its_own_paper():
-    """Texas A&M (grouped by dataset) cites itself: never paired with a record citing another paper."""
-    assert kinds([rec(1), rec(2, "tamu_fcc", doi=None)]) == []
+def test_paper_identity_does_not_depend_on_the_grouping_setting():
+    """Re-check finding 2a, the reviewer's case: MPEA grouped by dataset, the extract by paper.
+    Identical records citing the same DOI are still the same paper, so an exact duplicate.
+    Grouping is used only for clustering in the analysis."""
+    plan = copy.deepcopy(PLAN)
+    plan["rules"]["grouping"] = [{"source": "mpea", "unit": "dataset"}, {"source": "tamu_fcc", "unit": "dataset"},
+                                 {"source": "controlled_duplicates", "unit": "paper"}]
+    assert kinds([rec(1), rec(2, "controlled_duplicates")], plan) == [("exact_duplicate", "identical values", [1, 2])]
+    plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "tamu_fcc", "unit": "paper"},
+                                 {"source": "controlled_duplicates", "unit": "paper"}]
+    assert kinds([rec(1, reference="Effect of annealing on CoCrFeMnNi"),
+                  rec(2, "tamu_fcc", doi=None, reference="Mulukutla et al. 2026")], plan) == []
+
+
+def test_without_a_doi_the_normalized_paper_reference_identifies_the_paper():
+    """Both records without a DOI: the same reference (spaces and case aside) is the same paper,
+    another reference is another paper; a reference against a DOI or nothing is unknown."""
+    a = rec(1, "tamu_fcc", doi=None, reference="Mulukutla, M. et al. (2026).  Dataset v1.1.0")
+    same = rec(2, "controlled_duplicates", doi=None, reference="mulukutla, m. et al. (2026). dataset v1.1.0")
+    other = rec(3, "controlled_duplicates", doi=None, reference="Another paper (2019)")
+    assert kinds([a, same]) == [("exact_duplicate", "identical values", [1, 2])]
+    assert kinds([a, other]) == []
+    assert kinds([a, rec(4, "controlled_duplicates", doi=None)])[0][0] == "possible_duplicate"
+
+
+def test_physical_validity_does_not_depend_on_the_outcome_setting():
+    """Re-check finding 2b, the reviewer's case: with tensile strength as the outcome (a plan that
+    bypassed validation), tensile strength 399 below yield strength 400 is still invalid."""
+    plan = copy.deepcopy(PLAN)
+    plan["variables"]["outcome"]["field"] = "ultimate_tensile_strength"
+    assert kinds([rec(1, uts=399.0)], plan) == [("invalid_value", "physically impossible", [1])]
+
+
+def test_a_source_without_per_record_papers_is_compared_by_its_reference():
+    """Texas A&M has no per-record paper: its records carry the dataset's reference and no DOI.
+    Against a record with a DOI and a title, the references differ, so they are never paired.
+    (Replaces 'a dataset source is its own paper', which came from the grouping setting until the
+    re-check, finding 2a.)"""
+    tamu = rec(2, "tamu_fcc", doi=None, reference="Mulukutla, M. et al. (2026). Revisiting Hall-Petch")
+    assert kinds([rec(1, reference="Effect of annealing on CoCrFeMnNi"), tamu]) == []
 
 
 def _world(seed):
@@ -198,7 +236,7 @@ def test_flags_come_from_pairwise_comparisons_and_group_classification(seed):
     assert kinds(changed, blind) == before
 
 
-def test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_outcome_field():
+def test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_set_names():
     source = Path(fl.__file__).read_text()
     tree = ast.parse(source)
     imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} | \
@@ -208,4 +246,5 @@ def test_checks_imports_no_statistics_and_reads_only_the_rules_and_the_outcome_f
     plan_keys = {n.slice.value for n in ast.walk(tree) if isinstance(n, ast.Subscript)
                  and isinstance(n.value, ast.Name) and n.value.id == "plan" and isinstance(n.slice, ast.Constant)}
     # Step 6 review, finding 2: the names of the sensitivity sets, to compute each set's own flags.
-    assert plan_keys == {"rules", "variables", "sensitivity_analyses"}
+    # Re-check finding 2b: not the plan's outcome (Checks compares yield strength, the one supported).
+    assert plan_keys == {"rules", "sensitivity_analyses"}

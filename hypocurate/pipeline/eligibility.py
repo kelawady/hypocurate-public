@@ -49,6 +49,9 @@ from typing import Any, Iterable, Mapping
 from hypocurate.sources.normalize import same_alloy_key
 
 PRIMARY = "primary"
+# Sprint 1 supports one model (CLAUDE.md rule 6): its outcome is yield strength. Plan validation
+# refuses any other (re-check finding 2b; register 'supported_outcomes').
+SUPPORTED_OUTCOMES = ("yield_strength",)
 FLAG_STAGE_RULES = ("identity_unresolved", "conflict_unresolved", "duplicate_counted_once")
 
 # Fixed rules, not plan defaults (owner, 2026-10-06; register 'primary_set_invariants'): what each

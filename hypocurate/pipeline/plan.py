@@ -29,7 +29,7 @@ from hypocurate.access.allowlist import PLAN_SCHEMA
 from hypocurate.access.fields import project
 from hypocurate.access.vocabulary import SENSITIVITY_KEYS
 from hypocurate.pipeline import profile as p
-from hypocurate.pipeline.eligibility import fixed_rule_problems
+from hypocurate.pipeline.eligibility import SUPPORTED_OUTCOMES, fixed_rule_problems
 
 PARTS = ("hypothesis_version", "variables", "scope", "model", "sufficiency", "fields_to_extract", "exclusion_rules",
          "eligibility_rules", "verdict_statement", "sensitivity_analyses", "profile", "rules")
@@ -119,6 +119,8 @@ def _check_template(c: dict) -> None:
         raise PlanError("variables need an outcome (field, unit) and a predictor (field, unit, transformation)")
     if (v["predictor"]["field"], v["predictor"]["unit"]) != ("grain_size", "µm"):
         raise PlanError("the supported model's predictor is grain size in µm")
+    if v["outcome"]["field"] not in SUPPORTED_OUTCOMES:
+        raise PlanError(f"the supported outcome is {', '.join(SUPPORTED_OUTCOMES)} (one model in sprint 1)")
     if v["outcome"]["field"] == v["predictor"]["field"]:
         raise PlanError("the outcome and the predictor are different fields")
     if set(m) != {"name", "null", "alternative", "alpha"} or not 0 < m["alpha"] < 1:

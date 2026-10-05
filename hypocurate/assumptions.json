@@ -399,13 +399,15 @@
     "tests": [
       "tests/test_controlled_duplicates_handling.py::test_the_flag_is_the_answer_files",
       "tests/test_eligibility.py::test_an_ambiguous_group_keeps_its_conflict_in_every_set",
-      "tests/test_flags.py::test_a_dataset_source_is_its_own_paper",
+      "tests/test_flags.py::test_a_source_without_per_record_papers_is_compared_by_its_reference",
       "tests/test_flags.py::test_a_group_whose_records_are_not_all_linked_is_ambiguous",
       "tests/test_flags.py::test_a_group_with_one_conflicting_pair_is_a_conflict",
       "tests/test_flags.py::test_a_known_difference_in_paper_or_conditions_means_no_pair",
       "tests/test_flags.py::test_an_unknown_paper_or_condition_gives_a_possible_duplicate_only_if_the_values_match",
+      "tests/test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting",
       "tests/test_flags.py::test_rows_within_one_source_are_never_compared",
-      "tests/test_flags.py::test_several_candidates_from_one_source_pair_nothing"
+      "tests/test_flags.py::test_several_candidates_from_one_source_pair_nothing",
+      "tests/test_flags.py::test_without_a_doi_the_normalized_paper_reference_identifies_the_paper"
     ],
     "history": [
       {
@@ -426,8 +428,8 @@
       "Not reviewed by an expert.",
       "Related: entry 'observation_unit' (what one source row represents) and entry 'values_disagree_tolerance' (the 2% tolerance).",
       "A record with a missing test condition is also 'scope not confirmed': Checks still raises the possible-duplicate flag, and Inclusion applies the scope rule before the duplicate rule (owner, 2026-10-05).",
-      "A paper is identified by its DOI (derived key); a source grouped by dataset (Texas A&M) cites itself.",
-      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'."
+      "Step 6 review, finding 4 (2026-10-06): an ambiguous group that contains a definite conflict keeps it as its own conflict flag; the conflicting records stay out wherever conflicts are excluded, including 'possible_duplicates_separate'.",
+      "A paper is identified from the records' own normalized paper references: both DOIs (derived key), else both reference texts (spaces collapsed, case-folded), else unknown. The plan's grouping is for clustering only and never changes paper identity (re-check finding 2a, 2026-10-06). Texas A&M records carry the dataset's reference and no DOI."
     ]
   },
   {
@@ -1300,12 +1302,14 @@
       }
     ],
     "notes": [
-      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Checked on every record whatever the plan's outcome (re-check finding 2b, 2026-10-06)."
     ],
     "tests": [
       "tests/test_eligibility.py::test_each_rule_on_its_own",
       "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
       "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
+      "tests/test_flags.py::test_physical_validity_does_not_depend_on_the_outcome_setting",
       "tests/test_flags.py::test_physically_impossible_values_are_flagged_per_record"
     ]
   },
@@ -4747,7 +4751,7 @@
     "key": "fixed_policies_in_code",
     "name": "Policies fixed in code for every plan",
     "state": "in_force",
-    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (the DOI's derived key; a source grouped by dataset cites itself); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+    "statement": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (from the records' own normalized paper references: both DOIs, else both reference texts, else unknown; never from the plan's grouping, which is for clustering only); that physical validity is checked on every record whatever the plan's outcome; the supported outcome ('supported_outcomes'); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
     "value": {
       "text": "eleven fixed policies",
       "unit": null
@@ -4786,12 +4790,68 @@
       ],
       "note": "The meaning of each sensitivity key must stay stable, or be versioned with the domain profile."
     },
+    "history": [
+      {
+        "value": "Plan settings (scope, exclusion rules, eligibility rules within the fixed choices, the plan's rules, sufficiency) are read from the locked plan only, never from the domain profile. These policies are fixed in code and the same for every plan: which statuses carry a value; what counts as physically invalid (tensile strength below yield strength, grain size of zero or less); which test conditions are compared (test type and temperature); how a paper is identified (the DOI's derived key; a source grouped by dataset cites itself); the room-temperature band's name; the order of the eligibility rules; the ambiguity rule; the fixed rules for the primary set ('primary_set_invariants'); the structure of the survivor rule and its stable tie-breaker; the change each sensitivity key applies; and the code roles' field lists. Changing one is a code change with this entry, needing the owner's approval.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the re-check (finding 2a)."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
+      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
+      "tests/test_flags.py::test_paper_identity_does_not_depend_on_the_grouping_setting",
+      "tests/test_flags.py::test_physical_validity_does_not_depend_on_the_outcome_setting"
+    ]
+  },
+  {
+    "key": "supported_outcomes",
+    "name": "Supported outcomes",
+    "state": "in_force",
+    "statement": "Sprint 1 supports one model, whose outcome is yield strength. Plan validation refuses a plan with any other outcome.",
+    "value": {
+      "text": "yield_strength",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Which plans can be locked; the outcome Checks compares for duplicates and conflicts.",
+    "reason": "Re-check finding 2b: choosing another outcome disabled a physical-validity check; CLAUDE.md rule 6 allows one model.",
+    "evidence": [
+      "docs/reviews/step06_recheck_chatgpt.md, finding 2; the owner's instruction of 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:SUPPORTED_OUTCOMES",
+          "equals": [
+            "yield_strength"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.flags:COMPARED_OUTCOME",
+          "equals": "yield_strength"
+        }
+      ],
+      "note": null
+    },
     "history": [],
     "notes": [],
     "tests": [
-      "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
-      "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
-      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
+      "tests/test_plan.py::test_invalid_plans_are_refused"
     ]
   }
 ]
