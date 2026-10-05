@@ -33,7 +33,8 @@ from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
 from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
-from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, flag_index, log_refusal,
+from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, decide_sets, flag_index,
+                                        inclusion_input, log_refusal,
                                         record_identity, record_ids, require_checks_cover, run_record_sources,
                                         write)
 
@@ -98,10 +99,10 @@ def _set_records(conn: Connection, run_id: int) -> dict[str, list[int]]:
 
 def freeze_dataset(engine: Engine, run_id: int) -> dict:
     """Freezes the analysis dataset (or records that none is frozen); returns the freeze record."""
-    data = role_input(bind_code(engine, run_id, "inclusion"))
+    data = inclusion_input(engine, run_id, "checkpoint", "freeze_dataset")
     plan, records, flags = data["plan"]["content"], data["record_conditions"], data["flags_kind"]
     by_id = {r["id"]: r for r in records}
-    sets = el.all_sets(plan, records, flags, data["set_flags"])
+    sets = decide_sets(engine, run_id, "checkpoint", "freeze_dataset", data)
     members = {key: el.members(rules) for key, rules in sets.items()}
     counts: dict[str, Any] = {key: el.counts(plan, by_id, ids, key) for key, ids in members.items()}
     counts["per_source"] = {source: el.counts(plan, by_id, [i for i in members[el.PRIMARY]

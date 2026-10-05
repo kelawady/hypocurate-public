@@ -4703,7 +4703,7 @@
     "key": "checks_bound_to_records",
     "name": "Checks cover exactly the records decided on",
     "state": "in_force",
-    "statement": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags.",
+    "statement": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags. Inclusion and the freeze read their inputs in the same transaction, under the run's lock, that verifies the completed Checks result covers exactly those records and flags; a sensitivity set whose own flags are missing from that result is refused, never treated as having no flags.",
     "value": {
       "text": "extraction, then Checks, then Inclusion and the freeze, bound by the record collection",
       "unit": null
@@ -4732,19 +4732,35 @@
         },
         {
           "ref": "python:hypocurate.pipeline.writes:binding"
+        },
+        {
+          "ref": "python:hypocurate.access.fields:set_flags"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:needs_own_flags"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Checks run only when every chosen source has been stored (or has failed), and no record is stored after them. The completed Checks result records exactly which records (by stable identity) and flags it covered; Inclusion and the dataset freeze refuse, and log the refusal, without a completed Checks result or when it does not cover exactly the run's records and flags.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Before the re-check (finding 1)."
+      }
+    ],
     "notes": [
       "A source refused by the constructed-data guard stays pending, so Checks cannot run until it is marked failed: the run's orchestration (step 9) must do that."
     ],
     "tests": [
+      "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",
       "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze",
       "tests/test_checkpoints.py::test_checks_wait_until_every_chosen_source_is_stored",
       "tests/test_checkpoints.py::test_no_record_is_stored_after_checks",
-      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze"
+      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze",
+      "tests/test_sensitivity_matching.py::test_a_missing_required_per_set_flag_result_is_a_refusal",
+      "tests/test_sensitivity_matching.py::test_the_reviewers_interleaving_is_refused"
     ]
   },
   {

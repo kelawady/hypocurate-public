@@ -314,10 +314,27 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
     return rules
 
 
-def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | None) -> list[Mapping]:
+class MissingSetFlags(ValueError):
+    """A sensitivity set needs its own matching flags and the Checks result lacks them."""
+
+
+def needs_own_flags(plan: Mapping[str, Any], key: str) -> bool:
+    """Whether set `key` changes a matching setting (the same-alloy step or the value statuses), so
+    that it needs its own duplicate, conflict and ambiguity flags from Checks."""
+    if key == PRIMARY:
+        return False
+    a, b = settings(plan), settings(plan, key)
+    return (a.decimals, a.statuses) != (b.decimals, b.statuses)
+
+
+def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | None,
+              plan: Mapping[str, Any] | None = None) -> list[Mapping]:
     """The flags set `key` applies: its own matching flags from Checks where its matching settings
     differ (step 6 review, finding 2), with the primary set's invalid-value flags; else the primary
-    set's flags."""
+    set's flags. A required result that is missing is refused, never read as "no flags"
+    (re-check finding 1)."""
+    if plan is not None and needs_own_flags(plan, key) and (not set_flags or key not in set_flags):
+        raise MissingSetFlags(f"the Checks result has no flags for the set {key!r}")
     if not set_flags or key not in set_flags:
         return flags
     own = [{"id": 10 ** 12 + n, **f} for n, f in enumerate(set_flags[key])]
@@ -327,7 +344,7 @@ def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | No
 def all_sets(plan: Mapping[str, Any], records: list[Mapping], flags: list[Mapping],
              set_flags: Mapping[str, list] | None = None) -> dict[str, dict[int, str]]:
     """The primary set and every sensitivity set the plan names, each with its own flags."""
-    return {key: decide(plan, records, flags_for(key, flags, set_flags), key)
+    return {key: decide(plan, records, flags_for(key, flags, set_flags, plan), key)
             for key in (PRIMARY, *plan["sensitivity_analyses"])}
 
 

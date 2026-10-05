@@ -33,6 +33,7 @@ from hypocurate.access.allowlist import (BATCH_COLUMNS, CATEGORY_FIELDS, CONDITI
                                          CONDITION_RANGE_FIELDS, OUTCOME_FIELDS, PLAN_SCHEMA, POWER_SCHEMA,
                                          SOURCE_META_FIELDS)
 from hypocurate.access.context import AccessContext as Context
+from hypocurate.pipeline.binding import binding, record_identity
 from hypocurate.sources import adapters
 from hypocurate.sources.normalize import alloy_label, doi_group_key, identity_hash, same_alloy_key
 from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, VALUE_STATUSES, AdapterError
@@ -316,10 +317,24 @@ def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
 
 def set_flags(conn: Connection, ctx: Context) -> dict:
     """The per-set matching flags of the run's completed Checks result (step 6 review, finding 2):
-    codes and record ids only."""
+    codes and record ids only.
+
+    Re-check finding 1: read in the same transaction as the role's other fields, under the run's
+    lock, and only after verifying that a completed Checks result exists and covers exactly the
+    records and flags of the run as they are now; otherwise the read is refused
+    (`checks_not_done`, `checks_not_current`), never answered with "no flags"."""
     output = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'checks' "
                                "AND status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=ctx.run_id)).scalar_one_or_none()
-    stored = output.get("set_flags", {}) if isinstance(output, Mapping) else {}
+    if not isinstance(output, Mapping) or not isinstance(output.get("binding"), Mapping):
+        raise Refused("checks_not_done")
+    identity = {i: record_identity(fp, key, ix) for i, fp, key, ix in _rows(
+        conn, "SELECT r.id, sv.fingerprint, r.source_item_key, r.item_index FROM record r "
+              "JOIN source_version sv ON sv.id = r.source_version_id WHERE r.extraction_run_id = :r", r=ctx.run_id)}
+    flagged = [(f.kind, f.category, [identity[x] for x in _flag_records(conn, ctx).get(f.id, []) if x in identity])
+               for f in _rows(conn, "SELECT id, kind, category FROM flag WHERE run_id = :r", r=ctx.run_id)]
+    if binding(identity.values(), flagged) != dict(output["binding"]):
+        raise Refused("checks_not_current")
+    stored = output.get("set_flags", {})
     out = {}
     for key, flags in (stored.items() if isinstance(stored, Mapping) else ()):
         out[vocab.code(key, vocab.SENSITIVITY_KEYS)] = [

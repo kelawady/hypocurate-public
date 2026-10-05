@@ -20,14 +20,15 @@ from sqlalchemy import Connection, Engine, text
 from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
-from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, flag_index, record_identity,
+from hypocurate.pipeline.writes import (Refused, code_stage, constructed_unmarked, decide_sets, flag_index,
+                                        inclusion_input, record_identity,
                                         record_ids, require_checks_cover, run_record_sources, write)
 
 
 def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
-    data = role_input(bind_code(engine, run_id, "inclusion"))
+    data = inclusion_input(engine, run_id, "inclusion", "decide")
     plan, records, flags = data["plan"]["content"], data["record_conditions"], data["flags_kind"]
-    sets = el.all_sets(plan, records, flags, data["set_flags"])
+    sets = decide_sets(engine, run_id, "inclusion", "decide", data)
     read_ids = sorted(r["id"] for r in records)
     read_flags = [(f["id"], f["kind"], f["category"], tuple(sorted(f["records"]))) for f in flags]
     identity_of = {r["id"]: record_identity(r["version_fingerprint"], r["origin"], r["item_index"]) for r in records}

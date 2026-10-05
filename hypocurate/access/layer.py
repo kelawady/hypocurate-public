@@ -80,6 +80,8 @@ DENIALS = {
     "source_not_for_role": "only the Curator is bound to a source",
     "setting_not_recorded": "the agent setting is not recorded for this run",
     "empty_list": "the role has no field at this stage",
+    "checks_not_done": "no completed Checks result for this run",
+    "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
 }
 FAILURES = ("unknown_run", "lock_timeout", "reader_error", "database_error", "file_guard")
 FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}

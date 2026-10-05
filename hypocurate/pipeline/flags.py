@@ -227,10 +227,6 @@ def set_flags(plan: Mapping[str, Any], records: list[Mapping]) -> dict[str, list
     """For each sensitivity set whose matching settings differ from the primary set's, the
     duplicate, conflict and ambiguity flags under its own settings (step 6 review, finding 2).
     Invalid values do not depend on matching; the set uses the primary set's."""
-    primary = matching(plan)
-    out = {}
-    for key in plan["sensitivity_analyses"]:
-        m = matching(plan, key)
-        if m != primary:
-            out[key] = duplicate_groups(records, plan, m)
-    return out
+    from hypocurate.pipeline.eligibility import needs_own_flags
+    return {key: duplicate_groups(records, plan, matching(plan, key))
+            for key in plan["sensitivity_analyses"] if needs_own_flags(plan, key)}

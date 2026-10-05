@@ -108,10 +108,32 @@ def test_an_agent_setting_cannot_bind_as_a_code_role(engine):
                                   "VALUES (:r, :o, :a)"), dict(r=world.run, o=role, a=setting))
 
 
+def completed_checks(engine, run_id):
+    """A completed Checks result covering the run's records and flags as they are (the world's
+    flags are planted by hand), so that Inclusion may read (re-check finding 1)."""
+    from hypocurate.pipeline import writes
+    with engine.begin() as conn:
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id))
+        identity = {i: writes.record_identity(fp, key, ix) for i, fp, key, ix in conn.execute(text(
+            "SELECT r.id, sv.fingerprint, r.source_item_key, r.item_index FROM record r "
+            "JOIN source_version sv ON sv.id = r.source_version_id WHERE r.extraction_run_id = :r"), dict(r=run_id))}
+        flags = [(k, c, [identity[x] for x in (ids or []) if x in identity]) for k, c, ids in conn.execute(text(
+            "SELECT f.kind, f.category, array_agg(fr.record_id) FILTER (WHERE fr.record_id IS NOT NULL) FROM flag f "
+            "LEFT JOIN flag_record fr ON fr.flag_id = f.id WHERE f.run_id = :r GROUP BY f.id"), dict(r=run_id))]
+        writes.code_stage(conn, run_id, "checks", {}, {"binding": writes.binding(identity.values(), flags),
+                                                      "set_flags": {}})
+
+
 def test_inclusion_receives_no_outcome_value(engine):
     """The projected-data search over Inclusion's complete input finds none of the planted
-    outcome values; Checks' input (all values, by design) is the positive control."""
+    outcome values; Checks' input (all values, by design) is the positive control. Inclusion
+    reads only after a completed Checks result (re-check finding 1): before it, the read is
+    refused."""
     world = aw.build(engine, "curation")
+    with pytest.raises(AccessDenied) as denied:
+        role_input(bind_code(engine, world.run, "inclusion"))
+    assert denied.value.code == "checks_not_done"
+    completed_checks(engine, world.run)
     inclusion = role_input(bind_code(engine, world.run, "inclusion"))
     assert set(inclusion) == {"plan", "record_conditions", "flags_kind", "set_flags"}
     assert leaks(inclusion, aw.PLANTED.values()) == []
@@ -121,7 +143,7 @@ def test_inclusion_receives_no_outcome_value(engine):
     rows = [r for r in audit(engine, world.run) if r.role in CODE_ROLES and r.function != "bind"]
     assert {(r.role, r.function, r.allowed) for r in rows} == {
         ("inclusion", "plan", True), ("inclusion", "record_conditions", True), ("inclusion", "flags_kind", True),
-        ("inclusion", "set_flags", True),
+        ("inclusion", "set_flags", True), ("inclusion", "set_flags", False),
         ("checks", "plan", True), ("checks", "records_full", True)}
 
 

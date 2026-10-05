@@ -39,6 +39,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from hypocurate.access.layer import ACCESS_LOCK_TIMEOUT_MS
 from hypocurate.access.stage import actual_stage
 from hypocurate.db.retry import run_transaction
+from hypocurate.pipeline.binding import binding, record_identity  # noqa: F401 (shared with the access layer)
 
 LOG = logging.getLogger("hypocurate.pipeline")
 LOCK_TIMEOUT_MS = ACCESS_LOCK_TIMEOUT_MS
@@ -56,6 +57,7 @@ CODES = {
     "checks_done": "Checks have run: no record is stored after them",
     "checks_not_done": "no completed Checks result for this run",
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
+    "set_flags_missing": "the completed Checks result lacks the flags a sensitivity set needs",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
 
@@ -147,19 +149,36 @@ def flag_index(conn: Connection, run_id: int) -> list[tuple[int, str, str, tuple
 
 # --- Checks bound to the records it covered (step 6 review, finding 1) -----------------------
 
-def record_identity(version_fingerprint: str, origin: str, item_index: int) -> str:
-    """A record's stable identity: never its database id."""
-    return f"{version_fingerprint}|{origin}|{item_index}"
+CHECKS_DENIALS = ("checks_not_done", "checks_not_current")
 
 
-def binding(identities, flags) -> dict:
-    """What a completed Checks result covered: the exact record collection (by stable identity)
-    and the flags it raised (kind, category and the identities of their records)."""
-    ids = sorted(identities)
-    digest = hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
-    flag_lines = sorted(f"{k}|{c}|{','.join(sorted(r))}" for k, c, r in flags)
-    return {"records": len(ids), "identities": digest,
-            "flags": hashlib.sha256("\n".join(flag_lines).encode("utf-8")).hexdigest()}
+def inclusion_input(engine: Engine, run_id: int, role: str, function: str) -> dict:
+    """Inclusion's input, read in one transaction under the run's lock that also verifies the
+    completed Checks result covers exactly the records and flags read (re-check finding 1; the
+    `set_flags` reader). A refusal there becomes a logged pipeline refusal."""
+    from hypocurate.access.dispatch import bind_code
+    from hypocurate.access.errors import AccessDenied
+    from hypocurate.access.inputs import role_input
+    try:
+        return role_input(bind_code(engine, run_id, "inclusion"))
+    except AccessDenied as denied:
+        if denied.code not in CHECKS_DENIALS:
+            raise
+        code = denied.code
+    log_refusal(engine, run_id, role, function, code)
+    raise Refused(function, code)
+
+
+def decide_sets(engine: Engine, run_id: int, role: str, function: str, data: dict) -> dict:
+    """Every set's rules from Inclusion's input; a sensitivity set whose required own flags are
+    missing from the Checks result is a logged refusal, never "no flags" (re-check finding 1)."""
+    from hypocurate.pipeline import eligibility as el
+    try:
+        return el.all_sets(data["plan"]["content"], data["record_conditions"], data["flags_kind"], data["set_flags"])
+    except el.MissingSetFlags as missing:
+        message = str(missing)
+    log_refusal(engine, run_id, role, function, "set_flags_missing", message)
+    raise Refused(function, "set_flags_missing", message)
 
 
 def checks_binding(conn: Connection, run_id: int) -> dict | None:
