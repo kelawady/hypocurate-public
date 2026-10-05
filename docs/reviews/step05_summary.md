@@ -1,8 +1,8 @@
 # Build step 5 — summary for review
 
-Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; awaiting the re-check. Not merged.** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
+Date: 2026-10-05. Branch: `step-05-access`. **Status: first build reviewed by the second model (ChatGPT, 2026-10-05: "serious gaps"; six findings, all accepted by the owner with a threat-model decision); fixes built; re-check (2026-10-05): threat model accepted, four findings closed, three narrow items left, "no further blocker under the agreed threat model". The three items were fixed and merged on their regression tests without a further review round, by the owner's decision (section "Re-check").** PRD Section 15, step 5: "Access layer. Role and stage objects, allowed-field lists, the audit log, and the tests for criterion 14.2 including the planted-value test. This is built before any agent."
 
-The suite is the gate. This summary is for the second model's re-check (PRD 13.2), which uses `docs/reviews/checklist.md`. The review text is in `docs/reviews/step05_review_chatgpt.md`. It describes the state **after** the fixes; section "Second-model review and fixes" maps each finding to its fix.
+The suite is the gate. This summary is for the second model's re-check (PRD 13.2), which uses `docs/reviews/checklist.md`. The review text is in `docs/reviews/step05_review_chatgpt.md`, the re-check in `docs/reviews/step05_recheck_chatgpt.md`. It describes the state **after** the fixes; section "Second-model review and fixes" maps each finding to its fix.
 
 **Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
 
@@ -28,14 +28,14 @@ The access layer and its tests guard against **our own code leaking data to a mo
 | `hypocurate/access/dispatch.py` | **`bind(engine, run_id, agent_setting_id, source_key=None)`**: the only way to obtain an access object. |
 | `hypocurate/access/layer.py` | `Access` (no public constructor; immutable): `get(field)` and `read_all()`; the transaction, the audit rows, denial and failure codes, failure rows and the process-log fallback. |
 | `hypocurate/access/fields.py` | One reader per field, built from named keys, vocabularies and the plan schema. |
-| `hypocurate/access/stage.py`, `inputs.py`, `errors.py` | The stage from the database; `role_input` (one snapshot); `AccessDenied` and `AccessFailed`. |
+| `hypocurate/access/stage.py`, `inputs.py`, `errors.py` | The stage from the database; `role_input` (one transaction under the run's lock); `AccessDenied` and `AccessFailed`. |
 | `hypocurate/access/file_guard.py`, `guarded.py`, `guard_probe.py` | The tripwire, its guarded process, and probes; refusals reported and logged. |
 | `hypocurate/sources/connection.py` | "Test connection" reports unrecognized category counts per field. |
 | `hypocurate/sources/normalize.py`, `versions.py` | `same_alloy_key`; registration refuses to run under the guard. |
 | `CLAUDE.md` | Rule 14 and the threat model. |
 | `README.md`, `scripts/check_runtime_image.py` | The access section, rewritten; the image must contain the access modules. |
 | `tests/access_world.py`, `tests/access_testing.py` | Runs at every stage with planted values (now also inside every allowed field) and recorded agent settings; the tests' only way to build an access object outside the dispatcher. |
-| `tests/test_access_layer.py`, `test_access_projected.py`, `test_access_dispatch.py`, `test_access_files.py` | 44, 13, 18 and 20 tests. |
+| `tests/test_access_layer.py`, `test_access_projected.py`, `test_access_dispatch.py`, `test_access_files.py` | 44, 13, 22 and 20 tests. |
 
 ## Register update: the conflict pairing rule (owner, 2026-10-05)
 
@@ -146,9 +146,9 @@ The tests build contexts the dispatcher would never produce (unknown roles, stal
 5. one audit row per field;
 6. commit; then return, or raise `AccessDenied`.
 
-`role_input` reads **every field of the role in this one transaction**: one snapshot, with every audit row in the same transaction (tested via `xmin`). Holding the run's lock, the stage and the rows cannot change until commit: writers to the run follow the same protocol and wait. Isolation is READ COMMITTED on purpose. A REPEATABLE READ snapshot would be taken *before* the lock wait, so it could miss a checkpoint committed meanwhile.
+`role_input` reads **every field of the role in this one transaction**, with every audit row in the same transaction (tested via `xmin`, which shows one transaction; it does not by itself prove payload consistency). Holding the run's lock, the stage cannot change until commit, and neither can run data written by code that follows the same protocol (it waits). **The "one snapshot" claim is scoped to run data protected by the run-lock protocol.** Isolation is READ COMMITTED on purpose. A REPEATABLE READ snapshot would be taken *before* the lock wait, so it could miss a checkpoint committed meanwhile.
 
-**Real concurrent checkpoint transitions** (review): a rules lock and a freeze are each committed by a transaction holding the run's lock, while a read waits on it. After commit, the waiting Planner and Critic are refused with `stage_mismatch`, and the Analyst's post-freeze read succeeds.
+**Real concurrent checkpoint transitions** (review): a rules lock and a freeze are each committed by a transaction holding the run's lock, while a read waits on it. After commit, the waiting Planner and Critic are refused with `stage_mismatch`. The Analyst's read after the freeze succeeds; as the re-check notes, that read does not itself wait across the transition.
 
 ## Logging: denials and failures
 
@@ -161,6 +161,8 @@ The tests build contexts the dispatcher would never produce (unknown roles, stal
 - **Only validated, bounded strings are logged.** A role, stage or field that is not one of ours is logged as `invalid`, with its length. Reasons are fixed texts per code, and error messages carry only validated strings.
 - **Failure rows are a named exception to the locking protocol** (owner's answer to question 1; register `audit_failure_rows_without_run_lock`). They are written in their own transaction without `hc_write_lock`: there is no run to lock, or the lock is what failed. An `audit_log` insert takes only a key-share lock on the run, which never conflicts with the protocol's lock. For an unknown run, `run_id` is NULL and the requested id is in `detail`. The lock-timeout test checks that the failure row is written *while the other transaction still holds the lock*.
 - **File-guard refusals** are written by the child as one bounded line each on standard error. `run_guarded(..., audit=(engine, run_id))` copies them into `audit_log` as failures (at most 100 per run, then a count), or to the process log when no run is given.
+- **The original error of a failure** (a reader's exception, the database's error) is written with its traceback to the process log only. `AccessFailed` is raised outside the handler: it has no cause, no context and no text of the original, so a formatter that forwards it (str, repr, formatted traceback) cannot forward the original (re-check; tested with a planted value).
+- **A file-guard refusal is still logged when the guarded process then times out:** `run_guarded` reports the refusals from the captured standard error (text or bytes) before re-raising `TimeoutExpired` (re-check; tested).
 - **Fallback:** a failure row the database cannot take goes to the process log (logger `hypocurate.access`, one JSON line). Durable database logging is therefore not unconditional.
 - **`role_input` is never silently empty.** A role with no field at its stage gets `AccessDenied` (`empty_list`), logged.
 
@@ -208,6 +210,36 @@ The owner accepted all six findings and decided the threat model; the fixes were
 
 **The owner's addition (unrecognized counts).** Per run and per source, how many values of each category field were unrecognized (counts only) appears in "test connection" and in the run's `coverage`, so a source with unfamiliar labels is noticed. The frozen MPEA and Texas A&M sources have none (tested). Adding a value to a vocabulary is a register change needing the owner's approval.
 
+## Re-check (ChatGPT, 2026-10-05) and fixes
+
+The text is in `docs/reviews/step05_recheck_chatgpt.md`. **The threat model was accepted** ("reasonable for sprint 1; it does not require an operating-system sandbox, provided model responses cannot choose the access context or become executable instructions").
+
+| Finding | Re-check status |
+|---|---|
+| 1. File guard as a tripwire | partly closed (documentation only): the `PRELOADED` comment in `guarded.py` still overclaimed |
+| 2. Dispatcher-created context | closed for this layer; step 8 must derive run, setting and source from one invocation assignment |
+| 3. Free text and disclosures | closed within the stated policy |
+| 4. Source descriptions | closed |
+| 5. Denial and failure logging | partly closed: refusals lost on a child timeout; the raised error chained to the original |
+| 6. Projected-data test | closed for step 5; the outbound-request test is step 8's |
+
+**The second model found no other blocker under the agreed threat model.** The failure-row exception to the locking protocol was judged sound.
+
+The three items, fixed:
+1. **Timeout** (`hypocurate/access/guarded.py`). `run_guarded` catches `TimeoutExpired`, reports the refusals in its captured standard error (bytes or text), and re-raises. Tests: `test_a_refusal_followed_by_a_timeout_is_still_logged` (a real child: a refused read, then a sleep past the timeout) and `test_a_timeout_with_stderr_as_bytes_is_still_reported`.
+2. **Sanitized errors** (`layer.py`, `dispatch.py`). The original error and its traceback go to the process log only (`keep_in_process_log`). `AccessFailed` is raised outside the handler, so it has no `__cause__`, no `__context__` and no text of the original. Tests: `test_a_reader_failure_carries_nothing_of_the_original_error` (a planted value in a reader's error; checks str, repr, the formatted traceback, cause, context and args; the original is in the process log) and `test_a_database_failure_carries_nothing_of_the_original_error` (a lock timeout through `get` and through `bind`).
+3. **Overclaims.**
+   - The `PRELOADED` comment now says the guard refuses the ctypes audit events it intercepts (a new library load, a symbol lookup, a foreign call), and does not stop preloaded ctypes from reading memory directly.
+   - A search of the branch for other overclaims found and fixed:
+     - "one snapshot", now scoped to run data protected by the run-lock protocol (layer, inputs, package docstring, README, this summary);
+     - a garbled sentence in `guard_probe.py` ("it cannot be, by design" → "code that tries can bypass it");
+     - "the role's complete input" in `layer.py` → "every field on the role's list".
+   - Register `access_logging` states the sanitized errors and names the four new tests; `pipeline_file_guard` names the timeout test.
+
+**Each new test failed on the code before its fix.** All four were run with the fixes absent and only the probe's new `sleep` action present (test scaffolding the timeout test needs); all four failed. The two timeout tests failed because no refusal row was written. The two error tests failed on `__cause__`: the reader's `ValueError` with the planted value, and psycopg's `LockNotAvailable`. With the fixes, all pass.
+
+**By the owner's decision, these fixes were merged on their regression tests without a further review round.**
+
 ## Requirements carried from earlier steps
 
 | Requirement | How |
@@ -239,13 +271,13 @@ The owner accepted all six findings and decided the threat model; the fixes were
   - `conflict_pairing_rule` decided.
 - The named regression tests follow the renamed test file (`test_access_projected.py`).
 
-## Tests (639, all passing; 95 new in step 5; four register tests changed)
+## Tests (643, all passing; 99 new in step 5; four register tests changed)
 
 | File | Tests | What |
 |---|---|---|
 | `tests/test_access_layer.py` | 44 | The allow-list equals the owner's table; the full role × stage × field matrix at eight run states, with denial codes; queued and failed runs give nothing; a denied row survives the caller's rollback; outcome requests by the Planner and the Critic denied and logged; unknown roles, stages and fields are logged as `invalid`; both sides of each checkpoint; completion with and without a freeze; experiment flags relax nothing; field contents (named source fields, registry edits ignored, the Curator's own source and no direction of the claim, record metadata, flags, the projected plan, approved tags, counts with unrecognized counts, condition summaries, same-alloy key); the lock (timeout with a failure row, waiting, `run_transaction`, order of statements); no path-taking function; the guard installed in one place. |
 | `tests/test_access_projected.py` | 13 | The **projected-data test**: planted values (in discarded fields and inside every allowed field) are absent from the projected input of the Planner, the Critic, the gap-report Analyst and the Commentator without a freeze, in the encodings listed in its docstring. Positive control. Source free text. Another run's value in no role's input at six stages. **Its docstring states what it does not cover.** |
-| `tests/test_access_dispatch.py` | 18 | The dispatcher (role from settings, refusals, unknown run, no public constructor, immutability); logging (reader error, unknown run, database unavailable → process log, `role_input` never empty, bounded strings, file-guard refusals for a run or in the process log); one transaction per input; concurrent rules lock and freeze; vocabularies; the DOI disclosure; no unrecognized value in the frozen sources; unrecognized counts in coverage and test connection; codes, not failure text, in the gap report. |
+| `tests/test_access_dispatch.py` | 22 | The dispatcher (role from settings, refusals, unknown run, no public constructor, immutability); logging (reader error, unknown run, database unavailable → process log, `role_input` never empty, bounded strings, file-guard refusals for a run or in the process log); one transaction per input; concurrent rules lock and freeze; vocabularies; the DOI disclosure; no unrecognized value in the frozen sources; unrecognized counts in coverage and test connection; codes, not failure text, in the gap report. Re-check: a refusal followed by a timeout is still logged (real child, and bytes); reader and database failures carry nothing of the original error in str, repr, cause, context or the formatted traceback. |
 | `tests/test_access_files.py` | 20 | The tripwire in real guarded processes: reads, listings, relative paths, writes and programs refused; what is needed works; the documented `ctypes` limit; registration refused; a role's input identical inside and outside (through the dispatcher); scratch directories; the guard not installable elsewhere. Its docstring says what it does not show. |
 
 ### Tests changed (none weakened)
@@ -297,12 +329,14 @@ Each change was made in a scratch copy, and the named test files were run import
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-639 passed in 125.99s
+643 passed in 141.71s
 $ docker compose run --rm test                 (the test image, rebuilt)
-639 passed in 131.23s
+643 passed in 147.39s
 ```
 
-GitHub Actions, commit `2c639be` (the review fixes, last code change): success; "Run the suite in the test image": 639 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+GitHub Actions, commit `0034dc7` (the re-check fixes, last code change): success; "Run the suite in the test image": 643 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37330086644
+GitHub Actions, commit `2c639be` (the review fixes): success; "Run the suite in the test image": 639 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
 https://github.com/kelawady/hypocurate/actions/runs/37327512637
 Earlier: first build `72355e6` (615 passed, https://github.com/kelawady/hypocurate/actions/runs/37319439565); the owner's change before the review `81f5003` (620 passed, https://github.com/kelawady/hypocurate/actions/runs/37321733673).
 
@@ -329,6 +363,7 @@ The step 3 estimate of **4–6 MB per run** is unchanged (the audit log adds at 
 3. **Isolation stays READ COMMITTED** for the one-transaction input. REPEATABLE READ would take the snapshot before the lock wait (above).
 4. **Two chosen sources in the test world.** The world now chooses `tamu_fcc` too (with a placeholder file and a failed search carrying planted failure text), so that coverage text could be planted.
 5. **The `git mv` rename of the test file** went into the review commit (staged before it), with its content unchanged; the edits are in the fix commit.
+6. **The three re-check fixes are one commit.** They share `tests/test_access_dispatch.py`, and splitting them would have needed interactive staging, which is not available here; the commit message lists all three.
 
 ## PRD corrections and clarifications for the next PRD update
 
@@ -353,7 +388,10 @@ The step 3 estimate of **4–6 MB per run** is unchanged (the audit log adds at 
    - `same_alloy_rule` and the pairing rule applied.
 2. **Step 7:** if the plotting library imports `ctypes`, adding it to `PRELOADED` needs the owner's approval and a second-model review.
 3. **Step 8 acceptance requirements:**
-   - **test the actual outbound model request**: instructions, message history, tool errors, retry prompts, attachments;
+   - **test the actual outbound model request**: instructions, message history, tool errors, retry prompts, attachments, **and formatted failures** (re-check);
+   - **derive the run, the agent setting and the source of each agent call from one invocation record**, never assembled independently; `bind` checks authorization, not the caller's intention (re-check). **Test binding with two valid runs and two selected sources**, so that a wrong but valid combination would be caught;
+   - **keep the "one snapshot" claim scoped** to run data protected by the run-lock protocol;
+   - `GuardedRunError` carries the guarded child's error text (`"{type}: {message}"`), which could hold a value a role must not see. Step 8 must not forward it to a model, or must sanitize it as `AccessFailed` now is. Found in the overclaim search; not changed in step 5 (outside the three re-check items);
    - agents receive only text built from `role_input` and reads through an access object from `dispatch.bind`, and no tool that runs SQL, opens files or executes code;
    - the command line's run command calls `run_guarded(..., audit=…)`;
    - the Curator and tabular sources;
