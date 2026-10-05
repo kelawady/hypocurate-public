@@ -13,7 +13,8 @@ EXTRACT = REPO_ROOT / "data/controlled_duplicates/extract.csv"
 FIXTURES = REPO_ROOT / "tests/fixtures/controlled_duplicates"
 TRUTH = FIXTURES / "truth.csv"
 # Pinned here, outside data/, so the answer file cannot change without changing a test.
-TRUTH_SHA256 = "e64b1035f0e1a69198ad690dedec73c8fdc1331b08148f8a19f8701c93861f2e"
+# Step 6 (owner, 2026-10-05): the restored survivor wording and decision C (rows 7-8 are a conflict).
+TRUTH_SHA256 = "8b293ddd4e760cc2c58e3515be5aefe6b0e9b5d3ed7d3425957fe82d1e113f7f"
 # The frozen source files: fingerprint-pinned, and not written by us, so they
 # cannot hold our answers. Everything else under data/ is scanned.
 FROZEN_SOURCE_FILES = {
@@ -162,7 +163,7 @@ def test_every_case_is_present_twice():
         "exact_duplicate_verbatim": 2,
         "exact_duplicate_renamed_alloy": 2,
         "possible_duplicate_unknown_paper": 2,
-        "not_duplicate_value_differs": 2,
+        "conflict_value_differs": 2,
         "not_duplicate_other_paper": 2,
         "not_duplicate_other_temperature": 2,
         "missing_test_condition": 2,
@@ -230,7 +231,7 @@ def test_changed_values_are_as_stated():
     ys, temp = COL["PROPERTY: YS (MPa)"], COL["PROPERTY: Test temperature ($^\\circ$C)"]
     for t in TRUTH_ROWS:
         src, row = MPEA_ROWS[int(t["mpea_row"])], EXTRACT_ROWS[int(t["extract_row"]) - 1]
-        if t["case"] == "not_duplicate_value_differs":
+        if t["case"] == "conflict_value_differs":
             assert float(row[ys]) == pytest.approx(1.3 * float(src[ys]), abs=0.05)
         if t["case"] == "not_duplicate_other_temperature":
             assert float(row[temp]) == -196.0
@@ -283,7 +284,9 @@ EXPECTED = {
     "exact_duplicate_verbatim": ("exact_duplicate", "counted once", "none"),
     "exact_duplicate_renamed_alloy": ("exact_duplicate", "counted once", "none"),
     "possible_duplicate_unknown_paper": ("possible_duplicate", "counted once", "both counted separately"),
-    "not_duplicate_value_differs": ("not_duplicate", "both enter", "none"),
+    # Decision C (owner, 2026-10-05; corrects PRD 5.3, which contradicted CLAUDE.md rule 4).
+    "conflict_value_differs": ("conflict", "neither enters: conflict unresolved",
+                               "counted once in conflicts_survivor_value"),
     "not_duplicate_other_paper": ("not_duplicate", "both enter", "none"),
     "not_duplicate_other_temperature": ("not_duplicate", "not eligible under a room-temperature plan", "none"),
     "missing_test_condition": ("possible_duplicate", "not eligible: scope not confirmed", "included"),
@@ -292,7 +295,7 @@ EXPECTED = {
 }
 
 SURVIVOR_RULE = (
-    "1) prefer the record that comes directly from the original paper (detected by the original paper's DOI on the record); "
+    "1) prefer the record that carries the original paper reference (DOI); "
     "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
     "3) within one source, the lowest row number"
 )
@@ -330,5 +333,10 @@ def test_survivor_is_stated(t):
         else:
             assert row[doi] == src[doi]
             assert t["survivor_reason"].startswith("rule 2:")  # both carry it; MPEA is first in order
+    elif t["duplicate_status"] == "conflict":
+        # Decision C: neither enters the primary analysis; the sensitivity analysis counts the
+        # pair once by the survivor rule (both carry the paper's DOI; MPEA is first in order).
+        assert t["survivor_in_primary"] == "none: neither enters the primary analysis"
+        assert "conflicts_survivor_value" in t["survivor_reason"] and "rule 2:" in t["survivor_reason"]
     else:
         assert t["survivor_in_primary"] == "no pair: both kept"

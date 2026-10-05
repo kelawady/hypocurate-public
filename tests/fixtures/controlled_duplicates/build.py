@@ -50,20 +50,28 @@ NOT_REMOVED = "no"
 
 # Owner's decision (2026-10-04): which record of a duplicate pair enters the
 # primary analysis. Refines PRD 5.3 "the record from the original paper, or the
-# first source in a fixed order if the origin is unknown". Whether a record comes
-# directly from the original paper is detected by the original paper's DOI on it.
+# first source in a fixed order if the origin is unknown". Rule 1 in the owner's own
+# wording, restored in step 6 (register 'duplicate_survivor_rule'): a DOI identifies the
+# cited paper, not where a record was extracted.
 SURVIVOR_RULE = (
-    "1) prefer the record that comes directly from the original paper (detected by the original paper's DOI on the record); "
+    "1) prefer the record that carries the original paper reference (DOI); "
     "2) if both or neither do, the first source in the fixed order MPEA, Texas A&M, controlled extract; "
     "3) within one source, the lowest row number"
 )
 BOTH_CARRY_PAPER = (
-    "rule 2: both records carry the original paper's DOI, so neither is detected as the one that comes "
-    "directly from it; MPEA comes first in the fixed source order"
+    "rule 2: both records carry the original paper reference (DOI); MPEA comes first in the fixed source order"
 )
 ONLY_MPEA_CARRIES_PAPER = (
-    "rule 1: only the MPEA record carries the original paper's DOI, so it is detected as the one that "
-    "comes directly from the original paper"
+    "rule 1: only the MPEA record carries the original paper reference (DOI)"
+)
+# Owner's decision C (2026-10-05): conflicting reports of the same measurement are kept and
+# flagged; neither enters the primary analysis (code does not choose between them). The
+# sensitivity analysis 'conflicts_survivor_value' counts the pair once by the survivor rule.
+NEITHER = "none: neither enters the primary analysis"
+CONFLICT = (
+    "conflict: the values differ beyond the tolerance and code does not choose between them; in the "
+    "sensitivity analysis 'conflicts_survivor_value' the pair is counted once by the survivor rule: "
+    + BOTH_CARRY_PAPER
 )
 NO_PAIR = "no pair: both kept"
 SAME_AS_REFERENCE_PLAN = "same as under the reference plan"
@@ -111,13 +119,14 @@ CASES = {
         pair=BOTH_CARRY_PAPER + "; this record is not eligible in any case (scope not confirmed)",
         explanation="Same paper, alloy, grain size and value, but the test temperature is blank, so neither the scope (room temperature) nor the same measurement can be confirmed. Distinct from a missing paper: the paper is known, the test condition is not. Kept, not removed; not in the primary analysis; included in the sensitivity analysis.",
     ),
-    "not_duplicate_value_differs": dict(
-        duplicate_status="not_duplicate",
-        prd_class="Comparable specimens and conditions; the values truly differ",
-        primary_analysis="both enter",
-        sensitivity_analysis="none",
-        pair=None,
-        explanation="Same paper, alloy, grain size and conditions, but yield strength is 30% higher. Matching alloy and grain size is not enough to be a duplicate.",
+    "conflict_value_differs": dict(
+        duplicate_status="conflict",
+        prd_class="Conflicting reports of the same measurement: the values differ beyond the tolerance",
+        primary_analysis="neither enters: conflict unresolved",
+        sensitivity_analysis="counted once in conflicts_survivor_value",
+        pair=CONFLICT,
+        survivor=NEITHER,
+        explanation="Same paper, alloy, grain size and conditions reported by two sources, but yield strength is 30% higher: conflicting reports of the same measurement. Both are kept and flagged, and neither enters the primary analysis (owner, 2026-10-05). Matching alloy and grain size alone would not make them the same measurement.",
     ),
     "not_duplicate_other_paper": dict(
         duplicate_status="not_duplicate",
@@ -159,8 +168,8 @@ SPEC: list[tuple[str, int, dict[int, str]]] = [
     ("exact_duplicate_renamed_alloy", 1007, {FORMULA: "Co4Cr1Ni4"}),
     ("possible_duplicate_unknown_paper", 998, {REF_ID: "", DOI: "", YEAR: "", TITLE: ""}),
     ("possible_duplicate_unknown_paper", 1085, {REF_ID: "", DOI: "", YEAR: "", TITLE: ""}),
-    ("not_duplicate_value_differs", 1278, {YS: "665.6"}),  # 512.0 x 1.3
-    ("not_duplicate_value_differs", 986, {YS: "282.1"}),  # 217.0 x 1.3
+    ("conflict_value_differs", 1278, {YS: "665.6"}),  # 512.0 x 1.3
+    ("conflict_value_differs", 986, {YS: "282.1"}),  # 217.0 x 1.3
     ("not_duplicate_other_paper", 1035, {REF_ID: "", DOI: TEST_DOI_PREFIX + "0001", TITLE: CONSTRUCTED_TITLE}),
     ("not_duplicate_other_paper", 764, {REF_ID: "", DOI: TEST_DOI_PREFIX + "0002", TITLE: CONSTRUCTED_TITLE}),
     ("not_duplicate_other_temperature", 1313, {TEMPERATURE: "-196.0"}),
@@ -178,7 +187,7 @@ TRUTH_COLUMNS = [
     "mpea_reference_id",
     "mpea_doi",
     "changed_columns",  # MPEA header names, separated by "; "
-    "duplicate_status",  # exact_duplicate | possible_duplicate | not_duplicate
+    "duplicate_status",  # exact_duplicate | possible_duplicate | conflict | not_duplicate
     "prd_5_3_class",
     "kept_in_store",
     "removed_from_store",
@@ -226,7 +235,7 @@ def build(mpea_path: Path = MPEA_PATH) -> tuple[str, str]:
         if c["pair"] is None:
             survivor, reason = NO_PAIR, NOT_SAME_MEASUREMENT
         else:
-            survivor, reason = f"MPEA row {row}", c["pair"]
+            survivor, reason = c.get("survivor", f"MPEA row {row}"), c["pair"]
         truth.append(_csv_line([
             str(n),
             case,
