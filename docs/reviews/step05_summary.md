@@ -6,7 +6,7 @@ The suite is the gate. This summary is for the second-model review (PRD 13.2), w
 
 **Not built, as instructed:** any agent, any model call, eligibility or duplicate decisions, statistics, screens. **No migration** (`audit_log` exists since step 3: append-only, writable in every run state). No change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies.
 
-The owner approved the plan on 2026-10-05 after two questions, with four additions (A–D below).
+The owner approved the plan on 2026-10-05 after two questions, with four additions (A–D below), and made one change before the review: the Commentator on a run with no dataset frozen (section "The owner's change before the review").
 
 ## What was built
 
@@ -32,6 +32,16 @@ The owner approved the plan on 2026-10-05 after two questions, with four additio
 
 `conflict_pairing_rule`: open → in force. "Duplicates and conflicts are looked for only between records from different sources that cite the same paper with the same alloy, grain size and test conditions. Rows within one source are always separate measurements (repeat specimens)." Known weakness, in the notes: a source that repeats its own row by mistake is not caught. Applied: not yet, step 6. Not reviewed by an expert. Its history keeps the open state. The notes of `values_disagree_tolerance` and `observation_unit` point to the decision. The register now has **no open decision**.
 
+## The owner's change before the review (2026-10-05)
+
+On a run that ended with no dataset frozen, the Commentator receives only what the Analyst received for the gap report (no outcome values, no row-level records), plus the Analyst's gap report and the run's outcome. In the first build it received every stored record, including outcome values never analysed (the first build's open item 5).
+
+- **A new stage**, `final_without_freeze`: a completed run with no `run_snapshot`. A completed run with a freeze is `final`.
+- **Two new fields**: `gap_report` (stage, attempt, status and output of each Analyst stage of the run; not their input, reasoning or tool calls) and `outcome` (status, outcome, verdict, exploratory).
+- **The Commentator's lists**: `final` = the Analyst's `analysis` fields (the gap-report summaries, which the first build added there for the no-freeze case, are no longer needed); `final_without_freeze` = the gap-report fields + `gap_report` + `outcome`.
+- **Register**: `access_allow_lists` states the rule, its stage list includes the new stage, and its history keeps the first build's rule; decided by the owner. `access_stage_from_database` states the two final stages. `gap_report_condition_summaries` notes that the Commentator receives the same input.
+- **Tests**: the matrix now covers eight run states; the allow-list test checks both Commentator lists; the completion test is split into one without a freeze and one after a freeze; a new test checks the Commentator's exact input without a freeze; **the planted-value test now covers the Commentator's complete input without a freeze**; the other-run test covers the new stage.
+
 ## The owner's decisions in planning (2026-10-05)
 
 1. **The Critic sees metadata, no numbers.** Source descriptions, never source content. Per record: id, source, origin key, alloy label and composition, paper reference and DOI, each field's status, and the category values (test type, temperature band, phase class, microstructure, processing method). No measured number of any field: not grain size, not temperature. Flags: kind, category and record ids; never the numbers compared.
@@ -52,7 +62,8 @@ Stages are read from the database on every call:
 - `curation`: plan locked, no freeze, no "no dataset frozen" record;
 - `analysis`: dataset frozen, running;
 - `closed_without_freeze`: the run-level calibration row with reason `no_dataset_frozen` exists, running;
-- `final`: completed.
+- `final`: completed after a dataset freeze;
+- `final_without_freeze`: completed with no dataset frozen.
 
 | Role | Stage | Fields |
 |---|---|---|
@@ -61,7 +72,8 @@ Stages are read from the database on every call:
 | Critic | curation | `sources_meta`, `record_metadata`, `flags_kind` |
 | Analyst | analysis | `claim`, `domain`, `sources_meta`, `plan`, `records_full`, `decisions`, `flags_full`, `results`, `coverage`, `stage_outputs`, `run_cost` |
 | Analyst | closed_without_freeze | `claim`, `domain`, `sources_meta`, `plan`, `coverage`, `stored_record_counts`, `decisions`, `flags_kind`, `condition_summaries` |
-| Commentator | final | the Analyst's `analysis` fields, plus `stored_record_counts` and `condition_summaries` |
+| Commentator | final | the Analyst's `analysis` fields |
+| Commentator | final_without_freeze | the Analyst's `closed_without_freeze` fields, plus `gap_report` (the output of the run's Analyst stages) and `outcome` (status, outcome, verdict, exploratory). No outcome values, no row-level records. |
 | any | any other stage | nothing |
 
 What each field contains is in `FIELDS` (allowlist.py). In brief:
@@ -150,12 +162,12 @@ An unknown run raises the database's error from `hc_write_lock`, and no audit ro
 - **`same_alloy_rule`: not yet → partly** (step 6). Done: the gap report's condition summaries group records by alloy under the rule (`same_alloy_key`, `SAME_ALLOY_DECIMALS = 1`). Pending: the plan setting that applies it to the analysis.
 - 79 entries: 78 in force, 0 open, 1 direction approved (calibration noise levels); 22 scientific entries not reviewed by an expert.
 
-## Tests (615, all passing; 71 new; four register tests changed)
+## Tests (620, all passing; 76 new; four register tests changed)
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_access_layer.py` | 41 | **The allow-list** equals the owner's table, field for field; every listed field has a reader; no outcome-bearing field is listed for the Planner, the Critic or the gap report. **The full matrix**: every role × every field at each of the seven run states (queued, failed and the five stages). An allowed field gives one allowed audit row; every other request raises `AccessDenied` and gives exactly one denied row with the reason. **Queued and failed runs** give nothing to anyone. **`role_input`** reads each listed field once, through the access object. **A denied row survives** the rejection and the caller's rollback (checked from a fresh connection). The Planner and the Critic asking for outcomes are denied and logged (criterion 14.2), and audit rows never hold a value. Unknown roles, stages and fields are denied and logged. **Both sides of each checkpoint**: the declared stage is checked against the database; the rules lock closes the Planner and opens the Curator and the Critic; the freeze closes the Curator and the Critic and opens the Analyst; ending without a freeze opens only the gap report input; completion closes the Analyst and opens the Commentator. Experiment flags relax nothing. **Field contents**: named source fields only (and only the chosen source); the Curator reads only its own source, and its input has no claim text, no hypotheses and no direction token; no inclusion field for the Curator; record metadata has no number; flags have no numbers; the plan by its named parts; approved tag values only; counts from the sealed source; condition summaries are ranges and counts of conditions only; the same-alloy key. **The write protocol**: a held run lock makes a call time out with nothing logged, or wait and then succeed; every call runs in `run_transaction`; `hc_write_lock` comes before anything else. **Static checks**: pipeline code imports no database, source or file API; the access layer has no path-taking function; the guard is installed in one place. |
-| `tests/test_access_planted.py` | 11 | **Planted values** (yield strength 48213.579, tensile strength 57104.263, hardness 36912.847) are stored in the source file, the records (as harmonized values, as reported, inside a "not a number" reason), a flag's numbers, a Curator stage's input, output, reasoning and tool calls, a model instruction, a proposed tag value, the source's address and version label, and the plan (a non-allowed entry in its list of fields, and an unnamed key). They appear in **no encoding** (list in the file's docstring: rounded, separated, scientific, GPa/ksi/psi, IEEE bytes, base64, hex, URL; at least five characters) in the complete input of the **Planner**, the **Critic** or the **gap-report Analyst**. **Positive control**: the detector finds them in the Analyst's input after the freeze. **Addition B**: the source's free text reaches neither the Planner nor the Critic. **Addition A**: a different value (59324.681), in the original run of the narrower question (records, coefficient, stage output, commentary) and in an earlier, failed run of the same hypothesis (records, stage output), appears in no role's complete input at any of the five stages. |
+| `tests/test_access_layer.py` | 44 | **The allow-list** equals the owner's table, field for field; every listed field has a reader; no outcome-bearing field is listed for the Planner, the Critic or the gap report. **The full matrix**: every role × every field at each of the eight run states (queued, failed and the six stages). An allowed field gives one allowed audit row; every other request raises `AccessDenied` and gives exactly one denied row with the reason. **Queued and failed runs** give nothing to anyone. **`role_input`** reads each listed field once, through the access object. **A denied row survives** the rejection and the caller's rollback (checked from a fresh connection). The Planner and the Critic asking for outcomes are denied and logged (criterion 14.2), and audit rows never hold a value. Unknown roles, stages and fields are denied and logged. **Both sides of each checkpoint**: the declared stage is checked against the database; the rules lock closes the Planner and opens the Curator and the Critic; the freeze closes the Curator and the Critic and opens the Analyst; ending without a freeze opens only the gap report input; completion, without a freeze or after one, closes the Analyst and opens the Commentator's list for that case; the Commentator without a freeze gets exactly the gap-report input, the Analyst's gap report and the outcome. Experiment flags relax nothing. **Field contents**: named source fields only (and only the chosen source); the Curator reads only its own source, and its input has no claim text, no hypotheses and no direction token; no inclusion field for the Curator; record metadata has no number; flags have no numbers; the plan by its named parts; approved tag values only; counts from the sealed source; condition summaries are ranges and counts of conditions only; the same-alloy key. **The write protocol**: a held run lock makes a call time out with nothing logged, or wait and then succeed; every call runs in `run_transaction`; `hc_write_lock` comes before anything else. **Static checks**: pipeline code imports no database, source or file API; the access layer has no path-taking function; the guard is installed in one place. |
+| `tests/test_access_planted.py` | 13 | **Planted values** (yield strength 48213.579, tensile strength 57104.263, hardness 36912.847) are stored in the source file, the records (as harmonized values, as reported, inside a "not a number" reason), a flag's numbers, a Curator stage's input, output, reasoning and tool calls, a model instruction, a proposed tag value, the source's address and version label, and the plan (a non-allowed entry in its list of fields, and an unnamed key). They appear in **no encoding** (list in the file's docstring: rounded, separated, scientific, GPa/ksi/psi, IEEE bytes, base64, hex, URL; at least five characters) in the complete input of the **Planner**, the **Critic**, the **gap-report Analyst** or the **Commentator on a run with no dataset frozen** (whose input does hold the gap report and the outcome). **Positive control**: the detector finds them in the Analyst's input after the freeze. **Addition B**: the source's free text reaches neither the Planner nor the Critic. **Addition A**: a different value (59324.681), in the original run of the narrower question (records, coefficient, stage output, commentary) and in an earlier, failed run of the same hypothesis (records, stage output), appears in no role's complete input at any of the six stages. |
 | `tests/test_access_files.py` | 19 | In real guarded processes: answer files, builder, review documents, frozen data, `CLAUDE.md` and `README.md` cannot be read in any of four ways. The repository root and the answer directories cannot be listed. Relative paths are refused. The Python installation and the package can be read. Writes outside the scratch directory are refused (package, site-packages, repository root, `tests/`, system temporary directory); the test uses unique names and removes anything created. A library can use the scratch directory (0700, the working directory), which is removed afterwards. No subprocess, `os.system` or `ctypes`. **Templates render, the database driver connects, and an HTTPS client loads its certificate bundle.** Registration refuses to run. A role's complete input is identical inside and outside the guard. The guard cannot be installed in the test process; `run_guarded` runs only package code; the test process is not guarded; six bad scratch directories are refused. |
 
 ### Tests changed (none weakened)
@@ -172,7 +184,7 @@ The owner's pairing-rule decision removed the register's only open entry. The sa
 
 ### The safeguard tests fail when the safeguard is removed
 
-Each change was made in a scratch copy of the branch (`git archive`), and only the named test files were run, importing the copy (`PYTHONPATH`). The copy was then discarded.
+Each change was made in a scratch copy of the branch (`git archive`), and only the named test files were run, importing the copy (`PYTHONPATH`). The copy was then discarded. These checks were run on the first build, before the owner's change; the change adds no new safeguard mechanism (one more stage and list, covered by the matrix and the planted test).
 
 | Removed or changed in the copy | Result |
 |---|---|
@@ -198,13 +210,14 @@ Each change was made in a scratch copy of the branch (`git archive`), and only t
 
 ```
 $ pytest -q                                   (Codespace, Python 3.14.2, `docker compose up -d db`)
-615 passed in 104.24s
+620 passed in 110.42s
 $ docker compose run --rm test                 (the test image, rebuilt)
-615 passed in 112.94s
+620 passed in 117.77s
 ```
 
-GitHub Actions, commit `72355e6` (the last code change): success; "Run the suite in the test image": 615 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37319439565
+GitHub Actions, commit `81f5003` (the last code change: the owner's change before the review): success; "Run the suite in the test image": 620 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37321733673
+First build, commit `72355e6`: success, 615 passed, runtime image OK. https://github.com/kelawady/hypocurate/actions/runs/37319439565
 The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
 
 ## Audit-log volume (addition D)
@@ -213,7 +226,7 @@ Measured: 7 rows (the Curator's and the Critic's complete inputs and one refusal
 
 | Reads per run | Rows | Size |
 |---|---|---|
-| Each role reads its complete input once (Planner 5, Curator 3 per source × 2, Critic 3, Analyst 11, Commentator 13) | 38 | about 8 KB |
+| Each role reads its complete input once (Planner 5, Curator 3 per source × 2, Critic 3, Analyst 11, Commentator 11) | 36 | about 7 KB |
 | With agent tool calls and refusals (step 8), say | 500 | about 100 KB |
 
 The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchanged: the audit log adds at most about 2%. To be measured on real runs in step 8, with the rest of the estimate.
@@ -231,11 +244,12 @@ The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchange
 
 1. **PRD 4 (Critic):** "sources" means source descriptions (named fields), never source content. The Critic receives no measured number of any field.
 2. **PRD 3 step 8 and PRD 4 (Analyst):** on a run that ends with no dataset frozen, the Analyst writing the gap report gets everything except outcomes, plus code-computed condition summaries.
-3. **PRD 4 (table):** Inclusion and Checks are code; their reads go through access objects from steps 6 and 7.
-4. **PRD 4 (relaxation flag):** not in sprint 1; to the backlog (PRD 18).
-5. **PRD 4 (stages):** the stages are read from the database: before the lock, curation, analysis, closed without freeze, final; queued and failed runs give nothing.
-6. **PRD 4 (implementation):** every read is one transaction that takes the run's lock, and a refusal is committed before the error is raised.
-7. **PRD 6 (worker):** each pipeline run executes in a guarded process (`run_guarded`) that can read only the Python installation and the package, and write only in its own scratch directory.
+3. **PRD 4 (Commentator):** on a run completed with no dataset frozen, the Commentator receives only the gap-report input, the Analyst's gap report and the run's outcome.
+4. **PRD 4 (table):** Inclusion and Checks are code; their reads go through access objects from steps 6 and 7.
+5. **PRD 4 (relaxation flag):** not in sprint 1; to the backlog (PRD 18).
+6. **PRD 4 (stages):** the stages are read from the database: before the lock, curation, analysis, closed without freeze, final, final without freeze; queued and failed runs give nothing.
+7. **PRD 4 (implementation):** every read is one transaction that takes the run's lock, and a refusal is committed before the error is raised.
+8. **PRD 6 (worker):** each pipeline run executes in a guarded process (`run_guarded`) that can read only the Python installation and the package, and write only in its own scratch directory.
 
 ## Open items
 
@@ -251,7 +265,7 @@ The step 3 estimate of **4–6 MB per run (120–200 runs in 1 GB)** is unchange
    - how the Curator relates to tabular sources (adapters extract them);
    - measure the audit volume.
 4. **Step 9:** the worker runs each claimed run through `run_guarded`; never calls the access layer while holding a run's lock.
-5. **The Commentator on an insufficient run** receives `records_full`, including outcome values of records never analysed. The PRD's "complete output" reads that way; the owner may prefer otherwise.
+5. **The Commentator on an insufficient run**: closed by the owner's change before the review (above).
 6. **Category values and paper references** reach the Critic as the source gives them (text from the source). They are metadata the owner approved, but they are source text.
 7. **Backlog (PRD 18):** the experiment flag that relaxes the access contract.
 8. Carried, unchanged: the step 3 step 7 and step 9 requirements; live registration after the owner's decisions; the step 4b open items.
