@@ -244,6 +244,20 @@ def test_checks_wait_until_every_chosen_source_is_stored(engine):
     assert (sets["primary"][mpea], sets["primary"][copy]) == ("conflict_unresolved", "conflict_unresolved")
 
 
+def test_no_record_is_stored_after_checks(engine, monkeypatch):
+    """A second guard: storage refuses once Checks have run. Through the normal order this cannot
+    arise (Checks refuse while a source is pending, and a decided source is final), so the test
+    lets Checks run with the extract pending, then stores it."""
+    rid = pw.locked_run(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    extract.store_source(engine, rid, "mpea")
+    monkeypatch.setattr(checks, "pending_sources", lambda conn, run_id: 0)
+    checks.run_checks(engine, rid)
+    with pytest.raises(Refused) as refused:
+        extract.store_source(engine, rid, "controlled_duplicates")
+    assert refused.value.code == "checks_done"
+    assert refusals(engine, rid)[-1][1:] == ("store_records", "checks_done")
+
+
 def test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze(engine):
     """A conflicting copy added after Checks (by plain SQL: storage refuses it) is not covered by
     the Checks result, so Inclusion and the freeze refuse."""

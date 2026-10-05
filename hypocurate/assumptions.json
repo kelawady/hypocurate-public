@@ -4737,9 +4737,10 @@
       "A source refused by the constructed-data guard stays pending, so Checks cannot run until it is marked failed: the run's orchestration (step 9) must do that."
     ],
     "tests": [
-      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze",
+      "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze",
       "tests/test_checkpoints.py::test_checks_wait_until_every_chosen_source_is_stored",
-      "tests/test_checkpoints.py::test_a_record_added_after_checks_is_refused_at_inclusion_and_the_freeze"
+      "tests/test_checkpoints.py::test_no_record_is_stored_after_checks",
+      "tests/test_checkpoints.py::test_skipping_checks_is_refused_at_inclusion_and_the_freeze"
     ]
   },
   {
