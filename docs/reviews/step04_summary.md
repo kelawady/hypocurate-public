@@ -1,8 +1,8 @@
 # Build step 4 — summary for review
 
-Date: 2026-10-05. Branch: `step-04-adapters`. **Status: built, suite passing; awaiting the second-model review.** PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
+Date: 2026-10-05. Branch: `step-04-adapters`. **Status: first review received (ChatGPT, 2026-10-05: five findings and one test weakness, all accepted by the owner); fixes done, suite passing; awaiting the re-check.** PRD Section 15, step 4: "Sources and harmonization. The CSV adapter, both sources, the common record format, and source versions."
 
-The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`.
+The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed in "Review findings and fixes"; the review text is in `docs/reviews/step04_review_chatgpt.md`, and the fix diffs are in `docs/reviews/step04_fix_packet.md`.
 
 The owner approved the plan on 2026-10-05 after three questions (below), with one addition: a report on test temperature and test type in the MPEA reference records (section "Owner's addition").
 
@@ -15,7 +15,7 @@ The owner approved the plan on 2026-10-05 after three questions (below), with on
 | `hypocurate/db/retry.py` | `run_transaction(engine, fn)`: runs `fn(conn)` in one transaction; on SQLSTATE `40P01` or `40001` reruns the whole transaction (at most 5 attempts); any other error is raised unchanged. |
 | `hypocurate/sources/versions.py` | `files_digest` and `version_identity` (Python copies of `hc_files_digest` and `hc_version_identity`); the three source definitions (`SOURCES`); `safe_path_within`; `register`; `load_sealed_version`; `latest_sealed_version_id`. |
 | `hypocurate/sources/record.py` | The common record format: `CommonRecord`, `Value`, `Reported`, `Group`, `Citation`, `AdapterResult`, `AdapterError`. |
-| `hypocurate/sources/normalize.py` | Number parsing; formula → atomic %; percentage columns → atomic %; the canonical alloy label. |
+| `hypocurate/sources/normalize.py` | Number parsing; formula → atomic % (numerically safe); percentage columns → atomic %; the display label for an alloy; the paper grouping key from a DOI. |
 | `hypocurate/sources/adapters/mpea_layout.py` | Adapter for the MPEA column layout: the MPEA dataset and the controlled duplicate extract. |
 | `hypocurate/sources/adapters/tamu_fcc.py` | Adapter for the Texas A&M spreadsheet. |
 | `hypocurate/sources/adapters/__init__.py` | `ADAPTERS` (source key → adapter) and `read(version)`. |
@@ -71,11 +71,12 @@ They are not part of the frozen data. The citations name the file and line at th
 ## How each adapter assigns the paper (grouping) identity
 
 - **MPEA and the controlled extract: the DOI** (`REFERENCE: doi`), as in the reference script (`pd.factorize(f.doi)`).
-  - Group key `doi:<DOI as reported>`.
+  - **The group key is derived from the DOI** (review finding 1; `normalize.doi_group_key`): surrounding whitespace trimmed; one `https://doi.org/`, `http://dx.doi.org/` or `doi:` wrapper removed (case-insensitive); ASCII A–Z case-folded, nothing else (no Unicode normalization). Key `doi:<normalized>`. `paper_doi` and the reported text keep the DOI exactly as in the file.
+  - **Effect on the frozen files:** 8 of MPEA's 265 DOI strings change form (the leading space, and 7 with capital letters such as `10.4028/www.scientific.net/MSF.849.76`), but 265 DOI strings still give 265 keys: no group merges or splits (tested). The 77 reference records keep their 20 papers (tested, by key and by DOI as reported). None of the extract's DOIs change.
   - In the frozen MPEA file the DOI and `IDENTIFIER: Reference ID` are one-to-one (265 each, tested).
   - A blank DOI gives `group.key = None` with the reason "no DOI in the source: paper unknown". The Reference ID is never used in its place, and no group is invented. This applies to extract rows 5–6, where both are blank.
   - Extract rows 9–10 have a blank Reference ID and a constructed DOI, which is their group.
-  - The DOI is kept exactly as reported. One MPEA DOI has a leading space (`" 10.1038/ncomms10602"`); removing it would not merge any groups (265 distinct either way), but it is not removed.
+  - The DOI is kept exactly as reported. One MPEA DOI has a leading space (`" 10.1038/ncomms10602"`): `paper_doi` keeps it, and its group key is `doi:10.1038/ncomms10602`.
 - **Texas A&M: the dataset**, one group `dataset:10.5281/zenodo.22798856` (grouping unit `dataset`).
   - `paper_reference` is the dataset citation; `paper_doi` is empty, because the record has no per-record paper (PRD 10).
   - The batch (`Iteration`: CBA 23, CBC 21, BBA 18, CBB 15, BBB 9, BBC 8) is kept as reported.
@@ -83,7 +84,7 @@ They are not part of the frozen data. The citations name the file and line at th
 
 ## The common record format
 
-One `CommonRecord` per data row, mirroring the `record` table: `source_key`, `version_fingerprint`, `source_item_key` (origin key), `item_index`, `kind`, `alloy`, `paper_reference`, `paper_doi`, `group`, `harmonized`, `reported`. **It has no field for eligibility, flags, duplicates or survivors** (tested).
+One `CommonRecord` per data row, mirroring the `record` table: `source_key`, `version_fingerprint`, `source_item_key` (origin key), `item_index`, `kind`, `alloy` (a display label), `paper_reference`, `paper_doi`, `group`, `harmonized`, `reported`. **It has no field for eligibility, flags, duplicates or survivors, and states no alloy identity** (tested).
 
 - **`reported`:** every column, keyed by its header exactly as in the file. Each entry holds the cell text exactly as in the file (`""` when blank; for the spreadsheet, numbers in their shortest exact form) and the unit the header states.
 - **`harmonized`:** the same 17 fields for every source, each with a fixed unit (`HARMONIZED_FIELDS`).
@@ -93,10 +94,12 @@ One `CommonRecord` per data row, mirroring the `record` table: `source_key`, `ve
   - MPEA's numbering is the one step 1 used.
   - The Texas A&M sheet is named `GS_MasterTable_Iterations ` (with a trailing space); it is matched verbatim and left out of the key.
 - **Units:** MPEA's headers state µm, MPa, HV and °C; the Texas A&M headers state µm, MPa, HV, °C, h and % reduction. Values are converted unchanged.
-- **Alloy naming:** the composition in atomic % is kept at full precision. The label follows the reference script: elements in alphabetical order, each rounded to 0.1 at.%. `CoCrFeMnNi` and `Co1 Cr1 Fe1 Mn1 Ni1` give the same alloy (tested).
+- **Alloy: full-precision composition; the label is for display only** (review finding 2). Every record carries the composition in atomic % at full precision. `alloy` is a display label in the reference script's style (elements in alphabetical order, each rounded to 0.1 at.%). **Equal labels do not mean the same alloy**: Fe50.01Ni49.99 and Fe50.04Ni49.96 both read `Fe50Ni50`, and the adapter reports their compositions as different (tested). When two compositions count as the same alloy is a plan and domain-profile setting, defined in step 6 with a tolerance the owner approves. The reference numbers (98 records, 22 alloys) were computed with 0.1 at.% rounding, which stays the current default pending that approval. `CoCrFeMnNi` and `Co1 Cr1 Fe1 Mn1 Ni1` give the same composition (tested).
+- **Composition parsing is numerically safe** (review finding 5): every amount must be finite; the calculation scales by the largest amount before summing (`math.fsum`), so large finite amounts do not overflow; an amount that underflows to zero, a ratio too extreme to represent, or any non-finite result is `not_convertible` with the reason. Percentage columns must be finite too.
+- **Strict CSV parsing** (review finding 3, with the owner's addition): a quoting error (unterminated or malformed quote) or a row with the wrong number of fields refuses the **whole file** with an `AdapterError` naming the file, the line(s) and the reason, for example `MPEA_dataset.csv: line 4: expected 23 fields, found 21; the file is refused`, or `MPEA_dataset.csv: line 3: the record starting on this line cannot be parsed (unexpected end of data, detected at line 5); the file is refused`. No partial extraction is returned. A legitimate quoted field may span lines. The frozen MPEA file and the extract parse under strict mode (no multi-line fields). **Limitation:** a stray quote that happens to leave exactly 23 fields in every row is valid CSV and cannot be detected by syntax alone.
+- **Spreadsheet formulas** (review finding 4): a formula cell makes only the field it feeds `not_convertible` (a formula in any element column: the composition); every other value, the cited assignments and the deliberately not-reported temperature are unchanged. The frozen spreadsheet has no formulas.
 - **What is never done:** no rescaling of percentages that do not sum to 100 (marked instead), no row dropped, no physical judgment (a negative grain size is converted as reported; flagging it is step 6's job).
   - An entirely blank row is listed in `blank_rows`, not made a record. The frozen files have none.
-  - A row with the wrong number of fields is kept, with every harmonized value `not_convertible` and the reason.
 
 ## Requirements carried from step 3, and how they are met
 
@@ -130,9 +133,24 @@ Information for the owner's step 6 decision. No rule was changed. Computed test-
 | Texas A&M (grain size and yield strength; temperature ignored, see above) | 21 | 9 | 1 |
 | Pooled | 98 | 22 | 21 |
 
-These match the reference numbers in CLAUDE.md (98 records, 22 alloys, 21 groups).
+These match the reference numbers in CLAUDE.md (98 records, 22 alloys, 21 groups). Alloys are counted here by the 0.1 at.% label, as the reference script did (the current default pending the owner's approval, finding 2); groups by the derived key (finding 1).
 
-## Tests (445, all passing; 70 new; no existing test changed)
+## Review findings and fixes (first review, ChatGPT, 2026-10-05)
+
+The review's verdict: registration, sealing, digests, locking, retries and paths are sound; five findings and one test weakness. The owner accepted all six, with instructions for each (below), and approved the fix plan with one addition (finding 3: the error names the file, the line and the reason). One commit per item:
+
+1. **Paper groups used the raw DOI text, so formatting differences split one paper** (`30b95c0`). The group key is now derived from the DOI (trim; remove a URL or `doi:` wrapper; ASCII case-fold only); `paper_doi` and the reported text are unchanged. The tests that required raw grouping are replaced. Frozen data: 8 DOI strings change form, no group merges or splits (265 → 265); the 77 reference records keep their 20 papers.
+2. **Rounded alloy labels were promoted into scientific identity** (`8a58a58`). The label is for display only; every statement that equal labels mean the same alloy is removed from code, README and this summary. The same-alloy rule is a step 6 plan setting with an owner-approved tolerance; the reference numbers used 0.1 at.% rounding, the current default pending approval. New test: Fe50.01Ni49.99 and Fe50.04Ni49.96 share a label, not a composition.
+3. **Malformed CSV quoting could silently absorb later records** (`028617e`). Strict parsing; a quoting error or a wrong field count refuses the whole file with an `AdapterError` naming the file, line(s) and reason (owner's addition). The frozen MPEA file and the extract parse under strict mode, so no relaxation was needed. Tested: unterminated quotes (at the end, and swallowing later rows), a malformed quote, wrong field counts with the line, a legitimate multi-line field.
+4. **One spreadsheet formula made unrelated fields unavailable** (`f0efe89`). A formula now affects only the field it feeds; the existing test is corrected, not extended.
+5. **Formula normalization could emit non-finite compositions** (`d2de2d8`). Finite amounts only, scaling by the largest amount before an `fsum`, refusal of unrepresentable ratios and of any non-finite result; tests in `tests/test_normalize.py`.
+6. **Test weakness: the spreadsheet "reported values preserved" test used the production formatter** (`f569d2b`). A new test compares cells with strings written out by hand from the file's XML.
+
+README updated in `4aad3a2`.
+
+The review's other checks found no problem: ordinary unit conversions, assigned values on ordinary rows, registration and sealing, path containment, answer isolation and scope. The reviewer could not retrieve the pinned paper, so the citations were checked against the packet, not the publication; the fetched files' SHA-256 are listed above.
+
+## Tests (467, all passing; 92 new in step 4; no test from an earlier step changed)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data tests/test_login.py tests/test_login_throttle.py tests/test_data_model.py tests/test_concurrency.py tests/test_migrations.py` is empty.
 
@@ -140,9 +158,10 @@ These match the reference numbers in CLAUDE.md (98 records, 22 alloys, 21 groups
 |---|---|---|
 | `tests/test_write_retry.py` | 5 | Both SQLSTATEs rerun the whole transaction (the first attempt's insert is rolled back); other errors are not retried; it gives up after the last attempt; a real deadlock between two transactions is retried and both complete. |
 | `tests/test_source_versions.py` | 20 | Digest and identity equal the database's. Unsafe stored paths are refused before the database. All three sources registered and sealed, with stored bytes equal to disk and settings copied; registering again adds nothing. A concurrent registration **waits on the source lock** and leaves one version (new source, and existing source with a new version). Two registrations at once leave one version. A changed file is refused and nothing is written; changed interpretation settings are refused. Paths stay inside their directory. Unsealed versions are refused. A loaded version reads exactly like the files on disk. Changed settings on a loaded version are refused. |
-| `tests/test_adapter_mpea.py` | 16 | 1,545 records, one per row, origin keys in order. Every reported text equals the file's cell. Common fields and units. Numbers converted unchanged. 237 grain sizes. Nothing unconvertible in the frozen file. Test-type codes. No value assigned. Alloy names equal the reference naming. Paper identity is the DOI (265 groups, one-to-one with the Reference ID). The format has no decision fields. **Planted rows:** a non-numeric grain size, an unknown element, a blank formula, a negative grain size, a temperature with text, an unknown test type, a blank DOI, a blank line, an extra field, NaN, a zero amount; each record kept and marked. Another layout or encoding is refused, another grouping unit is refused, altered bytes are refused before parsing, and text is kept exactly as reported. |
-| `tests/test_adapter_extract.py` | 5 | 16 records. Each equals its MPEA source row except where a listed column changed (the answer file is read on the test side only). A renamed formula gives the same alloy. Unknown paper is marked, never invented. A constructed DOI is its own paper. |
-| `tests/test_adapter_tamu.py` | 13 | 94 records, every value as reported, BBA09's yield strength `not_reported` and the record kept. One group (the dataset), batches kept. Assigned values carry their passage. Assigned and reported stay distinguishable. Temperature not reported. Composition in at.% with 82 distinct compositions and 82 labels. Agrees with the authors' `inputs.csv`. **Planted rows:** a non-numeric percentage, a sum of 99, a blank yield strength, a formula cell, a blank row, an extra column, a negative grain size, a number stored as text. Another layout is refused; the `batch` grouping unit is refused until the owner decides. |
+| `tests/test_adapter_mpea.py` | 32 | 1,545 records, one per row, origin keys in order. Every reported text equals the file's cell. Common fields and units. Numbers converted unchanged. 237 grain sizes. Nothing unconvertible in the frozen file. Test-type codes. No value assigned. Display labels follow the reference naming. Paper identity is the DOI, group key derived (expected keys written out independently; 265 groups, one-to-one with the Reference ID; 8 DOI strings change form, no group merges). The format has no decision fields. **Planted rows:** a non-numeric grain size, an unknown element, a blank formula, a negative grain size, a temperature with text, an unknown test type, a blank DOI, a blank line, NaN, a zero amount; each record kept and marked. Another layout or encoding is refused, another grouping unit is refused, altered bytes are refused before parsing, text is kept exactly as reported. **Finding 1:** seven spellings of one DOI give one group, with the DOI kept as reported; ASCII-only case folding. **Finding 2:** compositions differing below the rounding step share a label but not a composition. **Finding 3:** unterminated quote at the end, unterminated quote swallowing later rows (start and detection lines), malformed quote, wrong field counts (24 and 21) with the line, a legitimate multi-line field, a multi-line record's line range; each refusal message starts with the file and line. |
+| `tests/test_normalize.py` (new) | 5 | **Finding 5:** a coefficient too large to represent; large finite coefficients normalized without overflow; a ratio too extreme or an amount too small to represent; every converted composition finite and summing to 100; non-finite percentages refused. |
+| `tests/test_adapter_extract.py` | 5 | 16 records. Each equals its MPEA source row except where a listed column changed (the answer file is read on the test side only). A renamed formula gives the same composition. Unknown paper is marked, never invented. A constructed DOI is its own paper. |
+| `tests/test_adapter_tamu.py` | 14 | 94 records, every value as reported, **and a few cells of BBA01, BBA02 and BBA09 checked against strings written out by hand from the file's XML** (test weakness), BBA09's yield strength `not_reported` and the record kept. One group (the dataset), batches kept. Assigned values carry their passage. Assigned and reported stay distinguishable. Temperature not reported. Composition in at.% with 82 distinct compositions and 82 labels. Agrees with the authors' `inputs.csv`. **Planted rows:** a non-numeric percentage, a sum of 99, a blank yield strength, a formula in the grain-size SD (**finding 4:** only that field is affected; every other value, the assignments and the not-reported temperature equal those of the ordinary row), a formula in an element column (the composition only), a blank row, an extra column, a negative grain size, a number stored as text. Another layout is refused; the `batch` grouping unit is refused until the owner decides. |
 | `tests/test_reference_counts_from_adapters.py` | 4 | As in the table above. |
 | `tests/test_source_connection.py` | 7 | Sample records in the common format for each source, with no row count changing in seven tables. Assigned values shown with their citation. A sealed version is needed. The transaction is read-only (a write slipped in is refused by PostgreSQL). The command line: register, register again, test, unknown source. |
 | `tests/source_helpers.py` | — | Builds `SealedVersion` objects with a correct digest and identity for adapter tests that need no database. |
@@ -161,23 +180,40 @@ Each mechanism was removed in a scratch copy of the repository (not committed). 
 | The DOI stripped of spaces | 2 MPEA tests fail. |
 | A Texas A&M temperature of 25 °C set as `converted` | `test_temperature_is_not_reported` fails. |
 
-### Tests removed or replaced
+**After the review fixes**, each new test was run against the code from before its fix, in a scratch copy:
 
-None.
+| Restored | Result |
+|---|---|
+| The MPEA adapter before fixes 1 and 3 | 16 of 32 MPEA tests fail |
+| The raw DOI as group key (fix 1 only) | 9 tests fail (MPEA and reference counts) |
+| The permissive CSV reader (fix 3 only) | 3 tests fail; the wrong-field-count tests still pass, because the field-count check refuses those files independently |
+| The Texas A&M adapter before fix 4 | the corrected planted test fails |
+| `normalize.py` before fix 5 | all 5 normalization tests fail |
+| A formatter regression (floats printed with two decimals) | the new hand-written-strings test fails; the old test, which used the adapter's own formatter, still passes, which is the weakness the review named |
+
+### Tests removed or replaced (none weakened)
+
+Review round:
+- **Finding 1, raw grouping protected the bug:**
+  - `test_paper_identity_is_the_doi` expected the group key `doi:<raw cell>`; it now expects the derived key, written out independently (`"doi:" + row.strip().lower()`, valid because the frozen DOIs have no wrapper), and also checks that 8 DOI strings change form while 265 groups stay 265.
+  - `test_text_is_kept_exactly_as_reported` expected the key `doi: 10.1038/ncomms10602` (with the space); it now expects `doi:10.1038/ncomms10602` and still checks that the DOI and its reported text keep the space.
+- **Finding 2:** `test_alloy_names_follow_the_reference_naming` is renamed `test_display_labels_follow_the_reference_naming` (assertion unchanged: the label is the reference naming, for display). `test_a_renamed_formula_gives_the_same_alloy` is renamed `test_a_renamed_formula_gives_the_same_composition` and no longer asserts equal labels; it compares the full compositions, as before.
+- **Finding 3:** in `test_planted_values_are_kept_and_marked`, the planted row with an extra field (formerly expected kept, every value `not_convertible`) is replaced by an ordinary row, because such a file is now refused as a whole; that refusal is tested in `test_a_wrong_field_count_refuses_the_file_and_names_the_line`. The header-refusal assertion now also checks `line 1`.
+- **Finding 4:** in the Texas A&M `test_planted_values_are_kept_and_marked`, the formula row expected all 17 fields `not_convertible`; it now has its formula in the grain-size SD and expects only that field affected (corrected, as the review asked).
 
 ### Suite results
 
 ```
 $ .venv/bin/pytest -q                    (Codespace, Python 3.14.2, `docker compose up -d db`)
-445 passed in 61.76s
+467 passed in 62.52s
 $ docker compose run --rm test           (the test image, rebuilt)
-445 passed in 62.80s
-$ python scripts/check_runtime_image.py <runtime image /app>
-runtime image OK
+467 passed in 63.37s
 ```
 
-GitHub Actions, commit `cb0f814` (last code change): success; "Run the suite in the test image": 445 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
-https://github.com/kelawady/hypocurate/actions/runs/37256382423
+GitHub Actions, commit `4aad3a2` (after the review fixes): success; "Run the suite in the test image": 467 passed; "Check the default image holds no tests, docs or answers": runtime image OK.
+https://github.com/kelawady/hypocurate/actions/runs/37257783194
+
+First round, commit `cb0f814`: success, 445 passed, runtime image OK. https://github.com/kelawady/hypocurate/actions/runs/37256382423
 
 The runtime image also imports the adapters and reads all three sources' files from `data/`.
 
@@ -196,9 +232,11 @@ The runtime image also imports the adapters and reads all three sources' files f
 3. **PRD 10 (Texas A&M):** "82 single-phase FCC compositions": the source says "94 FCC alloy conditions", not single-phase.
 4. **PRD 9.6 and 15 ("the CSV adapter"):** sprint 1 has one adapter per registered source. A generic uploaded-table adapter for any CSV registered through the form is not built; it belongs with the step 10 screens.
 5. **PRD 4 (Curator) and tabular sources:** for tables, extraction is done by the adapter, which is code. How the Curator relates to tabular sources is a step 8 question.
-6. **PRD 10 (alloy naming):** two compositions are the same alloy when their 0.1 at.% labels match (the reference script's rule); the full-precision composition is kept beside the label.
+6. **PRD 10 (alloy naming)** (review finding 2): the adapter gives the full-precision composition in atomic % and a label for display only. When two compositions count as the same alloy is a plan and domain-profile setting, defined in step 6 with a tolerance the owner approves. The reference numbers were computed with 0.1 at.% rounding (the reference script's rule), the current default pending that approval.
 7. **Step 3 locking protocol:** `hc_write_lock` covers runs and hypothesis versions. Source registration locks the source row instead (owner, question 1).
 8. **PRD 7 (`source`):** the controlled duplicate extract is registered as a source with `enabled = false`. No database rule prevents choosing a disabled source.
+9. **PRD 10 (paper identity)** (review finding 1): a paper's group key is derived from its DOI by conservative normalization (trim, remove a URL or `doi:` wrapper, ASCII case-fold); the DOI as reported is kept.
+10. **PRD 10 (malformed files)** (review finding 3): an adapter refuses a file it cannot parse strictly, naming the file, line and reason; it never returns a partial extraction.
 
 ## Open items
 
@@ -209,7 +247,8 @@ The runtime image also imports the adapters and reads all three sources' files f
 5. **Step 6:**
    - a guard so that the controlled extract (constructed data) cannot enter a real analysis;
    - permitted test types (MPEA row 139, compression, is among the 77);
-   - duplicate matching uses `alloy` (the 0.1 at.% label) together with paper, grain size, value and test conditions.
+   - **the same-alloy rule** (review finding 2): a plan and domain-profile setting with a tolerance the owner approves, applied to the full-precision composition, before any model grouping or duplicate matching uses alloys. The 0.1 at.% rounding of the reference numbers is the current default pending approval. The display label is never used for it;
+   - duplicate matching uses the paper's derived group key, the composition under that rule, grain size, value and test conditions.
 6. **Step 6/8:** store the records (the format mirrors the `record` table), from inside an extraction run after the rules lock, through `hc_write_lock(p_run => …)` and `run_transaction`.
 7. **Carried from step 3, unchanged:** step 7 and step 9 requirements; the lock-contention note; a transaction writing to more than one run needs an ordering rule.
 
@@ -217,4 +256,5 @@ The runtime image also imports the adapters and reads all three sources' files f
 
 1. Is locking the source row an adequate substitute for `hc_write_lock` on the registration path, given that the database also locks the version row on file insert and at sealing?
 2. Is the status vocabulary (`converted`, `not_reported`, `not_convertible`, `assigned` with citation) enough to keep assigned values distinguishable from reported ones once records are stored as JSON in step 6?
-3. Is anything in the adapters a decision rather than a conversion (for example the 0.1 at.% alloy label, or listing blank rows instead of making records)?
+3. Is anything in the adapters still a decision rather than a conversion (for example listing blank rows instead of making records)?
+4. Is the DOI normalization conservative enough (one wrapper removed, ASCII case-fold only), and is refusing a whole file on one malformed row the right trade-off?
