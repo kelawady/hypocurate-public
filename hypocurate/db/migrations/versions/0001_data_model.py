@@ -686,7 +686,7 @@ FUNCTIONS = [
             PERFORM hc_reject('hypothesis_version_source rows are added or removed, not updated');
         END IF;
         row_version := CASE WHEN TG_OP = 'INSERT' THEN NEW.hypothesis_version_id ELSE OLD.hypothesis_version_id END;
-        IF (SELECT status FROM hypothesis_version WHERE id = row_version) <> 'draft' THEN
+        IF (SELECT status FROM hypothesis_version WHERE id = row_version) IS DISTINCT FROM 'draft' THEN
             PERFORM hc_reject('the chosen sources can change only while the version is a draft');
         END IF;
         RETURN CASE WHEN TG_OP = 'INSERT' THEN NEW ELSE OLD END;
@@ -699,11 +699,11 @@ FUNCTIONS = [
         IF NEW.status <> 'queued' OR NEW.exploratory THEN
             PERFORM hc_reject('a run starts as queued');
         END IF;
-        IF (SELECT status FROM hypothesis_version WHERE id = NEW.hypothesis_version_id) <> 'dispatched' THEN
+        IF (SELECT status FROM hypothesis_version WHERE id = NEW.hypothesis_version_id) IS DISTINCT FROM 'dispatched' THEN
             PERFORM hc_reject('a run needs a dispatched hypothesis version');
         END IF;
-        IF NOT (SELECT d.supported FROM hypothesis_version hv JOIN domain d ON d.id = hv.confirmed_domain_id
-                WHERE hv.id = NEW.hypothesis_version_id) THEN
+        IF (SELECT d.supported FROM hypothesis_version hv JOIN domain d ON d.id = hv.confirmed_domain_id
+            WHERE hv.id = NEW.hypothesis_version_id) IS NOT TRUE THEN
             PERFORM hc_reject('dispatch blocked: the confirmed domain is not supported yet');
         END IF;
         RETURN NEW;
@@ -735,7 +735,7 @@ FUNCTIONS = [
             END IF;
             SELECT count(*) INTO n_pooled FROM analysis_result WHERE run_id = NEW.id AND scope = 'pooled';
             SELECT * INTO pooled FROM analysis_result WHERE run_id = NEW.id AND scope = 'pooled';
-            IF n_pooled <> 1 OR NOT pooled.check2_passed THEN
+            IF n_pooled <> 1 OR pooled.check2_passed IS NOT TRUE THEN
                 PERFORM hc_reject('a sufficient outcome needs exactly one pooled result that passed both validity checks');
             END IF;
             IF p.sufficiency_option = 'fixed_minimum' AND NOT pooled.minimums_met THEN
@@ -752,7 +752,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_plan_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) <> 'running' THEN
+        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('a plan is locked only while its run is running');
         END IF;
         IF NEW.locked_at IS DISTINCT FROM now() THEN
@@ -797,7 +797,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_run_agent_setting_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) <> 'queued' THEN
+        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'queued' THEN
             PERFORM hc_reject('agent settings versions are recorded at dispatch');
         END IF;
         RETURN NEW;
@@ -806,7 +806,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_run_source_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) <> 'queued' THEN
+        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'queued' THEN
             PERFORM hc_reject('run sources are recorded at dispatch');
         END IF;
         IF NEW.search_status NOT IN ('not_selected', 'pending') THEN
@@ -835,7 +835,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_record_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.extraction_run_id) <> 'running' THEN
+        IF (SELECT status FROM run WHERE id = NEW.extraction_run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('records are extracted while their run is running');
         END IF;
         IF hc_is_frozen(NEW.extraction_run_id) THEN
@@ -854,7 +854,7 @@ FUNCTIONS = [
     DECLARE rec record;
     BEGIN
         SELECT * INTO rec FROM record WHERE id = NEW.record_id;
-        IF rec.extraction_run_id <> NEW.run_id THEN
+        IF rec.extraction_run_id IS DISTINCT FROM NEW.run_id THEN
             PERFORM hc_reject('a run decides only on records extracted in that run');
         END IF;
         IF NOT EXISTS (SELECT 1 FROM plan WHERE run_id = NEW.run_id) THEN
@@ -902,7 +902,7 @@ FUNCTIONS = [
         IF (SELECT kind FROM record WHERE id = NEW.record_id) = 'model_recalled' THEN
             PERFORM hc_reject('a model-recalled record is never in an analysis set');
         END IF;
-        IF s.key = 'primary' AND NOT rr.eligible THEN
+        IF s.key = 'primary' AND rr.eligible IS NOT TRUE THEN
             PERFORM hc_reject('the primary set holds only eligible records');
         END IF;
         RETURN NEW;
@@ -913,7 +913,7 @@ FUNCTIONS = [
     CREATE FUNCTION hc_run_snapshot_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE keys text[]; primary_count int;
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) <> 'running' THEN
+        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'running' THEN
             PERFORM hc_reject('a dataset is frozen only while its run is running');
         END IF;
         IF NEW.frozen_at IS DISTINCT FROM now() THEN
@@ -968,7 +968,7 @@ FUNCTIONS = [
     DECLARE flag_run bigint;
     BEGIN
         SELECT run_id INTO flag_run FROM flag WHERE id = NEW.flag_id;
-        IF (SELECT extraction_run_id FROM record WHERE id = NEW.record_id) <> flag_run THEN
+        IF (SELECT extraction_run_id FROM record WHERE id = NEW.record_id) IS DISTINCT FROM flag_run THEN
             PERFORM hc_reject('a flag names only records of its own run');
         END IF;
         IF hc_is_frozen(flag_run) THEN
@@ -986,7 +986,7 @@ FUNCTIONS = [
             PERFORM hc_reject('analysis results come after the dataset freeze');
         END IF;
         SELECT * INTO s FROM analysis_set WHERE id = NEW.analysis_set_id;
-        IF NEW.scope IN ('pooled', 'per_source') AND s.key <> 'primary' THEN
+        IF NEW.scope IN ('pooled', 'per_source') AND s.key IS DISTINCT FROM 'primary' THEN
             PERFORM hc_reject('pooled and per-source results use the primary set');
         END IF;
         IF NEW.scope = 'sensitivity' AND s.key = 'primary' THEN
@@ -1033,7 +1033,7 @@ FUNCTIONS = [
     """
     CREATE FUNCTION hc_commentary_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF (SELECT status FROM run WHERE id = NEW.run_id) <> 'completed' THEN
+        IF (SELECT status FROM run WHERE id = NEW.run_id) IS DISTINCT FROM 'completed' THEN
             PERFORM hc_reject('commentary is written after the run is completed');
         END IF;
         RETURN NEW;
