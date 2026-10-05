@@ -1,8 +1,10 @@
 # Build step 3 — summary for review
 
-Date: 2026-10-05. Branch: `step-03-data-model`. **Status: built and green on GitHub; awaiting the second-model review and the owner's sign-off. Not merged, not deployed.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
+Date: 2026-10-05. Branch: `step-03-data-model`. **Status: the seven findings of the second-model review are fixed and green on GitHub; awaiting the re-check and the owner's sign-off. Not merged, not deployed.** PRD Section 15, step 3: "Data model. Tables and migrations from Section 7."
 
-The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. The plan was approved by the owner on 2026-10-04/05, with decisions on seven questions and four additions (listed below).
+The suite is the gate. This summary is for the second-model review (PRD 13.2), which uses `docs/reviews/checklist.md`. It describes the state **after** the fixes for the first review. The findings and their fixes are listed below; the review text is in `docs/reviews/step03_review_chatgpt.md`. The plan was approved by the owner on 2026-10-04/05, with decisions on seven questions and four additions, and the fix plan on 2026-10-05, with two additions (the fingerprint computed at sealing; what may be written after a run ends).
+
+Migration 0001 has never run on the live database, so it was changed in place (owner's instruction). After the merge it is frozen: any later change is a new migration.
 
 Not built, as instructed: the access layer, any agent, any pipeline or statistics code, any screen, and loading the frozen sources into the tables.
 
@@ -11,218 +13,344 @@ Not built, as instructed: the access layer, any agent, any pipeline or statistic
 | Path | What it is |
 |---|---|
 | `hypocurate/db/models.py` | SQLAlchemy 2 models, one class per table (list below), with every CHECK constraint. A naming convention fixes constraint names, so tests and errors can name them. |
-| `hypocurate/db/migrations/versions/0001_data_model.py` | The one migration: tables, CHECKs, a sequence for query numbers, plpgsql trigger functions and triggers, five views, and the three domain rows. The `CREATE TABLE` statements were **rendered by Alembic autogenerate from the models, then reviewed and edited by hand**: the sequence was added, the hypothesis → run foreign key moved after `run`, and one name over 63 characters shortened. The functions, triggers, views and seed rows are hand-written. The migration does not import the models. |
-| `hypocurate/db/migrations/env.py`, `script.py.mako` | Online mode only. One transaction for the whole upgrade (`transaction_per_migration=False`). It takes `pg_advisory_xact_lock` before Alembic reads the current revision. |
-| `hypocurate/db/migrate.py` | `python -m hypocurate.db.migrate upgrade \| current \| downgrade <rev> [--confirm-data-loss]`. The Alembic configuration is built in code (no `alembic.ini`), so the deployed image's top level stays `hypocurate`, `data`, `requirements.lock`. The engine is passed as an object, never as a URL string. In production, `downgrade` exits 2 without `--confirm-data-loss`. `schema_status()` serves `/health`. |
+| `hypocurate/db/migrations/versions/0001_data_model.py` | The one migration: tables, CHECKs, a sequence for query numbers, plpgsql trigger functions and triggers (40 functions), five views, and the three domain rows. The `CREATE TABLE` statements were **rendered by Alembic autogenerate from the models, then reviewed and edited by hand**. The functions, triggers, views and seed rows are hand-written. The migration does not import the models. |
+| `hypocurate/db/migrations/env.py`, `script.py.mako` | Online mode only. One transaction for the whole upgrade. `pg_advisory_xact_lock` is taken before Alembic reads the current revision. |
+| `hypocurate/db/migrate.py` | `python -m hypocurate.db.migrate upgrade \| current \| downgrade <rev> [--confirm-data-loss]`. The configuration is built in code (no `alembic.ini`), and the engine is passed as an object, never as a URL string. In production, `downgrade` exits 2 without `--confirm-data-loss`. `schema_status()` serves `/health`. |
 | `render.yaml` | `preDeployCommand: python -m hypocurate.db.migrate upgrade` on **both** `hypocurate-web` and `hypocurate-worker`. |
-| `docker-compose.yml` | A one-off `migrate` service (runtime image, the same command, only `HYPOCURATE_ENV` and `DATABASE_URL`). `web` and `worker` wait for it with `service_completed_successfully`. CI's existing Compose step therefore runs the migration in the runtime image. **No change to `.github/workflows/`.** |
-| `/health` (`web/app.py`, `health.html`) | Adds `schema: {"revision", "at_head"}`. Informational: it never changes the status code. When the database is down it reports `{null, false}` without a second connection attempt. |
-| `scripts/check_runtime_image.py` | `REQUIRED` also lists `migrate.py`, `migrations/env.py` and `versions/0001_data_model.py`. |
-| `pyproject.toml`, locks | `alembic>=1.16` added. The locks gained exactly `alembic==1.20.0` and `mako==1.4.3`, with hashes; nothing else changed. |
-| `README.md` | New "Database migrations" section (apply, failure, rollback, limits). |
+| `docker-compose.yml` | A one-off `migrate` service; `web` and `worker` wait for it (`service_completed_successfully`). CI's Compose step therefore migrates in the runtime image. **No change to `.github/workflows/`.** |
+| `/health` | Adds `schema: {"revision", "at_head"}`, informational only: it never changes the status code. |
+| `scripts/check_runtime_image.py` | `REQUIRED` also lists the migration files. |
+| `pyproject.toml`, locks | `alembic>=1.16`. The locks gained exactly `alembic==1.20.0` and `mako==1.4.3`, with hashes. |
+| `README.md` | A "Database migrations" section: apply, failure, rollback, locking, post-run writes and limits. |
 
-### Tables
-`domain`, `tag_value`, `source`, `source_version`, `source_file`, `agent_setting`, `hypothesis`, `hypothesis_version`, `hypothesis_version_source`, `run`, `plan`, `run_tag`, `run_agent_setting`, `run_source`, `run_snapshot`, `stage_result`, `model_call`, `record`, `run_record`, `analysis_set`, `analysis_set_record`, `flag`, `flag_record`, `analysis_result`, `calibration_result`, `commentary`, `artifact`, `audit_log`.
+### Tables and views
+Tables: `domain`, `tag_value`, `source`, `source_version`, `source_file`, `agent_setting`, `hypothesis`, `hypothesis_version`, `hypothesis_version_source`, `run`, `plan`, `run_tag`, `run_agent_setting`, `run_source`, `run_snapshot`, `stage_result`, `model_call`, `record`, `run_record`, `analysis_set`, `analysis_set_record`, `flag`, `flag_record`, `analysis_result`, `calibration_result`, `commentary`, `artifact`, `audit_log`.
 
-Views: `run_nothing_found`, `model_call_totals_by_stage`, `_by_run`, `_by_query`, `_by_month`.
+Views: `run_search_coverage` (replaces `run_nothing_found`, finding 6), and `model_call_totals_by_stage`, `_by_run`, `_by_query`, `_by_month`.
 
 ## The deploy questions (owner's request)
 
 1. **How migrations are applied on deploy.**
    - Render runs the pre-deploy command after the build and before the new version starts, on a separate instance (render.com/docs/deploys, checked 2026-10-04).
-   - Both services run it for the same commit. The advisory lock makes the second wait; it then finds the schema at head and does nothing.
+   - Both services run it. The advisory lock makes the second wait; it then finds the schema at head and does nothing.
    - Locally and in CI, the Compose `migrate` service does the same.
 2. **If a migration fails mid-deploy.**
-   - The upgrade is one PostgreSQL transaction, so a failure rolls back everything: tables, functions, views, seed rows and `alembic_version`.
-   - The command exits non-zero, Render fails the deploy, and the previous version keeps running (Render docs: "Your service continues running its most recent successful deploy").
-   - Proven by `test_a_failed_upgrade_changes_nothing`, which plants a `commentary` table so the upgrade fails late, and checks that the whole schema snapshot is unchanged.
+   - The upgrade is one PostgreSQL transaction, so a failure rolls back everything.
+   - The command exits non-zero, Render fails the deploy, and the previous version keeps running.
+   - Proven by `test_a_failed_upgrade_changes_nothing`, which plants a conflicting table so the upgrade fails late, and checks that the whole schema snapshot is unchanged.
 3. **How a migration is rolled back** (README):
    - (a) Preferred: a new migration that undoes the change.
-   - (b) Revert the merge on `main`. The rule: every migration keeps working with the previous release's code. Step 2's code uses no tables, so reverting step 3 is safe.
+   - (b) Revert the merge on `main`. Every migration keeps working with the previous release's code; step 2's code uses no tables.
    - (c) The owner runs `downgrade <rev> --confirm-data-loss` in the Render Shell. It drops tables and their data. Point-in-time recovery reaches 3 days back on Hobby and restores into a *new* database, which costs money, so ask first.
-4. **Proof of up, down, up from empty** (`test_up_down_up_on_an_empty_database`):
-   - On an empty scratch database, upgrade. Then check:
+4. **Up, down, up from empty** (`test_up_down_up_on_an_empty_database`):
+   - On an empty scratch database, upgrade, then check:
      - Alembic `compare_metadata` against the models reports no differences;
      - the set of CHECK names equals the models';
      - every expected trigger and view exists;
      - the three domains are seeded;
      - the revision is head.
-   - Downgrade to base. Only Alembic's own empty `alembic_version` table may remain; there are no constraints, triggers, functions, views, sequences or types.
-   - Upgrade again. A catalog snapshot (columns, constraint definitions, indexes, trigger definitions, function bodies, views, sequences) equals the first one.
-   - I also checked by hand that `compare_metadata` reports a column added to a model only in memory. That check is not in the suite.
+   - Downgrade to base; only Alembic's own empty `alembic_version` remains.
+   - Upgrade again; a catalog snapshot equals the first one.
+
+### Limits of the up/down/up proof (second-model review)
+- **It tests reproducibility, not correctness.** A schema that is wrong in the same way twice still passes.
+- **The CHECK comparison checks names, not what the conditions say.** Two CHECKs with the same name and different predicates would pass.
+- **The expected trigger names come from the migration itself**, not from an independent list. What a trigger *does* is tested separately, by the behavioural tests in `tests/test_data_model.py` and `tests/test_concurrency.py`.
+- **It is drift coverage, not independent proof of the rules.**
+- **A successful migration is not undone if the application then fails to start.** Every migration must therefore keep working with the previous release's code.
+- **Editing a migration in place breaks the downgrade of databases migrated with the old text.** I saw this on the local development database in this fix round (see "Deviations"). It is why 0001 is frozen after the merge.
+
+## The locking protocol (review finding 1)
+
+- **Run triggers.** Every trigger that checks or changes a run's state first calls `hc_lock_run(run_id)`. That function runs `SELECT status FROM run WHERE id = … FOR NO KEY UPDATE`, which locks the row and returns its latest committed status in one statement. Updates of the run row (start, completion, failure) take the same lock themselves.
+- **Version triggers.** Triggers on chosen sources and on dispatch (run insert) call `hc_lock_version` first. Submission and dispatch are updates of the version row, so they take the same lock themselves.
+- **Source files.** A `source_file` insert locks its version row; sealing is an update of that row.
+- **Lock order:** version, then run. No trigger locks a version after a run.
+- **Consequence:** a transaction that writes to a run makes every other writer to that run, including a worker's heartbeat update, wait until it commits. Step 9 should keep transactions on a run short (open item 2).
+
+## What may be written to a run in each state (review finding 3; owner, 2026-10-05)
+
+| Run state | What may be written |
+|---|---|
+| queued | `run_source` and `run_agent_setting` (dispatch). The run becomes running only when every source registered at dispatch has a `run_source` row. |
+| running | The pipeline, in checkpoint order: plan and tags (rules lock) → records → eligibility → sets → freeze → results and calibration; search results, flags, stages, model calls and artifacts throughout. Records only after the rules lock. |
+| completed | Only the commentary, the Commentator's stage and model calls, and artifacts (plot, workbook). They cannot change the outcome, verdict, analysis results or record sets: the run row is final, and results and sets are append-only and written only while running. **The Commentator's model calls count in the run's totals and toward its cap** (`model_call_totals_by_run`), like any other. |
+| failed | Nothing, except `audit_log` rows (written in every state). |
+
+A run can complete or fail only when none of its stages is `running` and none of its model calls is `started`. Step 9's recovery must therefore finish the open stage (`failed`) and calls (`interrupted`) before it marks the run failed.
 
 ## The owner's decisions, and the rules the database enforces
 
 Every rejection by a trigger raises SQLSTATE 23514 with a message starting `hypocurate:`. "Append-only" means a trigger rejects UPDATE, DELETE and TRUNCATE.
 
 1. **A narrower question is a separate query** (question 1).
-   - It is a new `hypothesis` row with its own Q number and `narrower_of_run_id`, which may point only to a run that **completed with outcome `partly_sufficient`**. The link is fixed (`hypothesis` is append-only).
-   - Its versions must carry the original run's confirmed domain, both as submitted and as confirmed.
-   - It starts as a draft and goes through review and dispatch. Nothing creates or runs it automatically.
+   - It is a new `hypothesis` row with its own Q number and `narrower_of_run_id`, which may point only to a run that **completed with outcome `partly_sufficient`**. The link is fixed.
+   - Its versions carry the original run's confirmed domain. It starts as a draft and goes through review and dispatch; nothing creates or runs it automatically.
    - **A run whose outcome is `partly_sufficient` has no verdict** (CHECK).
 2. **Named analysis sets, limited to the locked plan** (question 2).
-   - `plan.sensitivity_analysis_keys text[]`: `primary` is excluded (CHECK); the keys are unique and lowercase (trigger).
-   - An `analysis_set` can be inserted only for `primary` or a key of the run's locked plan, and before the freeze.
-   - `analysis_set_record`: only records the run has decided on; `primary` holds only eligible records; model-recalled records are never in any set.
-   - The freeze requires a non-empty `primary` set, `n_records` equal to its size, and a set for every named sensitivity analysis.
-   - A test shows a possible duplicate counted once in `primary` and twice in its sensitivity set.
-3. **`run_source` and the derived kind of "nothing found"** (question 3).
-   - One row per run and source, written at dispatch: `not_selected` or `pending`, then decided once as `searched` or `failed`.
-   - CHECKs: `failed` ⇔ `failed_search`; `failed` needs a reason.
-   - `run` has **no** stored nothing-found column. The view `run_nothing_found` derives it, only for `insufficient` runs:
-     - if no selected source reached `searched` → `failed_search`;
-     - else, over the searched sources only, `reported_negative` if any has it, else `missing_evidence`.
-   - Every failed source is listed in `failed_sources` and `not_searched_sources`, and never counts as missing evidence.
-   - The precedence of `reported_negative` over `missing_evidence` is my choice; the owner did not object.
+   - A set exists only for `primary` or a key of the run's locked plan.
+   - `primary` holds only eligible records; model-recalled records are never in any set.
+   - **At the freeze** (finding 2):
+     - every record extracted in the run has a decision;
+     - the `primary` set is **exactly** the records decided eligible;
+     - `n_records` equals its size;
+     - every named sensitivity set exists.
+   - A duplicate's non-surviving copy carries its own decision (not eligible, "counted once"), which keeps it out of `primary`.
+3. **Search coverage per source** (question 3; finding 6).
+   - `run_source` has one row per run and source, written at dispatch, and decided once (`searched` or `failed`) while the run is running. `failed` ⇔ `failed_search`.
+   - **No single run-level label exists.** `run_search_coverage` lists, per run:
+     - `searched_sources` and `not_searched_sources`;
+     - `not_selected_sources`;
+     - `failed_search_sources`;
+     - `records_found_sources`;
+     - `missing_evidence_sources`;
+     - `reported_negative_sources`.
+     
+     So a mixed result reads "missing evidence in source A; negative result reported in source B".
+   - A failed source is listed as failed and not searched, never as missing evidence.
+   - **Coverage comes only from the run's own dispatch-time rows**, never from the current source registry. A source's key never changes.
 4. **Verdict and exploratory** (question 4; additions 2 and 3).
-   - CHECK `verdict IS NOT NULL` ⇔ (`completed` AND `sufficient`). An outcome exists exactly when the run is completed.
+   - CHECK: `verdict IS NOT NULL` ⇔ (`completed` AND `sufficient`).
    - **Only when the outcome is `sufficient`**, a trigger requires:
      - exactly one pooled result that passed both validity checks;
      - under `fixed_minimum`, `minimums_met`;
      - `exploratory = (use_available AND NOT minimums_met)`.
-   - Runs that end `insufficient`, `partly_sufficient` or `failed` need no pooled result. A coefficient-only pooled result (check 1 passes, check 2 fails) can complete only as non-sufficient, without a verdict.
-   - `plan` stores `min_records`, `min_alloys`, `min_groups` and `min_resid_df` (NOT NULL, ≥ 1) **under both options**. `analysis_result.minimums_met` must equal the comparison of its stored counts with these.
-   - `sufficiency_option` ∈ {`fixed_minimum`, `use_available`}.
-5. **Model calls and totals** (question 5).
-   - The row is inserted **before** the request, as `started`, with `max_cost` (the upper bound) NOT NULL.
-   - It is finished exactly once:
-     - `succeeded` with all four usage values;
-     - `failed` with all four or none;
-     - `interrupted` with none.
-   - After that the row is frozen; it is never deleted.
-   - No table stores token or cost totals (a test checks the columns). The views give `reported_cost`, the token sums, `unconfirmed_calls`, `unconfirmed_cost_bound` (the sum of `max_cost` for calls without reported cost) and `cap_cost` = reported + bound, per stage, run, query and month (UTC).
-6. **The reviewer's domain** (question 6).
-   - The submitter's `domain_id` is frozen after the draft.
-   - `confirmed_domain_id` and `domain_confirmed_at` are set together, only while `submitted`. Dispatch requires them (CHECK); after dispatch the version cannot change.
-   - Tags are set by the Planner at the lock (PRD 5.5), so no reviewer-changed tag exists. `run_tag` rows can be inserted only in the transaction that locked the plan (`plan.locked_at = now()`), and a `rejected` tag value cannot be attached.
-   - A proposed `tag_value` is approved or rejected once, with `decided_at`.
-7. **Per-run records with an origin** (question 7).
-   - `record.extraction_run_id`, `source_version_id` and `source_item_key` are NOT NULL (the key may not be empty), plus `item_index`.
-   - UNIQUE `uq_record_origin_per_run`, and an index on (`source_version_id`, `source_item_key`) for matching across runs.
-   - The source version must be the one recorded for that run in `run_source`.
-   - Records are added only while the run is running and before the freeze. They are append-only.
-8. **Power report** (addition 1). `plan.power_assumptions jsonb NULL`, information only: no constraint or trigger reads it. Power-based sufficiency is rejected by the CHECK.
-9. **`analysis_result`** (addition 3).
-   - `scope` ∈ {`pooled`, `per_source`, `sensitivity`}, with `analysis_set_id` NOT NULL. `pooled` and `per_source` use `primary`; `sensitivity` uses a non-primary set; `source_id` is present iff `per_source`.
-   - One result per run and scope (unique index, `NULLS NOT DISTINCT`).
-   - `n_records` must equal the set's records, restricted to the source for `per_source`.
-   - Results are inserted only after the freeze and are append-only.
-   - The validity checks are written as CHECKs on the stored counts:
+   - Other endings need no pooled result.
+5. **Model calls and totals** (question 5; finding 7).
+   - The row is inserted **before** the request (`started`), with `max_cost` > 0 as the upper bound. It is finished exactly once: `succeeded` (all four usage values), `failed` (all four or none), or `interrupted` (none).
+   - `cost` and `max_cost` are `numeric` without a fixed scale, so they are stored exactly and nothing rounds.
+   - `started_at` and `finished_at` must equal the database's transaction time, so they cannot be backdated. A call counts in the UTC month of its `started_at`.
+   - No table stores totals. The views give `reported_cost`, the token sums, `unconfirmed_calls`, `unconfirmed_cost_bound` (the sum of `max_cost` for calls without reported cost) and `cap_cost` = reported + bound.
+6. **The reviewer's domain** (question 6). `confirmed_domain_id` and `domain_confirmed_at` are set together, only while `submitted`; dispatch requires them. Tags are written only in the rules-lock transaction. A proposed tag value is approved or rejected once.
+7. **Per-run records with an origin** (question 7; findings 3 and 4).
+   - The origin is `extraction_run_id`, `source_version_id`, `source_item_key` (NOT NULL, not empty) and `item_index`, with UNIQUE `uq_record_origin_per_run` and an index for matching across runs.
+   - Records are inserted only **after the rules lock**, while running, and before the freeze.
+   - A record must come from the version its run recorded, and has that version's kind of data.
+8. **Power report** (addition 1). `plan.power_assumptions`, information only; power-based sufficiency is rejected.
+9. **`analysis_result`** (addition 3; finding 5).
+   - `scope` ∈ {`pooled`, `per_source`, `sensitivity`}, on the matching set, one result per run and scope. `n_records` equals the set's records, restricted to the source for `per_source`.
+   - Written after the freeze, while running.
+   - **The database checks necessary conditions on the stored counts only:**
      - `resid_df = n_records − n_alloys − 1`;
-     - `check1 = (n_alloys ≥ 1)`;
-     - `check2 = (check1 AND resid_df ≥ 1 AND n_groups ≥ 2)`;
-     - an estimate iff check 1;
-     - a standard error and a p-value iff check 2.
-10. **Files** (item 12).
-    - `source_file` (the data files an adapter reads) and `artifact` each have CHECKs: `octet_length(content) ≤ 5 MiB`, and `sha256 = encode(sha256(content), 'hex')`.
-    - `source_file.path` must end in `.csv` or `.xlsx`, so the 49 MB Zenodo archive cannot be stored (by size and by type).
-    - Tests try 1 byte over the limit, a `.zip`, and a wrong hash.
+     - `n_records ≥ 2 × n_alloys`;
+     - `n_groups ≤ n_records`;
+     - a non-empty set has at least one group;
+     - `n_alloys` ≤ the set's distinct alloys;
+     - `check1_passed = (n_alloys ≥ 1)`;
+     - `check2_passed = (check1 AND resid_df ≥ 1 AND n_groups ≥ 2)`;
+     - an estimate iff check 1; a standard error and a p-value iff check 2.
+   - **The full validity rules of PRD 5.7 are not enforced by the database:**
+     - an alloy measured at two *distinct grain sizes*;
+     - the exact alloy and group counts;
+     - the agreement of the verdict with the pooled result.
+     
+     They are computed and tested in step 7 (see "Step 7 acceptance requirements").
+10. **Files and source versions** (item 12; finding 4).
+    - `source_file` and `artifact`: at most 5 MiB, and `sha256` must match the bytes. Source files must be `.csv` or `.xlsx`, so the 49 MB Zenodo archive cannot be stored.
+    - A `source_version` **copies `source_type`, `data_kind` and `grouping_unit`** from its source at insert; a different caller-supplied value is rejected. Changing `source` afterwards affects only later versions. Operational settings stay mutable on `source`: enabled, adapter status, address, licence, properties.
+    - Files are added, then the version is **sealed once**:
+      - the database sets `sealed_at`;
+      - at least one file is required;
+      - the database requires `fingerprint` to equal the SHA-256 of the sorted file list, one line `<sha256>  <path>\n` per file, sorted bytewise by path (owner, 2026-10-05; step 4 computes the same).
+      
+      After sealing nothing changes; no file can be added.
+    - **Only a sealed version can be used by a run.**
 
-Other rules in the migration (they follow from the plan's table; listed so the reviewer sees them):
-- **The lock and the freeze.** The plan is inserted only while its run is `running`, with `locked_at` equal to the database's transaction time; it is append-only and unique per run. `run_snapshot` is append-only, with `frozen_at` equal to the database's time.
-- **Eligibility.** A `run_record` is allowed only for the run's own records, after the lock and before the freeze. It is append-only, and a model-recalled record is never eligible.
-- **Runs.**
-  - Status moves queued→running→completed or failed, and queued→failed. Completed and failed runs are final.
-  - What a run records at dispatch (version, agent mode, fixed-plan flag, experiment flags, queue time) cannot change.
-  - A run can be inserted only as `queued`, for a `dispatched` version whose confirmed domain is supported. That is the database side of "dispatch blocked for an unsupported domain".
-- **Hypothesis versions.** Status moves draft→submitted→returned or dispatched; returned and dispatched versions are frozen. Chosen sources change only in draft. Versions and runs are never deleted.
-- **Flags.** Raised and classified (once) only before the freeze; only the Critic's fields can be added. `flag_record` holds only the flag's own run's records.
-- **Calibration.**
-  - `computed` exactly when the analysis passed check 2. An `unavailable` reason must match the checks.
-  - A run-level row is allowed only with reason `no_dataset_frozen`, and only when no dataset was frozen.
-  - The intervals must contain their share.
-- **Other tables.**
-  - `commentary` only after the run is completed. A written commentary needs its number check; `mismatches` are listed iff the check found some.
-  - A finished `stage_result` is final.
-  - `agent_setting`, `source_version`, `domain` and `audit_log` are append-only.
+Other rules:
+- The plan is inserted once, while running, with `locked_at` equal to the database's time. `run_snapshot` likewise has `frozen_at` equal to the database's time.
+- `run_record` is append-only and only for the run's own records; a model-recalled record is never eligible.
+- Run status moves forward only, and completed and failed runs are final. What a run records at dispatch cannot change. A run can be inserted only for a dispatched version whose confirmed domain is supported.
+- Hypothesis versions move forward only. Chosen sources change only in draft. Versions and runs are never deleted.
+- A flag is raised and classified (once) only while the run is running and before the freeze.
+- Calibration:
+  - `computed` exactly when the analysis passed check 2, and an `unavailable` reason must match the checks;
+  - a run-level row is allowed only with `no_dataset_frozen`;
+  - **such a row and a dataset freeze exclude each other**, in either order (finding 3).
+- Commentary only after completion, from the commentator stage.
 
 **Stated limitations.**
-- The triggers stop the application and ordinary edits. The database owner, which is the only Render user, can still drop or disable a trigger; that is not tamper-proof, and the fingerprints are the cross-check.
-- A rejected attempt is **not logged** by the database: a log row written in the failing transaction would be rolled back with it. Logging rejected attempts belongs to the access layer (steps 5 and 6).
-- Fingerprints are checked for format only (`plan`, `run_snapshot`, `source_version`). What they fingerprint is computed by code in steps 4 and 6. The exception is `source_file`/`artifact`, where the database checks the hash against the bytes.
+- The triggers stop the application and ordinary edits. The database owner can still drop or disable a trigger; that is not tamper-proof, and the fingerprints are the cross-check.
+- A rejected attempt is not logged by the database: a log row written inside the failing transaction would be rolled back with it. Logging rejected attempts belongs to the access layer (steps 5 and 6).
+- The `plan` and `run_snapshot` fingerprints are checked for format only; code computes them in step 6. The source-version fingerprint and the file and artifact hashes are checked against the content.
+
+## Review findings and fixes (first review, ChatGPT, 2026-10-05)
+
+The owner accepted all seven findings and approved the fix plan.
+
+1. **High — concurrent transactions could defeat the freeze, submission and dispatch checks.**
+   - **Fix:** the locking protocol above.
+   - **Tests:** `tests/test_concurrency.py`, 14 tests. Each holds transaction A open, starts B in a thread, asserts that B is **waiting on a lock** (`pg_stat_activity`), commits A, and checks B's result. The races, each in both orders:
+     - primary member vs freeze;
+     - sensitivity member vs freeze;
+     - flag vs freeze;
+     - chosen source vs submission;
+     - run agent setting vs start;
+     - flag vs completion;
+     - search result vs completion;
+     - "no dataset frozen" vs freeze;
+     - source file vs sealing.
+   - **Shown:**
+     - With the run lock removed from `hc_lock_run` in a temporary copy, all 10 run-level tests fail.
+     - With the version and file locks removed, 3 of the remaining 4 fail. The fourth (a file insert first, then sealing) is serialized by PostgreSQL's own foreign-key lock even without ours: sealing writes `fingerprint`, which is part of a unique key, so it conflicts with the insert's foreign-key lock. Its outcome is correct either way.
+2. **High — the primary set could omit eligible records; records could stay undecided.**
+   - **Fix:** freeze completeness, as above.
+   - **Tests:**
+     - `test_the_freeze_rejects_a_primary_set_that_omits_eligible_records` (10 eligible, 3 in the set: rejected; all 10: accepted);
+     - `test_the_freeze_rejects_an_undecided_record`.
+   - The duplicate test now states that it shows storage only; duplicate handling is step 6.
+3. **High — checkpoint ordering and finality were incomplete.**
+   - **Fix:** records only after the rules lock; every curation, result and calibration write requires a running run; "no dataset frozen" and a freeze exclude each other; the post-completion and post-failure rules above (owner's addition).
+   - **Tests:**
+     - `test_records_and_eligibility_come_after_the_rules_lock`;
+     - `test_no_curation_once_the_run_has_ended[completed|failed]` (records, decisions, set members, flags, classifications, flag records, search results, freeze, calibration);
+     - `test_a_record_extracted_after_the_freeze_cannot_slip_in_after_the_run_ends`;
+     - `test_no_dataset_frozen_and_a_freeze_exclude_each_other`;
+     - `test_what_may_be_written_after_completion` (commentary, Commentator stage and call counted in the run's totals and cap, artifact; other stages and roles, verdict, results and sets rejected);
+     - `test_nothing_but_the_audit_log_after_failure`;
+     - `test_a_run_ends_only_with_no_stage_running_and_no_call_open[completed|failed]`.
+4. **High — a source version did not freeze its inputs.**
+   - **Fix:** copied interpretation settings; sealing with the database-computed fingerprint; only sealed versions in runs; a record's kind equals its version's.
+   - **Tests:**
+     - `test_files_cannot_be_added_after_sealing`;
+     - `test_sealing_needs_files_and_the_fingerprint_of_the_file_list` (no files, wrong fingerprint, backdated `sealed_at`, sealing twice, delete);
+     - `test_a_new_version_starts_unsealed`;
+     - `test_only_a_sealed_version_can_be_used_by_a_run`;
+     - `test_a_version_keeps_its_own_interpretation_settings`;
+     - `test_a_record_has_its_versions_kind_of_data`.
+5. **Medium — the database overstated what its validity checks establish.**
+   - **Fix:** the count-consistency CHECKs and the distinct-alloy trigger. The constraints are renamed `check1_consistent` and `check2_consistent`. The comments, the README and this summary say "necessary conditions"; the full rules and verdict agreement are step 7 acceptance requirements.
+   - **Tests:** `test_stored_counts_must_be_consistent` (4 cases: one record claiming a fitted coefficient; more groups than records; records without a group; more alloys than distinct alloys).
+6. **Medium — "reported negative" collapsed mixed results; coverage read the current registry.**
+   - **Fix:** `run_search_coverage`, as above. A run starts only with its full dispatch-time inventory, and a source's key is fixed.
+   - **Tests:**
+     - `test_mixed_results_are_reported_per_category`;
+     - `test_a_failed_source_is_never_missing_evidence`;
+     - `test_every_selected_source_failing_shows_no_source_searched`;
+     - `test_records_found_is_its_own_category`;
+     - `test_coverage_comes_from_the_runs_own_dispatch_rows`;
+     - `test_a_run_starts_only_with_its_full_source_inventory`.
+7. **Medium — cost precision, bounds and times.**
+   - **Fix:** `numeric` without a fixed scale, `max_cost > 0`, and call times set by the database. The remaining items are step 9 requirements (below).
+   - **Tests:** `test_small_costs_are_stored_exactly` (1e-12 and 3e-13 stored and summed exactly; `max_cost = 0` rejected); `test_call_times_are_set_by_the_database`.
+
+The review's remark on migration safety and the limits of the up/down/up proof is recorded above under "Limits of the up/down/up proof".
+
+### Step 7 acceptance requirements (from finding 5)
+1. The full validity rules of PRD 5.7 are computed by code from the frozen dataset and tested against generated data with known answers:
+   - check 1: at least one alloy measured at two *distinct grain sizes*;
+   - check 2: at least 1 residual degree of freedom and at least 2 independent groups;
+   - the exact alloy and group counts, by each version's grouping unit.
+   
+   The stored counts must equal what code computes.
+2. The verdict agrees with the pooled result: `supported` exactly when the one-sided test of k > 0 rejects at the plan's threshold. Whether the rule is "p < threshold" or "p ≤ threshold" is decided then.
+
+### Step 9 requirements (from finding 7)
+1. The `model_call` reservation row commits **before** the external request, so a rollback cannot erase a charged call.
+2. The caller supplies a genuine upper bound for `max_cost` (counted input tokens plus the output-token limit, priced from the price table). The database only requires it to be positive.
+3. A call counts in the UTC month of its database-set `started_at`.
+4. Reservation against the caps is atomic: lock, check that `cap_cost + max_cost` stays within the per-run and per-month caps, insert, commit. Then two callers cannot spend the same remaining budget. The views alone do not prevent that.
+5. Recovery finishes open stages (`failed`) and calls (`interrupted`) before it marks a run failed (the rule above).
 
 ## PRD corrections and clarifications for the next PRD update
-The owner asked that these be recorded. Section 7 is "the minimum… Names are suggestions".
 1. **PRD 7 vs 5.4:** the narrower-question link belongs on a new query (`hypothesis.narrower_of_run_id`), not on `hypothesis_version`.
-2. **PRD 7:** `run_record`'s single "used only in a sensitivity analysis" flag cannot express 5.3 and 5.6. It is replaced by named sets (`analysis_set`, `analysis_set_record`).
-3. **PRD 7:** "kind of nothing found" per run is replaced by `run_source` per source, with the run-level kind derived (rule above).
+2. **PRD 7:** `run_record`'s single "used only in a sensitivity analysis" flag is replaced by named sets (`analysis_set`, `analysis_set_record`). `run_record.eligible` means eligible for the primary analysis, and at the freeze the primary set equals the records decided eligible.
+3. **PRD 7 and 3.1:** "kind of nothing found" per run is replaced by per-source search results in `run_source`, reported per category with their sources (`run_search_coverage`). Mixed results are never collapsed into one label, and coverage comes from the run's dispatch-time rows.
 4. **PRD 7:** `run` needs `verdict` and `exploratory`.
-5. **PRD 5.8 clarification:** "exploratory" means the "use what is available" option **and** data below the fixed minimums. The 5.8 table currently labels every such result exploratory; 14.3 matches the owner's rule.
-6. **PRD 7 and 8:** stored token and cost totals on `run`, `stage_result` and `commentary` are replaced by views over `model_call`. A call is recorded before the request, and a call without reported cost counts at its `max_cost` bound toward the caps.
-7. **PRD 7 and 8:** `run_snapshot` holds the dataset freeze only. The dispatch-time agent settings and source versions are in `run_agent_setting` and `run_source`.
-8. **PRD 9.3:** the reviewer's domain change is a review decision on the version (`confirmed_domain_id`, `domain_confirmed_at`), not a new version.
+5. **PRD 5.8 clarification:** "exploratory" means the "use what is available" option **and** data below the fixed minimums.
+6. **PRD 7 and 8:** stored token and cost totals are replaced by views over `model_call`. A call is recorded before the request, and a call without reported cost counts at its `max_cost` bound. Call times are the database's. The Commentator's calls count in the run's totals and cap.
+7. **PRD 7 and 8:** `run_snapshot` holds the dataset freeze only; dispatch-time agent settings and source versions are in `run_agent_setting` and `run_source`.
+8. **PRD 9.3:** the reviewer's domain change is a review decision on the version, not a new version.
 9. **PRD 5.5:** `tag_value` needs a status (proposed, approved, rejected) and a decision time.
 10. **PRD 7:** a flag's records are a join table (`flag_record`).
-11. **PRD 7:** records are extracted per run (`record.extraction_run_id`) and carry an origin identifier (`source_item_key`, `item_index`).
-12. **PRD 6 and 7:** files are `bytea` with a 5 MiB limit per file. Source files are a separate table (`source_file`), so a version can have several; only data files are stored.
-13. **PRD 5.8 and the New query screen (9.2):** power-based sufficiency is not an option in sprint 1. It becomes "estimated power report (information only)" (`plan.power_assumptions`); as a gate it stays in the backlog (PRD 18).
+11. **PRD 7:** records are extracted per run, after the rules lock, and carry an origin identifier.
+12. **PRD 6, 7 and 10:**
+    - files are `bytea`, at most 5 MiB each; source files are a separate table, and only data files are stored;
+    - a source version copies the settings that change how records are read, and is sealed once with a fingerprint of its file list computed by the database;
+    - only sealed versions are used.
+13. **PRD 5.8 and 9.2:** power-based sufficiency is not an option in sprint 1. It is an "estimated power report (information only)"; as a gate it stays in the backlog.
+14. **PRD 8 (new):** what may be written to a run in each state, as in the table above. After completion: commentary, the Commentator's stage and calls, and artifacts. After failure: only the audit log. A run ends only with no stage running and no call open.
 
-## Tests (316, all passing; 128 new; the 93 from step 1 and the login tests unchanged)
+## Tests (353, all passing; 165 for step 3; the 93 from step 1 and the login tests unchanged)
 
 `git diff main -- tests/test_frozen_sources.py tests/test_controlled_duplicates.py tests/fixtures data tests/test_login.py tests/test_login_throttle.py` is empty.
 
 | File | Tests | What |
 |---|---|---|
-| `tests/test_data_model.py` (new) | 111 | Every rule above, each with an allowed case and a rejected case, on a fresh migrated scratch database |
-| `tests/test_migrations.py` (new) | 11 | One head; every revision has a downgrade; no statement escapes the transaction; migrations inside the package; up, down, up from empty; upgrade at head changes nothing; a failed upgrade changes nothing; two concurrent upgrades (subprocesses held on the lock, then released) both exit 0; the command line; production downgrade refused without the flag; no password printed; `schema_status` |
-| `tests/model_builder.py` (new) | — | Walks a run through the lifecycle in plain SQL, one transaction per step |
-| `tests/conftest.py` | — | `empty_database`, a session `template_database` migrated once, `migrated_database` copied from it (addition 4), and `db`. Tests never touch the database at `DATABASE_URL`; scratch databases are dropped with `WITH (FORCE)`. |
+| `tests/test_data_model.py` (new) | 134 | Every rule above, each with an allowed case and a rejected case, on a fresh migrated scratch database |
+| `tests/test_concurrency.py` (new) | 14 | Two-connection races for the locking protocol (finding 1) |
+| `tests/test_migrations.py` (new) | 11 | One head; downgrades; no statement escapes the transaction; migrations in the package; up, down, up; upgrade at head; failed upgrade; concurrent upgrades; command line; production downgrade refused; no password printed; `schema_status` |
+| `tests/model_builder.py` (new) | — | Walks a run through the lifecycle in plain SQL, one transaction per step. Sources get one sealed version with one file. |
+| `tests/conftest.py` | — | `empty_database`, a session `template_database` migrated once, `migrated_database` copied from it, and `db`. Tests never touch the database at `DATABASE_URL`. |
 | `tests/test_health.py` | 8 (+1) | `schema` on `/health` |
 | `tests/test_skeleton.py` | 33 (+2) | Compose `migrate` ordering; Render pre-deploy on both services |
 | `tests/test_check_runtime_image.py` | 14 (+3) | A missing migration file fails the image check |
 
-### Tests changed (none removed, none weakened)
-- `test_health_without_login_database_up`: it now uses a migrated scratch database instead of the database at `DATABASE_URL`, whose schema is no longer predictable. The exact-equality assertion is kept, extended with `"schema": {"revision": "0001", "at_head": true}`.
-- `test_health_page_in_a_browser`: a scratch database too; it now also checks the schema row.
-- `test_health_reports_database_down_without_crashing`: adds an assertion on `schema`.
-- `tests/test_skeleton.py`: `COMPOSE_ENV` gains `"migrate": {"HYPOCURATE_ENV", "DATABASE_URL"}`. The existing tests now also check that service's variables. The two module docstrings mention step 3.
+### Tests removed or replaced, and why (none weakened)
+First round (before the review):
+- `test_health_without_login_database_up` and `test_health_page_in_a_browser` now use scratch databases; the exact-equality assertion is kept, extended with `schema`. `test_health_reports_database_down_without_crashing` gains a `schema` assertion.
+- `COMPOSE_ENV` in `tests/test_skeleton.py` gains the `migrate` service.
+
+Fix round (finding 6, the single run-level label is removed):
+- `test_a_reported_negative_result_is_kept_distinct` → `test_mixed_results_are_reported_per_category`. The old test asserted the collapsed label "reported_negative", which is the behaviour the review rejected; the new one asserts both categories with their sources.
+- `test_no_source_searched_is_failed_search` → `test_every_selected_source_failing_shows_no_source_searched`. The same situation, asserted per category.
+- `test_records_found_but_insufficient_is_missing_evidence` → `test_records_found_is_its_own_category`. The old test asserted that records found counted as "missing evidence" at run level; records found is now its own category.
+- `test_nothing_found_applies_only_to_insufficient_runs` is removed: it tested when the run-level label appears, and no run-level label exists any more. Coverage is now covered by `test_coverage_comes_from_the_runs_own_dispatch_rows` and `test_a_run_starts_only_with_its_full_source_inventory`.
+- `test_a_failed_source_is_never_missing_evidence` keeps its name; it now asserts the categories instead of a label.
+- `test_run_has_no_stored_nothing_found_column` is renamed `test_no_table_stores_a_run_level_nothing_found`; the assertion is unchanged.
+
+Fix round (finding 3, records only after the rules lock):
+- `test_eligibility_is_decided_only_under_a_locked_plan` → `test_records_and_eligibility_come_after_the_rules_lock`. The old first step (deciding on a record extracted before the lock) can no longer be set up, because such a record is rejected; the new test asserts that rejection. The append-only assertions are unchanged.
+- **Setup only; the assertions are unchanged.** These tests now lock the plan before extracting:
+  - `test_records_are_never_updated_or_deleted`;
+  - `test_a_record_comes_from_a_source_version_its_run_recorded`;
+  - `test_every_record_names_its_origin`;
+  - `test_a_run_decides_only_on_its_own_records`;
+  - `test_a_flag_names_records_of_its_own_run`;
+  - `test_a_model_recalled_record_is_stored_but_never_eligible`, which also registers a model-recall source, because a record's kind must match its version's.
+
+Fix round (other setup changes; the assertions are unchanged unless stated):
+- `test_a_run_source_starts_undecided`: the run is now running, because a queued run's rows cannot be updated at all. The "is final" assertion is unchanged.
+- `test_the_source_version_of_a_run_cannot_change`: the other version is created and sealed through the new path.
+- `test_commentary_comes_after_completion_and_lists_mismatches`: the stage created before completion is finished first, because a run ends only with no stage running. The commentary after completion uses a commentator stage created after completion.
+- `test_source_files_are_data_files_up_to_5_mib`: uses an unsealed version, because files can be added only before sealing. The label-change assertions now expect the sealing messages instead of "append-only".
+- `test_the_validity_checks_cannot_be_waived`: constraint name `check2_definition` → `check2_consistent`.
+- `test_one_result_per_run_and_scope_on_the_right_set`: the per-source-without-source insert now has `n_groups = 1`, so that the source CHECK is the one tested; the new `records_have_a_group` CHECK would otherwise fire first.
+- `test_migrations_stay_inside_the_one_transaction`: now matches whole words in code with comments removed, because a new comment says "committed". It still catches every statement it caught before.
 
 ### Suite results
 ```
 $ .venv/bin/pytest -q                    (Codespace, Python 3.14.2, `docker compose up -d db`)
-316 passed in 34.88s
+353 passed in 46.53s
 $ docker compose run --rm test           (the test image)
-316 passed in 36.48s
-GitHub Actions, commit 10f08c3 (last code change): success; "Run the suite in the test image": 316 passed.
-https://github.com/kelawady/hypocurate/actions/runs/37247693364
-GitHub Actions, commit d276a46:          success; every step passed; the Compose step ran
-                                         hypocurate-migrate-1 before web and worker.
-https://github.com/kelawady/hypocurate/actions/runs/37247347645
+353 passed in 48.24s
+GitHub Actions, commit e253950 (last code change): success; "Run the suite in the test image": 353 passed.
+https://github.com/kelawady/hypocurate/actions/runs/37250072104
 ```
-Local checks beyond the suite:
-- `docker compose up -d`: `migrate` exited 0 ("schema at 0001"), and `/health` returned `{"web":"ok","database":"ok","version":"unknown","schema":{"revision":"0001","at_head":true}}`.
-- The default image (built as Render builds it) passed `check_runtime_image.py` ("runtime image OK"), and `python -m hypocurate.db.migrate current` in it printed `0001`.
+The `ERROR: hypocurate: …` lines in the CI log's database output are the refusals the tests provoke on purpose.
 
-## Deviations from the approved plan
-1. **`CREATE TABLE` statements rendered by autogenerate, then edited by hand.** The plan said "written by hand". The rendered code was reviewed line by line, and the drift and catalog-snapshot tests compare it with the models.
-2. **More database rules than the plan's table listed.** They follow the same principles and each has a test:
-   - run insert needs a dispatched version with a supported domain;
-   - records only while running and before the freeze;
-   - `run_record` fully append-only;
-   - the validity-check definitions as CHECKs;
-   - calibration consistent with the checks;
-   - commentary only after completion;
-   - `run_tag` limited to the lock transaction;
-   - `hypothesis` append-only;
-   - `locked_at` and `frozen_at` equal to the database's time.
-3. **NULL-safe trigger checks (commit `10f08c3`).** While writing the reviewer's question 2, I found trigger conditions of the form `(SELECT …) <> 'x'` and `IF NOT (SELECT …)`. They would let a row through if the lookup returned NULL. A foreign key or CHECK caught every such case, so no test changed outcome. They now use `IS DISTINCT FROM` and `IS NOT TRUE`. The remaining `<>` comparisons are on NOT NULL columns of the row itself. Migration 0001 was edited in place because it has never been applied outside test and local databases. The local development database was downgraded to base and upgraded again.
-4. **Query numbers can skip.** `Q-` numbers come from a PostgreSQL sequence, which does not roll back, so a rejected insert leaves a gap. Numbers stay unique and increasing.
+Local checks beyond the suite:
+- `docker compose up -d`: `migrate` exited 0 ("schema at 0001"), and `/health` reported `"schema":{"revision":"0001","at_head":true}`.
+- The local database has `run_search_coverage` and 40 functions.
+
+## Deviations from the approved plans
+1. **`CREATE TABLE` statements rendered by autogenerate, then edited by hand** (first round). The drift and catalog-snapshot tests compare them with the models.
+2. **More database rules than the first plan listed** (first round): run insertion needs a dispatched version with a supported domain; `run_record` is append-only; `hypothesis` is append-only; `locked_at` and `frozen_at` equal the database's time.
+3. **NULL-safe trigger checks** (first round, commit `10f08c3`).
+4. **Query numbers can skip.** A rejected insert leaves a gap in the `Q-` sequence; numbers stay unique and increasing.
+5. **Fix-round commits grouped by area, not one per finding.** The plan said each finding would be its own commit with its tests. All seven fixes change the same migration file and test files, and splitting them would have needed interactive staging, which is not available here. The fixes are in commit `2fc0fe2`, whose message lists all seven; the race tests are in `0d009b0` and the README in `e253950`.
+6. **The local development database was reset by hand.** The edited migration's downgrade could not run on a database migrated with the earlier text (it drops views by their new names). The local database held no rows (`hypothesis` and `run` both 0), so I ran `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` and migrated again. Production has never been migrated.
+7. **Extra rules beyond the fix plan, each tested:**
+   - a source's key and registration time cannot change, so coverage names stay stable;
+   - a stage result starts as `running`;
+   - the commentary must come from the commentator stage.
 
 ## Open items
-1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and `https://hypocurate-web.onrender.com/health` shows `"schema":{"revision":"0001","at_head":true}`. Render documents `preDeployCommand` for web services and workers; this will be the first time it runs with our Docker services, so the live check is what confirms it. The merge also syncs the Blueprint, because `render.yaml` changed.
-2. **Not enforced by the database; left to later steps' code and tests:**
-   - that every registered source gets a `run_source` row at dispatch (step 9);
-   - that each run has a property, alloy-class and test-condition tag (step 6);
-   - that `verdict` agrees with the pooled p-value and the plan's threshold (step 7; whether "p < 0.05" or "≤" is a statistics decision);
-   - the list of stage names (`stage_result.stage` is checked for format only; step 8).
-3. **Storage estimate** (about 4–6 MB per run, 120–200 runs in 1 GB) is to be measured on the real acceptance run in step 8.
-4. **The test database user must be allowed to create databases.** It is in the local and CI containers. The tests never run against Render.
-5. **Source registration's "access key" (PRD 9.6) has no column.** Secrets stay in environment variables (CLAUDE.md); to decide when a source needs one.
-6. The local development database (Compose volume) is now migrated to `0001`. This affects nothing in the suite.
-7. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (before step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
-
-## Questions for the reviewer
-1. Can any path change a locked plan, a frozen dataset or a stored record without a database error, other than dropping or disabling a trigger as the owner?
-2. Is any trigger condition wrong when a value is NULL (a NULL comparison that lets a row through)?
-3. Does the `run_nothing_found` derivation ever report a failed source as missing evidence?
-4. Are the cost views right for every model-call status, especially `failed` with and without usage?
+1. **Live check after merge** (owner's go-ahead): Render's deploy log shows the pre-deploy command ran on both services, and live `/health` shows `"schema":{"revision":"0001","at_head":true}`. This is the first time a pre-deploy command runs with our Docker services. The merge also syncs the Blueprint.
+2. **Lock contention (step 9).** A long transaction on a run holds its lock; a heartbeat update of the same run waits until it commits. Keep checkpoint transactions short, or move heartbeats to their own table if that proves a problem.
+3. **Step 4** adopts the source-version fingerprint definition above, seals every version before use, and loads the two frozen sources.
+4. **Step 6:** each run has a property, alloy-class and test-condition tag; duplicate handling (the duplicate test shows storage only).
+5. **Step 7 and step 9 requirements** are listed above.
+6. Storage estimate (about 4–6 MB per run, 120–200 runs in 1 GB), to be measured in step 8.
+7. The test database user must be allowed to create databases. The tests never run against Render.
+8. Source registration's "access key" (PRD 9.6) has no column; secrets stay in environment variables.
+9. Carried from step 2, unchanged: the pooled p-value 7.4e-7 against "≈ 8e-7" (step 7); permitted test types and a non-MPEA survivor pair (step 6); the access layer must enforce the approved file list (step 5).
