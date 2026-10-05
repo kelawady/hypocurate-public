@@ -97,6 +97,25 @@ def test_an_invalid_plan_or_one_for_another_version_is_refused_and_logged(engine
     assert q(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid)[0][0] == 0
 
 
+@pytest.mark.parametrize("setting, value", [
+    ("survivor_source_order", ["mpea", "controlled_duplicates"]),  # tamu_fcc chosen but not ordered
+    ("survivor_source_order", []),
+    ("grouping", [{"source": "mpea", "unit": "paper"}]),  # tamu_fcc chosen but not grouped
+    ("grouping", []),
+])
+def test_the_lock_refuses_settings_that_leave_out_a_chosen_source(engine, setting, value):
+    """Review finding 3: the survivor order and the grouping must cover every chosen source, or a
+    survivor or a group would depend on something other than the plan."""
+    rid = pw.dispatched_run(engine, sources=("mpea", "tamu_fcc"))
+    content = reference_plan(pw.version_of(engine, rid))
+    content["rules"][setting] = value
+    with pytest.raises(Refused) as refused:
+        checkpoints.lock_rules(engine, rid, content)
+    assert refused.value.code == "invalid_plan"
+    assert refusals(engine, rid) == [("checkpoint", "lock_rules", "invalid_plan")]
+    assert q(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid)[0][0] == 0
+
+
 def test_the_lock_waits_for_the_run_lock(engine, monkeypatch):
     """The write path takes hc_write_lock first: while another transaction holds the run's lock
     the lock waits, then fails after the lock timeout, and nothing is written."""

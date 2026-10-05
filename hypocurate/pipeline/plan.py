@@ -132,6 +132,8 @@ def _check_template(c: dict) -> None:
         raise PlanError("a rule is out of range")
     order = r["survivor_source_order"]
     units = [g["source"] for g in r["grouping"]]
+    if not order or not units:
+        raise PlanError("the survivor order and the grouping name every chosen source")
     if len(set(order)) != len(order) or len(set(units)) != len(units) or any(set(g) != {"source", "unit"}
                                                                            for g in r["grouping"]):
         raise PlanError("the survivor order and the grouping name each source once")

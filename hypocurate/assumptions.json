@@ -167,6 +167,7 @@
     "tests": [
       "tests/test_adapter_tamu.py::test_one_group_the_dataset",
       "tests/test_adapter_tamu.py::test_the_batch_grouping_unit_is_refused_until_the_owner_decides",
+      "tests/test_checkpoints.py::test_the_lock_refuses_settings_that_leave_out_a_chosen_source",
       "tests/test_eligibility.py::test_grouping_is_read_from_the_locked_plan",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
@@ -2308,14 +2309,17 @@
       "A DOI identifies the cited paper, not where a record was extracted: a compilation and a copied extract can both carry it. Preferring records extracted directly from the original paper would need explicit extraction-origin metadata, which does not exist.",
       "The step 1 answer file, its builder and README carry this wording since step 6 (owner's approval, 2026-10-05).",
       "Rule 1 can only decide a possible duplicate: paired records otherwise cite the same paper.",
-      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants')."
+      "A fixed rule, not a plan default (owner, 2026-10-06; entry 'primary_set_invariants').",
+      "Step 6 review, finding 3 (2026-10-06): the lock refuses a survivor order or a grouping that leaves out a chosen source, and the final tie-breaker is the record's stable identity (source, origin key, item index), never a database id."
     ],
     "tests": [
+      "tests/test_checkpoints.py::test_the_lock_refuses_settings_that_leave_out_a_chosen_source",
       "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
       "tests/test_eligibility.py::test_no_plan_can_put_these_records_in_the_primary_set",
       "tests/test_eligibility.py::test_survivor_rule_one_a_source_other_than_mpea_survives_when_it_alone_carries_the_doi",
       "tests/test_eligibility.py::test_survivor_rule_three_the_lowest_row_within_one_source",
-      "tests/test_eligibility.py::test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order"
+      "tests/test_eligibility.py::test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order",
+      "tests/test_eligibility.py::test_the_survivor_does_not_depend_on_database_ids_or_insertion_order"
     ]
   },
   {

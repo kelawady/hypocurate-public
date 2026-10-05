@@ -220,9 +220,12 @@ def flag_rule(flag: Mapping, st: Settings) -> str | None:
 
 def survivor_key(rec: Mapping, st: Settings) -> tuple:
     """Register 'duplicate_survivor_rule': 1) the record that carries the original paper
-    reference (DOI); 2) the first source in the plan's order; 3) the lowest row."""
+    reference (DOI); 2) the first source in the plan's order; 3) the lowest row. The final
+    tie-breaker is the record's stable identity (source, origin key, item index), never a database
+    id (step 6 review, finding 3); the lock refuses a plan whose order leaves out a chosen source."""
     order = st.survivor_order.index(rec["source"]) if rec["source"] in st.survivor_order else len(st.survivor_order)
-    return (0 if rec["has_doi"] else 1, order, rec["row"] if rec["row"] is not None else math.inf, rec["id"])
+    return (0 if rec["has_doi"] else 1, order, rec["row"] if rec["row"] is not None else math.inf,
+            rec["source"], rec["origin"], rec["item_index"])
 
 
 # --- A whole set ---------------------------------------------------------------------------

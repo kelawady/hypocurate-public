@@ -131,13 +131,14 @@ def test_record_conditions_carry_statuses_conditions_and_hashed_identities(engin
             dict(r=world.run))}
     assert [r["id"] for r in got] == sorted(stored)
     for r in got:
-        assert set(r) == {"id", "source", "row", "kind", "fingerprint", "has_doi", "paper", "batch", "composition",
-                          "status", "values", "categories"}
+        assert set(r) == {"id", "source", "row", "kind", "version_fingerprint", "origin", "item_index", "fingerprint",
+                          "has_doi", "paper", "batch", "composition", "status", "values", "categories"}
         assert len(r["fingerprint"]) == 64
         s = stored[r["id"]]
         assert set(r["status"]) == set(HARMONIZED_FIELDS)
         assert set(r["values"]) == {"grain_size", "test_temperature"} and not set(r["values"]) & OUTCOME_FIELDS
         assert r["row"] == int(s.source_item_key.rsplit(":", 1)[1])
+        assert (r["origin"], r["item_index"]) == (s.source_item_key, 0)
         doi = s.paper_doi if s.paper_doi and s.paper_doi.strip() else None
         assert r["has_doi"] == (doi is not None)
         assert r["paper"] == (identity_hash(doi_group_key(doi)) if doi else None)

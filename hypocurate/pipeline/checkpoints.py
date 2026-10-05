@@ -52,6 +52,16 @@ def lock_rules(engine: Engine, run_id: int, content: Mapping[str, Any]) -> str:
         version = conn.execute(text("SELECT hypothesis_version_id FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
         if plan["hypothesis_version"] != version:
             raise Refused("lock_rules", "invalid_plan", "the plan names another hypothesis version")
+        # Review finding 3: every chosen source has a survivor priority and a grouping unit.
+        chosen = set(conn.execute(text("SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id "
+                                       "WHERE rs.run_id = :r AND rs.source_version_id IS NOT NULL"),
+                                  dict(r=run_id)).scalars())
+        rules = plan["rules"]
+        for name, covered in (("survivor_source_order", set(rules["survivor_source_order"])),
+                              ("grouping", {g["source"] for g in rules["grouping"]})):
+            if chosen - covered:
+                raise Refused("lock_rules", "invalid_plan",
+                              f"{name} leaves out chosen sources: {', '.join(sorted(chosen - covered))}")
         ids = []
         for kind, value in tags.items():
             tid = conn.execute(text("SELECT id FROM tag_value WHERE kind = :k AND value = :v AND status = 'approved'"),

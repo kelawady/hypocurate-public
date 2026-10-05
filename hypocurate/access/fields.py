@@ -297,6 +297,9 @@ def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
                    "paper_reference": r.paper_reference, "paper_doi": r.paper_doi}
         out.append({
             "id": r.id, "source": r.source, "row": int(row.group(1)) if row else None, "kind": r.kind,
+            # Stable identity (step 6 review, findings 3 and 5): for tie-breaks and the freeze
+            # fingerprint, never a database id. The origin key carries no value.
+            "version_fingerprint": r.version_fingerprint, "origin": r.source_item_key, "item_index": r.item_index,
             # A hash of the stored record (for the freeze fingerprint): it carries no value.
             "fingerprint": hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":"),
                                                      ensure_ascii=False).encode("utf-8")).hexdigest(),

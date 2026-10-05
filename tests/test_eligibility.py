@@ -35,7 +35,9 @@ def cond(i, source="mpea", comp=None, gs=10.0, temp=25.0, test_type="tension", m
                "microstructure": "converted" if micro else "not_reported",
                "phase_class": "converted" if phase else "not_reported"})
     st.update(status or {})
-    return {"id": i, "source": source, "row": i if row is None else row, "kind": kind, "fingerprint": "f" * 64,
+    row = i if row is None else row
+    return {"id": i, "source": source, "row": row, "origin": f"{source}.csv:row:{row}", "item_index": 0,
+            "version_fingerprint": "v" * 64, "kind": kind, "fingerprint": "f" * 64,
             "has_doi": doi, "paper": paper if doi else None, "batch": batch,
             "composition": comp if comp is not None else {"Co": 50.0, "Ni": 50.0}, "status": st,
             "values": {"grain_size": gs, "test_temperature": temp},
@@ -146,6 +148,25 @@ def test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order():
     reordered = copy.deepcopy(PLAN)
     reordered["rules"]["survivor_source_order"] = ["controlled_duplicates", "mpea", "tamu_fcc"]
     assert decide(records, [flag("exact_duplicate", "identical values", 1, 2)], reordered)[1] == "in_scope"
+
+
+@pytest.mark.parametrize("order", [["tamu_fcc"], ["mpea", "controlled_duplicates", "tamu_fcc"]])
+def test_the_survivor_does_not_depend_on_database_ids_or_insertion_order(order):
+    """Review finding 3: the same records with their database ids exchanged, and listed in another
+    order, keep the same survivor. The final tie-breaker is stable identity (source, origin key,
+    item index), never the database id; an incomplete source order is refused at the lock
+    (test_checkpoints)."""
+    plan = copy.deepcopy(PLAN)
+    plan["rules"]["survivor_source_order"] = order
+    survivors = set()
+    for a_id, b_id, reverse in ((1, 2, False), (2, 1, False), (1, 2, True), (2, 1, True)):
+        a = cond(a_id, "mpea", gs=10.0, row=7)
+        b = cond(b_id, "controlled_duplicates", gs=10.0, row=7)
+        records = [b, a] if reverse else [a, b]
+        got = decide(records + [cond(9, "mpea", gs=40.0, row=8)],
+                     [flag("exact_duplicate", "identical values", *sorted([a_id, b_id]))], plan)
+        survivors.add(next(r["source"] for r in (a, b) if got[r["id"]] == "in_scope"))
+    assert len(survivors) == 1
 
 
 def test_survivor_rule_three_the_lowest_row_within_one_source():

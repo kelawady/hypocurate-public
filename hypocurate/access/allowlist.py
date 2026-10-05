@@ -93,8 +93,8 @@ FIELDS = MappingProxyType({
                            "temperature; counts by test type and by phase. Never a row-level value, an "
                            "outcome value or a statistic derived from outcomes.",
     "gap_report": "The Analyst's gap report: the output of each Analyst stage of the run.",
-    "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, a hash of the "
-                         "stored record, whether it carries a DOI, identities as hashes (paper from the DOI, "
+    "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, its stable "
+                         "identity (source-version fingerprint, origin key, item index), a hash of the stored record, whether it carries a DOI, identities as hashes (paper from the DOI, "
                          "batch), composition, each "
                          "field's status, grain size and test temperature, and the category values from their "
                          "vocabularies. No outcome value, no value as reported, no free text.",
