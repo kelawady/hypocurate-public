@@ -55,11 +55,26 @@ def formula_to_atomic_percent(formula: str) -> tuple[dict[str, float] | None, st
         if symbol not in ELEMENTS:
             return None, f"unknown element symbol {symbol!r} in {formula!r}"
         a = float(amount) if amount else 1.0
+        if not math.isfinite(a):
+            return None, f"amount {amount!r} of {symbol} is too large to represent in {formula!r}"
         if a <= 0:
+            if any(c in "123456789" for c in amount):
+                return None, f"amount {amount!r} of {symbol} is too small to represent in {formula!r}"
             return None, f"amount {amount!r} of {symbol} is not positive in {formula!r}"
         amounts[symbol] = amounts.get(symbol, 0.0) + a
-    total = sum(amounts.values())
-    return {e: 100.0 * a / total for e, a in amounts.items()}, None
+    # Numerically safe (step 4 review, finding 5): scale by the largest amount first, so
+    # neither the sum nor 100 * a overflows; refuse a ratio too extreme to represent.
+    largest = max(amounts.values())
+    if not math.isfinite(largest):
+        return None, f"amounts in {formula!r} are too large to represent"
+    scaled = {e: a / largest for e, a in amounts.items()}
+    if any(s == 0.0 for s in scaled.values()):
+        return None, f"the ratio of amounts in {formula!r} is too extreme to represent"
+    total = math.fsum(scaled.values())
+    composition = {e: 100.0 * s / total for e, s in scaled.items()}
+    if not all(math.isfinite(v) and v > 0 for v in composition.values()):
+        return None, f"the composition of {formula!r} is not a finite positive number for every element"
+    return composition, None
 
 
 def percent_columns_to_atomic_percent(columns: dict[str, float | None]
@@ -73,11 +88,14 @@ def percent_columns_to_atomic_percent(columns: dict[str, float | None]
     blank = [e for e, v in columns.items() if v is None]
     if blank:
         return None, f"blank percentage for {', '.join(blank)}"
+    infinite = [e for e, v in columns.items() if not math.isfinite(v)]
+    if infinite:
+        return None, f"percentage not a finite number for {', '.join(infinite)}"
     negative = [e for e, v in columns.items() if v < 0]
     if negative:
         return None, f"negative percentage for {', '.join(negative)}"
-    total = sum(columns.values())
-    if abs(total - 100.0) > PERCENT_SUM_TOLERANCE:
+    total = math.fsum(columns.values())
+    if not math.isfinite(total) or abs(total - 100.0) > PERCENT_SUM_TOLERANCE:
         return None, f"percentages sum to {total:g}, not 100"
     return {e: float(v) for e, v in columns.items() if v > 0}, None
 
