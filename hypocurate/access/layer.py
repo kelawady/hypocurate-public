@@ -56,7 +56,7 @@ from sqlalchemy import Connection, Engine, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError
 
-from hypocurate.access.allowlist import FIELDS, ROLES, STAGES, allowed
+from hypocurate.access.allowlist import ALL_ROLES, FIELDS, STAGES, allowed
 from hypocurate.access.context import AccessContext
 from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.fields import READERS, Refused
@@ -70,7 +70,8 @@ LOG = logging.getLogger("hypocurate.access")
 
 # Fixed codes and their fixed reasons: nothing a caller passes is copied into a reason.
 DENIALS = {
-    "unknown_role": "the role is not one of the five roles",
+    "unknown_role": "the role is not one of the five agent roles or the two code roles",
+    "not_a_code_role": "only the code roles Inclusion and Checks are bound without an agent setting",
     "unknown_stage": "the stage is not one of the access stages",
     "stage_mismatch": "the run is no longer at the stage this access was bound to",
     "not_on_list": "the field is not on the role's list at the run's stage",
@@ -108,7 +109,7 @@ def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | Non
         d["actual_stage"] = actual
     if ctx.source_key is not None:
         d["source"] = bounded_source(ctx.source_key)
-    for name, raw, valid in (("role", ctx.role, ROLES), ("stage", ctx.stage, STAGES)):
+    for name, raw, valid in (("role", ctx.role, ALL_ROLES), ("stage", ctx.stage, STAGES)):
         if bounded(raw, valid) == "invalid" and raw != "invalid":
             d[f"given_{name}_length"] = len(raw) if isinstance(raw, str) else -1
     d.update(extra)
@@ -116,7 +117,7 @@ def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | Non
 
 
 def _row(ctx: AccessContext, run_id: int | None, function: str, allowed_: bool, detail: dict) -> dict:
-    return dict(r=run_id, role=bounded(ctx.role, ROLES), stage=bounded(ctx.stage, STAGES),
+    return dict(r=run_id, role=bounded(ctx.role, ALL_ROLES), stage=bounded(ctx.stage, STAGES),
                 field=bounded(function, FUNCTIONS), allowed=allowed_, detail=detail)
 
 
@@ -138,7 +139,7 @@ def log_failure(engine: Engine, ctx: AccessContext, function: str, code: str, ru
 def keep_in_process_log(ctx: AccessContext, function: str, code: str, original: BaseException | None) -> None:
     """The original error of an access failure, with its traceback, in the process log only.
     It may hold values a role must not see, so it never travels with the error raised."""
-    LOG.error(json.dumps({"access_failure": {"run": ctx.run_id, "role": bounded(ctx.role, ROLES),
+    LOG.error(json.dumps({"access_failure": {"run": ctx.run_id, "role": bounded(ctx.role, ALL_ROLES),
                                              "function": bounded(function, FUNCTIONS), "code": code}},
                          sort_keys=True),
               exc_info=(type(original), original, original.__traceback__) if original is not None else None)
@@ -174,7 +175,7 @@ class Access:
 
     def __repr__(self) -> str:
         c = self._context
-        return f"Access(run={c.run_id}, role={bounded(c.role, ROLES)!r}, stage={bounded(c.stage, STAGES)!r})"
+        return f"Access(run={c.run_id}, role={bounded(c.role, ALL_ROLES)!r}, stage={bounded(c.stage, STAGES)!r})"
 
     def get(self, field: str) -> Any:
         """One field, or AccessDenied / AccessFailed (already logged)."""
@@ -205,14 +206,14 @@ class Access:
             # the original, which stays in the process log only (re-check, finding 5).
             field, code, extra = failure
             log_failure(engine, ctx, field, code, **extra)
-            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), field, code)
+            raise AccessFailed(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), field, code)
         kind = outcome[0]
         if kind == "unknown_run":
             log_failure(engine, ctx, name, "unknown_run", run_known=False)
-            raise AccessFailed(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), name, "unknown_run")
+            raise AccessFailed(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), name, "unknown_run")
         if kind == "denied":
             field, code = outcome[1]
-            raise AccessDenied(bounded(ctx.role, ROLES), bounded(ctx.stage, STAGES), bounded(field, FUNCTIONS),
+            raise AccessDenied(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), bounded(field, FUNCTIONS),
                                code, DENIALS[code])
         return outcome[1]
 
@@ -223,7 +224,7 @@ class Access:
         status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=ctx.run_id)).scalar_one()
         actual = actual_stage(conn, ctx.run_id, status)
         if not fields:  # role_input with nothing on the list: never an empty input
-            code = ("unknown_role" if ctx.role not in ROLES else "unknown_stage" if ctx.stage not in STAGES
+            code = ("unknown_role" if ctx.role not in ALL_ROLES else "unknown_stage" if ctx.stage not in STAGES
                     else "empty_list")
             conn.execute(_AUDIT, _row(ctx, ctx.run_id, "role_input", False, _detail(ctx, "denied", code, actual)))
             return ("denied", ("role_input", code))
@@ -253,7 +254,7 @@ class Access:
 
 
 def _policy(ctx: AccessContext, field: str, actual: str) -> str | None:
-    if ctx.role not in ROLES:
+    if ctx.role not in ALL_ROLES:
         return "unknown_role"
     if ctx.stage not in STAGES:
         return "unknown_stage"

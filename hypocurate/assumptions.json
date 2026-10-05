@@ -3684,9 +3684,9 @@
     "key": "code_vocabularies",
     "name": "Vocabularies of codes our own code writes",
     "state": "in_force",
-    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 must write these codes. Adding one is a register change needing the owner's approval.",
+    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys, and the codes in the locked plan's rules (source keys, grouping units, value statuses, profile names, single phase) reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 write these codes. Adding one is a register change needing the owner's approval.",
     "value": {
-      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys",
+      "text": "flag kinds, flag categories, eligibility rules, sensitivity keys, plan rule codes",
       "unit": null
     },
     "category": "data_handling",
@@ -3728,16 +3728,20 @@
             "outside scope",
             "physically impossible",
             "scope not confirmed",
+            "several candidates",
             "within tolerance"
           ]
         },
         {
           "ref": "python:hypocurate.access.vocabulary:ELIGIBILITY_RULES",
           "equals": [
+            "conflict_unresolved",
             "duplicate_counted_once",
             "excluded_by_rule",
+            "identity_unresolved",
             "in_scope",
             "invalid_value",
+            "missing_value",
             "model_recalled",
             "out_of_scope",
             "scope_not_confirmed",
@@ -3747,6 +3751,8 @@
         {
           "ref": "python:hypocurate.access.vocabulary:SENSITIVITY_KEYS",
           "equals": [
+            "conflicts_survivor_value",
+            "no_exclusions",
             "possible_duplicates_separate",
             "removal_after_lock",
             "same_alloy_1_at_pct",
@@ -3755,11 +3761,55 @@
             "source_only_assignments",
             "tension_and_compression"
           ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SOURCE_KEYS",
+          "equals": [
+            "controlled_duplicates",
+            "mpea",
+            "tamu_fcc"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:GROUPING_UNITS",
+          "equals": [
+            "batch",
+            "dataset",
+            "paper"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:VALUE_STATUSES",
+          "equals": [
+            "assigned_by_decision",
+            "assigned_from_source",
+            "converted"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:PROFILE_NAMES",
+          "equals": [
+            "grain_size_strengthening"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SINGLE_PHASE",
+          "equals": [
+            "not_required",
+            "required"
+          ]
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "flag categories without 'several candidates'; eligibility rules without 'missing_value', 'identity_unresolved', 'conflict_unresolved'; sensitivity keys without 'no_exclusions', 'conflicts_survivor_value'; no plan rule codes",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 5. Step 6 additions approved by the owner on 2026-10-05 (planning, questions 3, 5, 6, 9 and decision C)."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_layer.py::test_flags_kind_has_no_numbers",

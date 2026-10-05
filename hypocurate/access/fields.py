@@ -17,6 +17,7 @@ rows of the run: after the freeze the Analyst and the Commentator may see outcom
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -26,11 +27,12 @@ from typing import Any, Callable, Iterable, Mapping
 from sqlalchemy import Connection, text
 
 from hypocurate.access import vocabulary as vocab
-from hypocurate.access.allowlist import (CATEGORY_FIELDS, CONDITION_COUNT_FIELDS, CONDITION_RANGE_FIELDS,
-                                         PLAN_SCHEMA, POWER_SCHEMA, SOURCE_META_FIELDS)
+from hypocurate.access.allowlist import (BATCH_COLUMNS, CATEGORY_FIELDS, CONDITION_COUNT_FIELDS,
+                                         CONDITION_RANGE_FIELDS, OUTCOME_FIELDS, PLAN_SCHEMA, POWER_SCHEMA,
+                                         SOURCE_META_FIELDS)
 from hypocurate.access.context import AccessContext as Context
 from hypocurate.sources import adapters
-from hypocurate.sources.normalize import alloy_label, same_alloy_key
+from hypocurate.sources.normalize import alloy_label, doi_group_key, identity_hash, same_alloy_key
 from hypocurate.sources.record import HARMONIZED_FIELDS, STATUSES, VALUE_STATUSES, AdapterError
 from hypocurate.sources.versions import SOURCES, UnsealedVersion, load_sealed_version
 
@@ -271,6 +273,36 @@ def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
+_ROW = re.compile(r":row:(\d+)$")
+# The non-outcome measured values Inclusion needs (scope and the grain-size rules).
+CONDITION_NUMBERS = ("grain_size", "test_temperature")
+
+
+def record_conditions(conn: Connection, ctx: Context) -> list[dict]:
+    """For Inclusion (code; step 6). No outcome value: outcome fields give their status only.
+    No value as reported and no free text: categories through their vocabularies, the paper
+    (from the DOI) and the batch as hashes, the row number from the origin key."""
+    out = []
+    for r in _stored_records(conn, ctx):
+        h = r.harmonized if isinstance(r.harmonized, Mapping) else {}
+        reported = r.reported if isinstance(r.reported, Mapping) else {}
+        row = _ROW.search(r.source_item_key or "")
+        batch_column = BATCH_COLUMNS.get(r.source)
+        batch = reported.get(batch_column, {}).get("text") if batch_column else None
+        doi = r.paper_doi if isinstance(r.paper_doi, str) and r.paper_doi.strip() else None
+        out.append({
+            "id": r.id, "source": r.source, "row": int(row.group(1)) if row else None, "kind": r.kind,
+            "has_doi": doi is not None,
+            "paper": identity_hash(doi_group_key(doi)) if doi else None,
+            "batch": identity_hash(batch) if isinstance(batch, str) and batch.strip() else None,
+            "composition": _composition(h.get("composition")),
+            "status": {f: _status(h.get(f)) for f in HARMONIZED_FIELDS},
+            "values": {f: _number(h.get(f)) for f in CONDITION_NUMBERS if f not in OUTCOME_FIELDS},
+            "categories": {f: _category(f, h.get(f)) for f in CATEGORY_FIELDS},
+        })
+    return out
+
+
 def _flag_records(conn: Connection, ctx: Context) -> dict[int, list[int]]:
     out: dict[int, list[int]] = {}
     for flag_id, record_id in _rows(conn, "SELECT fr.flag_id, fr.record_id FROM flag_record fr "
@@ -434,5 +466,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "plan": plan, "records_full": records_full, "decisions": decisions, "flags_full": flags_full,
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
-    "gap_report": gap_report, "outcome": outcome,
+    "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions,
 }

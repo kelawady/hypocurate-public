@@ -36,10 +36,16 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Mapping
 
-from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_KINDS, PHASE_CLASSES,
-                                          PROCESSING_METHODS, SENSITIVITY_KEYS, TEMPERATURE_BANDS, TEST_TYPES)
+from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_KINDS, GROUPING_UNITS,
+                                          PHASE_CLASSES, PROCESSING_METHODS, PROFILE_NAMES, SENSITIVITY_KEYS,
+                                          SINGLE_PHASE, SOURCE_KEYS, TEMPERATURE_BANDS, TEST_TYPES, VALUE_STATUSES)
 
 ROLES = ("planner", "curator", "critic", "analyst", "commentator")
+# The code roles of PRD 4 (step 6, owner 2026-10-05): Inclusion and Checks are code, not
+# agents. They read through access objects too, bound by `dispatch.bind_code`, so their reads
+# are logged. No agent setting can bind as one of them.
+CODE_ROLES = ("inclusion", "checks")
+ALL_ROLES = ROLES + CODE_ROLES
 
 # none: queued or failed. before_lock: running, no plan. curation: plan locked, no dataset
 # frozen and no 'no dataset frozen' record. analysis: dataset frozen, running.
@@ -86,6 +92,10 @@ FIELDS = MappingProxyType({
                            "temperature; counts by test type and by phase. Never a row-level value, an "
                            "outcome value or a statistic derived from outcomes.",
     "gap_report": "The Analyst's gap report: the output of each Analyst stage of the run.",
+    "record_conditions": "Per stored record, for Inclusion (code): id, source, row number, kind, whether it "
+                         "carries a DOI, identities as hashes (paper from the DOI, batch), composition, each "
+                         "field's status, grain size and test temperature, and the category values from their "
+                         "vocabularies. No outcome value, no value as reported, no free text.",
     "outcome": "The run's status, outcome, verdict and exploratory label.",
 })
 
@@ -119,9 +129,20 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
 })
 
 
+# The code roles' lists (owner, 2026-10-05). Checks sees all values (PRD 4: it compares them);
+# Inclusion is blind: it receives no outcome value, so no eligibility decision can depend on a
+# record's outcome directly or on its position relative to the tested relationship. It acts on
+# the flags Checks raised, by kind and category.
+CODE_ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
+    "inclusion": MappingProxyType({"curation": frozenset({"plan", "record_conditions", "flags_kind"})}),
+    "checks": MappingProxyType({"curation": frozenset({"plan", "records_full"})}),
+})
+
+
 def allowed(role: str, stage: str) -> frozenset[str]:
     """The fields `role` may receive at `stage`; empty for any role or stage not listed."""
-    return ALLOWED.get(role, {}).get(stage, frozenset())
+    lists = ALLOWED.get(role) or CODE_ALLOWED.get(role) or {}
+    return lists.get(stage, frozenset())
 
 
 # The fields that can be the outcome of a plan. The Planner does not know which one its
@@ -144,6 +165,10 @@ CONDITION_COUNT_FIELDS = ("test_type", "phase_class")
 # dispatch) never reaches a role through this field.
 SOURCE_META_FIELDS = ("key", "name", "source_type", "data_kind", "licence", "grouping_unit",
                       "fields_available")
+
+# record_conditions: the one column as reported that Inclusion receives, per source, as a hash:
+# the batch, for the sensitivity analysis that groups by batch (six batches for Texas A&M).
+BATCH_COLUMNS = MappingProxyType({"tamu_fcc": "Iteration"})
 
 # The plan, projected recursively (owner, 2026-10-05: defined in step 5; step 6's plan model
 # must follow it). A schema is a dict of named keys; a leaf is "number", "integer",
@@ -179,6 +204,14 @@ PLAN_SCHEMA = MappingProxyType({
     "eligibility_rules": ("list", {"flag_kind": FLAG_KINDS, "rule": ELIGIBILITY_RULES}),
     "verdict_statement": VERDICT_STATEMENTS,
     "sensitivity_analyses": ("list", SENSITIVITY_KEYS),
+    # Step 6 (owner, 2026-10-05): every setting that affects which records are eligible or how
+    # they are grouped is a value of the locked plan, and the domain profile it came from.
+    "profile": {"name": PROFILE_NAMES, "version": "integer"},
+    "rules": {"same_alloy_decimals": "integer", "duplicate_tolerance": "number",
+              "survivor_source_order": ("list", SOURCE_KEYS), "min_grain_sizes": "integer",
+              "room_temperature_min": "number", "room_temperature_max": "number", "single_phase": SINGLE_PHASE,
+              "accepted_value_statuses": ("list", VALUE_STATUSES),
+              "grouping": ("list", {"source": SOURCE_KEYS, "unit": GROUPING_UNITS})},
 })
 POWER_SCHEMA = MappingProxyType({"method": POWER_METHODS, "within_paper_similarity": "number",
                                  "smallest_effect": "number", "scatter": "number"})

@@ -8,6 +8,7 @@ the job of the code checks under the locked plan (step 6).
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 
@@ -153,3 +154,12 @@ def doi_group_key(doi: str) -> str | None:
         key = key[match.end():]
     key = key.strip().translate(_ASCII_UPPER)
     return f"doi:{key}" if key else None
+
+
+def identity_hash(key: str | None) -> str | None:
+    """A paper or batch identity as an opaque hash (step 6): equal keys give equal hashes, and
+    the text of the key (a DOI, a batch label as reported) is not carried along. Used where
+    code compares identities without receiving the text (Inclusion's `record_conditions`)."""
+    if key is None:
+        return None
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
