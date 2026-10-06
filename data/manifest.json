@@ -27,6 +27,18 @@
           "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
           "bytes": 11357
         }
+      ],
+      "documentation": [
+        {
+          "path": "data/sources/mpea/documentation/Borg2020_PMC7722748.xml",
+          "role": "documentation: the dataset paper's full text (JATS XML, Europe PMC); frozen for later work, not curated in sprint 1 (a compilation grouped by paper)",
+          "origin_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC7722748/fullTextXML",
+          "pmcid": "PMC7722748",
+          "licence": "CC-BY-4.0 (the article; stated in its <license> element)",
+          "retrieved": "2026-10-06",
+          "sha256": "ef21ae6085f5444b534ee2ef7137542f63e3b80fc3940219a3960b642f5a1550",
+          "bytes": 63254
+        }
       ]
     },
     "tamu_fcc": {
@@ -72,6 +84,24 @@
           "origin_url": "https://raw.githubusercontent.com/ArroyaveLab/2026-mulukutla-hall-petch/11390ee516c1a17cacdde318b40d5d6889d4007f/LICENSE",
           "sha256": "917035f0704dbb979bd157a7f8d814f5e7c32d28aedba41986443298dea5b98b",
           "bytes": 1119
+        }
+      ],
+      "documentation": [
+        {
+          "path": "data/sources/tamu_fcc/documentation/main.tex",
+          "role": "documentation: the paper's main text (LaTeX), read by the Curator (step 8a)",
+          "archive_member": "paper/main.tex",
+          "origin_url": "https://raw.githubusercontent.com/ArroyaveLab/2026-mulukutla-hall-petch/11390ee516c1a17cacdde318b40d5d6889d4007f/paper/main.tex",
+          "sha256": "81fb864c1463573adbfc2272c79287c2c71649e7a6e3024ca927bb221836038e",
+          "bytes": 76524
+        },
+        {
+          "path": "data/sources/tamu_fcc/documentation/supplementary.tex",
+          "role": "documentation: the paper's supplementary text (LaTeX), read by the Curator (step 8a)",
+          "archive_member": "paper/supplementary.tex",
+          "origin_url": "https://raw.githubusercontent.com/ArroyaveLab/2026-mulukutla-hall-petch/11390ee516c1a17cacdde318b40d5d6889d4007f/paper/supplementary.tex",
+          "sha256": "8dfe9731af618937c6686da5d63b8e0decc220c591e1831060cd10d447461317",
+          "bytes": 65359
         }
       ]
     }

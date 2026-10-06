@@ -9,7 +9,10 @@ the target's JSON result. The child:
    `XDG_CACHE_HOME` at it, for libraries that need a cache or temporary files (the
    plotting library in step 7); its working directory is the scratch directory;
 2. removes the repository root from its import path (the `hypocurate` package is already
-   imported and keeps its own path), and imports the modules in `PRELOADED`;
+   imported and keeps its own path) and every import-path entry that does not exist (owner,
+   2026-10-06: otherwise each later import probes them, for example the standard library's zip,
+   and the guard refuses those probes, which would fill the audit log with refusals that are not
+   mistakes), and imports the modules in `PRELOADED`;
 3. installs the guard;
 4. imports the target, which must be inside the `hypocurate` package, calls it with the
    payload, writes the result to its standard output and exits.
@@ -117,6 +120,11 @@ def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = N
     return answer["result"]
 
 
+def existing_path_entries(paths: list[str]) -> list[str]:
+    """The import-path entries that exist, in order (step 8a, owner 2026-10-06)."""
+    return [p for p in paths if os.path.exists(p)]
+
+
 def _main() -> int:
     request = json.loads(sys.stdin.read())
     scratch = request["scratch"]
@@ -126,6 +134,7 @@ def _main() -> int:
     os.chdir(scratch)
     package_parent = os.path.dirname(file_guard.PACKAGE_DIR)
     sys.path[:] = [p for p in sys.path if p not in ("", ".") and os.path.realpath(p) != package_parent]
+    sys.path[:] = existing_path_entries(sys.path)
     sys.path_importer_cache.clear()
     for name in PRELOADED:
         importlib.import_module(name)

@@ -23,6 +23,9 @@ dependencies = [
     # Step 7: the statistics module (numpy linear algebra, scipy t and binomial distributions).
     "numpy>=2.0",
     "scipy>=1.14",
+    # Step 8: the agents (DSPy modules; model calls through litellm).
+    "dspy>=3.4",
+    "litellm>=1.104",
 ]
 
 [project.optional-dependencies]

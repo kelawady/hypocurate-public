@@ -147,6 +147,20 @@ def _role_input(action: dict) -> str:
     return out
 
 
+def _agent_libraries(_: Any) -> str:
+    """Loads the model-call libraries the way the agents do (step 8a)."""
+    from hypocurate.pipeline.agents import libraries
+    libraries.load()
+    return "ok"
+
+
+def _dotenv(action: dict) -> str:
+    """A library reading a `.env` file (step 8a): what the tripwire must still catch."""
+    import dotenv
+    dotenv.load_dotenv(action["path"])
+    return "ok"
+
+
 ACTIONS: dict[str, Callable[[dict], str]] = {
     "read": lambda a: _read(a["path"], a.get("how", "open")),
     "list": lambda a: _list(a["path"], a.get("how", "listdir")),
@@ -156,6 +170,7 @@ ACTIONS: dict[str, Callable[[dict], str]] = {
     "ctypes_from_address": _ctypes_from_address,
     "register": _register,
     "role_input": _role_input, "sleep": _sleep,
+    "agent_libraries": _agent_libraries, "dotenv": _dotenv,
 }
 
 
