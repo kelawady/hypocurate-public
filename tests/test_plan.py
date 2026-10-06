@@ -19,7 +19,9 @@ def test_the_default_plan_is_valid_and_is_its_own_projection():
     assert validate(content) == content
     assert project(content, PLAN_SCHEMA) == content
     assert set(content) == set(PLAN_SCHEMA) == set(pl.PARTS)
-    assert set(content["rules"]) == set(PLAN_SCHEMA["rules"]) == set(pl.RULES)
+    # Step 8a (owner, 2026-10-06, Q4): the schema also allows the optional temperature range, which a
+    # room-temperature plan (the default) does not name.
+    assert set(content["rules"]) == set(pl.RULES) == set(PLAN_SCHEMA["rules"]) - {pl.RANGE_RULE}
 
 
 def test_the_reference_plan_is_the_default_plan_under_the_owners_decisions():
@@ -101,7 +103,8 @@ def test_the_plan_choices_that_remain():
     (lambda c: c["rules"].update(survivor_source_order=["mpea", "elsewhere"]), "outside PLAN_SCHEMA"),
     (lambda c: c.pop("rules"), "lacks rules"),
     (lambda c: c["rules"].pop("grouping"), "rules are exactly"),
-    (lambda c: c["scope"].update(temperature_band=["cryogenic"]), "room-temperature band only"),
+    # Step 8a (owner, 2026-10-06, Q4): another band is allowed with its temperature range; without it, refused.
+    (lambda c: c["scope"].update(temperature_band=["cryogenic"]), "temperature range"),
     (lambda c: c["rules"].update(min_grain_sizes=1), "out of range"),
     (lambda c: c["rules"].update(room_temperature_min=30.0), "out of range"),
     (lambda c: c["rules"].update(survivor_source_order=["mpea", "mpea"]), "each source once"),

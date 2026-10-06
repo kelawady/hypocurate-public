@@ -240,7 +240,10 @@ PLAN_SCHEMA = MappingProxyType({
               "survivor_source_order": ("list", SOURCE_KEYS), "min_grain_sizes": "integer",
               "room_temperature_min": "number", "room_temperature_max": "number", "single_phase": SINGLE_PHASE,
               "accepted_value_statuses": ("list", VALUE_STATUSES),
-              "grouping": ("list", {"source": SOURCE_KEYS, "unit": GROUPING_UNITS})},
+              "grouping": ("list", {"source": SOURCE_KEYS, "unit": GROUPING_UNITS}),
+              # Step 8a (owner, 2026-10-06, Q4): the claim's temperature range, exactly when the plan's
+              # band is not room temperature.
+              "temperature_range": {"min": "number", "max": "number"}},
     # Step 7 (owner, 2026-10-05): the calibration is fixed at the rules lock, both methods.
     "calibration": {"methods": ("list", CALIBRATION_METHODS), "n_simulations": "integer", "scatter": "number",
                     "shift": "number", "estimation": ESTIMATION_METHODS, "smallest_effect": "number"},

@@ -22,6 +22,9 @@ Each record gets one rule code, the first that applies (owner, 2026-10-05):
 2. `invalid_value`: a flag the plan maps to `invalid_value` (physically impossible).
 3. `out_of_scope`: a known value outside the scope (test type; reported temperature outside
    the room-temperature range, or a band outside the scope; microstructure, or phase class).
+   Step 8a (owner, 2026-10-06, Q4): under a plan for another band, its temperature range decides
+   a reported temperature; a band alone, with no number, is "scope not confirmed" (rule 6) when it
+   is the plan's band, out of scope otherwise.
 4. `missing_value`: composition, predictor or outcome without an accepted value.
 5. `group_unknown`: the record has no group under the set's grouping (a paper-grouped record
    without a DOI; a batch-grouped record without a batch). No group is invented (owner,
@@ -164,6 +167,7 @@ class Settings:
     survivor_order: tuple
     grouping: Mapping[str, str]
     scope_unconfirmed_ok: bool = False
+    temperature_range: tuple | None = None  # (min, max) exactly for a band other than room temperature
     conflict_survivor: bool = False  # only in 'conflicts_survivor_value' (`conflict_survivor_allowed`)
 
 
@@ -189,6 +193,8 @@ def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
         flag_rules=flag_rules, decimals=r["same_alloy_decimals"], min_grain_sizes=r["min_grain_sizes"],
         survivor_order=tuple(r["survivor_source_order"]),
         grouping={g["source"]: g["unit"] for g in r["grouping"]},
+        temperature_range=(r["temperature_range"]["min"], r["temperature_range"]["max"])
+        if "temperature_range" in r else None,
         conflict_survivor=conflict_survivor_allowed(key))
     if key == PRIMARY:
         return base
@@ -232,7 +238,15 @@ def scope(rec: Mapping, st: Settings) -> str:
         verdicts.append(None)
     # Temperature: a reported temperature decides; otherwise the band.
     t = rec["values"].get("test_temperature")
-    if _known(rec, "test_temperature", st) and t is not None:
+    if st.temperature_range is not None:  # a plan for another band (step 8a): its range decides
+        low, high = st.temperature_range
+        if _known(rec, "test_temperature", st) and t is not None:
+            verdicts.append(low <= t <= high)
+        elif _known(rec, "test_temperature_band", st):
+            verdicts.append(None if rec["categories"]["test_temperature_band"] in st.bands else False)
+        else:
+            verdicts.append(None)
+    elif _known(rec, "test_temperature", st) and t is not None:
         verdicts.append("room temperature" in st.bands and st.rt_min <= t <= st.rt_max)
     elif _known(rec, "test_temperature_band", st):
         verdicts.append(rec["categories"]["test_temperature_band"] in st.bands)

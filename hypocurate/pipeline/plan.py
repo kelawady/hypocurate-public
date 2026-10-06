@@ -41,6 +41,8 @@ RULES = ("same_alloy_decimals", "duplicate_tolerance", "survivor_source_order", 
 FLAG_RULE_CODES = frozenset({"invalid_value", "duplicate_counted_once", "identity_unresolved", "conflict_unresolved",
                              "in_scope"})
 MENU_RULES = frozenset({"grain_size_range", "temperature_range", "phase", "test_type"})
+ROOM_TEMPERATURE = "room temperature"
+RANGE_RULE = "temperature_range"  # a rules key, exactly for a band other than room temperature (step 8a)
 
 
 class PlanError(ValueError):
@@ -132,10 +134,26 @@ def _check_template(c: dict) -> None:
         raise PlanError("the model needs its name, hypotheses and a threshold between 0 and 1")
     if set(s) != {"alloy_class", "temperature_band", "test_type", "phase_class"} or not all(s.values()):
         raise PlanError("the scope names alloy classes, temperature bands, test types and phase classes")
-    if s["temperature_band"] != ["room temperature"]:
-        raise PlanError("sprint 1 supports the room-temperature band only")
-    if set(r) != set(RULES):
-        raise PlanError(f"the plan's rules are exactly: {', '.join(RULES)}")
+    # Step 8a (owner, 2026-10-06, Q4): one band per plan; another band than room temperature names the
+    # claim's temperature range, above (elevated) or below (cryogenic) the room-temperature rule.
+    if len(s["temperature_band"]) != 1:
+        raise PlanError("one band per plan")
+    band = s["temperature_band"][0]
+    if band not in p.SUPPORTED_BANDS:
+        raise PlanError(f"the band is one of {', '.join(p.SUPPORTED_BANDS)}")
+    expected = set(RULES) | ({RANGE_RULE} if band != ROOM_TEMPERATURE else set())
+    if set(r) != expected:
+        raise PlanError(f"the plan's rules are exactly: {', '.join(sorted(expected))} (a temperature range only "
+                        "for a band other than room temperature)")
+    if band != ROOM_TEMPERATURE:
+        tr = r[RANGE_RULE]
+        if set(tr) != {"min", "max"} or not (math.isfinite(tr["min"]) and math.isfinite(tr["max"])) \
+                or tr["min"] > tr["max"]:
+            raise PlanError("the temperature range needs a finite minimum and maximum, the minimum not above it")
+        if band == "elevated" and not tr["min"] > r["room_temperature_max"]:
+            raise PlanError("an elevated range lies above room temperature")
+        if band == "cryogenic" and not tr["max"] < r["room_temperature_min"]:
+            raise PlanError("a cryogenic range lies below room temperature")
     if not (0 <= r["same_alloy_decimals"] <= 3 and r["min_grain_sizes"] >= 2 and 0 <= r["duplicate_tolerance"] < 1
             and math.isfinite(r["room_temperature_min"]) and r["room_temperature_min"] <= r["room_temperature_max"]):
         raise PlanError("a rule is out of range")
