@@ -637,9 +637,10 @@ class FlagRecord(Base):
 SCOPES = ("pooled", "per_source", "sensitivity")
 LABELS = ("agrees", "conflicts", "not_enough_data", "same_direction_different_decision")  # 4th: step 7
 TEST_RUN_LABEL = "test run: includes constructed data"
-INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "uncertainty_not_estimable")
+INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "evidence_concentrated", "uncertainty_not_estimable")
 LABEL_REASONS = ("no_p_value", "pooled_without_decision", "zero_coefficient")
 COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
+SPREAD = "coalesce(effective_papers, 0) >= 2"
 
 
 class AnalysisResult(Base):
@@ -680,6 +681,9 @@ class AnalysisResult(Base):
     inference_reason: Mapped[str | None] = mapped_column(Text)
     label_reason: Mapped[str | None] = mapped_column(Text)
     estimated_power_estimated_noise: Mapped[float | None] = mapped_column(Double)
+    # Re-check (owner, 2026-10-06): concentrated evidence.
+    effective_papers: Mapped[float | None] = mapped_column(Double)
+    largest_paper_share: Mapped[float | None] = mapped_column(Double)
     __table_args__ = (
         ForeignKeyConstraint(["analysis_set_id", "run_id"], ["analysis_set.id", "analysis_set.run_id"],
                              name="fk_analysis_result_analysis_set"),
@@ -696,14 +700,21 @@ class AnalysisResult(Base):
         CheckConstraint("n_records = 0 OR n_groups >= 1", name="records_have_a_group"),
         CheckConstraint("resid_df = n_records - n_alloys - 1", name="resid_df_definition"),
         CheckConstraint("check1_passed = (n_alloys >= 1)", name="check1_consistent"),
-        CheckConstraint(f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW})", name="check2_consistent"),
+        CheckConstraint(f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW} AND {SPREAD})",
+                        name="check2_consistent"),
+        CheckConstraint("effective_papers IS NULL OR effective_papers >= 0", name="effective_papers"),
+        CheckConstraint("largest_paper_share IS NULL OR (largest_paper_share > 0 AND largest_paper_share <= 1)",
+                        name="largest_paper_share"),
         CheckConstraint("n_groups_informative BETWEEN 0 AND n_groups", name="informative_within_groups"),
         CheckConstraint("inference_reason IS NULL OR " + one_of("inference_reason", INFERENCE_REASONS),
                         name="inference_reason_value"),
         CheckConstraint("(inference_reason IS NULL) = check2_passed "
                         "AND (inference_reason IS NOT DISTINCT FROM 'coefficient_not_fitted') = NOT check1_passed "
                         f"AND (inference_reason IS DISTINCT FROM 'insufficient_groups' OR NOT {COUNTS_ALLOW}) "
-                        f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR {COUNTS_ALLOW})",
+                        f"AND (inference_reason IS DISTINCT FROM 'evidence_concentrated' OR ({COUNTS_ALLOW} AND NOT "
+                        f"{SPREAD})) "
+                        f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR ({COUNTS_ALLOW} AND "
+                        f"{SPREAD}))",
                         name="inference_reason"),
         CheckConstraint("label_reason IS NULL OR " + one_of("label_reason", LABEL_REASONS), name="label_reason_value"),
         CheckConstraint("(label_reason IS NOT NULL) = (label IS NOT DISTINCT FROM 'not_enough_data')",
@@ -726,7 +737,7 @@ class AnalysisResult(Base):
 
 CALIBRATION_REASONS = ("no_dataset_frozen", "coefficient_not_fitted", "insufficient_groups",
                        "below_minimums", "scatter_not_estimable", "shift_not_estimable",  # step 7
-                       "uncertainty_not_estimable")  # step 7 review fix
+                       "uncertainty_not_estimable", "evidence_concentrated")  # step 7 review fixes
 CALIBRATION_METHODS = ("fixed", "estimated")
 CALIBRATION_NUMBERS = ("assumptions", "n_simulations", "seed", "null_share", "null_ci_low", "null_ci_high",
                        "effect_share", "effect_ci_low", "effect_ci_high", "confidence_flag")

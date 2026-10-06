@@ -232,10 +232,12 @@ class World:
         check1, check2 = check1 and not withheld, check2 and not withheld  # only for the values below
         return self.val(
             "INSERT INTO analysis_result (run_id, scope, analysis_set_id, source_id, n_records, n_alloys, n_groups, "
-            "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate, std_error, p_value) "
-            "VALUES (:r, :sc, :s, :src, :n, :a, :g, :gi, :df, :c1, :c2, :mm, :est, :se, :p) RETURNING id",
+            "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate, std_error, p_value, "
+            "effective_papers) VALUES (:r, :sc, :s, :src, :n, :a, :g, :gi, :df, :c1, :c2, :mm, :est, :se, :p, :ep) "
+            "RETURNING id",
             r=rid, sc=scope, s=set_id, src=self.source[source] if source else None, n=n, a=alloys, g=groups,
-            gi=informative, df=resid, c1=alloys >= 1, c2=counts_check2, mm=minimums_met,
+            # Re-check: the effective number of papers, as if every informative paper carried equal information.
+            gi=informative, ep=float(informative), df=resid, c1=alloys >= 1, c2=counts_check2, mm=minimums_met,
             est=428.0 if check1 else None,
             se=64.0 if check2 else None, p=1e-6 if check2 else None)
 

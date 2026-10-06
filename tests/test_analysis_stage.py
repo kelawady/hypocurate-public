@@ -268,7 +268,8 @@ def _insert_result(engine, rid, **over):
     sets = dict(rows_of(engine, "SELECT key, id FROM analysis_set WHERE run_id = :r", r=rid))
     n = val(engine, "SELECT count(*) FROM analysis_set_record WHERE analysis_set_id = :s", s=sets["primary"])
     cols = dict(run_id=rid, scope="pooled", analysis_set_id=sets["primary"], n_records=n, n_alloys=3, n_groups=3,
-                n_groups_informative=3, resid_df=n - 4, check1_passed=True, check2_passed=True, minimums_met=False,
+                n_groups_informative=3, effective_papers=3.0, resid_df=n - 4, check1_passed=True, check2_passed=True,
+                minimums_met=False,
                 estimate=None, std_error=None, p_value=None)
     cols.update(over)
     with engine.begin() as conn:
@@ -454,3 +455,20 @@ def test_a_label_reason_is_stored_exactly_with_not_enough_data(engine):
     analysis.run_statistics(engine, rid)
     per_source = [r for r in result_rows(engine, rid) if r.scope == "per_source"]
     assert all((r.label == "not_enough_data") == (r.label_reason is not None) for r in per_source)
+
+
+def test_the_database_requires_two_effective_papers_for_check_2(engine):
+    """Re-check (owner, 2026-10-06): check 2 needs an effective number of papers of at least 2."""
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+    with pytest.raises(IntegrityError, match="ck_analysis_result_check2_consistent"):
+        _insert_result(engine, rid, effective_papers=1.5, estimate=1.0, std_error=1.0, p_value=0.1)
+    _insert_result(engine, rid, effective_papers=1.5, check2_passed=False, estimate=1.0)
+    assert rows_of(engine, "SELECT inference_reason FROM analysis_result WHERE run_id = :r", r=rid) == [
+        ("evidence_concentrated",)]
+
+
+def test_the_effective_number_and_share_are_stored_with_every_result(engine):
+    rid = run_on(engine, small_rows(3, papers=3))  # withheld: structure only
+    analysis.run_statistics(engine, rid)
+    for r in result_rows(engine, rid):
+        assert r.effective_papers > 0 and 0 < r.largest_paper_share <= 1

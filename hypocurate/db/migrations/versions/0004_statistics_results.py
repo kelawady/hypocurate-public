@@ -25,6 +25,9 @@ analysis_result:
   implication (check 2 needs a coefficient, a residual degree of freedom and two informative groups,
   but can also fail on an unestimable uncertainty), and `inference_reason` states why it failed
   (derived by the trigger where the counts determine it; 'uncertainty_not_estimable' must be given).
+- `effective_papers` ((Σ I_g)² / Σ I_g², I_g a paper's sum of squared within-alloy deviations of the
+  transformed grain size) and `largest_paper_share` (re-check, owner 2026-10-06): check 2 also needs
+  an effective number of at least 2; below it the reason is 'evidence_concentrated'.
 - `label_reason` (present exactly with "not enough data") and `estimated_power_estimated_noise`
   (the detection rate under the estimated noise; never on a withheld result).
 - `test_run_label`: "test run: includes constructed data" exactly when the run is marked.
@@ -171,11 +174,12 @@ ANALYSIS_RESULT_INSERT_0004 = """
                                 AND NEW.n_groups_informative >= p.min_groups AND NEW.resid_df >= p.min_resid_df) THEN
             PERFORM hc_reject('minimums_met must agree with the counts and the plan''s minimums');
         END IF;
-        -- Why check 2 failed, where the counts determine it; an unestimable uncertainty must be stated.
+        -- Why check 2 failed, where the structure determines it; an unestimable uncertainty must be stated.
         IF NEW.inference_reason IS NULL AND NOT NEW.check2_passed THEN
             NEW.inference_reason := CASE WHEN NOT NEW.check1_passed THEN 'coefficient_not_fitted'
                                          WHEN NOT (NEW.resid_df >= 1 AND NEW.n_groups_informative >= 2)
-                                         THEN 'insufficient_groups' END;
+                                         THEN 'insufficient_groups'
+                                         WHEN coalesce(NEW.effective_papers, 0) < 2 THEN 'evidence_concentrated' END;
         END IF;
         -- Step 7, decision 1: withheld run-wide when the pooled fit misses a minimum under the fixed option.
         IF NEW.scope = 'pooled' THEN
@@ -239,14 +243,17 @@ CALIBRATION_INSERT_0004 = """
 NEW_LABELS = "('agrees', 'conflicts', 'not_enough_data', 'same_direction_different_decision')"
 OLD_LABELS = "('agrees', 'conflicts', 'not_enough_data')"
 NEW_REASONS = ("('no_dataset_frozen', 'coefficient_not_fitted', 'insufficient_groups', 'below_minimums', "
-               "'scatter_not_estimable', 'shift_not_estimable', 'uncertainty_not_estimable')")
-INFERENCE_REASONS = "('coefficient_not_fitted', 'insufficient_groups', 'uncertainty_not_estimable')"
+               "'scatter_not_estimable', 'shift_not_estimable', 'uncertainty_not_estimable', 'evidence_concentrated')")
+INFERENCE_REASONS = ("('coefficient_not_fitted', 'insufficient_groups', 'evidence_concentrated', "
+                     "'uncertainty_not_estimable')")
 LABEL_REASONS = "('no_p_value', 'pooled_without_decision', 'zero_coefficient')"
 COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
+SPREAD = "coalesce(effective_papers, 0) >= 2"  # re-check (owner, 2026-10-06): two effective papers
 INFERENCE_REASON = ("(inference_reason IS NULL) = check2_passed "
                     "AND (inference_reason IS NOT DISTINCT FROM 'coefficient_not_fitted') = NOT check1_passed "
                     f"AND (inference_reason IS DISTINCT FROM 'insufficient_groups' OR NOT {COUNTS_ALLOW}) "
-                    f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR {COUNTS_ALLOW})")
+                    f"AND (inference_reason IS DISTINCT FROM 'evidence_concentrated' OR ({COUNTS_ALLOW} AND NOT {SPREAD})) "
+                    f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR ({COUNTS_ALLOW} AND {SPREAD}))")
 OLD_REASONS = "('no_dataset_frozen', 'coefficient_not_fitted', 'insufficient_groups')"
 
 EVIDENCE_LEVEL = ("evidence_level IS NULL OR (evidence_level BETWEEN 1 AND 6 AND outcome IS NOT NULL "
@@ -260,10 +267,11 @@ IN_USE = """
         IF EXISTS (SELECT 1 FROM analysis_result WHERE withheld OR n_records_not_used <> 0
                    OR test_run_label IS NOT NULL OR label = 'same_direction_different_decision'
                    OR n_groups_informative <> n_groups OR inference_reason = 'uncertainty_not_estimable'
-                   OR label_reason IS NOT NULL OR estimated_power_estimated_noise IS NOT NULL)
+                   OR label_reason IS NOT NULL OR estimated_power_estimated_noise IS NOT NULL
+                   OR effective_papers IS NOT NULL OR inference_reason = 'evidence_concentrated')
            OR EXISTS (SELECT 1 FROM calibration_result WHERE method = 'estimated' OR test_run_label IS NOT NULL
                       OR reason IN ('below_minimums', 'scatter_not_estimable', 'shift_not_estimable',
-                                    'uncertainty_not_estimable'))
+                                    'uncertainty_not_estimable', 'evidence_concentrated'))
            OR EXISTS (SELECT 1 FROM run WHERE evidence_level IS NOT NULL) THEN
             RAISE EXCEPTION USING MESSAGE = 'hypocurate: 0004 cannot be downgraded while step 7 results use it',
                                   ERRCODE = 'check_violation';
@@ -294,6 +302,13 @@ def upgrade() -> None:
     for column in ('inference_reason', 'label_reason'):
         op.add_column('analysis_result', sa.Column(column, sa.Text(), nullable=True))
     op.add_column('analysis_result', sa.Column('estimated_power_estimated_noise', sa.Double(), nullable=True))
+    # Re-check (owner, 2026-10-06): the effective number of papers and the largest paper's share.
+    op.add_column('analysis_result', sa.Column('effective_papers', sa.Double(), nullable=True))
+    op.add_column('analysis_result', sa.Column('largest_paper_share', sa.Double(), nullable=True))
+    op.create_check_constraint(op.f('ck_analysis_result_effective_papers'), 'analysis_result',
+                               'effective_papers IS NULL OR effective_papers >= 0')
+    op.create_check_constraint(op.f('ck_analysis_result_largest_paper_share'), 'analysis_result',
+                               'largest_paper_share IS NULL OR (largest_paper_share > 0 AND largest_paper_share <= 1)')
     op.create_check_constraint(op.f('ck_analysis_result_inference_reason_value'), 'analysis_result',
                                f"inference_reason IS NULL OR inference_reason IN {INFERENCE_REASONS}")
     op.create_check_constraint(op.f('ck_analysis_result_label_reason_value'), 'analysis_result',
@@ -307,7 +322,7 @@ def upgrade() -> None:
                        ("std_error_iff_check2", "(check2_passed AND NOT withheld) = (std_error IS NOT NULL)"),
                        ("p_value_iff_check2", "(check2_passed AND NOT withheld) = (p_value IS NOT NULL)"),
                        ("label", f"label IS NULL OR label IN {NEW_LABELS}"),
-                       ("check2_consistent", f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW})")):
+                       ("check2_consistent", f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW} AND {SPREAD})")):
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
         op.create_check_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', expr)
     op.create_check_constraint(op.f('ck_analysis_result_inference_reason'), 'analysis_result', INFERENCE_REASON)
@@ -358,7 +373,8 @@ def downgrade() -> None:
     op.drop_column('calibration_result', 'method')
     op.execute(ANALYSIS_RESULT_INSERT_0001)
     for name in ('power_needs_check2', 'label_per_source_only', 'inference_reason', 'power_estimated_noise',
-                 'label_reason', 'label_reason_value', 'inference_reason_value', 'informative_within_groups'):
+                 'label_reason', 'label_reason_value', 'inference_reason_value', 'informative_within_groups',
+                 'effective_papers', 'largest_paper_share'):
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
     for name, expr in (("estimate_iff_check1", "check1_passed = (estimate IS NOT NULL)"),
                        ("std_error_iff_check2", "check2_passed = (std_error IS NOT NULL)"),
@@ -368,7 +384,8 @@ def downgrade() -> None:
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
         op.create_check_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', expr)
     # After the constraints that name them are restored (a dropped column takes its constraints with it).
-    for column in ('estimated_power_estimated_noise', 'label_reason', 'inference_reason', 'n_groups_informative'):
+    for column in ('estimated_power_estimated_noise', 'label_reason', 'inference_reason', 'n_groups_informative',
+                   'effective_papers', 'largest_paper_share'):
         op.drop_column('analysis_result', column)
     for name in ('test_run_label', 'not_used_not_negative', 'withheld_set'):
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
