@@ -25,8 +25,10 @@ def registered(engine, keys=SOURCE_KEYS) -> dict[str, int]:
 
 def registered_files(engine, files: dict[str, bytes]) -> dict[str, int]:
     """Registers each source key with one sealed version holding the given file (MPEA layout for
-    'mpea' and 'controlled_duplicates'), with the settings of the code's source definition."""
-    from hypocurate.sources.versions import SOURCES, files_digest, version_identity
+    'mpea' and 'controlled_duplicates'), with the settings of the code's source definition. Step 8a:
+    a Texas A&M version also holds the frozen curation (the owner's accepted values: test type
+    tension, phase class FCC), as the real source does, since adapter version 3 no longer assigns them."""
+    from hypocurate.sources.versions import DATA_DIR, SOURCES, file_role, files_digest, version_identity
     out = {}
     for key, content in files.items():
         d = SOURCES[key]
@@ -39,9 +41,14 @@ def registered_files(engine, files: dict[str, bytes]) -> dict[str, int]:
             vid = conn.execute(text("INSERT INTO source_version (source_id, label, obtained_on) "
                                     "VALUES (:s, 'test file', '2026-10-06') RETURNING id"), dict(s=sid)).scalar()
             import hashlib
-            conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)"),
-                         dict(v=vid, p=name, h=hashlib.sha256(content).hexdigest(), c=content))
-            digest = files_digest({name: content})
+            stored = {name: content}
+            if d.curation_file:
+                stored[d.curation_file] = (DATA_DIR / d.directory / d.curation_file).read_bytes()
+            for path, data in stored.items():
+                conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content, role) "
+                                  "VALUES (:v, :p, :h, :c, :r)"),
+                             dict(v=vid, p=path, h=hashlib.sha256(data).hexdigest(), c=data, r=file_role(path)))
+            digest = files_digest(stored)
             conn.execute(text("UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v"),
                          dict(v=vid, fp=version_identity(digest, d.source_type, d.data_kind, d.grouping_unit)))
         out[key] = vid

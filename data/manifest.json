@@ -103,6 +103,16 @@
           "sha256": "8dfe9731af618937c6686da5d63b8e0decc220c591e1831060cd10d447461317",
           "bytes": 65359
         }
+      ],
+      "curation": [
+        {
+          "path": "data/sources/tamu_fcc/curation.json",
+          "role": "curation: the Curator's proposals accepted by the owner (step 8a), exported by `hypocurate sources export-curation tamu_fcc` from the sealed curated version",
+          "origin": "curated version of base fingerprint c25b31743b28c5483e53a0a0569f6e78ac35873347cd83843eeffc5fb36ca050 (local development database, 2026-10-06); one Curator call (claude-sonnet-5-5, settings version 1); proposals 5 and 2 accepted, 1 rejected by Khalid El-Awady",
+          "built": "2026-10-06",
+          "sha256": "2a6cbf0124901df611d9f41760ad8e96d58acf20d343947f587d88f926dde69c",
+          "bytes": 1272
+        }
       ]
     }
   },

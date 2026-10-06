@@ -145,6 +145,8 @@ SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
         # The spreadsheet is the source of record (step 1); only files the adapter reads are stored.
         data_files=("Grain_Size_Summary_v3.xlsx",),
         documentation_files=("documentation/main.tex", "documentation/supplementary.tex"),
+        # Step 8a: the owner's accepted Curator values (test type, phase class), frozen.
+        curation_file="curation.json",
         version_label="v1.1.0, commit 11390ee516c1a17cacdde318b40d5d6889d4007f",
         manifest_section=("sources", "tamu_fcc")),
     "controlled_duplicates": SourceDefinition(
@@ -165,7 +167,7 @@ def _manifest_files(definition: SourceDefinition, manifest: dict) -> tuple[dict,
     for part in definition.manifest_section:
         section = section[part]
     obtained = section.get("retrieved") or section.get("built")
-    return {f["path"]: f for f in section["files"] + section.get("documentation", [])}, obtained
+    return {f["path"]: f for f in section["files"] + section.get("documentation", []) + section.get("curation", [])}, obtained
 
 
 def read_definition_files(definition: SourceDefinition, data_dir: Path = DATA_DIR,

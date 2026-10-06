@@ -631,7 +631,8 @@
       "The paper says 81 compositions; the spreadsheet has 82 distinct compositions.",
       "No passage states the result of the XRD phase check.",
       "Not reviewed by an expert.",
-      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
+      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses').",
+      "Step 8a (2026-10-06): the Curator proposed 'FCC' as the microstructure from line 173 of paper/main.tex; the owner rejected it (proposal 1): the sentence states the phase class, not a single-phase microstructure as a result. The value stays assigned by decision."
     ],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
@@ -1419,7 +1420,7 @@
     "key": "tamu_test_type",
     "name": "Texas A&M test type",
     "state": "in_force",
-    "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
+    "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source. From step 8a the value comes from the source version's sealed curation: the Curator proposed it with the sentence on line 177 of paper/main.tex, which the checks found, and the owner accepted it (proposal 5, 2026-10-06); the adapter no longer assigns it.",
     "value": {
       "text": "tension (assigned from source)",
       "unit": null
@@ -1432,8 +1433,8 @@
       "paper/supplementary.tex line 65."
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1445,23 +1446,36 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.sources.adapters.tamu_fcc:TEST_TYPE_CITATION"
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.curation_file",
+          "equals": "curation.json"
+        },
+        {
+          "ref": "file:data/sources/tamu_fcc/curation.json:\"value\": \"tension\""
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Steps 4-7b: assigned by the adapter itself (version 2), citing the same sentence."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
-      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable",
+      "tests/test_frozen_sources.py::test_the_curation_file_records_the_owners_decisions",
+      "tests/test_source_versions.py::test_registering_the_frozen_curation_reproduces_the_sealed_curated_version"
     ]
   },
   {
     "key": "tamu_phase_class",
     "name": "Texas A&M phase class",
     "state": "in_force",
-    "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
+    "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'. From step 8a the value comes from the source version's sealed curation: the Curator proposed it with the sentence on line 173 of paper/main.tex, which the checks found, and the owner accepted it (proposal 2, 2026-10-06); the adapter no longer assigns it. The Curator's proposal of the same sentence as a single-phase microstructure was rejected by the owner (proposal 1): the microstructure stays assigned by decision (entry 'tamu_microstructure').",
     "value": {
       "text": "FCC (assigned from source)",
       "unit": null
@@ -1473,8 +1487,8 @@
       "paper/main.tex line 173: \"The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.\""
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1486,16 +1500,28 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.sources.adapters.tamu_fcc:PHASE_CITATION"
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.curation_file",
+          "equals": "curation.json"
+        },
+        {
+          "ref": "file:data/sources/tamu_fcc/curation.json:\"value\": \"FCC\""
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Steps 4-7b: assigned by the adapter itself (version 2), citing the same sentence."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
-      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable",
+      "tests/test_frozen_sources.py::test_the_curation_file_records_the_owners_decisions"
     ]
   },
   {

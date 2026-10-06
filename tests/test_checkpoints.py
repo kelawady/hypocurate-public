@@ -311,7 +311,7 @@ def test_records_are_stored_only_after_the_lock_with_how_they_were_extracted(eng
                      "WHERE r.extraction_run_id = :r ORDER BY r.id", r=rid)
     assert {(r.key, json.dumps(r.extraction, sort_keys=True)) for r in rows} == {
         ("mpea", json.dumps({"method": "adapter", "name": "mpea_layout", "version": "1"}, sort_keys=True)),
-        ("tamu_fcc", json.dumps({"method": "adapter", "name": "tamu_fcc", "version": "2"}, sort_keys=True))}
+        ("tamu_fcc", json.dumps({"method": "adapter", "name": "tamu_fcc", "version": "3"}, sort_keys=True))}  # step 8a
     # Unchanged and in file order: the adapter's own output.
     expected = adapters.read(sealed_from_disk("tamu_fcc")).records
     tamu = [r for r in rows if r.key == "tamu_fcc"]

@@ -102,7 +102,8 @@ def test_registering_seals_every_source(db):
     stored = {(p, r) for p, r in rows(db, "SELECT path, role FROM source_file")}
     assert stored == {("MPEA_dataset.csv", "data"), ("Grain_Size_Summary_v3.xlsx", "data"), ("extract.csv", "data"),
                       ("documentation/Borg2020_PMC7722748.xml", "documentation"),
-                      ("documentation/main.tex", "documentation"), ("documentation/supplementary.tex", "documentation")}
+                      ("documentation/main.tex", "documentation"), ("documentation/supplementary.tex", "documentation"),
+                      ("curation.json", "curation")}  # step 8a: the owner's accepted Curator values
     assert val(db, "SELECT enabled FROM source WHERE key = 'controlled_duplicates'") is False
 
 
@@ -110,7 +111,7 @@ def test_registering_again_adds_nothing(db):
     first = {k: register(db, k) for k in SOURCES}
     counts = [val(db, f"SELECT count(*) FROM {t}") for t in ("source", "source_version", "source_file")]
     again = {k: register(db, k) for k in SOURCES}
-    assert counts == [3, 3, 6]  # step 8a: three data files and three documentation files
+    assert counts == [3, 3, 7]  # step 8a: three data files, three documentation files, one curation file
     assert [val(db, f"SELECT count(*) FROM {t}") for t in ("source", "source_version", "source_file")] == counts
     assert all(not r.created and r.version_id == first[k].version_id and r.fingerprint == first[k].fingerprint
                for k, r in again.items())
@@ -277,3 +278,13 @@ def test_changed_settings_on_a_loaded_version_are_refused(db):
         version = load_sealed_version(conn, r.version_id)
     with pytest.raises(UnsealedVersion, match="sealed identity"):
         adapters.read(dataclasses.replace(version, grouping_unit="batch"))
+
+
+# The curated Texas A&M version sealed from the owner's decisions (step 8a, local development database,
+# 2026-10-06): registering the frozen files must give exactly this version, with no model call.
+CURATED_TAMU_FINGERPRINT = "2fad3ccb3dbc32c1ec51e6efcb70a9d17d755bfdfa606cb044f458bd2b37b982"
+
+
+def test_registering_the_frozen_curation_reproduces_the_sealed_curated_version(db):
+    r = register(db, "tamu_fcc")
+    assert r.fingerprint == CURATED_TAMU_FINGERPRINT

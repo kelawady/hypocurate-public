@@ -45,6 +45,17 @@ def stub():
     s.close()
 
 
+def register_base(db):
+    """The Texas A&M version a curation starts from: its data and documentation without the frozen
+    curation (step 8a: registering the definition now gives the curated version)."""
+    import dataclasses
+    from hypocurate.db.retry import run_transaction
+    from hypocurate.sources.versions import SOURCES, _register_in, read_definition_files
+    d = dataclasses.replace(SOURCES["tamu_fcc"], curation_file=None)
+    files, obtained = read_definition_files(d)
+    return run_transaction(db, lambda conn: _register_in(conn, d, files, obtained))
+
+
 def run_curate(db, key, stub, **kw):
     return curation.curate(db, key, client_options=sp.client_options(stub), **kw)
 
@@ -78,7 +89,7 @@ def test_a_version_without_documentation_is_not_curated(db, stub):
 # --- the request and the proposals ------------------------------------------------------------------------
 
 def test_the_curators_complete_request_is_the_instruction_the_documentation_and_the_targets(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     version = version_of(db, "tamu_fcc")
     stub.queue(sp.reply(answer()))
     run_curate(db, "tamu_fcc", stub)
@@ -124,7 +135,7 @@ def test_no_planted_value_and_no_claim_reaches_the_curator(db, stub):
 
 
 def test_each_proposal_is_stored_as_code_decided_it(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     stub.queue(sp.reply(answer(
         test_type={"value": "tension", "quote": TENSION_QUOTE},
         phase_class={"value": "FCC", "quote": FCC_QUOTE},
@@ -154,7 +165,7 @@ def test_each_proposal_is_stored_as_code_decided_it(db, stub):
     ({"value": "compression", "quote": TENSION_QUOTE}, "term_missing"),
 ])
 def test_an_entry_that_fails_a_check_is_refused_with_its_code(db, stub, entry, code):
-    register(db, "tamu_fcc")
+    register_base(db)
     stub.queue(sp.reply(answer(test_type=entry)))
     out = run_curate(db, "tamu_fcc", stub)
     [p] = [p for p in out["proposals"] if p["field"] == "test_type"]
@@ -162,7 +173,7 @@ def test_an_entry_that_fails_a_check_is_refused_with_its_code(db, stub, entry, c
 
 
 def test_a_malformed_answer_is_corrected_once_and_then_nothing_is_stored(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     stub.queue(sp.reply(sp.fields(proposals=f"I think tension {PLANTED}")),
                sp.reply(sp.fields(proposals="still not JSON")))
     out = run_curate(db, "tamu_fcc", stub)
@@ -173,7 +184,7 @@ def test_a_malformed_answer_is_corrected_once_and_then_nothing_is_stored(db, stu
 
 
 def test_the_ceiling_refuses_the_call_before_it_is_sent(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     out = run_curate(db, "tamu_fcc", stub, ceiling=Decimal("0.01"))
     assert (out["status"], out["code"]) == ("failed", "ceiling_reached") and stub.requests == []
 
@@ -187,7 +198,7 @@ def proposed(db, stub, **entries):
 
 
 def test_a_person_decides_once_and_only_on_a_proposal_that_passed(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     ids = proposed(db, stub, test_type={"value": "tension", "quote": TENSION_QUOTE},
                    phase_class={"value": "FCC", "quote": "not in the documentation at all, FCC here"})
     assert curation.decide(db, ids["test_type"], "accepted", "Khalid El-Awady")["decision"] == "accepted"
@@ -200,7 +211,7 @@ def test_a_person_decides_once_and_only_on_a_proposal_that_passed(db, stub):
 
 def tamu_with_notes(db, note: bytes):
     """A Texas A&M version holding the real spreadsheet and a test note as its documentation."""
-    register(db, "tamu_fcc")
+    register_base(db)
     base = version_of(db, "tamu_fcc")
     w = World.__new__(World)
     w.e = db
@@ -221,27 +232,31 @@ def test_sealing_applies_accepted_values_only_where_the_table_gives_none(db, stu
     ids = proposed(db, stub, test_temperature={"value": 25, "quote": quote},
                    test_type={"value": "tension", "quote": quote},
                    phase_class={"value": "FCC", "quote": quote},
+                   microstructure={"value": "FCC", "quote": quote},
                    test_temperature_band={"value": "room temperature", "quote": quote})
     assert {k for k, v in ids.items()} == set(CURATION_TARGETS)
     curation.decide(db, ids["test_temperature"], "accepted", "Khalid El-Awady", "states 25 °C")
     curation.decide(db, ids["test_type"], "accepted", "Khalid El-Awady")
     curation.decide(db, ids["phase_class"], "rejected", "Khalid El-Awady", "the phase check is not a result")
+    curation.decide(db, ids["microstructure"], "accepted", "Khalid El-Awady")  # the decision's field: never replaced
     # Rejected (phase class), refused (the band: no listed term in the quote) and not stated: never sealed.
     sealed = curation.seal_curation(db, "tamu_fcc")
     assert sealed.created and sealed.label.endswith("+ curation")
     curated = version_of(db, "tamu_fcc")
     assert curated.id == sealed.version_id and set(curated.files) == {*load_sealed_version_files(db, base), CURATION_PATH}
     doc = json.loads(curated.files[CURATION_PATH])
-    assert set(doc["values"]) == {"test_temperature", "test_type"} and doc["source"] == "tamu_fcc"
+    assert set(doc["values"]) == {"test_temperature", "test_type", "microstructure"} and doc["source"] == "tamu_fcc"
     assert doc["values"]["test_temperature"]["value"] == 25 and doc["values"]["test_temperature"]["line"] == 1
     records = adapters.read(curated).records
     t = records[0].harmonized["test_temperature"]
     assert (t.value, t.status) == (25, "assigned_from_source") and "accepted by Khalid El-Awady" in t.citation.location
     assert t.citation.quote == quote
-    # Never over a value the record already has: test type is assigned by the adapter (version 2),
-    # the band and microstructure by decision.
-    assert records[0].harmonized["test_type"].citation.document.endswith("paper/main.tex")
+    # Where the table gives none, the accepted value applies (test type: adapter version 3 assigns none).
+    assert records[0].harmonized["test_type"].citation.document == "tamu_fcc: documentation/notes.md (sealed with the source)"
+    # Never over a value the record already has: the band and the microstructure are assigned by decision,
+    # so the accepted microstructure leaves them as they are.
     assert records[0].harmonized["test_temperature_band"].status == "assigned_by_decision"
+    assert all(r.harmonized["microstructure"].status == "assigned_by_decision" for r in records)
     assert all(r.harmonized["test_temperature"].value == 25 for r in records)
 
 
@@ -251,7 +266,7 @@ def load_sealed_version_files(db, version_id):
 
 
 def test_a_curated_version_is_reproducible_from_its_files_and_cannot_be_curated_again(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     ids = proposed(db, stub, test_type={"value": "tension", "quote": TENSION_QUOTE})
     curation.decide(db, ids["test_type"], "accepted", "K")
     sealed = curation.seal_curation(db, "tamu_fcc")
@@ -265,7 +280,7 @@ def test_a_curated_version_is_reproducible_from_its_files_and_cannot_be_curated_
 
 
 def test_two_accepted_proposals_for_one_field_are_not_sealed(db, stub):
-    register(db, "tamu_fcc")
+    register_base(db)
     first = proposed(db, stub, test_type={"value": "tension", "quote": TENSION_QUOTE})
     second = proposed(db, stub, test_type={"value": "tension", "quote": TENSION_QUOTE})
     curation.decide(db, first["test_type"], "accepted", "K")
@@ -277,7 +292,7 @@ def test_two_accepted_proposals_for_one_field_are_not_sealed(db, stub):
 
 def test_a_curation_file_that_cannot_be_read_refuses_the_version(db):
     from hypocurate.sources.record import AdapterError
-    register(db, "tamu_fcc")
+    register_base(db)
     base = version_of(db, "tamu_fcc")
     bad = {**dict(base.files), CURATION_PATH: b'{"format": 1, "source": "mpea", "values": {}}\n'}
     from hypocurate.sources.versions import SealedVersion

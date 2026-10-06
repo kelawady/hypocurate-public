@@ -97,13 +97,19 @@ def test_one_group_the_dataset(records):
 
 def test_assigned_values_carry_their_passage(records):
     """Step 6 (owner, 2026-10-05): two assigned statuses. Test type and phase class are
-    assigned from the source's own statements; the band and the microstructure by decision."""
+    assigned from the source's own statements; the band and the microstructure by decision.
+    Step 8a (owner, 2026-10-06): the first two come from the frozen curation (the Curator's proposals
+    the owner accepted), quoting the same passages the adapter cited by hand before (version 2)."""
     for r in records:
         t, p = r.harmonized["test_type"], r.harmonized["phase_class"]
-        assert (t.value, t.status, t.citation) == ("tension", "assigned_from_source", tamu_fcc.TEST_TYPE_CITATION)
-        assert (p.value, p.status, p.citation) == ("FCC", "assigned_from_source", tamu_fcc.PHASE_CITATION)
-        assert "Quasistatic tensile testing" in t.citation.quote and t.citation.location.startswith("line 177")
-        assert "94 FCC alloy conditions" in p.citation.quote
+        assert (t.value, t.status, p.value, p.status) == ("tension", "assigned_from_source", "FCC",
+                                                          "assigned_from_source")
+        assert t.citation.quote == ("Quasistatic tensile testing was used to determine 0.2\\% offset YS, while "
+                                    "Vickers indentation tests provided the HV.")
+        assert p.citation.quote == "The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system."
+        assert t.citation.location.startswith("line 177; Curator proposal 5") and "Khalid El-Awady" in t.citation.location
+        assert p.citation.location.startswith("line 173; Curator proposal 2")
+        assert t.citation.document == "tamu_fcc: documentation/main.tex (sealed with the source)"
         b, m = r.harmonized["test_temperature_band"], r.harmonized["microstructure"]
         assert (b.value, b.status, b.citation) == ("room temperature", "assigned_by_decision",
                                                    tamu_fcc.TEMPERATURE_DECISION)
@@ -232,8 +238,8 @@ def test_planted_values_are_kept_and_marked():
     assert {k: v for k, v in by_row[4].harmonized.items() if k != "grain_size_sd"} == \
         {k: v for k, v in by_row[0].harmonized.items() if k != "grain_size_sd"}
     assert (h(4, "grain_size").value, h(4, "yield_strength").value) == (23.0, 284.2)
-    assert (h(4, "test_type").status, h(4, "test_type").citation) == ("assigned_from_source",
-                                                                      tamu_fcc.TEST_TYPE_CITATION)
+    # Step 8a (adapter version 3): with no curation in this constructed version, no test type is assigned.
+    assert (h(4, "test_type").status, h(4, "test_type").reason) == ("not_reported", tamu_fcc.CURATED)
     assert h(4, "test_temperature").status == "not_reported"
     assert h(4, "test_temperature").reason == tamu_fcc.TEMPERATURE_NOT_REPORTED
     assert by_row[4].alloy == by_row[0].alloy
