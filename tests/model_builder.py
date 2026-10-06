@@ -221,12 +221,19 @@ class World:
         check2 = check1 and resid >= 1 and groups >= 2
         if minimums_met is None:
             minimums_met = n >= mins[0] and alloys >= mins[1] and groups >= mins[2] and resid >= mins[3]
+        # Step 7 (migration 0004): a result is withheld (no number from outcomes) when the run uses
+        # the fixed option and its pooled result misses a minimum; the database computes it.
+        option = self.val("SELECT sufficiency_option FROM plan WHERE run_id = :r", r=rid)
+        pooled = self.val("SELECT withheld FROM analysis_result WHERE run_id = :r AND scope = 'pooled'", r=rid)
+        withheld = (option == "fixed_minimum" and not minimums_met) if scope == "pooled" else bool(pooled)
+        check1, check2 = check1 and not withheld, check2 and not withheld  # only for the values below
         return self.val(
             "INSERT INTO analysis_result (run_id, scope, analysis_set_id, source_id, n_records, n_alloys, n_groups, "
             "resid_df, check1_passed, check2_passed, minimums_met, estimate, std_error, p_value) "
             "VALUES (:r, :sc, :s, :src, :n, :a, :g, :df, :c1, :c2, :mm, :est, :se, :p) RETURNING id",
             r=rid, sc=scope, s=set_id, src=self.source[source] if source else None, n=n, a=alloys, g=groups,
-            df=resid, c1=check1, c2=check2, mm=minimums_met, est=428.0 if check1 else None,
+            df=resid, c1=alloys >= 1, c2=alloys >= 1 and resid >= 1 and groups >= 2, mm=minimums_met,
+            est=428.0 if check1 else None,
             se=64.0 if check2 else None, p=1e-6 if check2 else None)
 
     def complete(self, rid, outcome, verdict=None, exploratory=False):

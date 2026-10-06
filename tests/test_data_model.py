@@ -239,8 +239,10 @@ def test_sufficient_needs_a_pooled_result_that_passed_both_checks(w):
 
 
 def test_coefficient_only_completes_as_insufficient_without_a_verdict(w):
-    """Check 1 passes, check 2 fails (2 records, 1 alloy: no residual degree of freedom)."""
-    rid, sets, _ = w.frozen(n=2, mins=(1, 1, 1, 1))
+    """Check 1 passes, check 2 fails (2 records, 1 alloy: no residual degree of freedom).
+    Step 7: under "use what is available" (under the fixed option the run misses the residual
+    minimum, so the coefficient is withheld: owner's decision 1, tested in test_statistics_results)."""
+    rid, sets, _ = w.frozen(n=2, mins=(1, 1, 1, 1), option="use_available")
     w.result(rid, sets["primary"], n=2, alloys=1, groups=2)
     assert w.rows("SELECT check1_passed, check2_passed, estimate IS NOT NULL, std_error, p_value "
                   "FROM analysis_result WHERE run_id = :r", r=rid) == [(True, False, True, None, None)]
@@ -892,12 +894,14 @@ def test_results_come_after_the_freeze(w):
     ("resid_df", "5", "ck_analysis_result_resid_df_definition"),
 ])
 def test_the_validity_checks_cannot_be_waived(w, column, value, match):
-    """One group: check 2 fails, so no uncertainty and no p-value can be stored."""
-    rid, sets, _ = w.frozen()
+    """One group: check 2 fails, so no uncertainty and no p-value can be stored. Step 7: under "use
+    what is available", so that the result is not withheld (owner's decision 1) and each constraint
+    is the one that refuses."""
+    rid, sets, _ = w.frozen(option="use_available")
     rid_value = w.result(rid, sets["primary"], groups=1)
     assert w.rows("SELECT check2_passed, std_error, p_value FROM analysis_result WHERE id = :a", a=rid_value) == [
         (False, None, None)]
-    rid2, sets2, _ = w.frozen()
+    rid2, sets2, _ = w.frozen(option="use_available")
     columns = {"run_id": rid2, "scope": "'pooled'", "analysis_set_id": sets2["primary"], "n_records": 4,
                "n_alloys": 1, "n_groups": 1, "resid_df": 2, "check1_passed": "true", "check2_passed": "false",
                "minimums_met": "false", "estimate": 1.0}
@@ -965,9 +969,11 @@ def test_minimums_met_must_agree_with_the_plan(w):
 
 # --- calibration --------------------------------------------------------------------------------------
 
-CALIBRATION = ("INSERT INTO calibration_result (run_id, analysis_result_id, status, reason, assumptions, "
+# Step 7 (migration 0004): a row of an analysis names its method (here 'fixed'); the run-level row none.
+CALIBRATION = ("INSERT INTO calibration_result (run_id, analysis_result_id, method, status, reason, assumptions, "
                "n_simulations, seed, null_share, null_ci_low, null_ci_high, effect_share, effect_ci_low, "
-               "effect_ci_high, confidence_flag) VALUES (:r, :a, :st, :re, {numbers})")
+               "effect_ci_high, confidence_flag) VALUES (:r, :a, CASE WHEN CAST(:a AS bigint) IS NULL THEN NULL "
+               "ELSE 'fixed' END, :st, :re, {numbers})")
 NUMBERS = "'{\"scatter\": 60}', 2000, 7, 0.072, 0.061, 0.084, 1.0, 0.998, 1.0, 'over_confident'"
 NONE = "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL"
 
@@ -983,6 +989,7 @@ def test_calibration_is_computed_exactly_when_inference_is_valid(w):
 
 def test_calibration_unavailable_states_a_matching_reason(w):
     rid, sets, _ = w.frozen(n=2, per_source={"mpea": 1, "tamu_fcc": 1}, mins=(1, 1, 1, 1))
+    w.result(rid, sets["primary"], n=2, alloys=0, groups=2, mins=(1, 1, 1, 1))  # step 7: the pooled row first
     one_group = w.result(rid, sets["primary"], scope="per_source", source="mpea", n=1, alloys=0, groups=1,
                          mins=(1, 1, 1, 1))
     w.rejected(CALIBRATION.format(numbers=NUMBERS), "computed exactly when", r=rid, a=one_group, st="computed",
