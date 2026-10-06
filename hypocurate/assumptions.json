@@ -1620,7 +1620,7 @@
     "key": "cluster_robust_se",
     "name": "Grouped standard error",
     "state": "in_force",
-    "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
+    "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), summing the scores of informative groups only, with the small-sample correction G/(G-1) × (N-1)/(N-K), G the informative groups (entry 'informative_groups_in_inference').",
     "value": {
       "text": "cluster-robust by grouping unit, with small-sample correction",
       "unit": null
@@ -1632,8 +1632,8 @@
       "PRD 5.7 (uncertainty row); docs/reference/worked_example.py (statsmodels cov_type='cluster')."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1650,13 +1650,22 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "Owner, 2026-10-06: informative papers in the factor and the degrees of freedom."
+      }
+    ],
     "notes": [
       "The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula.",
       "Step 7: the exact formula is G/(G-1) × (N-1)/(N-K), K = alloys + 1, statsmodels' default for clustered errors (statistics.small_sample_factor)."
     ],
     "tests": [
       "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
+      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
+      "tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper",
       "tests/test_statistics.py::test_the_small_sample_correction_is_statsmodels_default"
     ]
   },
@@ -1753,9 +1762,9 @@
     "key": "one_sided_test",
     "name": "The test",
     "state": "in_force",
-    "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
+    "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (informative groups − 1) degrees of freedom (entry 'informative_groups_in_inference').",
     "value": {
-      "text": "one-sided; threshold 0.05; t with groups - 1 degrees of freedom",
+      "text": "one-sided; threshold 0.05; t with informative groups − 1 degrees of freedom",
       "unit": null
     },
     "category": "statistical",
@@ -1765,8 +1774,8 @@
       "PRD 5.7 (hypotheses row); CLAUDE.md, rule 6."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1787,9 +1796,17 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "Owner, 2026-10-06: informative papers in the factor and the degrees of freedom."
+      }
+    ],
     "notes": [],
     "tests": [
+      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
       "tests/test_statistics.py::test_a_zero_standard_error_gives_a_defined_p_value",
       "tests/test_statistics.py::test_the_test_is_one_sided"
     ]
@@ -5681,7 +5698,14 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "(as above, and:) The standard error's small-sample factor and the t distribution's degrees of freedom still use every group of the fit (statsmodels' definition).",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Owner, 2026-10-06: they count informative papers too (entry 'informative_groups_in_inference')."
+      }
+    ],
     "notes": [],
     "state": "in_force",
     "decided": {
@@ -5690,7 +5714,7 @@
     },
     "key": "informative_groups",
     "name": "Informative papers",
-    "statement": "The minimum of independent papers, and validity check 2's 'at least two groups', count only informative papers: papers whose records help estimate the slope, that is, with at least one record whose transformed grain size differs from its alloy's average by more than the numerical zero. Uninformative papers stay in the fit and are listed with the result, but are not counted. The standard error's small-sample factor and the t distribution's degrees of freedom still use every group of the fit (statsmodels' definition).",
+    "statement": "The minimum of independent papers, and validity check 2's 'at least two groups', count only informative papers: papers whose records help estimate the slope, that is, with at least one record whose transformed grain size differs from its alloy's average by more than the numerical zero. Uninformative papers stay in the fit and are listed with the result, but are not counted.",
     "value": {
       "text": "count informative papers for the minimum and for check 2",
       "unit": null
@@ -5715,7 +5739,7 @@
           "ref": "sql:ck_analysis_result_check2_consistent"
         }
       ],
-      "note": "Whether the degrees of freedom should also count informative papers only is not decided; they use every group, as CLAUDE.md rule 6 states."
+      "note": null
     },
     "tests": [
       "tests/test_statistics_boundaries.py::test_the_reviewers_design_never_gives_a_verdict",
@@ -5770,6 +5794,60 @@
       "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_scatter",
       "tests/test_statistics_boundaries.py::test_small_real_noise_gives_an_estimable_scatter",
       "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit"
+    ]
+  },
+  {
+    "key": "informative_groups_in_inference",
+    "name": "Informative papers in the uncertainty and the test",
+    "state": "in_force",
+    "statement": "The clustered standard error sums the scores of informative papers only, its small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative papers, and the one-sided test uses a t distribution with (informative papers − 1) degrees of freedom: the same count as validity check 2 and the paper minimum. Applied in the real fits and in every simulated fit. With uninformative papers present this gives a larger standard error and fewer degrees of freedom than counting every paper (the cautious direction); where every paper is informative it equals statsmodels' clustered result.",
+    "value": {
+      "text": "G = informative papers in the factor and in the degrees of freedom",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Standard errors, p-values and simulated rejection rates of any fit with uninformative papers; on the reference sets every paper is informative, so no reference number changed.",
+    "reason": "An uninformative paper adds nothing to the slope's clustered variance; counting it in G/(G-1) and in the degrees of freedom made the test less cautious than its information supports.",
+    "evidence": [
+      "Owner's decision, 2026-10-06, after the second-model review (docs/reviews/step07_review_chatgpt.md, finding 1)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:small_sample_factor"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:fit"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.calibration:significant_count"
+        },
+        {
+          "ref": "file:CLAUDE.md:(informative papers − 1) degrees of freedom"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
+      "tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper",
+      "tests/test_informative_inference.py::test_where_every_paper_is_informative_nothing_changes",
+      "tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only"
+    ],
+    "history": [],
+    "notes": [
+      "CLAUDE.md rule 6 reworded to match (owner, 2026-10-06)."
     ]
   }
 ]

@@ -6,10 +6,10 @@ alloy + k × (grain size in µm)^-1/2. Ordinary least squares with one intercept
 shared coefficient k, computed by removing each alloy's mean from the predictor and the outcome
 (the same estimate as fitting the alloy intercepts; Frisch-Waugh-Lovell). Its standard error is
 cluster-robust, grouped by each source's grouping unit, with the small-sample correction
-G/(G-1) × (N-1)/(N-K), K = alloys + 1 (statsmodels' default for clustered errors; register
-'cluster_robust_se'). The test is one-sided, k > 0, against a t distribution with G - 1 degrees of
-freedom, at the plan's threshold; "supported" exactly when p < alpha (register
-'p_threshold_comparison').
+G/(G-1) × (N-1)/(N-K), K = alloys + 1, G the informative groups (statsmodels' formula when every
+group is informative; register 'cluster_robust_se'). The test is one-sided, k > 0, against a t
+distribution with G - 1 degrees of freedom, G the informative groups, at the plan's threshold;
+"supported" exactly when p < alpha (register 'p_threshold_comparison').
 
 **Which records a fit uses** (owner, 2026-10-05, decision 7): only alloys with at least
 `MODEL_MIN_GRAIN_SIZES` distinct grain sizes among the analysis's own records, distinct after the
@@ -21,9 +21,10 @@ the records the fit uses** (owner, 2026-10-05).
 **Informative papers** (owner, 2026-10-06; register 'informative_groups'): a group is informative
 when at least one of its records differs from its alloy's average transformed grain size by more
 than the numerical zero, so that the group helps estimate the slope. Uninformative groups stay in
-the fit and are listed, but are not counted for the paper minimum or for validity check 2. The
-standard error's small-sample factor and the t distribution's degrees of freedom still use every
-group of the fit (statsmodels' definition, CLAUDE.md rule 6).
+the fit and are listed, but are not counted for the paper minimum, for validity check 2, for the standard error's
+small-sample factor or for the t distribution's degrees of freedom (owner, 2026-10-06; register
+'informative_groups_in_inference'; CLAUDE.md rule 6). The clustered covariance sums the scores of
+informative groups only (an uninformative group's score is zero up to rounding).
 
 **The two validity checks** can never be waived (CLAUDE.md rule 5): (1) a coefficient can be fitted
 when at least one alloy has two distinct grain sizes; (2) inference is valid with at least 1
@@ -130,6 +131,7 @@ class Design:
     n_alloys_not_used: int
     n_groups_informative: int = 0
     uninformative_groups: tuple = ()
+    group_informative: np.ndarray = None  # per group index: does the group count (informative)?
 
     @property
     def n(self) -> int:
@@ -178,7 +180,8 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
         group=np.array([group_index[o.group] for o in used], dtype=int),
         n_alloys=len(used_alloys), n_groups=len(groups), n_records_in_set=len(obs),
         n_alloys_not_used=len(values) - len(used_alloys), n_groups_informative=len(informative),
-        uninformative_groups=tuple(g for g in groups if g not in informative))
+        uninformative_groups=tuple(g for g in groups if g not in informative),
+        group_informative=np.array([g in informative for g in groups], dtype=bool))
 
 
 def distinct_values(values: list) -> int:
@@ -200,7 +203,7 @@ def demeaned(values: np.ndarray, alloy: np.ndarray, n_alloys: int) -> np.ndarray
 
 
 def small_sample_factor(n: int, n_alloys: int, n_groups: int) -> float:
-    """G/(G-1) × (N-1)/(N-K), K = alloys + 1 (register 'cluster_robust_se')."""
+    """G/(G-1) × (N-1)/(N-K), K = alloys + 1, G the informative groups (register 'cluster_robust_se')."""
     return (n_groups / (n_groups - 1)) * ((n - 1) / (n - n_alloys - 1))
 
 
@@ -237,13 +240,14 @@ def fit(d: Design) -> Fit | None:
     if not d.counts_allow_inference:
         return Fit(k, None, None, None, None, "insufficient_groups")
     e = yd - k * xd
-    scores = np.bincount(d.group, xd * e, d.n_groups)
-    variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
+    # Informative groups only (owner, 2026-10-06): their scores, their count in the factor and the df.
+    scores = np.bincount(d.group, xd * e, d.n_groups)[d.group_informative]
+    variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
     se = math.sqrt(variance) if math.isfinite(variance) and variance >= 0 else math.nan
     if not (math.isfinite(se) and se > RELATIVE_ZERO * math.sqrt(float(yd @ yd) / sxx)):
         return Fit(k, None, None, None, None, "uncertainty_not_estimable")
     t = k / se
-    df = d.n_groups - 1
+    df = d.n_groups_informative - 1
     return Fit(k, se, t, df, one_sided_p(t, df))
 
 

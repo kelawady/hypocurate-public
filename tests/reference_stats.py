@@ -72,3 +72,39 @@ def significant_count(x, alloy, group, outcomes, alpha) -> int:
         m = sm.OLS(y, exog).fit(cov_type="cluster", cov_kwds={"groups": group})
         hits += stats.t.sf(m.params[0] / m.bse[0], g - 1) < alpha
     return int(hits)
+
+
+def informative_groups(rows, relative_zero=1e-10) -> set:
+    """Test-side: groups with a record whose transformed grain size differs from its alloy's average
+    by more than relative_zero × the largest transformed grain size (alloys with two or more grain sizes)."""
+    f = frame(rows)
+    if f.empty:
+        return set()
+    contrast = (f["x"] - f.groupby("alloy")["x"].transform("mean")).abs()
+    return set(f.loc[contrast > relative_zero * f["x"].abs().max(), "group"])
+
+
+def fit_informative(rows) -> dict:
+    """The owner's rule of 2026-10-06 computed independently with an explicit sandwich (numpy, dummy
+    variables, no statsmodels): the clustered covariance sums the scores of informative groups only, the
+    small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative groups, and the one-sided p-value
+    uses t with G - 1 degrees of freedom."""
+    f = frame(rows)
+    informative = informative_groups(rows)
+    alloys = sorted(f["alloy"].unique())
+    x = np.column_stack([f["x"].to_numpy()] + [(f["alloy"] == a).to_numpy(dtype=float) for a in alloys])
+    y = f["y"].to_numpy()
+    bread = np.linalg.inv(x.T @ x)
+    beta = bread @ x.T @ y
+    e = y - x @ beta
+    meat = np.zeros((x.shape[1], x.shape[1]))
+    for g in informative:
+        rows_g = (f["group"] == g).to_numpy()
+        s = x[rows_g].T @ e[rows_g]
+        meat += np.outer(s, s)
+    n, k_params, g_inf = len(f), x.shape[1], len(informative)
+    factor = (g_inf / (g_inf - 1)) * ((n - 1) / (n - k_params))
+    se = float(np.sqrt((bread @ meat @ bread)[0, 0] * factor))
+    k = float(beta[0])
+    return {"k": k, "se": se, "p": float(stats.t.sf(k / se, g_inf - 1)), "groups_informative": g_inf,
+            "groups": f["group"].nunique()}

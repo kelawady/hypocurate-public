@@ -102,8 +102,8 @@ def confidence_flag(low: float, high: float, alpha: float) -> str:
 
 def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
     """How many rows of `outcomes` (simulations × records) the locked test finds significant:
-    the same estimator, standard error, correction, validity checks and one-sided t test as
-    `statistics.fit`. A simulated fit whose standard error is not finite or not above the numerical
+    the same estimator, standard error, correction (informative groups), validity checks and one-sided
+    t test (informative groups - 1 degrees of freedom) as `statistics.fit`. A simulated fit whose standard error is not finite or not above the numerical
     zero gives no inference, so it is never significant (review finding 1)."""
     if not d.counts_allow_inference:
         return 0
@@ -114,14 +114,15 @@ def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
     e = yd - k[:, None] * xd[None, :]
     groups = np.zeros((d.n, d.n_groups))
     groups[np.arange(d.n), d.group] = 1.0
-    scores = (e * xd[None, :]) @ groups
-    variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
+    # Informative groups only, as in the real fit (owner, 2026-10-06).
+    scores = ((e * xd[None, :]) @ groups)[:, d.group_informative]
+    variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
     with np.errstate(divide="ignore", invalid="ignore"):
         se = np.sqrt(variance)
         scale = np.sqrt((yd ** 2).sum(axis=1) / sxx)
         valid = np.isfinite(se) & np.isfinite(k) & (se > RELATIVE_ZERO * scale)
         t = np.where(valid, k / np.where(valid, se, 1.0), 0.0)
-    p = stats.t.sf(t, d.n_groups - 1)
+    p = stats.t.sf(t, d.n_groups_informative - 1)
     return int(np.count_nonzero(valid & (p < alpha)))
 
 

@@ -144,8 +144,8 @@ def analyse(plan: Mapping, data: Mapping) -> dict:
             if estimated["status"] == "computed":
                 entry["estimated_power_estimated_noise"] = estimated["effect"]["share"]
     return {"freeze_fingerprint": fp, "model": plan["model"]["name"],
-            "test": "one-sided t test of k > 0 against t with (groups - 1) degrees of freedom; "
-                    "cluster-robust standard error by group with the small-sample correction",
+            "test": "one-sided t test of k > 0 against t with (informative groups - 1) degrees of freedom; "
+                    "cluster-robust standard error by group with the small-sample correction over informative groups",
             "alpha": alpha, "sufficiency_option": plan["sufficiency"]["option"], "withheld": withheld,
             "analyses": entries, "not_analysed": not_analysed, "decision": st.decision(pooled, plan, fp)}
 
