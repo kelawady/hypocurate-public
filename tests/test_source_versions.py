@@ -98,8 +98,11 @@ def test_registering_seals_every_source(db):
         assert stored == files
         (enabled, status), = rows(db, "SELECT enabled, adapter_status FROM source WHERE key = :k", k=key)
         assert (enabled, status) == (d.enabled, "available")
-    stored_paths = {p for (p,) in rows(db, "SELECT path FROM source_file")}
-    assert stored_paths == {"MPEA_dataset.csv", "Grain_Size_Summary_v3.xlsx", "extract.csv"}
+    # Step 8a (owner, 2026-10-06, Q1): each source's documentation is stored with its data, by role.
+    stored = {(p, r) for p, r in rows(db, "SELECT path, role FROM source_file")}
+    assert stored == {("MPEA_dataset.csv", "data"), ("Grain_Size_Summary_v3.xlsx", "data"), ("extract.csv", "data"),
+                      ("documentation/Borg2020_PMC7722748.xml", "documentation"),
+                      ("documentation/main.tex", "documentation"), ("documentation/supplementary.tex", "documentation")}
     assert val(db, "SELECT enabled FROM source WHERE key = 'controlled_duplicates'") is False
 
 
@@ -107,7 +110,7 @@ def test_registering_again_adds_nothing(db):
     first = {k: register(db, k) for k in SOURCES}
     counts = [val(db, f"SELECT count(*) FROM {t}") for t in ("source", "source_version", "source_file")]
     again = {k: register(db, k) for k in SOURCES}
-    assert counts == [3, 3, 3]
+    assert counts == [3, 3, 6]  # step 8a: three data files and three documentation files
     assert [val(db, f"SELECT count(*) FROM {t}") for t in ("source", "source_version", "source_file")] == counts
     assert all(not r.created and r.version_id == first[k].version_id and r.fingerprint == first[k].fingerprint
                for k, r in again.items())

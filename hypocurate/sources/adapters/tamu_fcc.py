@@ -162,9 +162,10 @@ def read(version: SealedVersion) -> AdapterResult:
     if version.grouping_unit != "dataset":
         raise AdapterError(f"the Texas A&M adapter supports the grouping unit 'dataset' only "
                            f"(PRD 17, decision 9); version {version.id} has {version.grouping_unit!r}")
-    if len(version.files) != 1:
-        raise AdapterError(f"expected one spreadsheet, found {sorted(version.files)}")
-    (path, content), = version.files.items()
+    # Step 8a: a version may also hold documentation and a curation file; the adapter reads its data.
+    if len(version.data_files) != 1:
+        raise AdapterError(f"expected one spreadsheet, found {sorted(version.data_files)}")
+    (path, content), = version.data_files.items()
     try:
         workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=False)
     except (zipfile.BadZipFile, OSError, ValueError, KeyError) as error:
