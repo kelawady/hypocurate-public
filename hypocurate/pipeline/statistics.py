@@ -12,15 +12,30 @@ freedom, at the plan's threshold; "supported" exactly when p < alpha (register
 'p_threshold_comparison').
 
 **Which records a fit uses** (owner, 2026-10-05, decision 7): only alloys with at least
-`MODEL_MIN_GRAIN_SIZES` distinct grain sizes among the analysis's own records. This is the model's
-own condition, applied to grain sizes only; the frozen set is not changed and the others are
-reported as "not used in this fit". **The minimums are counted on the records the fit uses**
-(owner, 2026-10-05).
+`MODEL_MIN_GRAIN_SIZES` distinct grain sizes among the analysis's own records, distinct after the
+transformation by more than the numerical zero (review finding 3: 9.0 and 9.000000000000002 µm give
+the same d^-1/2). This is the model's own condition, applied to grain sizes only; the frozen set is
+not changed and the others are reported as "not used in this fit". **The minimums are counted on
+the records the fit uses** (owner, 2026-10-05).
+
+**Informative papers** (owner, 2026-10-06; register 'informative_groups'): a group is informative
+when at least one of its records differs from its alloy's average transformed grain size by more
+than the numerical zero, so that the group helps estimate the slope. Uninformative groups stay in
+the fit and are listed, but are not counted for the paper minimum or for validity check 2. The
+standard error's small-sample factor and the t distribution's degrees of freedom still use every
+group of the fit (statsmodels' definition, CLAUDE.md rule 6).
 
 **The two validity checks** can never be waived (CLAUDE.md rule 5): (1) a coefficient can be fitted
 when at least one alloy has two distinct grain sizes; (2) inference is valid with at least 1
-residual degree of freedom (records - alloys - 1) and at least 2 independent groups. Check 1 only:
-the coefficient alone, no uncertainty, no p-value, no verdict.
+residual degree of freedom (records - alloys - 1), at least 2 informative groups, and a clustered
+standard error that is finite and above the scale-aware numerical zero (review finding 1). Check 1
+only: the coefficient alone, no uncertainty, no p-value, no verdict, with the reason.
+
+**Numerical zero** (`RELATIVE_ZERO`, register 'numerical_zero'): a quantity counts as zero when it is
+at most `RELATIVE_ZERO` times its natural scale in the same units: a predictor contrast against the
+largest transformed grain size; a standard error against sqrt(Σ ỹ² / Σ x̃²), the slope scale of the
+data. Rounding residue is about 1e-16 of the scale; any real measurement scatter is many orders above
+1e-10.
 
 **Below the minimums under the fixed option** (owner, 2026-10-05, decision 1): when the pooled fit
 misses any minimum, every analysis of the run is withheld: counts against each minimum, which were
@@ -44,6 +59,8 @@ from scipy import stats
 
 # The model's own alloy condition (CLAUDE.md rule 6; PRD 5.7 "which alloys can be used").
 MODEL_MIN_GRAIN_SIZES = 2
+# A quantity at most this fraction of its natural scale is numerically zero (register 'numerical_zero').
+RELATIVE_ZERO = 1e-10
 # The predictor's transformation, by the locked plan's code (register
 # 'grain_size_transformation_at_analysis').
 TRANSFORMATIONS = MappingProxyType({"inverse_square_root": lambda d: d ** -0.5})
@@ -60,6 +77,12 @@ OUTCOME_WORDING = MappingProxyType({
 BELOW_MINIMUMS_LABEL = "data found; not enough to test"
 EXPLORATORY_LABEL = "exploratory"
 POWER_LABEL = "estimated power under the stated assumptions"
+DETECTION_NOTE = ("detection rates of the nominal 5% test under the stated assumptions (fixed and estimated noise), "
+                  "with its false-positive shares under the same assumptions; not power for a test shown to keep "
+                  "false positives at 5%")
+
+# Why validity check 2 failed (stored with the result; migration 0004).
+INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "uncertainty_not_estimable")
 
 # The evidence level (owner, 2026-10-05; register 'evidence_level_scale'): descriptive only, derived
 # by `evidence_level` from the result state, never by an agent; it never affects the outcome or the
@@ -77,6 +100,8 @@ STATE_LEVELS = MappingProxyType({"sufficient": 6, "exploratory": 5, "coefficient
 
 # The per-source labels (owner, 2026-10-05, decision 2): descriptive only, never the verdict.
 LABELS = ("agrees", "conflicts", "same_direction_different_decision", "not_enough_data")
+# Why a per-source result is "not enough data" (review, smaller point): zero direction is not missing inference.
+LABEL_REASONS = ("no_p_value", "pooled_without_decision", "zero_coefficient")
 
 
 class StatisticsError(ValueError):
@@ -103,6 +128,8 @@ class Design:
     n_groups: int
     n_records_in_set: int
     n_alloys_not_used: int
+    n_groups_informative: int = 0
+    uninformative_groups: tuple = ()
 
     @property
     def n(self) -> int:
@@ -117,8 +144,10 @@ class Design:
         return self.n_alloys >= 1
 
     @property
-    def inference_valid(self) -> bool:  # validity check 2
-        return self.coefficient_fitted and self.resid_df >= 1 and self.n_groups >= 2
+    def counts_allow_inference(self) -> bool:
+        """Validity check 2's counts: a residual degree of freedom and two informative groups. The
+        standard error must also be estimable (`fit`)."""
+        return self.coefficient_fitted and self.resid_df >= 1 and self.n_groups_informative >= 2
 
 
 def design(observations: Iterable[Observation], transformation: str) -> Design:
@@ -126,25 +155,38 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
     obs = sorted(observations, key=lambda o: o.identity)
     if len({o.identity for o in obs}) != len(obs):
         raise StatisticsError("two records share one stable identity")
-    sizes: dict[str, set] = {}
+    transform = TRANSFORMATIONS[transformation]
+    values: dict[str, list] = {}
     for o in obs:
         if not (math.isfinite(o.grain_size) and o.grain_size > 0 and math.isfinite(o.outcome)):
             raise StatisticsError("a record in a frozen set has no finite positive grain size or finite outcome")
-        sizes.setdefault(o.alloy, set()).add(o.grain_size)
-    used_alloys = sorted(a for a, s in sizes.items() if len(s) >= MODEL_MIN_GRAIN_SIZES)
+        values.setdefault(o.alloy, []).append(transform(o.grain_size))
+    used_alloys = sorted(a for a, v in values.items() if distinct_values(v) >= MODEL_MIN_GRAIN_SIZES)
     keep = set(used_alloys)
     used = [o for o in obs if o.alloy in keep]
     groups = sorted({o.group for o in used})
     alloy_index = {a: i for i, a in enumerate(used_alloys)}
     group_index = {g: i for i, g in enumerate(groups)}
-    transform = TRANSFORMATIONS[transformation]
+    x = np.array([transform(o.grain_size) for o in used], dtype=float)
+    alloy = np.array([alloy_index[o.alloy] for o in used], dtype=int)
+    informative: set = set()
+    if used:
+        contrast = np.abs(demeaned(x, alloy, len(used_alloys)))
+        informative = {o.group for o, c in zip(used, contrast) if c > RELATIVE_ZERO * float(np.abs(x).max())}
     return Design(
-        x=np.array([transform(o.grain_size) for o in used], dtype=float),
-        y=np.array([o.outcome for o in used], dtype=float),
-        alloy=np.array([alloy_index[o.alloy] for o in used], dtype=int),
+        x=x, y=np.array([o.outcome for o in used], dtype=float), alloy=alloy,
         group=np.array([group_index[o.group] for o in used], dtype=int),
         n_alloys=len(used_alloys), n_groups=len(groups), n_records_in_set=len(obs),
-        n_alloys_not_used=len(sizes) - len(used_alloys))
+        n_alloys_not_used=len(values) - len(used_alloys), n_groups_informative=len(informative),
+        uninformative_groups=tuple(g for g in groups if g not in informative))
+
+
+def distinct_values(values: list) -> int:
+    """How many values differ from each other by more than the numerical zero (relative to the
+    largest): numerical distinctness of transformed grain sizes (review finding 3)."""
+    ordered = sorted(values)
+    tolerance = RELATIVE_ZERO * max(abs(v) for v in ordered)
+    return 1 + sum(1 for a, b in zip(ordered, ordered[1:]) if b - a > tolerance)
 
 
 def demeaned(values: np.ndarray, alloy: np.ndarray, n_alloys: int) -> np.ndarray:
@@ -176,30 +218,38 @@ class Fit:
     t: float | None
     df: int | None
     p_value: float | None
+    reason: str | None = None  # why there is no inference (INFERENCE_REASONS), or None
 
 
 def fit(d: Design) -> Fit | None:
-    """The coefficient (check 1), and its standard error and one-sided p-value (check 2)."""
+    """The coefficient (check 1), and its standard error and one-sided p-value (check 2): only when
+    the counts allow it and the standard error is finite and above the numerical zero."""
     if not d.coefficient_fitted:
         return None
     xd = demeaned(d.x, d.alloy, d.n_alloys)
     yd = demeaned(d.y, d.alloy, d.n_alloys)
     sxx = float(xd @ xd)
+    if not (math.isfinite(sxx) and sxx > 0):  # excluded by the alloy rule; never divide by it
+        raise StatisticsError("the transformed grain sizes have no variation within any alloy")
     k = float(xd @ yd) / sxx
-    if not d.inference_valid:
-        return Fit(k, None, None, None, None)
+    if not math.isfinite(k):
+        raise StatisticsError("the coefficient is not finite")
+    if not d.counts_allow_inference:
+        return Fit(k, None, None, None, None, "insufficient_groups")
     e = yd - k * xd
     scores = np.bincount(d.group, xd * e, d.n_groups)
     variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
-    se = math.sqrt(variance)
-    t = k / se if se > 0 else (math.inf if k > 0 else -math.inf)
+    se = math.sqrt(variance) if math.isfinite(variance) and variance >= 0 else math.nan
+    if not (math.isfinite(se) and se > RELATIVE_ZERO * math.sqrt(float(yd @ yd) / sxx)):
+        return Fit(k, None, None, None, None, "uncertainty_not_estimable")
+    t = k / se
     df = d.n_groups - 1
     return Fit(k, se, t, df, one_sided_p(t, df))
 
 
 def minimums(d: Design, sufficiency: Mapping) -> dict:
     """Each count of the fit against its minimum (PRD 5.8)."""
-    counts = {"records": d.n, "alloys": d.n_alloys, "groups": d.n_groups, "resid_df": d.resid_df}
+    counts = {"records": d.n, "alloys": d.n_alloys, "groups": d.n_groups_informative, "resid_df": d.resid_df}
     keys = {"records": "min_records", "alloys": "min_alloys", "groups": "min_groups", "resid_df": "min_resid_df"}
     return {name: {"count": counts[name], "minimum": sufficiency[keys[name]],
                    "met": counts[name] >= sufficiency[keys[name]]} for name in counts}
@@ -209,13 +259,22 @@ def significant(p_value: float | None, alpha: float) -> bool | None:
     return None if p_value is None else p_value < alpha
 
 
+def label_reason(per_source: Mapping, pooled: Mapping) -> str | None:
+    """Why a per-source result is "not enough data", or None when it can be compared."""
+    if per_source.get("p_value") is None:
+        return "no_p_value"
+    if pooled.get("p_value") is None:
+        return "pooled_without_decision"
+    if per_source["estimate"] == 0 or pooled["estimate"] == 0:
+        return "zero_coefficient"
+    return None
+
+
 def label(per_source: Mapping, pooled: Mapping, alpha: float) -> str:
     """The four per-source labels (owner, 2026-10-05): from the locked test and the sign only."""
-    if per_source.get("p_value") is None or pooled.get("p_value") is None:
+    if label_reason(per_source, pooled):
         return "not_enough_data"
     a, b = per_source["estimate"], pooled["estimate"]
-    if a == 0 or b == 0:
-        return "not_enough_data"
     if (a > 0) != (b > 0):
         return "conflicts"
     if significant(per_source["p_value"], alpha) == significant(pooled["p_value"], alpha):
@@ -266,11 +325,17 @@ def decision(pooled: Mapping | None, plan: Mapping, freeze_fingerprint: str | No
 def analysis_entry(d: Design, plan: Mapping, withheld: bool) -> dict:
     """One analysis: counts, checks, minimums, and (unless withheld) the numbers from outcomes."""
     m = minimums(d, plan["sufficiency"])
+    counts_reason = None if d.counts_allow_inference else \
+        "coefficient_not_fitted" if not d.coefficient_fitted else "insufficient_groups"
     entry = {
         "counts": {"n_records_in_set": d.n_records_in_set, "n_records": d.n,
                    "n_records_not_used": d.n_records_in_set - d.n, "n_alloys": d.n_alloys,
-                   "n_alloys_not_used": d.n_alloys_not_used, "n_groups": d.n_groups, "resid_df": d.resid_df},
-        "checks": {"coefficient_fitted": d.coefficient_fitted, "inference_valid": d.inference_valid},
+                   "n_alloys_not_used": d.n_alloys_not_used, "n_groups": d.n_groups,
+                   "n_groups_informative": d.n_groups_informative, "resid_df": d.resid_df},
+        "uninformative_groups": list(d.uninformative_groups),
+        # Withheld: judged on the counts only (no outcome is used, so no standard error is computed).
+        "checks": {"coefficient_fitted": d.coefficient_fitted, "inference_valid": d.counts_allow_inference},
+        "inference_reason": counts_reason,
         "minimums": m, "minimums_met": all(v["met"] for v in m.values()), "withheld": withheld,
         "estimate": None, "std_error": None, "t": None, "df": None, "p_value": None,
         "alpha": plan["model"]["alpha"], "significant": None,
@@ -279,9 +344,9 @@ def analysis_entry(d: Design, plan: Mapping, withheld: bool) -> dict:
         return entry
     f = fit(d)
     if f is not None:
-        t = f.t if f.t is None or math.isfinite(f.t) else None  # a zero standard error: no finite t to store
-        entry.update(estimate=f.estimate, std_error=f.std_error, t=t, df=f.df, p_value=f.p_value,
-                     significant=significant(f.p_value, plan["model"]["alpha"]))
+        entry.update(estimate=f.estimate, std_error=f.std_error, t=f.t, df=f.df, p_value=f.p_value,
+                     significant=significant(f.p_value, plan["model"]["alpha"]), inference_reason=f.reason)
+        entry["checks"]["inference_valid"] = f.reason is None
     return entry
 
 

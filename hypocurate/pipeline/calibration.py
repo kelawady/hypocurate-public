@@ -15,8 +15,9 @@ the rules lock by the plan's `calibration` part; no person or agent chooses a va
   from PRD 5.10, which fixes them in advance; it is a safeguard change reviewed by a second model.
   1. Fit the locked model (alloy intercepts and k × x): residual sum of squares RSS_R, rank r_R.
   2. Fit it with one intercept per group added: RSS_F, rank r_F.
-  3. σe² = RSS_F / (N - r_F). Not estimable when N <= r_F, or when RSS_F is zero (a perfect fit
-     gives no scatter to simulate).
+  3. σe² = RSS_F / (N - r_F). Not estimable when N <= r_F, or when RSS_F is at most the numerical
+     zero of the outcome's spread within alloys (RSS_F <= RELATIVE_ZERO² × Σ ỹ²): a perfect fit,
+     whose residue is rounding, gives no scatter to simulate (review finding 4).
   4. σu² = max(0, (RSS_R - RSS_F - (r_F - r_R) σe²) / tr(Z'M_R Z)), where Z is the group
      membership matrix and M_R = I - P_R removes what the locked model explains. Not estimable
      when the trace is zero (the groups are entirely explained by alloys and grain sizes). A
@@ -40,7 +41,17 @@ the result; draws are assigned to records in stable-identity order (`statistics.
 and insertion order cannot change a share.
 
 **Estimated power** (owner, 2026-10-05, decision 5) is the effect world's share of the fixed
-method, labelled "estimated power under the stated assumptions". It uses no outcome value.
+method, labelled "estimated power under the stated assumptions". It uses no outcome value. The
+detection rate is reported both ways (review, smaller point), each beside its false-positive share:
+fixed (shown also below the minimums) and estimated (withheld below the minimums). Both are detection
+rates of the nominal 5% test, not power for a test shown to keep false positives at 5%.
+
+**What the intervals cover**: Monte Carlo uncertainty only. For the estimated method they do not
+cover uncertainty in the estimated scatter and shift; it is a diagnostic conditional on the estimate,
+not independent validation (stated with every result, `interval_note`).
+
+**Each simulated fit gets the real fit's validity checks**: a simulated standard error that is not
+finite or not above the numerical zero gives no inference and is not counted as significant.
 """
 from __future__ import annotations
 
@@ -51,7 +62,7 @@ from typing import Mapping
 import numpy as np
 from scipy import stats
 
-from hypocurate.pipeline.statistics import Design, demeaned, small_sample_factor
+from hypocurate.pipeline.statistics import RELATIVE_ZERO, Design, demeaned, small_sample_factor
 
 CONFIDENCE = 0.95
 FLAG_WORDING = {
@@ -61,6 +72,11 @@ FLAG_WORDING = {
 }
 # Relative tolerances of the estimator's linear algebra (numerical zero).
 TRACE_TOLERANCE = 1e-9
+# What the intervals cover (review, smaller point): stated with every calibration.
+INTERVAL_NOTE_FIXED = "The intervals cover Monte Carlo (simulation) uncertainty only."
+INTERVAL_NOTE_ESTIMATED = ("The intervals cover Monte Carlo (simulation) uncertainty only, not uncertainty in the "
+                           "estimated scatter and shift. This is a diagnostic conditional on the estimated noise "
+                           "(a shift truncated at zero biases it), not independent validation.")
 
 
 def seed(freeze_fingerprint: str, analysis: str, method: str) -> int:
@@ -86,7 +102,11 @@ def confidence_flag(low: float, high: float, alpha: float) -> str:
 
 def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
     """How many rows of `outcomes` (simulations × records) the locked test finds significant:
-    the same estimator, standard error, correction and one-sided t test as `statistics.fit`."""
+    the same estimator, standard error, correction, validity checks and one-sided t test as
+    `statistics.fit`. A simulated fit whose standard error is not finite or not above the numerical
+    zero gives no inference, so it is never significant (review finding 1)."""
+    if not d.counts_allow_inference:
+        return 0
     xd = demeaned(d.x, d.alloy, d.n_alloys)
     sxx = float(xd @ xd)
     yd = demeaned(outcomes, d.alloy, d.n_alloys)
@@ -97,9 +117,12 @@ def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
     scores = (e * xd[None, :]) @ groups
     variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
     with np.errstate(divide="ignore", invalid="ignore"):
-        t = np.where(variance > 0, k / np.sqrt(variance), np.where(k > 0, np.inf, -np.inf))
+        se = np.sqrt(variance)
+        scale = np.sqrt((yd ** 2).sum(axis=1) / sxx)
+        valid = np.isfinite(se) & np.isfinite(k) & (se > RELATIVE_ZERO * scale)
+        t = np.where(valid, k / np.where(valid, se, 1.0), 0.0)
     p = stats.t.sf(t, d.n_groups - 1)
-    return int(np.count_nonzero(p < alpha))
+    return int(np.count_nonzero(valid & (p < alpha)))
 
 
 def simulate(d: Design, scatter: float, shift: float, smallest_effect: float, n_simulations: int,
@@ -139,9 +162,13 @@ def henderson_iii(d: Design) -> dict:
     q, _ = np.linalg.qr(reduced)
     residual_groups = groups - q @ (q.T @ groups)
     trace = float((residual_groups ** 2).sum())
+    within = demeaned(d.y, d.alloy, d.n_alloys)
+    tss_within = float(within @ within)
     out = {"estimation": "henderson_iii", "rss_reduced": rss_r, "rank_reduced": rank_r, "rss_full": rss_f,
-           "rank_full": rank_f, "trace": trace, "n_records": n}
-    if n <= rank_f or not rss_f > 0:
+           "rank_full": rank_f, "trace": trace, "n_records": n, "tss_within_alloys": tss_within}
+    # Review finding 4: a residual at most the numerical zero of the outcome's within-alloy spread is
+    # rounding residue (a perfect fit), not scatter.
+    if n <= rank_f or not (math.isfinite(rss_f) and rss_f > (RELATIVE_ZERO ** 2) * tss_within):
         return {**out, "reason": "scatter_not_estimable"}
     scatter_sq = rss_f / (n - rank_f)
     out["scatter_squared"] = scatter_sq
@@ -159,7 +186,8 @@ def calibrate(d: Design, calibration: Mapping, alpha: float, freeze_fingerprint:
     numbers, or (estimated only) 'unavailable' with the reason the noise cannot be estimated."""
     assumptions = {"method": method, "smallest_effect": calibration["smallest_effect"],
                    "n_simulations": calibration["n_simulations"], "alpha": alpha, "errors": "normal",
-                   "design": "fixed: the fit's records, alloys, groups and grain sizes"}
+                   "design": "fixed: the fit's records, alloys, groups and grain sizes",
+                   "interval_note": INTERVAL_NOTE_FIXED if method == "fixed" else INTERVAL_NOTE_ESTIMATED}
     if method == "fixed":
         scatter, shift = calibration["scatter"], calibration["shift"]
         assumptions.update(scatter=scatter, shift=shift, source="the locked plan")

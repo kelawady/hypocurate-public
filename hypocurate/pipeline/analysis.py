@@ -75,6 +75,15 @@ def _unavailable(reason: str) -> dict:
     return {"status": "unavailable", "reason": reason}
 
 
+def _rates(c: Mapping) -> dict:
+    """The detection rate beside the false-positive share, under one method's assumptions."""
+    if c["status"] != "computed":
+        return {"unavailable": c["reason"]}
+    return {"detection": c["effect"]["share"], "detection_ci": [c["effect"]["ci_low"], c["effect"]["ci_high"]],
+            "false_positive": c["null"]["share"], "false_positive_ci": [c["null"]["ci_low"], c["null"]["ci_high"]],
+            "scatter": c["assumptions"]["scatter"], "shift": c["assumptions"]["shift"]}
+
+
 def analyse(plan: Mapping, data: Mapping) -> dict:
     """Every analysis of the run, its calibrations, and the decision (the record of statistical
     significance). `data` is `frozen_analysis_data`."""
@@ -109,23 +118,31 @@ def analyse(plan: Mapping, data: Mapping) -> dict:
             entry["label_text"] = st.BELOW_MINIMUMS_LABEL
     pooled = entries[0]
     for entry in entries:
-        entry["label"] = st.label(entry, pooled, alpha) if entry["scope"] == "per_source" else None
+        per_source = entry["scope"] == "per_source"
+        entry["label"] = st.label(entry, pooled, alpha) if per_source else None
+        entry["label_reason"] = st.label_reason(entry, pooled) if per_source else None
         d = designs[entry["analysis"]]
-        entry["estimated_power"], entry["power_label"] = None, None
-        if not d.inference_valid:
-            reason = "coefficient_not_fitted" if not d.coefficient_fitted else "insufficient_groups"
+        entry["estimated_power"], entry["estimated_power_estimated_noise"], entry["power_label"] = None, None, None
+        entry["detection"], entry["detection_note"] = None, None
+        if not entry["checks"]["inference_valid"]:
+            reason = entry["inference_reason"]
             entry["calibration"] = {"fixed": _unavailable(reason), "estimated": _unavailable(reason)}
             continue
         # The fixed method uses no outcome value: its effect world is the estimated power, shown
         # even below the minimums (owner, decision 5).
         fixed = cal.calibrate(d, plan["calibration"], alpha, fp, entry["analysis"], "fixed")
         entry["estimated_power"], entry["power_label"] = fixed["effect"]["share"], st.POWER_LABEL
+        entry["detection_note"] = st.DETECTION_NOTE
         if withheld:
             entry["calibration"] = {"fixed": _unavailable("below_minimums"),
                                     "estimated": _unavailable("below_minimums")}
+            entry["detection"] = {"fixed": _rates(fixed), "estimated": {"withheld": True}}
         else:
-            entry["calibration"] = {"fixed": fixed, "estimated": cal.calibrate(d, plan["calibration"], alpha, fp,
-                                                                                entry["analysis"], "estimated")}
+            estimated = cal.calibrate(d, plan["calibration"], alpha, fp, entry["analysis"], "estimated")
+            entry["calibration"] = {"fixed": fixed, "estimated": estimated}
+            entry["detection"] = {"fixed": _rates(fixed), "estimated": _rates(estimated)}
+            if estimated["status"] == "computed":
+                entry["estimated_power_estimated_noise"] = estimated["effect"]["share"]
     return {"freeze_fingerprint": fp, "model": plan["model"]["name"],
             "test": "one-sided t test of k > 0 against t with (groups - 1) degrees of freedom; "
                     "cluster-robust standard error by group with the small-sample correction",
@@ -172,8 +189,9 @@ def _read(engine: Engine, run_id: int, role: str) -> tuple[dict, str]:
 _RESULT = text(
     "INSERT INTO analysis_result (run_id, scope, analysis_set_id, source_id, n_records, n_alloys, n_groups, resid_df, "
     "check1_passed, check2_passed, minimums_met, estimate, std_error, p_value, estimated_power, label, withheld, "
-    "n_records_not_used, test_run_label) VALUES (:r, :scope, :set, :src, :n, :a, :g, :df, :c1, :c2, :mm, :est, :se, "
-    ":p, :pw, :lab, :wh, :nu, :tl) RETURNING id")
+    "n_records_not_used, test_run_label, n_groups_informative, inference_reason, label_reason, "
+    "estimated_power_estimated_noise) VALUES (:r, :scope, :set, :src, :n, :a, :g, :df, :c1, :c2, :mm, :est, :se, "
+    ":p, :pw, :lab, :wh, :nu, :tl, :gi, :ir, :lr, :pe) RETURNING id")
 _CALIBRATION = text(
     "INSERT INTO calibration_result (run_id, analysis_result_id, method, status, reason, assumptions, n_simulations, "
     "seed, null_share, null_ci_low, null_ci_high, effect_share, effect_ci_low, effect_ci_high, confidence_flag, "
@@ -200,10 +218,11 @@ def run_statistics(engine: Engine, run_id: int) -> dict:
         data, _ = _read(engine, run_id, ROLE)
         try:
             record = analyse(data["plan"]["content"], data["frozen_analysis_data"])
-        except st.StatisticsError as error:
-            code = "records_without_group" if str(error) == "records_without_group" else "changed_since_read"
-            log_refusal(engine, run_id, ROLE, "run_statistics", code, str(error))
-            raise Refused("run_statistics", code, str(error)) from None
+        except Exception as error:  # review finding 3: nothing bypasses the stage's error handling
+            code = "records_without_group" if isinstance(error, RecordsWithoutGroup) else "statistics_failed"
+            message = f"{type(error).__name__}: {error}"
+            log_refusal(engine, run_id, ROLE, "run_statistics", code, message)
+            raise Refused("run_statistics", code, message) from None
         pooled = record["analyses"][0]
         facts = gap_facts(gap, pooled["minimums"])
         plan_fp, fp = data["plan"]["fingerprint"], record["freeze_fingerprint"]
@@ -235,7 +254,8 @@ def run_statistics(engine: Engine, run_id: int) -> dict:
                 n=c["n_records"], a=c["n_alloys"], g=c["n_groups"], df=c["resid_df"],
                 c1=e["checks"]["coefficient_fitted"], c2=e["checks"]["inference_valid"], mm=e["minimums_met"],
                 est=e["estimate"], se=e["std_error"], p=e["p_value"], pw=e["estimated_power"], lab=e["label"],
-                wh=e["withheld"], nu=c["n_records_not_used"], tl=label)).scalar_one()
+                wh=e["withheld"], nu=c["n_records_not_used"], tl=label, gi=c["n_groups_informative"],
+                ir=e["inference_reason"], lr=e["label_reason"], pe=e["estimated_power_estimated_noise"])).scalar_one()
             for method in ("fixed", "estimated"):
                 conn.execute(_CALIBRATION, _calibration_row(run_id, rid, method, e["calibration"][method], label))
         output = {**record, "test_run_label": label}

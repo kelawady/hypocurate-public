@@ -79,7 +79,7 @@ def test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes():
             ("r6", "C", "p4", 3.0, 300.0)]
     d = st.design(obs(rows), "inverse_square_root")
     assert (d.n, d.n_alloys, d.n_groups, d.n_records_in_set, d.n_alloys_not_used) == (3, 1, 2, 6, 2)
-    assert d.resid_df == 1 and d.coefficient_fitted and d.inference_valid
+    assert d.resid_df == 1 and d.coefficient_fitted and d.counts_allow_inference
     entry = st.analysis_entry(d, g.plan("use_available", minimums=(3, 1, 2, 1)), withheld=False)
     assert entry["counts"]["n_records_not_used"] == 3
     assert entry["minimums"]["records"] == {"count": 3, "minimum": 3, "met": True}
@@ -97,7 +97,7 @@ def test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes():
 ])
 def test_the_two_validity_checks(rows, check1, check2):
     d = st.design(obs(rows), "inverse_square_root")
-    assert (d.coefficient_fitted, d.inference_valid) == (check1, check2)
+    assert (d.coefficient_fitted, d.counts_allow_inference) == (check1, check2)  # step 7 review: renamed
     f = st.fit(d)
     assert (f is not None) == check1
     if check1:

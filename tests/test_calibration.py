@@ -133,7 +133,7 @@ def test_the_scatter_cannot_be_estimated_without_residual_freedom_in_the_full_mo
     rows = [st.Observation(f"r{i}", a, p, d, y) for i, (a, p, d, y) in enumerate(
         [("A", "p1", 1.0, 500.0), ("A", "p2", 4.0, 420.0), ("B", "p1", 1.0, 700.0), ("B", "p3", 4.0, 610.0)])]
     d = st.design(rows, "inverse_square_root")
-    assert d.inference_valid
+    assert d.counts_allow_inference
     assert cal.henderson_iii(d)["reason"] == "scatter_not_estimable"
 
 
@@ -158,7 +158,8 @@ def test_calibration_never_changes_the_outcome_or_the_verdict(monkeypatch):
     before = analysis.analyse(plan, data)
 
     def forced(*args, **kwargs):
-        return {"status": "computed", "reason": None, "assumptions": {}, "seed": 1, "n_simulations": 1,
+        return {"status": "computed", "reason": None, "assumptions": {"scatter": 1.0, "shift": 1.0}, "seed": 1,
+                "n_simulations": 1,
                 "null": {"significant": 1, "share": 1.0, "ci_low": 0.9, "ci_high": 1.0},
                 "effect": {"significant": 0, "share": 0.0, "ci_low": 0.0, "ci_high": 0.1},
                 "confidence_flag": "over_confident", "flag_wording": "x"}

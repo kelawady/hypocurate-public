@@ -62,6 +62,7 @@ CODES = {
     "invariant_broken": "the primary set breaks a rule no plan can change (register 'primary_set_invariants')",
     # Step 7.
     "records_without_group": "a record in a frozen set has no group, so the grouped uncertainty cannot be computed",
+    "statistics_failed": "the statistics could not be computed for this run (the error is in the refusal's message)",
     "decision_missing": "no stored decision for this run",
     "decision_not_current": "the stored decision belongs to a different freeze than the run's",
 }
