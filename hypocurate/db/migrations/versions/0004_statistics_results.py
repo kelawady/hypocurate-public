@@ -28,6 +28,9 @@ analysis_result:
 - `effective_papers` ((Σ I_g)² / Σ I_g², I_g a paper's sum of squared within-alloy deviations of the
   transformed grain size) and `largest_paper_share` (re-check, owner 2026-10-06): check 2 also needs
   an effective number of at least 2; below it the reason is 'evidence_concentrated'.
+- `t_df` and `p_value_description` (merge decision, owner 2026-10-06): a p-value is stored with the fixed
+  description "approximate, nominal, one-sided cluster-robust p-value under the locked method", its t
+  degrees of freedom (informative papers - 1), the effective number and the largest share.
 - `label_reason` (present exactly with "not enough data") and `estimated_power_estimated_noise`
   (the detection rate under the estimated noise; never on a withheld result).
 - `test_run_label`: "test run: includes constructed data" exactly when the run is marked.
@@ -249,6 +252,12 @@ INFERENCE_REASONS = ("('coefficient_not_fitted', 'insufficient_groups', 'evidenc
 LABEL_REASONS = "('no_p_value', 'pooled_without_decision', 'zero_coefficient')"
 COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
 SPREAD = "coalesce(effective_papers, 0) >= 2"  # re-check (owner, 2026-10-06): two effective papers
+P_VALUE_DESCRIPTION = "approximate, nominal, one-sided cluster-robust p-value under the locked method"
+# Merge decision (owner, 2026-10-06): a p-value is stored with its description, the t degrees of freedom
+# (informative papers - 1), the effective number of papers and the largest paper's share.
+REPORTED_TOGETHER = ("(t_df IS NULL) = (p_value IS NULL) AND (p_value_description IS NULL) = (p_value IS NULL) "
+                     "AND (p_value IS NULL OR (t_df = n_groups_informative - 1 AND effective_papers IS NOT NULL "
+                     "AND largest_paper_share IS NOT NULL))")
 INFERENCE_REASON = ("(inference_reason IS NULL) = check2_passed "
                     "AND (inference_reason IS NOT DISTINCT FROM 'coefficient_not_fitted') = NOT check1_passed "
                     f"AND (inference_reason IS DISTINCT FROM 'insufficient_groups' OR NOT {COUNTS_ALLOW}) "
@@ -268,7 +277,8 @@ IN_USE = """
                    OR test_run_label IS NOT NULL OR label = 'same_direction_different_decision'
                    OR n_groups_informative <> n_groups OR inference_reason = 'uncertainty_not_estimable'
                    OR label_reason IS NOT NULL OR estimated_power_estimated_noise IS NOT NULL
-                   OR effective_papers IS NOT NULL OR inference_reason = 'evidence_concentrated')
+                   OR effective_papers IS NOT NULL OR inference_reason = 'evidence_concentrated'
+                   OR t_df IS NOT NULL OR p_value_description IS NOT NULL)
            OR EXISTS (SELECT 1 FROM calibration_result WHERE method = 'estimated' OR test_run_label IS NOT NULL
                       OR reason IN ('below_minimums', 'scatter_not_estimable', 'shift_not_estimable',
                                     'uncertainty_not_estimable', 'evidence_concentrated'))
@@ -309,6 +319,11 @@ def upgrade() -> None:
                                'effective_papers IS NULL OR effective_papers >= 0')
     op.create_check_constraint(op.f('ck_analysis_result_largest_paper_share'), 'analysis_result',
                                'largest_paper_share IS NULL OR (largest_paper_share > 0 AND largest_paper_share <= 1)')
+    op.add_column('analysis_result', sa.Column('t_df', sa.Integer(), nullable=True))
+    op.add_column('analysis_result', sa.Column('p_value_description', sa.Text(), nullable=True))
+    op.create_check_constraint(op.f('ck_analysis_result_p_value_description'), 'analysis_result',
+                               f"p_value_description IS NULL OR p_value_description = '{P_VALUE_DESCRIPTION}'")
+    op.create_check_constraint(op.f('ck_analysis_result_reported_together'), 'analysis_result', REPORTED_TOGETHER)
     op.create_check_constraint(op.f('ck_analysis_result_inference_reason_value'), 'analysis_result',
                                f"inference_reason IS NULL OR inference_reason IN {INFERENCE_REASONS}")
     op.create_check_constraint(op.f('ck_analysis_result_label_reason_value'), 'analysis_result',
@@ -374,7 +389,7 @@ def downgrade() -> None:
     op.execute(ANALYSIS_RESULT_INSERT_0001)
     for name in ('power_needs_check2', 'label_per_source_only', 'inference_reason', 'power_estimated_noise',
                  'label_reason', 'label_reason_value', 'inference_reason_value', 'informative_within_groups',
-                 'effective_papers', 'largest_paper_share'):
+                 'effective_papers', 'largest_paper_share', 'p_value_description', 'reported_together'):
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
     for name, expr in (("estimate_iff_check1", "check1_passed = (estimate IS NOT NULL)"),
                        ("std_error_iff_check2", "check2_passed = (std_error IS NOT NULL)"),
@@ -385,7 +400,7 @@ def downgrade() -> None:
         op.create_check_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', expr)
     # After the constraints that name them are restored (a dropped column takes its constraints with it).
     for column in ('estimated_power_estimated_noise', 'label_reason', 'inference_reason', 'n_groups_informative',
-                   'effective_papers', 'largest_paper_share'):
+                   'effective_papers', 'largest_paper_share', 't_df', 'p_value_description'):
         op.drop_column('analysis_result', column)
     for name in ('test_run_label', 'not_used_not_negative', 'withheld_set'):
         op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')

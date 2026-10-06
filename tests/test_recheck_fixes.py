@@ -99,8 +99,8 @@ def test_the_effective_number_and_share_are_reported_with_every_result():
 
 def test_the_counterexample_keeps_every_papers_score():
     """Every paper's score in the sandwich; informative papers (two) only in the factor and the df. The
-    result equals the independent check (statsmodels' covariance over every cluster, rescaled) and is no
-    less cautious than counting every paper; the old filtered result (p = 0.0366) is gone."""
+    result equals the independent check (the 60-digit decimal sandwich of `reference_stats.fit_informative`,
+    which keeps every score) and is no less cautious than counting every paper; the old filtered result (p = 0.0366) is gone."""
     rows = counterexample_rows()
     pooled = analysis.analyse(g.plan("use_available", n_simulations=50), frozen(rows, "ce"))["analyses"][0]
     d = design_of(rows, "ce")

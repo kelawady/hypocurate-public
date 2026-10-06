@@ -5944,6 +5944,54 @@
       "tests/test_analysis_stage.py::test_the_effective_number_and_share_are_stored_with_every_result"
     ],
     "history": [],
+    "notes": [
+      "Second-model confirmation (2026-10-06): a measure of how concentrated the within-alloy predictor contrast is; not an estimate of independent sample size; passing the floor of 2 does not establish reliable inference, and it supplies no replacement degrees of freedom."
+    ]
+  },
+  {
+    "key": "p_value_reporting",
+    "name": "How a p-value is stored and shown",
+    "state": "in_force",
+    "statement": "Every stored p-value carries the fixed description 'approximate, nominal, one-sided cluster-robust p-value under the locked method', and is stored together with the informative paper count, the effective number of papers, the largest paper's share and the t distribution's degrees of freedom (informative papers − 1), so that they can always be shown together. The effective number is a concentration diagnostic, never described as a number of independent papers.",
+    "value": {
+      "text": "approximate, nominal, one-sided cluster-robust p-value under the locked method",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "What is stored with each analysis result (and shown by the screens of step 10); no number or decision.",
+    "reason": "The second model's confirmation: passing the concentration floor does not establish reliable inference, and the nominal calibration is weakened by concentrated information (pooled: 20 informative papers, effective concentration 3.94, largest share 38.7%, 19 degrees of freedom) and the roughly 8% simulated no-effect rejection rate at nominal 5%.",
+    "evidence": [
+      "Second-model confirmation (ChatGPT, 2026-10-06), point 7: docs/reviews/step07_confirm_chatgpt.md.",
+      "Owner's merge decision, 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:P_VALUE_DESCRIPTION",
+          "equals": "approximate, nominal, one-sided cluster-robust p-value under the locked method"
+        },
+        {
+          "ref": "sql:ck_analysis_result_reported_together"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_analysis_stage.py::test_every_p_value_is_stored_with_its_description_and_the_four_quantities",
+      "tests/test_analysis_stage.py::test_the_database_refuses_a_p_value_without_its_description_and_quantities"
+    ],
+    "history": [],
     "notes": []
   }
 ]

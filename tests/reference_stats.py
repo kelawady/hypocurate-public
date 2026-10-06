@@ -85,8 +85,12 @@ def informative_groups(rows, relative_zero=1e-10) -> set:
 
 
 def fit_informative(rows, count: str = "informative") -> dict:
-    """The owner's rule (2026-10-06, as corrected after the re-check), computed independently in
-    60-digit decimal arithmetic (Python's `decimal`), so floating-point conditioning cannot affect it:
+    """The owner's rule (2026-10-06, as corrected after the re-check), computed in 60-digit decimal
+    arithmetic (Python's `decimal`). It independently checks the implementation's covariance; it does not
+    remove every floating-point effect (its inputs, the transformed grain sizes, come from ordinary
+    floating-point code, the informative-paper classification is the floating-point `informative_groups`,
+    and the tail probability uses SciPy), and it does not validate the statistical method itself (the
+    chosen correction and degrees of freedom). The computation:
     within-alloy centring, k = Σ x̃ỹ / Σ x̃², residuals e = ỹ - k x̃, the clustered variance summing
     **every** paper's score (no filtering), the factor G/(G-1) × (N-1)/(N-K) and a one-sided t test
     with G - 1 degrees of freedom, where G is the informative papers (`count="informative"`) or every

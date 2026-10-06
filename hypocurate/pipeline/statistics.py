@@ -30,6 +30,8 @@ register 'informative_groups_in_inference'; CLAUDE.md rule 6). The clustered cov
 sum of squared within-alloy deviations of the transformed grain size, (Σ I_g)² / Σ I_g², and the
 largest single group's share max I_g / Σ I_g, stored with every result. Validity check 2 needs at
 least `MIN_EFFECTIVE_PAPERS` (2); below it the coefficient alone, reason 'evidence_concentrated'.
+It measures how concentrated the within-alloy predictor contrast is; it is not an estimate of
+independent sample size, and passing the floor does not establish reliable inference.
 
 **The two validity checks** can never be waived (CLAUDE.md rule 5): (1) a coefficient can be fitted
 when at least one alloy has two distinct grain sizes; (2) inference is valid with at least 1
@@ -91,6 +93,11 @@ OUTCOME_WORDING = MappingProxyType({
 BELOW_MINIMUMS_LABEL = "data found; not enough to test"
 EXPLORATORY_LABEL = "exploratory"
 POWER_LABEL = "estimated power under the stated assumptions"
+# Stored with every p-value (owner, at the merge decision, 2026-10-06; register 'p_value_reporting'). The
+# informative paper count, the effective number of papers, the largest paper's share and the t degrees
+# of freedom are stored with it, to be shown together. The effective number is a concentration
+# diagnostic, never a number of independent papers.
+P_VALUE_DESCRIPTION = "approximate, nominal, one-sided cluster-robust p-value under the locked method"
 def detection_note(alpha: float) -> str:
     """The detection note with the plan's locked threshold (re-check, smaller point)."""
     return (f"detection rates of the nominal α = {alpha:g} test (the plan's locked threshold) under the stated "
@@ -391,7 +398,7 @@ def analysis_entry(d: Design, plan: Mapping, withheld: bool) -> dict:
         "checks": {"coefficient_fitted": d.coefficient_fitted, "inference_valid": d.counts_allow_inference},
         "inference_reason": counts_reason,
         "minimums": m, "minimums_met": all(v["met"] for v in m.values()), "withheld": withheld,
-        "estimate": None, "std_error": None, "t": None, "df": None, "p_value": None,
+        "estimate": None, "std_error": None, "t": None, "df": None, "p_value": None, "p_value_description": None,
         "alpha": plan["model"]["alpha"], "significant": None,
     }
     if withheld:
@@ -399,7 +406,8 @@ def analysis_entry(d: Design, plan: Mapping, withheld: bool) -> dict:
     f = fit(d)
     if f is not None:
         entry.update(estimate=f.estimate, std_error=f.std_error, t=f.t, df=f.df, p_value=f.p_value,
-                     significant=significant(f.p_value, plan["model"]["alpha"]), inference_reason=f.reason)
+                     significant=significant(f.p_value, plan["model"]["alpha"]), inference_reason=f.reason,
+                     p_value_description=P_VALUE_DESCRIPTION if f.p_value is not None else None)
         entry["checks"]["inference_valid"] = f.reason is None
     return entry
 

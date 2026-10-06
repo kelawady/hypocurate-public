@@ -641,6 +641,7 @@ INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "evidence_
 LABEL_REASONS = ("no_p_value", "pooled_without_decision", "zero_coefficient")
 COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
 SPREAD = "coalesce(effective_papers, 0) >= 2"
+P_VALUE_DESCRIPTION = "approximate, nominal, one-sided cluster-robust p-value under the locked method"
 
 
 class AnalysisResult(Base):
@@ -684,6 +685,9 @@ class AnalysisResult(Base):
     # Re-check (owner, 2026-10-06): concentrated evidence.
     effective_papers: Mapped[float | None] = mapped_column(Double)
     largest_paper_share: Mapped[float | None] = mapped_column(Double)
+    # Merge decision (2026-10-06): stored with every p-value, to be shown together.
+    t_df: Mapped[int | None] = mapped_column(Integer)
+    p_value_description: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (
         ForeignKeyConstraint(["analysis_set_id", "run_id"], ["analysis_set.id", "analysis_set.run_id"],
                              name="fk_analysis_result_analysis_set"),
@@ -703,6 +707,11 @@ class AnalysisResult(Base):
         CheckConstraint(f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW} AND {SPREAD})",
                         name="check2_consistent"),
         CheckConstraint("effective_papers IS NULL OR effective_papers >= 0", name="effective_papers"),
+        CheckConstraint(f"p_value_description IS NULL OR p_value_description = '{P_VALUE_DESCRIPTION}'",
+                        name="p_value_description"),
+        CheckConstraint("(t_df IS NULL) = (p_value IS NULL) AND (p_value_description IS NULL) = (p_value IS NULL) "
+                        "AND (p_value IS NULL OR (t_df = n_groups_informative - 1 AND effective_papers IS NOT NULL "
+                        "AND largest_paper_share IS NOT NULL))", name="reported_together"),
         CheckConstraint("largest_paper_share IS NULL OR (largest_paper_share > 0 AND largest_paper_share <= 1)",
                         name="largest_paper_share"),
         CheckConstraint("n_groups_informative BETWEEN 0 AND n_groups", name="informative_within_groups"),

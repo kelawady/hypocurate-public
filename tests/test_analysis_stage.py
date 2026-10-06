@@ -265,12 +265,18 @@ def test_a_marked_run_with_no_dataset_frozen_is_labelled_too(engine):
 # --- what the database refuses (migration 0004) -------------------------------------------------------
 
 def _insert_result(engine, rid, **over):
+    """A result row; one with a p-value gets, by default, what must be stored with it (merge decision):
+    the description, t df = informative papers - 1, the effective number and the largest share."""
     sets = dict(rows_of(engine, "SELECT key, id FROM analysis_set WHERE run_id = :r", r=rid))
     n = val(engine, "SELECT count(*) FROM analysis_set_record WHERE analysis_set_id = :s", s=sets["primary"])
     cols = dict(run_id=rid, scope="pooled", analysis_set_id=sets["primary"], n_records=n, n_alloys=3, n_groups=3,
                 n_groups_informative=3, effective_papers=3.0, resid_df=n - 4, check1_passed=True, check2_passed=True,
                 minimums_met=False,
                 estimate=None, std_error=None, p_value=None)
+    if over.get("p_value") is not None:
+        informative = over.get("n_groups_informative", cols["n_groups_informative"])
+        cols.update(t_df=informative - 1, largest_paper_share=0.5,
+                    p_value_description="approximate, nominal, one-sided cluster-robust p-value under the locked method")
     cols.update(over)
     with engine.begin() as conn:
         conn.execute(text(f"INSERT INTO analysis_result ({', '.join(cols)}) VALUES "
@@ -472,3 +478,35 @@ def test_the_effective_number_and_share_are_stored_with_every_result(engine):
     analysis.run_statistics(engine, rid)
     for r in result_rows(engine, rid):
         assert r.effective_papers > 0 and 0 < r.largest_paper_share <= 1
+
+
+P_VALUE_TEXT = "approximate, nominal, one-sided cluster-robust p-value under the locked method"
+
+
+def test_every_p_value_is_stored_with_its_description_and_the_four_quantities(reference):
+    """Owner, at the merge decision (2026-10-06): each result with a p-value stores the fixed description
+    and, together, the informative paper count, the effective number, the largest paper's share and the
+    t distribution's degrees of freedom, so they can always be shown together."""
+    engine, rid, out = reference
+    with_p = [r for r in result_rows(engine, rid) if r.p_value is not None]
+    assert with_p
+    for r in with_p:
+        assert r.p_value_description == P_VALUE_TEXT
+        assert r.t_df == r.n_groups_informative - 1
+        assert r.effective_papers is not None and r.largest_paper_share is not None
+    pooled = out["analyses"][0]
+    assert pooled["p_value_description"] == P_VALUE_TEXT and pooled["df"] == 19
+    assert (pooled["counts"]["n_groups_informative"], round(pooled["counts"]["effective_papers"], 2),
+            round(pooled["counts"]["largest_paper_share"], 3)) == (20, 3.94, 0.387)
+    assert all(r.p_value_description is None and r.t_df is None for r in result_rows(engine, rid) if r.p_value is None)
+
+
+def test_the_database_refuses_a_p_value_without_its_description_and_quantities(engine):
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+    with pytest.raises(IntegrityError, match="ck_analysis_result_reported_together"):
+        _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1, t_df=None, p_value_description=None)
+    with pytest.raises(IntegrityError, match="ck_analysis_result_reported_together"):
+        _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1, t_df=5)  # not informative - 1
+    with pytest.raises(IntegrityError, match="ck_analysis_result_p_value_description"):
+        _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1, p_value_description="exact p-value")
+    _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1)
