@@ -53,14 +53,23 @@ def test_the_downgrade_keeps_0001s_functions_verbatim(name):
 
 
 def test_the_new_result_function_keeps_every_check_of_0001():
-    """Every check of 0001's function is in 0004's, unchanged, except the record count, which now
-    accounts for the records the fit does not use (decision 7)."""
+    """Every check of 0001's function is in 0004's, unchanged, except three: the record count now
+    accounts for the records the fit does not use (decision 7); the minimums count informative groups
+    (owner, 2026-10-06); and the bound of the alloy count by the display label is removed (review
+    finding 2: the label is rounded to 0.1 at.%, the plan's same-alloy rule may be finer)."""
     old, new = checks_of(M0004.ANALYSIS_RESULT_INSERT_0001), body(M0004.ANALYSIS_RESULT_INSERT_0004)
     changed = [c for c in old if c not in new]
-    assert changed == ["IF NEW.n_records <> set_count THEN PERFORM hc_reject('n_records must equal the records of "
-                       "the set used'); END IF;"]
+    assert changed == [
+        "IF NEW.n_records <> set_count THEN PERFORM hc_reject('n_records must equal the records of the set used'); "
+        "END IF;",
+        "IF NEW.n_alloys > set_alloys THEN PERFORM hc_reject('n_alloys cannot exceed the distinct alloys of the "
+        "set used'); END IF;",
+        "IF NEW.minimums_met <> (NEW.n_records >= p.min_records AND NEW.n_alloys >= p.min_alloys AND NEW.n_groups "
+        ">= p.min_groups AND NEW.resid_df >= p.min_resid_df) THEN PERFORM hc_reject('minimums_met must agree with "
+        "the counts and the plan''s minimums'); END IF;"]
     assert ("IF NEW.n_records + NEW.n_records_not_used <> set_count THEN PERFORM hc_reject('n_records must equal "
             "the records of the set used, less those the fit does not use'); END IF;") in new
+    assert "NEW.n_groups_informative >= p.min_groups" in new and "set_alloys" not in new
 
 
 def test_the_new_calibration_function_keeps_the_run_level_rules_of_0001():

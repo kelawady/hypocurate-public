@@ -155,7 +155,8 @@ def test_start_first_then_dispatch_metadata_is_rejected(w):
 
 # --- a child write against completion ----------------------------------------------------------------------
 
-COMPLETE = "UPDATE run SET status = 'completed', completed_at = now(), outcome = 'insufficient' WHERE id = :r"
+COMPLETE = ("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'insufficient', evidence_level = 1 "
+            "WHERE id = :r")  # step 7: a completed run needs its evidence level
 
 
 def test_flag_first_then_completion_waits(w):

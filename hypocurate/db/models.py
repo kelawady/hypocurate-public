@@ -323,7 +323,8 @@ class Run(Base):
     outcome: Mapped[str | None] = mapped_column(Text)
     verdict: Mapped[str | None] = mapped_column(Text)
     exploratory: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
-    # Step 7 (migration 0004; register 'evidence_level_scale'): 1 to 6, written only by the copy path.
+    # Step 7 (migration 0004; register 'evidence_level_scale'): 1 to 6, written by the copy path;
+    # required on every completed run.
     evidence_level: Mapped[int | None] = mapped_column(SmallInteger)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     agent_mode: Mapped[str] = mapped_column(Text, server_default=sql("'four_roles'"))
@@ -346,6 +347,7 @@ class Run(Base):
         CheckConstraint("evidence_level IS NULL OR (evidence_level BETWEEN 1 AND 6 AND outcome IS NOT NULL "
                         "AND (evidence_level = 6) = (verdict IS NOT NULL AND NOT exploratory) "
                         "AND (evidence_level = 5) = (verdict IS NOT NULL AND exploratory))", name="evidence_level"),
+        CheckConstraint("(evidence_level IS NOT NULL) = (status = 'completed')", name="evidence_level_iff_completed"),
         CheckConstraint("status = 'queued' OR started_at IS NOT NULL OR status = 'failed'", name="started_time"),
         CheckConstraint("status <> 'completed' OR completed_at IS NOT NULL", name="completed_time"),
         CheckConstraint("(status = 'failed') = (failure_reason IS NOT NULL)", name="failed_has_reason"),
@@ -635,6 +637,9 @@ class FlagRecord(Base):
 SCOPES = ("pooled", "per_source", "sensitivity")
 LABELS = ("agrees", "conflicts", "not_enough_data", "same_direction_different_decision")  # 4th: step 7
 TEST_RUN_LABEL = "test run: includes constructed data"
+INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "uncertainty_not_estimable")
+LABEL_REASONS = ("no_p_value", "pooled_without_decision", "zero_coefficient")
+COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
 
 
 class AnalysisResult(Base):
@@ -668,6 +673,13 @@ class AnalysisResult(Base):
     withheld: Mapped[bool | None] = mapped_column(Boolean)
     n_records_not_used: Mapped[int] = mapped_column(Integer, server_default=sql("0"))
     test_run_label: Mapped[str | None] = mapped_column(Text)
+    # Review fixes (2026-10-06): informative groups (the paper minimum and check 2 count these), why
+    # check 2 failed, why a per-source label is "not enough data", the detection rate under the
+    # estimated noise.
+    n_groups_informative: Mapped[int] = mapped_column(Integer)
+    inference_reason: Mapped[str | None] = mapped_column(Text)
+    label_reason: Mapped[str | None] = mapped_column(Text)
+    estimated_power_estimated_noise: Mapped[float | None] = mapped_column(Double)
     __table_args__ = (
         ForeignKeyConstraint(["analysis_set_id", "run_id"], ["analysis_set.id", "analysis_set.run_id"],
                              name="fk_analysis_result_analysis_set"),
@@ -684,8 +696,20 @@ class AnalysisResult(Base):
         CheckConstraint("n_records = 0 OR n_groups >= 1", name="records_have_a_group"),
         CheckConstraint("resid_df = n_records - n_alloys - 1", name="resid_df_definition"),
         CheckConstraint("check1_passed = (n_alloys >= 1)", name="check1_consistent"),
-        CheckConstraint("check2_passed = (check1_passed AND resid_df >= 1 AND n_groups >= 2)",
-                        name="check2_consistent"),
+        CheckConstraint(f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW})", name="check2_consistent"),
+        CheckConstraint("n_groups_informative BETWEEN 0 AND n_groups", name="informative_within_groups"),
+        CheckConstraint("inference_reason IS NULL OR " + one_of("inference_reason", INFERENCE_REASONS),
+                        name="inference_reason_value"),
+        CheckConstraint("(inference_reason IS NULL) = check2_passed "
+                        "AND (inference_reason IS NOT DISTINCT FROM 'coefficient_not_fitted') = NOT check1_passed "
+                        f"AND (inference_reason IS DISTINCT FROM 'insufficient_groups' OR NOT {COUNTS_ALLOW}) "
+                        f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR {COUNTS_ALLOW})",
+                        name="inference_reason"),
+        CheckConstraint("label_reason IS NULL OR " + one_of("label_reason", LABEL_REASONS), name="label_reason_value"),
+        CheckConstraint("(label_reason IS NOT NULL) = (label IS NOT DISTINCT FROM 'not_enough_data')",
+                        name="label_reason"),
+        CheckConstraint("estimated_power_estimated_noise IS NULL OR (check2_passed AND NOT withheld "
+                        "AND estimated_power_estimated_noise BETWEEN 0 AND 1)", name="power_estimated_noise"),
         CheckConstraint("(check1_passed AND NOT withheld) = (estimate IS NOT NULL)", name="estimate_iff_check1"),
         CheckConstraint("(check2_passed AND NOT withheld) = (std_error IS NOT NULL)", name="std_error_iff_check2"),
         CheckConstraint("(check2_passed AND NOT withheld) = (p_value IS NOT NULL)", name="p_value_iff_check2"),
@@ -701,7 +725,8 @@ class AnalysisResult(Base):
 
 
 CALIBRATION_REASONS = ("no_dataset_frozen", "coefficient_not_fitted", "insufficient_groups",
-                       "below_minimums", "scatter_not_estimable", "shift_not_estimable")  # last three: step 7
+                       "below_minimums", "scatter_not_estimable", "shift_not_estimable",  # step 7
+                       "uncertainty_not_estimable")  # step 7 review fix
 CALIBRATION_METHODS = ("fixed", "estimated")
 CALIBRATION_NUMBERS = ("assumptions", "n_simulations", "seed", "null_share", "null_ci_low", "null_ci_high",
                        "effect_share", "effect_ci_low", "effect_ci_high", "confidence_flag")

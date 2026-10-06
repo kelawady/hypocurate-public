@@ -32,18 +32,19 @@ def small_rows(n_alloys: int, sizes=(1.0, 9.0), papers: int = 3, k: float = 300.
     return rows
 
 
-def plan_for(vid: int, option: str = "fixed_minimum", mins=(30, 5, 10, 10)) -> dict:
+def plan_for(vid: int, option: str = "fixed_minimum", mins=(30, 5, 10, 10), rules=None) -> dict:
     plan = reference_plan(vid)
+    plan["rules"].update(rules or {})
     plan["sufficiency"] = {"option": option, "min_records": mins[0], "min_alloys": mins[1], "min_groups": mins[2],
                            "min_resid_df": mins[3]}
     return plan
 
 
-def run_on(engine, rows, option="fixed_minimum", mins=(30, 5, 10, 10), marked=False, register=True) -> int:
+def run_on(engine, rows, option="fixed_minimum", mins=(30, 5, 10, 10), marked=False, register=True, rules=None) -> int:
     if register:
         pw.registered_files(engine, {"mpea": pw.mpea_csv(rows)})
     rid = pw.dispatched_run(engine, sources=("mpea",), marked=marked)
-    checkpoints.lock_rules(engine, rid, plan_for(pw.version_of(engine, rid), option, mins))
+    checkpoints.lock_rules(engine, rid, plan_for(pw.version_of(engine, rid), option, mins, rules))
     extract.store_records(engine, rid)
     checks.run_checks(engine, rid)
     inclusion.decide_run(engine, rid)

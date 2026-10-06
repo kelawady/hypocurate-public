@@ -268,8 +268,8 @@ def _insert_result(engine, rid, **over):
     sets = dict(rows_of(engine, "SELECT key, id FROM analysis_set WHERE run_id = :r", r=rid))
     n = val(engine, "SELECT count(*) FROM analysis_set_record WHERE analysis_set_id = :s", s=sets["primary"])
     cols = dict(run_id=rid, scope="pooled", analysis_set_id=sets["primary"], n_records=n, n_alloys=3, n_groups=3,
-                resid_df=n - 4, check1_passed=True, check2_passed=True, minimums_met=False, estimate=None,
-                std_error=None, p_value=None)
+                n_groups_informative=3, resid_df=n - 4, check1_passed=True, check2_passed=True, minimums_met=False,
+                estimate=None, std_error=None, p_value=None)
     cols.update(over)
     with engine.begin() as conn:
         conn.execute(text(f"INSERT INTO analysis_result ({', '.join(cols)}) VALUES "
@@ -300,7 +300,8 @@ def test_the_database_refuses_a_label_on_a_pooled_result_and_power_without_infer
     with pytest.raises(IntegrityError, match="ck_analysis_result_label_per_source_only"):
         _insert_result(engine, rid, label="agrees", estimate=1.0, std_error=1.0, p_value=0.1)
     with pytest.raises(IntegrityError, match="ck_analysis_result_power_needs_check2"):
-        _insert_result(engine, rid, n_groups=1, check2_passed=False, estimate=1.0, estimated_power=0.5)
+        _insert_result(engine, rid, n_groups=1, n_groups_informative=1, check2_passed=False, estimate=1.0,
+                       estimated_power=0.5)
     with pytest.raises(IntegrityError, match="test-run label exactly when"):
         _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1, test_run_label=LABEL)
 
@@ -309,8 +310,8 @@ def test_the_database_refuses_records_not_accounted_for(engine):
     rid = run_on(engine, small_rows(3, papers=3), option="use_available")
     with pytest.raises(IntegrityError, match="n_records must equal"):
         _insert_result(engine, rid, n_records=5, resid_df=1, estimate=1.0, std_error=1.0, p_value=0.1)
-    _insert_result(engine, rid, n_records=4, n_records_not_used=2, n_alloys=2, n_groups=2, resid_df=1,
-                   estimate=1.0, std_error=1.0, p_value=0.1)
+    _insert_result(engine, rid, n_records=4, n_records_not_used=2, n_alloys=2, n_groups=2, n_groups_informative=2,
+                   resid_df=1, estimate=1.0, std_error=1.0, p_value=0.1)
 
 
 def test_the_database_refuses_calibration_that_does_not_match_the_result(engine):
@@ -367,3 +368,89 @@ def test_the_evidence_level_must_agree_with_the_outcome(engine, outcome, verdict
         with pytest.raises(IntegrityError, match="ck_run_evidence_level"):
             with engine.begin() as conn:
                 conn.execute(text(update), params)
+
+
+# --- review fixes (ChatGPT, 2026-10-06) ---------------------------------------------------------------
+
+def test_two_alloys_with_one_display_label_are_stored(engine):
+    """Finding 2: Fe50.01Ni49.99 and Fe50.04Ni49.96 both display as Fe50Ni50. Under a plan rounding
+    compositions to 0.01 at.% they are two alloys, each at three grain sizes; the result must be stored
+    (the trigger no longer bounds the alloy count by the display label)."""
+    rows = [pw.mpea_row(formula, d, ys, doi=f"10.1016/j.test.2026.{p:03d}")
+            for formula, base in (("Fe50.01Ni49.99", 200.0), ("Fe50.04Ni49.96", 260.0))
+            for p, (d, ys) in enumerate(((1.0, base + 300), (4.0, base + 150), (16.0, base + 75)), start=1)]
+    rid = run_on(engine, rows, option="use_available", rules={"same_alloy_decimals": 2})
+    assert {r[0] for r in rows_of(engine, "SELECT alloy FROM record WHERE extraction_run_id = :r", r=rid)} == {"Fe50Ni50"}
+    out = analysis.run_statistics(engine, rid)
+    assert out["analyses"][0]["counts"]["n_alloys"] == 2
+    assert result_rows(engine, rid)[0].n_alloys == 2
+
+
+def test_an_unexpected_error_in_the_statistics_is_a_logged_refusal(engine, monkeypatch):
+    """Finding 3: no exception may bypass the stage's error handling."""
+    from hypocurate.pipeline import statistics as st
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+
+    def broken(d):
+        raise ZeroDivisionError("float division by zero")
+
+    monkeypatch.setattr(st, "fit", broken)
+    with pytest.raises(Refused) as refused:
+        analysis.run_statistics(engine, rid)
+    assert refused.value.code == "statistics_failed"
+    assert audit_codes(engine, rid, "run_statistics") == ["statistics_failed"]
+    assert val(engine, "SELECT count(*) FROM analysis_result WHERE run_id = :r", r=rid) == 0
+
+
+def test_the_reviewers_design_through_the_database(engine):
+    """Finding 1 end to end: eleven papers, one informative; use what is available gives the
+    coefficient only and the database stores the informative count and the reason."""
+    rows = []
+    # The reviewer's structure with grain sizes written exactly in the file: x = d^-1/2 = 0.2, 0.8 and
+    # four times 0.5, the alloy average (16/9 µm cannot be written exactly in a CSV cell).
+    sizes, ys = (25.0, 1.5625, 4.0, 4.0, 4.0, 4.0), (400.0, 600.0, 470.0, 510.0, 500.0, 490.0)
+    n = 0
+    from stats_world import FORMULAS
+    for a in range(5):
+        for j in range(6):
+            paper = 0 if j < 2 else 1 + n % 10
+            n += j >= 2
+            rows.append(pw.mpea_row(FORMULAS[a], sizes[j], ys[j] + 100 * a,
+                                    doi=f"10.1016/j.test.2026.{paper:03d}"))
+    rid = run_on(engine, rows, option="use_available")
+    out = analysis.run_statistics(engine, rid)
+    assert out["decision"]["verdict"] is None and out["decision"]["evidence_level"] == 4
+    r = result_rows(engine, rid)[0]
+    assert (r.n_groups, r.n_groups_informative, r.check2_passed, r.inference_reason) == (11, 1, False,
+                                                                                         "insufficient_groups")
+    assert r.estimate is not None and r.std_error is None and r.p_value is None
+
+
+def test_the_database_counts_informative_groups_for_check_2_and_the_minimum(engine):
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+    with pytest.raises(IntegrityError, match="ck_analysis_result_check2_consistent"):
+        _insert_result(engine, rid, n_groups=3, n_groups_informative=1, estimate=1.0, std_error=1.0, p_value=0.1)
+    _insert_result(engine, rid, n_groups=3, n_groups_informative=1, check2_passed=False, estimate=1.0)
+    assert rows_of(engine, "SELECT inference_reason FROM analysis_result WHERE run_id = :r", r=rid) == [
+        ("insufficient_groups",)]
+
+
+def test_the_database_takes_an_uncertainty_that_cannot_be_estimated(engine):
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+    with pytest.raises(IntegrityError, match="ck_analysis_result_inference_reason"):
+        _insert_result(engine, rid, check2_passed=False, estimate=1.0, inference_reason="insufficient_groups")
+    _insert_result(engine, rid, check2_passed=False, estimate=1.0, inference_reason="uncertainty_not_estimable")
+
+
+def test_the_estimated_detection_rate_is_never_stored_for_a_withheld_result(engine):
+    rid = run_on(engine, small_rows(3, papers=3))  # fixed option: withheld
+    with pytest.raises(IntegrityError, match="ck_analysis_result_power_estimated_noise"):
+        _insert_result(engine, rid, estimated_power=0.5, estimated_power_estimated_noise=0.4)
+    _insert_result(engine, rid, estimated_power=0.5)
+
+
+def test_a_label_reason_is_stored_exactly_with_not_enough_data(engine):
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available")
+    analysis.run_statistics(engine, rid)
+    per_source = [r for r in result_rows(engine, rid) if r.scope == "per_source"]
+    assert all((r.label == "not_enough_data") == (r.label_reason is not None) for r in per_source)

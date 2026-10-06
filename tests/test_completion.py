@@ -118,3 +118,14 @@ def test_the_database_checks_the_copy_again(engine, monkeypatch):
         completion.copy_decision(engine, rid)
     assert refused.value.code == "rejected_by_database"
     assert run_row(engine, rid).status == "running"
+
+
+def test_a_completed_run_needs_its_evidence_level(engine):
+    """Review (smaller point): the evidence level is required on every completed run."""
+    from sqlalchemy.exc import IntegrityError
+    pw.registered(engine, ("mpea",))
+    rid = pw.dispatched_run(engine, sources=("mpea",))
+    with pytest.raises(IntegrityError, match="ck_run_evidence_level_iff_completed"):
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'insufficient' "
+                              "WHERE id = :r"), dict(r=rid))

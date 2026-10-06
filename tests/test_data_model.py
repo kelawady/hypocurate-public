@@ -149,7 +149,7 @@ def test_narrower_question_links_only_to_a_partly_sufficient_run(w):
 def test_a_partly_sufficient_run_has_no_verdict(w):
     rid = w.running()
     w.rejected("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
-               "verdict = 'supported' WHERE id = :r", "ck_run_verdict_iff_sufficient", r=rid)
+               "verdict = 'supported', evidence_level = 6 WHERE id = :r", "ck_run_verdict_iff_sufficient", r=rid)
 
 
 def test_narrower_question_has_the_original_domain(w):
@@ -184,7 +184,8 @@ def test_a_run_starts_queued(w):
 
 
 @pytest.mark.parametrize("sql", [
-    "UPDATE run SET status = 'completed', completed_at = now(), outcome = 'insufficient' WHERE id = :r",
+    "UPDATE run SET status = 'completed', completed_at = now(), outcome = 'insufficient', evidence_level = 1 "
+    "WHERE id = :r",
     "UPDATE run SET status = 'queued' WHERE id = :r",
 ])
 def test_run_status_moves_only_forward(w, sql):
@@ -773,8 +774,9 @@ def test_a_record_extracted_after_the_freeze_cannot_slip_in_after_the_run_ends(w
     w.result(rid, sets["primary"])
     w.complete(rid, "sufficient", "supported")
     for sql in ["INSERT INTO analysis_set (run_id, key) VALUES (:r, 'extra')",
-                "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, resid_df, "
-                "check1_passed, check2_passed, minimums_met) VALUES (:r, 'sensitivity', :s, 0, 0, 0, -1, false, false, false)"]:
+                "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
+                "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met) "
+                "VALUES (:r, 'sensitivity', :s, 0, 0, 0, 0, -1, false, false, false)"]:
         w.rejected(sql, "only while the run is running", r=rid, s=sets["primary"])
 
 
@@ -903,7 +905,8 @@ def test_the_validity_checks_cannot_be_waived(w, column, value, match):
         (False, None, None)]
     rid2, sets2, _ = w.frozen(option="use_available")
     columns = {"run_id": rid2, "scope": "'pooled'", "analysis_set_id": sets2["primary"], "n_records": 4,
-               "n_alloys": 1, "n_groups": 1, "resid_df": 2, "check1_passed": "true", "check2_passed": "false",
+               "n_alloys": 1, "n_groups": 1, "n_groups_informative": 1, "resid_df": 2, "check1_passed": "true",
+               "check2_passed": "false",
                "minimums_met": "false", "estimate": 1.0}
     columns[column] = value
     w.rejected(f"INSERT INTO analysis_result ({', '.join(columns)}) VALUES ({', '.join(map(str, columns.values()))})",
@@ -912,9 +915,10 @@ def test_the_validity_checks_cannot_be_waived(w, column, value, match):
 
 def test_check_one_failing_means_no_estimate(w):
     rid, sets, _ = w.frozen(n=1, mins=(1, 1, 1, 1))
-    w.rejected("INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, resid_df, "
-               "check1_passed, check2_passed, minimums_met, estimate) VALUES (:r, 'pooled', :s, 1, 0, 1, 0, false, "
-               "false, false, 5.0)", "ck_analysis_result_estimate_iff_check1", r=rid, s=sets["primary"])
+    w.rejected("INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
+               "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate) "
+               "VALUES (:r, 'pooled', :s, 1, 0, 1, 1, 0, false, false, false, 5.0)",
+               "ck_analysis_result_estimate_iff_check1", r=rid, s=sets["primary"])
     w.result(rid, sets["primary"], n=1, alloys=0, groups=1, mins=(1, 1, 1, 1))
 
 
@@ -922,7 +926,6 @@ def test_check_one_failing_means_no_estimate(w):
     (1, 1, 1, "ck_analysis_result_two_records_per_alloy"),  # one record cannot show two grain sizes
     (4, 1, 5, "ck_analysis_result_groups_within_records"),
     (4, 0, 0, "ck_analysis_result_records_have_a_group"),
-    (4, 2, 2, "cannot exceed the distinct alloys"),         # the set has one alloy
 ])
 def test_stored_counts_must_be_consistent(w, n, alloys, groups, match):
     """Review finding 5: necessary conditions on the stored counts. The full validity
@@ -930,6 +933,18 @@ def test_stored_counts_must_be_consistent(w, n, alloys, groups, match):
     rid, sets, _ = w.frozen(n=n, mins=(1, 1, 1, 1))
     with pytest.raises(IntegrityError, match=match):
         w.result(rid, sets["primary"], n=n, alloys=alloys, groups=groups, mins=(1, 1, 1, 1))
+
+
+def test_the_display_label_no_longer_bounds_the_alloy_count(w):
+    """Step 7 review, finding 2 (changed from the case "(4, 2, 2): cannot exceed the distinct alloys"
+    of test_stored_counts_must_be_consistent): the trigger no longer bounds the alloy count by the
+    display label, which is rounded to 0.1 at.% while the plan's same-alloy rule may be finer. Two
+    alloys in a set whose records share one label are stored; two records per alloy remain required."""
+    rid, sets, _ = w.frozen(n=4, mins=(1, 1, 1, 1))
+    assert w.val("SELECT count(DISTINCT r.alloy) FROM analysis_set_record sr JOIN record r ON r.id = sr.record_id "
+                 "WHERE sr.analysis_set_id = :s", s=sets["primary"]) == 1
+    w.result(rid, sets["primary"], n=4, alloys=2, groups=2, mins=(1, 1, 1, 1))
+    assert w.val("SELECT n_alloys FROM analysis_result WHERE run_id = :r", r=rid) == 2
 
 
 def test_one_result_per_run_and_scope_on_the_right_set(w):
@@ -942,8 +957,8 @@ def test_one_result_per_run_and_scope_on_the_right_set(w):
     with pytest.raises(IntegrityError, match="uses a sensitivity set"):
         w.result(rid, sets["primary"], scope="sensitivity")
     w.rejected("INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
-               "resid_df, check1_passed, check2_passed, minimums_met) "
-               "VALUES (:r, 'per_source', :s, 4, 0, 1, 3, false, false, false)",
+               "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met) "
+               "VALUES (:r, 'per_source', :s, 4, 0, 1, 1, 3, false, false, false)",
                "ck_analysis_result_source_iff_per_source", r=rid, s=sets["primary"])
     w.result(rid, sets["primary"], scope="per_source", source="mpea", n=3, alloys=1, groups=2)
     w.result(rid, sets["primary"], scope="per_source", source="tamu_fcc", n=1, alloys=0, groups=1)

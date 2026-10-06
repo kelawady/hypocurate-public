@@ -196,9 +196,9 @@ def original_run(w: World) -> int:
         w.decide(rid, rec)
         w.add(primary, rec)
     w.freeze(rid, len(recs))
-    sql(w, "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, resid_df, "
-           "check1_passed, check2_passed, minimums_met, estimate) "
-           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, true, false, false, :e)", r=rid, s=primary, e=OTHER)
+    sql(w, "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
+           "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate) "
+           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, 1, true, false, false, :e)", r=rid, s=primary, e=OTHER)
     stage(w, rid, "analyst", "analyst", f"k = {OTHER}")
     w.complete(rid, "partly_sufficient")
     cid = stage(w, rid, "commentator", "commentator", f"the coefficient {OTHER}")
