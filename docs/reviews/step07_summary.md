@@ -1,6 +1,6 @@
 # Build step 7 — summary for review
 
-Date: 2026-10-06. Branch: `step-07-statistics`. **Status: reviewed by the second model (ChatGPT, 2026-10-06: "not safe to merge", four findings and smaller points); the owner accepted all of them with a decision on informative papers; fixed (code at `fb5fd62`; GitHub Actions success, 1,131 passed, runtime image OK: https://github.com/kelawady/hypocurate/actions/runs/37403929929), each fix with tests that failed on the code before it; the whole suite passes (1,131 tests). Not merged; awaiting the re-check.** The first build was `d3da7c4` (1,104 tests; GitHub run https://github.com/kelawady/hypocurate/actions/runs/37398444475). The review is `docs/reviews/step07_review_chatgpt.md` (verbatim); the fixes are in section "Second-model review and fixes" and in `docs/reviews/step07_fix_packet.md`. **This summary describes the state after the fixes.** PRD Section 15, step 7, as the owner scoped it: the statistics module, the validity checks, data sufficiency, the verdict and per-run calibration.
+Date: 2026-10-06. Branch: `step-07-statistics`. **Status (updated 2026-10-06 after the owner's second decision, informative papers in the factor and the degrees of freedom; 1,138 tests; code at `496644e`, GitHub Actions success: https://github.com/kelawady/hypocurate/actions/runs/37415861832): reviewed by the second model (ChatGPT, 2026-10-06: "not safe to merge", four findings and smaller points); the owner accepted all of them with a decision on informative papers; fixed (code at `fb5fd62`; GitHub Actions success, 1,131 passed, runtime image OK: https://github.com/kelawady/hypocurate/actions/runs/37403929929), each fix with tests that failed on the code before it; the whole suite passes (1,131 tests). Not merged; awaiting the re-check.** The first build was `d3da7c4` (1,104 tests; GitHub run https://github.com/kelawady/hypocurate/actions/runs/37398444475). The review is `docs/reviews/step07_review_chatgpt.md` (verbatim); the fixes are in section "Second-model review and fixes" and in `docs/reviews/step07_fix_packet.md`. **This summary describes the state after the fixes.** PRD Section 15, step 7, as the owner scoped it: the statistics module, the validity checks, data sufficiency, the verdict and per-run calibration.
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`; the packet is `docs/reviews/step07_review_packet.md`. **Three changes are safeguard changes and need the review before the merge** (CLAUDE.md, "How we work" item 5; the owner approved them subject to it): the access-layer change (two code roles and one field), migration 0004, and the estimated calibration (a departure from PRD 5.10).
 
@@ -55,8 +55,15 @@ Owner's additions before the build:
 | Smaller: evidence level required | `ck_run_evidence_level_iff_completed`: present exactly on a completed run | `test_a_completed_run_needs_its_evidence_level` |
 | Smaller: records without a group | Unchanged: fails closed; the decision stays open (register note added) | — |
 
+**Owner's second decision (2026-10-06):** the standard error's small-sample factor and the t distribution's degrees of freedom count informative papers only, the same count as validity check 2, in the real fits and in every simulated fit; CLAUDE.md rule 6 now reads "(informative papers − 1) degrees of freedom" (approved by the owner). Register entry `informative_groups_in_inference`; `cluster_robust_se` and `one_sided_test` reworded (earlier wording in history).
+
+| Change | Tests (failed on the code before the change unless marked) |
+|---|---|
+| `fit`: the clustered variance sums the scores of informative groups only; factor G/(G−1) × (N−1)/(N−K) and df G − 1 with G the informative groups. `significant_count` (every simulated fit): the same | `tests/test_informative_inference.py`: on a design with 3 informative and 6 uninformative papers, `test_the_factor_and_degrees_of_freedom_count_informative_papers_only` (df 2, not 8; k, SE and p equal an **independent explicit sandwich** written test-side with numpy, `reference_stats.fit_informative`); `test_the_result_is_more_cautious_than_counting_every_paper` (against statsmodels with all nine clusters: same k, SE larger by exactly √(4/3), fewer df, larger p); `test_every_simulated_fit_counts_informative_papers_only` (200 simulated fits decided exactly as the independent sandwich: 50 significant; the old code gave 125). Regressions (passed before): `test_the_design_has_three_informative_and_six_uninformative_papers`; `test_where_every_paper_is_informative_nothing_changes` (three generated designs: statsmodels and the independent sandwich both agree with the package to 1e-9) |
+
+The test-side statsmodels comparison is kept for designs where every paper is informative (the fixed set and the reference numbers); the independent sandwich covers the other case. **Reference numbers: still identical.** The reference run's full output (counts, k, SE, p, labels, reasons, simulated counts under both calibrations, detection rates, decision) is byte-identical to the previous round, because every paper of every reference set is informative. Mutations: switching the factor, the df, the simulated factor or the simulated df back to all groups is caught (4 of 5). Putting the uninformative groups' scores back into the sum survives; it is an equivalent mutation, since an uninformative group's records sit within the numerical zero of their alloy's average, so its score is zero (at most about 1e-20 of the variance), below any testable tolerance. The exclusion is kept because it states the rule exactly.
+
 **What the fixes do not do.**
-- The standard error's small-sample factor G/(G−1) and the t distribution's G − 1 degrees of freedom still use every group of the fit (statsmodels' definition; CLAUDE.md rule 6 says "groups − 1"). An uninformative group adds nothing to the variance but still counts there. **Whether the degrees of freedom should count informative papers only is for the owner**; on the reference sets every group is informative, so it changes nothing there.
 - A withheld analysis is judged on its counts only (no outcome is used, so no standard error is computed); its check 2 can only fail on the counts.
 - The numerical zero (1e-10 relative) is not a scientific threshold: rounding residue is about 1e-16 of the scale, and the guards show that noise of 0.001 MPa on hundreds of MPa is still estimable.
 
@@ -85,8 +92,8 @@ Owner's additions before the build:
 `statistics.py`, for each analysis:
 1. **The fit's records.** Sort by stable identity (source-version fingerprint, origin key, item index). Keep alloys with at least two grain sizes among this analysis's records that are distinct after the transformation by more than the numerical zero (`MODEL_MIN_GRAIN_SIZES = 2`); count the others as "not used in this fit". Mark each group informative when one of its records differs from its alloy's average transformed grain size by more than the numerical zero; list the uninformative ones.
 2. **The estimate.** x = d^-1/2 (the plan's transformation); remove each alloy's mean from x and y; k = Σ x̃ỹ / Σ x̃². The same as OLS with one intercept per alloy.
-3. **The standard error.** Per group g, s_g = Σ_{i∈g} x̃_i e_i with e = ỹ − k x̃; V = Σ s_g² / (Σ x̃²)² × G/(G−1) × (N−1)/(N−K), K = alloys + 1 (statsmodels' default cluster correction).
-4. **The test.** t = k / √V; p = P(T > t), T ~ t(G − 1); "supported" exactly when p < α (the plan's, 0.05).
+3. **The standard error.** Per group g, s_g = Σ_{i∈g} x̃_i e_i with e = ỹ − k x̃; V = Σ s_g² / (Σ x̃²)² × G/(G−1) × (N−1)/(N−K), K = alloys + 1, the sum and G over informative groups (statsmodels' cluster correction when every group is informative).
+4. **The test.** t = k / √V; p = P(T > t), T ~ t(G − 1) with G the informative groups; "supported" exactly when p < α (the plan's, 0.05).
 5. **Validity checks.** Check 1: at least one alloy with two distinct grain sizes. Check 2: N − alloys − 1 ≥ 1, at least 2 informative groups, and an SE that is finite and above RELATIVE_ZERO × sqrt(Σỹ²/Σx̃²). Check 1 only: k alone, with the reason (`insufficient_groups` or `uncertainty_not_estimable`).
 6. **Minimums,** on the fit's counts: records, alloys (each with two or more grain sizes), informative groups, residual df.
 7. **Groups** come from the same function Inclusion and the freeze counts use (`eligibility.group`, the set's own grouping), and alloys from `eligibility.alloy` (the set's same-alloy rule).
@@ -221,7 +228,7 @@ The freeze fingerprint of the reference run changed from step 6 (`93c44b22…`) 
   - the "Not yet" example now uses `spending_caps`.
 
 
-**Review round (2026-10-06): 27 new tests** (1,131 in all): `tests/test_statistics_boundaries.py` (19) and eight database tests in `test_analysis_stage.py` (7) and `test_completion.py` (1). Changed, none removed:
+**Review round (2026-10-06): 34 new tests** (1,138 in all; 7 of them in `tests/test_informative_inference.py` for the owner's second decision): `tests/test_statistics_boundaries.py` (19) and eight database tests in `test_analysis_stage.py` (7) and `test_completion.py` (1). Changed, none removed:
 - `test_data_model.py`: the case `(4, 2, 2, "cannot exceed the distinct alloys")` of `test_stored_counts_must_be_consistent` became `test_the_display_label_no_longer_bounds_the_alloy_count` (the bound is removed on the reviewer's finding 2; the new test checks such a result is stored); raw inserts give `n_groups_informative`; raw completions give an evidence level (one test's completion uses level 6 so that the verdict constraint is still the one that refuses).
 - `test_concurrency.py`: the completion statement gives an evidence level.
 - `test_migrations_step7.py`: `test_the_new_result_function_keeps_every_check_of_0001` lists three changed checks (record count, display-label bound removed, minimum on informative groups).
@@ -302,7 +309,7 @@ f09's first attempt broke the SQL through shell quoting and tested nothing; it w
 - **Still partly applied:** `constructed_test_runs`. Done: the labels and `REAL_RUN`. Pending: the screens, step 10.
 
 
-**Review round (2026-10-06): 110 entries.** New: `informative_groups` (the owner's decision), `numerical_zero`. Reworded, with the earlier wording in history: `validity_checks`, `fixed_minimums`, `per_source_labels` (reasons), `smallest_effect` (detection both ways), `fit_alloy_rule` (transformed distinctness). Notes: `calibration_noise_levels` (interval note, perfect fit), `calibration_simulation` (checks in each simulated fit), `evidence_level_scale` (required), `records_without_group` (the reviewer's question).
+**Review round (2026-10-06): 111 entries** (with the owner's second decision: `informative_groups_in_inference`; `cluster_robust_se`, `one_sided_test` reworded). New: `informative_groups` (the owner's decision), `numerical_zero`. Reworded, with the earlier wording in history: `validity_checks`, `fixed_minimums`, `per_source_labels` (reasons), `smallest_effect` (detection both ways), `fit_alloy_rule` (transformed distinctness). Notes: `calibration_noise_levels` (interval note, perfect fit), `calibration_simulation` (checks in each simulated fit), `evidence_level_scale` (required), `records_without_group` (the reviewer's question).
 
 ## Decisions I made while building (for the owner and the reviewer)
 
@@ -333,14 +340,14 @@ f09's first attempt broke the SQL through shell quoting and tested nothing; it w
 ## Open items
 
 1. **Second-model re-check** of the fixes (the review was 2026-10-06), then the owner's sign-off. `calibration_noise_levels` moves to "in force" after it.
-2. **Owner:** whether the t distribution's degrees of freedom (and the small-sample factor) should count informative papers only (section "Second-model review and fixes").
-3. **Owner:** `records_without_group` (before step 8; the reviewer asks whether a permitted coefficient-only result should stay available when grouping is missing); `curator_tabular_sources` (before step 8, from step 6).
-4. **Step 8:** the Analyst explains the stored record and gap facts only; the orchestrator calls `copy_decision` after the Analyst; how "partly sufficient" reaches the run.
-5. **Step 10:** the plot from the stored records found (below the minimums: raw data, no fitted line); the label and `REAL_RUN` on every screen and list; the workbook.
-6. **Carried:** the step 5 and step 6 open items for steps 8 to 10; live registration of sources (owner).
+2. **Owner:** `records_without_group` (before step 8; the reviewer asks whether a permitted coefficient-only result should stay available when grouping is missing); `curator_tabular_sources` (before step 8, from step 6).
+3. **Step 8:** the Analyst explains the stored record and gap facts only; the orchestrator calls `copy_decision` after the Analyst; how "partly sufficient" reaches the run.
+4. **Step 10:** the plot from the stored records found (below the minimums: raw data, no fitted line); the label and `REAL_RUN` on every screen and list; the workbook.
+5. **Carried:** the step 5 and step 6 open items for steps 8 to 10; live registration of sources (owner).
 
 ## Questions for the re-check
 
+0. Is counting informative papers in the small-sample factor and the degrees of freedom (the owner's second decision) implemented consistently in the real fits and every simulated fit, and is the independent sandwich a fair check of it?
 1. Are the four findings closed: can any design still give a verdict, a p-value or a standard error without at least two informative papers and an estimable uncertainty, in a real fit or a simulated one?
 2. Is "informative paper" implemented as the owner defined it, and is the numerical zero (1e-10 of the natural scale) applied consistently and never acting as a scientific threshold?
 3. Does migration 0004, as changed, enforce check 2, the reasons and the evidence level completely, and is the downgrade still exact?

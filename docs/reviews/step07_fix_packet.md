@@ -1,14 +1,14 @@
 # Build step 7 — fix packet for the second model's re-check
 
-Date: 2026-10-06. Branch: `step-07-statistics`. Code reviewed: commit `fb5fd62` (this packet and the summary update are added in the next commit and change no code). GitHub Actions on that commit: success (1,131 passed, runtime image OK), https://github.com/kelawady/hypocurate/actions/runs/37403929929.
+Date: 2026-10-06. Branch: `step-07-statistics`. Code reviewed: commit `496644e` (this packet and the summary update are added in the next commit and change no code). GitHub Actions on that commit: success (1,138 passed, runtime image OK), https://github.com/kelawady/hypocurate/actions/runs/37415861832.
 
 Generated from the files on disk by a script, so every diff and output below is quoted exactly.
 
 ## How to use this packet
 
-Your review of 2026-10-06 (`docs/reviews/step07_review_chatgpt.md`) found four problems and smaller points; the owner accepted all of them and decided that the paper minimum and validity check 2 count only informative papers. This packet holds what changed since: the fix table, the per-commit diffs, the recomputed reference numbers, the mutation checks and the suite output. The full summary (`docs/reviews/step07_summary.md`) describes the state after the fixes; the first packet (`docs/reviews/step07_review_packet.md`) holds the first build. Your review is advice; the test suite is the gate.
+Your review of 2026-10-06 (`docs/reviews/step07_review_chatgpt.md`) found four problems and smaller points; the owner accepted all of them and decided that the paper minimum and validity check 2 count only informative papers. **The owner then decided that the standard error's small-sample factor and the t distribution's degrees of freedom count informative papers only too** (commit `496644e`; CLAUDE.md rule 6 reworded with the owner's approval). This packet holds what changed since your review: the fix table, the per-commit diffs, the recomputed reference numbers, the mutation checks and the suite output. The full summary (`docs/reviews/step07_summary.md`) describes the state after the fixes; the first packet (`docs/reviews/step07_review_packet.md`) holds the first build. Your review is advice; the test suite is the gate.
 
-The fixes share files (the statistics, the calibration, the analysis stage, migration 0004), so they are in three commits by area, not one per finding: splitting them per finding would need interactive staging.
+The first three fix commits are by area, not one per finding: the fixes share files, and splitting them per finding would need interactive staging.
 
 Please check in particular the questions at the end.
 
@@ -30,8 +30,15 @@ Please check in particular the questions at the end.
 | Smaller: evidence level required | `ck_run_evidence_level_iff_completed`: present exactly on a completed run | `test_a_completed_run_needs_its_evidence_level` |
 | Smaller: records without a group | Unchanged: fails closed; the decision stays open (register note added) | — |
 
+**Owner's second decision (2026-10-06):** the standard error's small-sample factor and the t distribution's degrees of freedom count informative papers only, the same count as validity check 2, in the real fits and in every simulated fit; CLAUDE.md rule 6 now reads "(informative papers − 1) degrees of freedom" (approved by the owner). Register entry `informative_groups_in_inference`; `cluster_robust_se` and `one_sided_test` reworded (earlier wording in history).
+
+| Change | Tests (failed on the code before the change unless marked) |
+|---|---|
+| `fit`: the clustered variance sums the scores of informative groups only; factor G/(G−1) × (N−1)/(N−K) and df G − 1 with G the informative groups. `significant_count` (every simulated fit): the same | `tests/test_informative_inference.py`: on a design with 3 informative and 6 uninformative papers, `test_the_factor_and_degrees_of_freedom_count_informative_papers_only` (df 2, not 8; k, SE and p equal an **independent explicit sandwich** written test-side with numpy, `reference_stats.fit_informative`); `test_the_result_is_more_cautious_than_counting_every_paper` (against statsmodels with all nine clusters: same k, SE larger by exactly √(4/3), fewer df, larger p); `test_every_simulated_fit_counts_informative_papers_only` (200 simulated fits decided exactly as the independent sandwich: 50 significant; the old code gave 125). Regressions (passed before): `test_the_design_has_three_informative_and_six_uninformative_papers`; `test_where_every_paper_is_informative_nothing_changes` (three generated designs: statsmodels and the independent sandwich both agree with the package to 1e-9) |
+
+The test-side statsmodels comparison is kept for designs where every paper is informative (the fixed set and the reference numbers); the independent sandwich covers the other case. **Reference numbers: still identical.** The reference run's full output (counts, k, SE, p, labels, reasons, simulated counts under both calibrations, detection rates, decision) is byte-identical to the previous round, because every paper of every reference set is informative. Mutations: switching the factor, the df, the simulated factor or the simulated df back to all groups is caught (4 of 5). Putting the uninformative groups' scores back into the sum survives; it is an equivalent mutation, since an uninformative group's records sit within the numerical zero of their alloy's average, so its score is zero (at most about 1e-20 of the variance), below any testable tolerance. The exclusion is kept because it states the rule exactly.
+
 **What the fixes do not do.**
-- The standard error's small-sample factor G/(G−1) and the t distribution's G − 1 degrees of freedom still use every group of the fit (statsmodels' definition; CLAUDE.md rule 6 says "groups − 1"). An uninformative group adds nothing to the variance but still counts there. **Whether the degrees of freedom should count informative papers only is for the owner**; on the reference sets every group is informative, so it changes nothing there.
 - A withheld analysis is judged on its counts only (no outcome is used, so no standard error is computed); its check 2 can only fail on the counts.
 - The numerical zero (1e-10 relative) is not a scientific threshold: rounding residue is about 1e-16 of the scale, and the guards show that noise of 0.001 MPa on hundreds of MPa is still estimable.
 
@@ -41,6 +48,21 @@ Please check in particular the questions at the end.
 ## 2. Commits
 
 ```
+496644e Step 7: informative papers in the small-sample factor and the degrees of freedom (owner, 2026-10-06)
+
+The clustered variance sums informative groups' scores; G/(G-1) and the t distribution's G - 1 use the
+informative count, in the real fits and every simulated fit. CLAUDE.md rule 6 reworded (approved by the
+owner). Register: informative_groups_in_inference; cluster_robust_se and one_sided_test reworded.
+tests/test_informative_inference.py: 3 of its 7 tests failed before the change (df 8 instead of 2; SE
+not larger than the all-papers SE; 125 simulated rejections where the independent sandwich gives 50).
+Reference numbers: the reference run's output is byte-identical (every paper is informative).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+69407e8 Step 7: summary after the review fixes, and the fix packet
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
 fb5fd62 Step 7 review fixes: assumptions register (informative_groups, numerical_zero; reworded entries)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -1967,7 +1989,497 @@ index 11f8479..31f1f07 100644
 ```
 
 
-## 3. Reference numbers recomputed after the fixes
+### Commit `496644e`
+
+```
+496644e Step 7: informative papers in the small-sample factor and the degrees of freedom (owner, 2026-10-06)
+
+ CLAUDE.md                           |   2 +-
+ hypocurate/assumptions.json         | 102 +++++++++++++++++++++++++++++++-----
+ hypocurate/pipeline/analysis.py     |   4 +-
+ hypocurate/pipeline/calibration.py  |  11 ++--
+ hypocurate/pipeline/statistics.py   |  28 +++++-----
+ tests/reference_stats.py            |  36 +++++++++++++
+ tests/test_informative_inference.py |  97 ++++++++++++++++++++++++++++++++++
+ 7 files changed, 248 insertions(+), 32 deletions(-)
+```
+
+```diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d933113..5fdd597 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -36,7 +36,7 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
+ 3. **Two checkpoints (PRD 5.6).** *Rules lock* before curation: the model, scope, exclusion rules and data-sufficiency option are fixed. *Dataset freeze* before analysis: the record set is fixed and fingerprinted. Nothing changes after its checkpoint, by agent or by person. Later removals are sensitivity analyses only and never change the verdict.
+ 4. **Stored is not analysed (PRD 5.3).** Every record found is kept. Eligibility for the test is a separate decision by code under the locked rules. Conflicting records are preserved, not automatically pooled.
+ 5. **Two validity checks that can never be waived (PRD 5.7).** (1) Can a coefficient be fitted? (2) Is inference valid (at least 1 residual degree of freedom and at least 2 independent groups)? If 1 passes and 2 fails: report the coefficient only, with no uncertainty, no p-value and no verdict.
+-6. **One supported model in sprint 1.** Yield strength = baseline per alloy + k × (grain size in µm)^-1/2; ordinary least squares with alloy intercepts; cluster-robust standard errors grouped by paper with the small-sample correction; one-sided test of k > 0 at 0.05 against a t distribution with (groups − 1) degrees of freedom; only alloys with at least 2 distinct grain sizes. Do not add models.
++6. **One supported model in sprint 1.** Yield strength = baseline per alloy + k × (grain size in µm)^-1/2; ordinary least squares with alloy intercepts; cluster-robust standard errors grouped by paper with the small-sample correction, counting informative papers only (papers whose records help estimate the slope); one-sided test of k > 0 at 0.05 against a t distribution with (informative papers − 1) degrees of freedom; only alloys with at least 2 distinct grain sizes. Do not add models.
+ 7. **Data sufficiency is a query parameter fixed at rules lock (PRD 5.8).** Default: fixed minimum (30 records, 5 alloys with at least 2 grain sizes, 10 independent papers, 10 residual degrees of freedom). "Use what is available" waives the threshold only, never the validity checks, and labels the result exploratory.
+ 8. **A narrower question is a separate record**, linked to the original. The original gets no verdict.
+ 9. **Three kinds of "nothing found" stay distinct:** a reported negative result, missing evidence, and a failed search.
+diff --git a/hypocurate/assumptions.json b/hypocurate/assumptions.json
+index 0f18954..e3117af 100644
+--- a/hypocurate/assumptions.json
++++ b/hypocurate/assumptions.json
+@@ -1620,7 +1620,7 @@
+     "key": "cluster_robust_se",
+     "name": "Grouped standard error",
+     "state": "in_force",
+-    "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
++    "statement": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), summing the scores of informative groups only, with the small-sample correction G/(G-1) × (N-1)/(N-K), G the informative groups (entry 'informative_groups_in_inference').",
+     "value": {
+       "text": "cluster-robust by grouping unit, with small-sample correction",
+       "unit": null
+@@ -1632,8 +1632,8 @@
+       "PRD 5.7 (uncertainty row); docs/reference/worked_example.py (statsmodels cov_type='cluster')."
+     ],
+     "decided": {
+-      "by": "PRD v1.6 (owner)",
+-      "date": "2026-10-04"
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-06"
+     },
+     "expert_review": {
+       "status": "not_reviewed",
+@@ -1650,13 +1650,22 @@
+       ],
+       "note": null
+     },
+-    "history": [],
++    "history": [
++      {
++        "value": "The standard error of k is cluster-robust, with records grouped by each source's grouping unit (the paper for literature data), with the small-sample correction.",
++        "from": "2026-10-04",
++        "to": "2026-10-06",
++        "note": "Owner, 2026-10-06: informative papers in the factor and the degrees of freedom."
++      }
++    ],
+     "notes": [
+       "The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula.",
+       "Step 7: the exact formula is G/(G-1) × (N-1)/(N-K), K = alloys + 1, statsmodels' default for clustered errors (statistics.small_sample_factor)."
+     ],
+     "tests": [
+       "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
++      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
++      "tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper",
+       "tests/test_statistics.py::test_the_small_sample_correction_is_statsmodels_default"
+     ]
+   },
+@@ -1753,9 +1762,9 @@
+     "key": "one_sided_test",
+     "name": "The test",
+     "state": "in_force",
+-    "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
++    "statement": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (informative groups − 1) degrees of freedom (entry 'informative_groups_in_inference').",
+     "value": {
+-      "text": "one-sided; threshold 0.05; t with groups - 1 degrees of freedom",
++      "text": "one-sided; threshold 0.05; t with informative groups − 1 degrees of freedom",
+       "unit": null
+     },
+     "category": "statistical",
+@@ -1765,8 +1774,8 @@
+       "PRD 5.7 (hypotheses row); CLAUDE.md, rule 6."
+     ],
+     "decided": {
+-      "by": "PRD v1.6 (owner)",
+-      "date": "2026-10-04"
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-06"
+     },
+     "expert_review": {
+       "status": "not_reviewed",
+@@ -1787,9 +1796,17 @@
+       ],
+       "note": null
+     },
+-    "history": [],
++    "history": [
++      {
++        "value": "Null hypothesis k <= 0, alternative k > 0. One-sided test at a threshold of 0.05 unless the plan sets another, against a t distribution with (number of groups - 1) degrees of freedom.",
++        "from": "2026-10-04",
++        "to": "2026-10-06",
++        "note": "Owner, 2026-10-06: informative papers in the factor and the degrees of freedom."
++      }
++    ],
+     "notes": [],
+     "tests": [
++      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
+       "tests/test_statistics.py::test_a_zero_standard_error_gives_a_defined_p_value",
+       "tests/test_statistics.py::test_the_test_is_one_sided"
+     ]
+@@ -5681,7 +5698,14 @@
+       "name": null,
+       "date": null
+     },
+-    "history": [],
++    "history": [
++      {
++        "value": "(as above, and:) The standard error's small-sample factor and the t distribution's degrees of freedom still use every group of the fit (statsmodels' definition).",
++        "from": "2026-10-06",
++        "to": "2026-10-06",
++        "note": "Owner, 2026-10-06: they count informative papers too (entry 'informative_groups_in_inference')."
++      }
++    ],
+     "notes": [],
+     "state": "in_force",
+     "decided": {
+@@ -5690,7 +5714,7 @@
+     },
+     "key": "informative_groups",
+     "name": "Informative papers",
+-    "statement": "The minimum of independent papers, and validity check 2's 'at least two groups', count only informative papers: papers whose records help estimate the slope, that is, with at least one record whose transformed grain size differs from its alloy's average by more than the numerical zero. Uninformative papers stay in the fit and are listed with the result, but are not counted. The standard error's small-sample factor and the t distribution's degrees of freedom still use every group of the fit (statsmodels' definition).",
++    "statement": "The minimum of independent papers, and validity check 2's 'at least two groups', count only informative papers: papers whose records help estimate the slope, that is, with at least one record whose transformed grain size differs from its alloy's average by more than the numerical zero. Uninformative papers stay in the fit and are listed with the result, but are not counted.",
+     "value": {
+       "text": "count informative papers for the minimum and for check 2",
+       "unit": null
+@@ -5715,7 +5739,7 @@
+           "ref": "sql:ck_analysis_result_check2_consistent"
+         }
+       ],
+-      "note": "Whether the degrees of freedom should also count informative papers only is not decided; they use every group, as CLAUDE.md rule 6 states."
++      "note": null
+     },
+     "tests": [
+       "tests/test_statistics_boundaries.py::test_the_reviewers_design_never_gives_a_verdict",
+@@ -5771,5 +5795,59 @@
+       "tests/test_statistics_boundaries.py::test_small_real_noise_gives_an_estimable_scatter",
+       "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit"
+     ]
++  },
++  {
++    "key": "informative_groups_in_inference",
++    "name": "Informative papers in the uncertainty and the test",
++    "state": "in_force",
++    "statement": "The clustered standard error sums the scores of informative papers only, its small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative papers, and the one-sided test uses a t distribution with (informative papers − 1) degrees of freedom: the same count as validity check 2 and the paper minimum. Applied in the real fits and in every simulated fit. With uninformative papers present this gives a larger standard error and fewer degrees of freedom than counting every paper (the cautious direction); where every paper is informative it equals statsmodels' clustered result.",
++    "value": {
++      "text": "G = informative papers in the factor and in the degrees of freedom",
++      "unit": null
++    },
++    "category": "statistical",
++    "affects": "Standard errors, p-values and simulated rejection rates of any fit with uninformative papers; on the reference sets every paper is informative, so no reference number changed.",
++    "reason": "An uninformative paper adds nothing to the slope's clustered variance; counting it in G/(G-1) and in the degrees of freedom made the test less cautious than its information supports.",
++    "evidence": [
++      "Owner's decision, 2026-10-06, after the second-model review (docs/reviews/step07_review_chatgpt.md, finding 1)."
++    ],
++    "decided": {
++      "by": "owner (Khalid El-Awady)",
++      "date": "2026-10-06"
++    },
++    "expert_review": {
++      "status": "not_reviewed",
++      "name": null,
++      "date": null
++    },
++    "sensitivity": null,
++    "applied": {
++      "status": "yes",
++      "settings": [
++        {
++          "ref": "python:hypocurate.pipeline.statistics:small_sample_factor"
++        },
++        {
++          "ref": "python:hypocurate.pipeline.statistics:fit"
++        },
++        {
++          "ref": "python:hypocurate.pipeline.calibration:significant_count"
++        },
++        {
++          "ref": "file:CLAUDE.md:(informative papers − 1) degrees of freedom"
++        }
++      ],
++      "note": null
++    },
++    "tests": [
++      "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
++      "tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper",
++      "tests/test_informative_inference.py::test_where_every_paper_is_informative_nothing_changes",
++      "tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only"
++    ],
++    "history": [],
++    "notes": [
++      "CLAUDE.md rule 6 reworded to match (owner, 2026-10-06)."
++    ]
+   }
+ ]
+diff --git a/hypocurate/pipeline/analysis.py b/hypocurate/pipeline/analysis.py
+index bc313b9..f763384 100644
+--- a/hypocurate/pipeline/analysis.py
++++ b/hypocurate/pipeline/analysis.py
+@@ -144,8 +144,8 @@ def analyse(plan: Mapping, data: Mapping) -> dict:
+             if estimated["status"] == "computed":
+                 entry["estimated_power_estimated_noise"] = estimated["effect"]["share"]
+     return {"freeze_fingerprint": fp, "model": plan["model"]["name"],
+-            "test": "one-sided t test of k > 0 against t with (groups - 1) degrees of freedom; "
+-                    "cluster-robust standard error by group with the small-sample correction",
++            "test": "one-sided t test of k > 0 against t with (informative groups - 1) degrees of freedom; "
++                    "cluster-robust standard error by group with the small-sample correction over informative groups",
+             "alpha": alpha, "sufficiency_option": plan["sufficiency"]["option"], "withheld": withheld,
+             "analyses": entries, "not_analysed": not_analysed, "decision": st.decision(pooled, plan, fp)}
+ 
+diff --git a/hypocurate/pipeline/calibration.py b/hypocurate/pipeline/calibration.py
+index aa91b5c..75924ef 100644
+--- a/hypocurate/pipeline/calibration.py
++++ b/hypocurate/pipeline/calibration.py
+@@ -102,8 +102,8 @@ def confidence_flag(low: float, high: float, alpha: float) -> str:
+ 
+ def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
+     """How many rows of `outcomes` (simulations × records) the locked test finds significant:
+-    the same estimator, standard error, correction, validity checks and one-sided t test as
+-    `statistics.fit`. A simulated fit whose standard error is not finite or not above the numerical
++    the same estimator, standard error, correction (informative groups), validity checks and one-sided
++    t test (informative groups - 1 degrees of freedom) as `statistics.fit`. A simulated fit whose standard error is not finite or not above the numerical
+     zero gives no inference, so it is never significant (review finding 1)."""
+     if not d.counts_allow_inference:
+         return 0
+@@ -114,14 +114,15 @@ def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
+     e = yd - k[:, None] * xd[None, :]
+     groups = np.zeros((d.n, d.n_groups))
+     groups[np.arange(d.n), d.group] = 1.0
+-    scores = (e * xd[None, :]) @ groups
+-    variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
++    # Informative groups only, as in the real fit (owner, 2026-10-06).
++    scores = ((e * xd[None, :]) @ groups)[:, d.group_informative]
++    variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
+     with np.errstate(divide="ignore", invalid="ignore"):
+         se = np.sqrt(variance)
+         scale = np.sqrt((yd ** 2).sum(axis=1) / sxx)
+         valid = np.isfinite(se) & np.isfinite(k) & (se > RELATIVE_ZERO * scale)
+         t = np.where(valid, k / np.where(valid, se, 1.0), 0.0)
+-    p = stats.t.sf(t, d.n_groups - 1)
++    p = stats.t.sf(t, d.n_groups_informative - 1)
+     return int(np.count_nonzero(valid & (p < alpha)))
+ 
+ 
+diff --git a/hypocurate/pipeline/statistics.py b/hypocurate/pipeline/statistics.py
+index f7234bb..014e65e 100644
+--- a/hypocurate/pipeline/statistics.py
++++ b/hypocurate/pipeline/statistics.py
+@@ -6,10 +6,10 @@ alloy + k × (grain size in µm)^-1/2. Ordinary least squares with one intercept
+ shared coefficient k, computed by removing each alloy's mean from the predictor and the outcome
+ (the same estimate as fitting the alloy intercepts; Frisch-Waugh-Lovell). Its standard error is
+ cluster-robust, grouped by each source's grouping unit, with the small-sample correction
+-G/(G-1) × (N-1)/(N-K), K = alloys + 1 (statsmodels' default for clustered errors; register
+-'cluster_robust_se'). The test is one-sided, k > 0, against a t distribution with G - 1 degrees of
+-freedom, at the plan's threshold; "supported" exactly when p < alpha (register
+-'p_threshold_comparison').
++G/(G-1) × (N-1)/(N-K), K = alloys + 1, G the informative groups (statsmodels' formula when every
++group is informative; register 'cluster_robust_se'). The test is one-sided, k > 0, against a t
++distribution with G - 1 degrees of freedom, G the informative groups, at the plan's threshold;
++"supported" exactly when p < alpha (register 'p_threshold_comparison').
+ 
+ **Which records a fit uses** (owner, 2026-10-05, decision 7): only alloys with at least
+ `MODEL_MIN_GRAIN_SIZES` distinct grain sizes among the analysis's own records, distinct after the
+@@ -21,9 +21,10 @@ the records the fit uses** (owner, 2026-10-05).
+ **Informative papers** (owner, 2026-10-06; register 'informative_groups'): a group is informative
+ when at least one of its records differs from its alloy's average transformed grain size by more
+ than the numerical zero, so that the group helps estimate the slope. Uninformative groups stay in
+-the fit and are listed, but are not counted for the paper minimum or for validity check 2. The
+-standard error's small-sample factor and the t distribution's degrees of freedom still use every
+-group of the fit (statsmodels' definition, CLAUDE.md rule 6).
++the fit and are listed, but are not counted for the paper minimum, for validity check 2, for the standard error's
++small-sample factor or for the t distribution's degrees of freedom (owner, 2026-10-06; register
++'informative_groups_in_inference'; CLAUDE.md rule 6). The clustered covariance sums the scores of
++informative groups only (an uninformative group's score is zero up to rounding).
+ 
+ **The two validity checks** can never be waived (CLAUDE.md rule 5): (1) a coefficient can be fitted
+ when at least one alloy has two distinct grain sizes; (2) inference is valid with at least 1
+@@ -130,6 +131,7 @@ class Design:
+     n_alloys_not_used: int
+     n_groups_informative: int = 0
+     uninformative_groups: tuple = ()
++    group_informative: np.ndarray = None  # per group index: does the group count (informative)?
+ 
+     @property
+     def n(self) -> int:
+@@ -178,7 +180,8 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
+         group=np.array([group_index[o.group] for o in used], dtype=int),
+         n_alloys=len(used_alloys), n_groups=len(groups), n_records_in_set=len(obs),
+         n_alloys_not_used=len(values) - len(used_alloys), n_groups_informative=len(informative),
+-        uninformative_groups=tuple(g for g in groups if g not in informative))
++        uninformative_groups=tuple(g for g in groups if g not in informative),
++        group_informative=np.array([g in informative for g in groups], dtype=bool))
+ 
+ 
+ def distinct_values(values: list) -> int:
+@@ -200,7 +203,7 @@ def demeaned(values: np.ndarray, alloy: np.ndarray, n_alloys: int) -> np.ndarray
+ 
+ 
+ def small_sample_factor(n: int, n_alloys: int, n_groups: int) -> float:
+-    """G/(G-1) × (N-1)/(N-K), K = alloys + 1 (register 'cluster_robust_se')."""
++    """G/(G-1) × (N-1)/(N-K), K = alloys + 1, G the informative groups (register 'cluster_robust_se')."""
+     return (n_groups / (n_groups - 1)) * ((n - 1) / (n - n_alloys - 1))
+ 
+ 
+@@ -237,13 +240,14 @@ def fit(d: Design) -> Fit | None:
+     if not d.counts_allow_inference:
+         return Fit(k, None, None, None, None, "insufficient_groups")
+     e = yd - k * xd
+-    scores = np.bincount(d.group, xd * e, d.n_groups)
+-    variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups)
++    # Informative groups only (owner, 2026-10-06): their scores, their count in the factor and the df.
++    scores = np.bincount(d.group, xd * e, d.n_groups)[d.group_informative]
++    variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
+     se = math.sqrt(variance) if math.isfinite(variance) and variance >= 0 else math.nan
+     if not (math.isfinite(se) and se > RELATIVE_ZERO * math.sqrt(float(yd @ yd) / sxx)):
+         return Fit(k, None, None, None, None, "uncertainty_not_estimable")
+     t = k / se
+-    df = d.n_groups - 1
++    df = d.n_groups_informative - 1
+     return Fit(k, se, t, df, one_sided_p(t, df))
+ 
+ 
+diff --git a/tests/reference_stats.py b/tests/reference_stats.py
+index 55376be..17e94db 100644
+--- a/tests/reference_stats.py
++++ b/tests/reference_stats.py
+@@ -72,3 +72,39 @@ def significant_count(x, alloy, group, outcomes, alpha) -> int:
+         m = sm.OLS(y, exog).fit(cov_type="cluster", cov_kwds={"groups": group})
+         hits += stats.t.sf(m.params[0] / m.bse[0], g - 1) < alpha
+     return int(hits)
++
++
++def informative_groups(rows, relative_zero=1e-10) -> set:
++    """Test-side: groups with a record whose transformed grain size differs from its alloy's average
++    by more than relative_zero × the largest transformed grain size (alloys with two or more grain sizes)."""
++    f = frame(rows)
++    if f.empty:
++        return set()
++    contrast = (f["x"] - f.groupby("alloy")["x"].transform("mean")).abs()
++    return set(f.loc[contrast > relative_zero * f["x"].abs().max(), "group"])
++
++
++def fit_informative(rows) -> dict:
++    """The owner's rule of 2026-10-06 computed independently with an explicit sandwich (numpy, dummy
++    variables, no statsmodels): the clustered covariance sums the scores of informative groups only, the
++    small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative groups, and the one-sided p-value
++    uses t with G - 1 degrees of freedom."""
++    f = frame(rows)
++    informative = informative_groups(rows)
++    alloys = sorted(f["alloy"].unique())
++    x = np.column_stack([f["x"].to_numpy()] + [(f["alloy"] == a).to_numpy(dtype=float) for a in alloys])
++    y = f["y"].to_numpy()
++    bread = np.linalg.inv(x.T @ x)
++    beta = bread @ x.T @ y
++    e = y - x @ beta
++    meat = np.zeros((x.shape[1], x.shape[1]))
++    for g in informative:
++        rows_g = (f["group"] == g).to_numpy()
++        s = x[rows_g].T @ e[rows_g]
++        meat += np.outer(s, s)
++    n, k_params, g_inf = len(f), x.shape[1], len(informative)
++    factor = (g_inf / (g_inf - 1)) * ((n - 1) / (n - k_params))
++    se = float(np.sqrt((bread @ meat @ bread)[0, 0] * factor))
++    k = float(beta[0])
++    return {"k": k, "se": se, "p": float(stats.t.sf(k / se, g_inf - 1)), "groups_informative": g_inf,
++            "groups": f["group"].nunique()}
+diff --git a/tests/test_informative_inference.py b/tests/test_informative_inference.py
+new file mode 100644
+index 0000000..3bd015d
+--- /dev/null
++++ b/tests/test_informative_inference.py
+@@ -0,0 +1,97 @@
++"""Step 7: the standard error's small-sample factor and the t distribution's degrees of freedom count
++informative papers only, the same count as validity check 2 (owner, 2026-10-06; register
++'informative_groups_in_inference'; CLAUDE.md rule 6). Applied in the real fits and every simulated fit.
++
++The design: four alloys; in each, one record at x = d^-1/2 = 0.2 and one at 0.8 from two of three
++informative papers, and two records at 0.5 (the alloy's average, exactly) from six uninformative
++papers. With all nine papers counted (statsmodels' definition) the factor is 9/8 and the test has 8
++degrees of freedom; with the three informative papers it is 3/2 and 2 degrees of freedom: a larger
++standard error (by exactly sqrt(4/3), since uninformative papers' scores are exactly zero) and a
++larger p-value, the cautious direction.
++"""
++from __future__ import annotations
++
++import math
++
++import numpy as np
++import pytest
++from scipy import stats
++
++import generator as g
++import reference_stats as rs
++from hypocurate.pipeline import analysis
++from hypocurate.pipeline import calibration as cal
++from hypocurate.pipeline import statistics as st
++from test_statistics_boundaries import frozen
++
++
++def design_rows(seed=11):
++    rng = np.random.default_rng(seed)
++    rows, u = [], 0
++    for a in range(4):
++        for d, paper in ((25.0, f"inf-{a % 3}"), (1.5625, f"inf-{(a + 1) % 3}"), (4.0, None), (4.0, None)):
++            if paper is None:
++                paper, u = f"uninf-{u % 6}", u + 1
++            rows.append((a, paper, d, 300.0 + 50 * a + 250.0 * d ** -0.5 + rng.normal(0, 20.0)))
++    return rows
++
++
++def reference_rows(rows):
++    data = frozen(rows, "inf")
++    return [(f"a{a}", f"paper:{p}", d, y) for (a, p, d, y) in rows], data
++
++
++def test_the_design_has_three_informative_and_six_uninformative_papers():
++    rows, data = reference_rows(design_rows())
++    pooled = analysis.analyse(g.plan("use_available", n_simulations=50), data)["analyses"][0]
++    assert (pooled["counts"]["n_groups"], pooled["counts"]["n_groups_informative"]) == (9, 3)
++    assert len(pooled["uninformative_groups"]) == 6
++    assert rs.informative_groups(rows) == {f"paper:inf-{i}" for i in range(3)}
++
++
++def test_the_factor_and_degrees_of_freedom_count_informative_papers_only():
++    rows, data = reference_rows(design_rows())
++    pooled = analysis.analyse(g.plan("use_available", n_simulations=50), data)["analyses"][0]
++    assert pooled["df"] == 2  # informative papers - 1, not 9 - 1
++    ref = rs.fit_informative(rows)  # independent: explicit sandwich over informative groups
++    assert math.isclose(pooled["estimate"], ref["k"], rel_tol=1e-9)
++    assert math.isclose(pooled["std_error"], ref["se"], rel_tol=1e-9)
++    assert math.isclose(pooled["p_value"], ref["p"], rel_tol=1e-9)
++
++
++def test_the_result_is_more_cautious_than_counting_every_paper():
++    """Against statsmodels with all nine clusters (the earlier definition): same k, a standard error
++    larger by exactly sqrt(4/3), fewer degrees of freedom, a larger p-value."""
++    rows, data = reference_rows(design_rows())
++    pooled = analysis.analyse(g.plan("use_available", n_simulations=50), data)["analyses"][0]
++    every = rs.fit(rows)  # statsmodels, every cluster counted
++    all_p = float(stats.t.sf(every["k"] / every["se"], 9 - 1))
++    assert math.isclose(pooled["estimate"], every["k"], rel_tol=1e-9)
++    assert pooled["std_error"] > every["se"]
++    assert math.isclose(pooled["std_error"] / every["se"], math.sqrt((3 / 2) / (9 / 8)), rel_tol=1e-9)
++    assert pooled["p_value"] > all_p and pooled["df"] < 8
++
++
++@pytest.mark.parametrize("name", ["effect_many_papers", "large_paper_shifts", "single_size_alloys_added"])
++def test_where_every_paper_is_informative_nothing_changes(name):
++    """The statsmodels comparison still holds exactly (and the independent sandwich agrees with it)."""
++    data = g.frozen_data(g.SPECS[name])
++    pooled = analysis.analyse(g.plan("use_available", n_simulations=50), data)["analyses"][0]
++    assert pooled["counts"]["n_groups"] == pooled["counts"]["n_groups_informative"]
++    every, mine = rs.fit(g.rows(data)), rs.fit_informative(g.rows(data))
++    for got, a, b in ((pooled["std_error"], every["se"], mine["se"]), (pooled["p_value"], every["p"], mine["p"])):
++        assert math.isclose(got, a, rel_tol=1e-9) and math.isclose(got, b, rel_tol=1e-9)
++
++
++def test_every_simulated_fit_counts_informative_papers_only():
++    """The vectorized simulation decides each simulated fit exactly as the independent sandwich does."""
++    rows, data = reference_rows(design_rows())
++    d = st.design(analysis.observations(data["records"], g.plan(), "primary"), "inverse_square_root")
++    rng = np.random.default_rng(31)
++    outcomes = 120.0 * d.x[None, :] + rng.normal(0, 40, (200, d.n_groups))[:, d.group] + rng.normal(0, 60, (200, d.n))
++    expected = 0
++    for y in outcomes:  # the design's own records, in its order: alloy, group, grain size, outcome
++        sim_rows = [(f"a{d.alloy[i]}", f"g{d.group[i]}", float(d.x[i]) ** -2, float(y[i])) for i in range(d.n)]
++        expected += rs.fit_informative(sim_rows)["p"] < 0.05
++    assert 0 < expected < 200
++    assert cal.significant_count(d, outcomes, 0.05) == expected
+```
+
+
+## 3. Reference numbers recomputed after all the fixes (on `496644e`)
 
 The reference run (MPEA and Texas A&M, reference plan, fixed minimums) through the freeze and `analysis.run_statistics`. Columns: analysis, records, alloys, groups, informative groups, residual df, uninformative groups, k, SE, p, label, label reason, inference reason, fixed calibration (no-effect, effect significant of 2,000), estimated calibration, fixed detection rate, estimated detection rate.
 
@@ -1986,11 +2498,11 @@ ROW sensitivity:conflicts_survivor_value 97 22 20 20 74 [] 424.878909890441 64.3
 DECISION {"freeze_fingerprint": "3ec87f58975dc9fce3432e51e6a5ee4e4e56d83821e46db966f85fa4e027c907", "state": "sufficient", "outcome": "sufficient", "outcome_wording": "sufficient in the sources searched", "verdict": "supported", "verdict_wording": "supported under the stated model, in the sources searched", "exploratory": false, "evidence_level": 6, "evidence_level_wording": "sufficient with a verdict", "label": null}
 ```
 
-Against the first build: every k, SE and p is bit-identical; every simulated count is identical; the freeze fingerprint is unchanged. All groups are informative in every set.
+Against the first build, and against the previous round (before informative papers entered the factor and the degrees of freedom): byte-identical. Every k, SE and p, every simulated count and the freeze fingerprint are unchanged, because every group of every reference set is informative.
 
-## 4. Mutation checks of the fixes
+## 4. Mutation checks
 
-### `mutations_fix.sh`
+### Review fixes: `mutations_fix.sh`
 
 ```bash
 #!/bin/bash
@@ -2066,15 +2578,53 @@ $M f13_level_not_required db/migrations/versions/0004_statistics_results.py "EVI
 [f09_trigger_label_bound_back] 2 failed, 185 passed in 62.92s (0:01:02)
 ```
 
+### Informative papers in the factor and the degrees of freedom: `mutations_inf.sh`
+
+```bash
+#!/bin/bash
+M=/tmp/claude-1000/-workspaces-hypocurate/d40b08e7-9c83-4b0a-8b2e-aa110db4b20f/scratchpad/mutate.sh
+I=/workspaces/hypocurate/tests/test_informative_inference.py
+$M i01_factor_all_groups pipeline/statistics.py 'small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)' 'small_sample_factor(d.n, d.n_alloys, d.n_groups)' $I
+$M i02_df_all_groups pipeline/statistics.py '    df = d.n_groups_informative - 1' '    df = d.n_groups - 1' $I
+$M i03_scores_all_groups pipeline/statistics.py 'scores = np.bincount(d.group, xd * e, d.n_groups)[d.group_informative]' 'scores = np.bincount(d.group, xd * e, d.n_groups)' $I
+$M i04_sim_factor_all_groups pipeline/calibration.py 'small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)' 'small_sample_factor(d.n, d.n_alloys, d.n_groups)' $I
+$M i05_sim_df_all_groups pipeline/calibration.py 'p = stats.t.sf(t, d.n_groups_informative - 1)' 'p = stats.t.sf(t, d.n_groups - 1)' $I
+```
+
+### Output
+
+```
+[i01_factor_all_groups] >       assert math.isclose(pooled["std_error"], ref["se"], rel_tol=1e-9)
+[i01_factor_all_groups]         """Against statsmodels with all nine clusters (the earlier definition): same k, a standard error
+[i01_factor_all_groups] >       assert pooled["std_error"] > every["se"]
+[i01_factor_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only
+[i01_factor_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper
+[i01_factor_all_groups] 2 failed, 5 passed in 3.27s
+[i02_df_all_groups]         """Against statsmodels with all nine clusters (the earlier definition): same k, a standard error
+[i02_df_all_groups]         assert pooled["std_error"] > every["se"]
+[i02_df_all_groups]         assert math.isclose(pooled["std_error"] / every["se"], math.sqrt((3 / 2) / (9 / 8)), rel_tol=1e-9)
+[i02_df_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only
+[i02_df_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper
+[i02_df_all_groups] 2 failed, 5 passed in 3.08s
+[i03_scores_all_groups] 7 passed in 3.20s
+[i04_sim_factor_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only
+[i04_sim_factor_all_groups] 1 failed, 6 passed in 3.20s
+[i05_sim_df_all_groups] FAILED ../../../../../workspaces/hypocurate/tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only
+[i05_sim_df_all_groups] 1 failed, 6 passed in 3.25s
+```
+
+i03 survives: an equivalent mutation (an uninformative group's score is zero up to rounding; see the summary).
+
 ## 5. Suite output
 
 ```
-Local (Codespace), on fb5fd62:
-1131 passed in 323.06s (0:05:23)
+Local (Codespace), on 496644e:
+1138 passed in 328.77s (0:05:28)
 ```
 
 ## 6. Questions for the re-check
 
+0. Is counting informative papers in the small-sample factor and the degrees of freedom (the owner's second decision) implemented consistently in the real fits and every simulated fit, and is the independent sandwich a fair check of it?
 1. Are the four findings closed: can any design still give a verdict, a p-value or a standard error without at least two informative papers and an estimable uncertainty, in a real fit or a simulated one?
 2. Is "informative paper" implemented as the owner defined it, and is the numerical zero (1e-10 of the natural scale) applied consistently and never acting as a scientific threshold?
 3. Does migration 0004, as changed, enforce check 2, the reasons and the evidence level completely, and is the downgrade still exact?
