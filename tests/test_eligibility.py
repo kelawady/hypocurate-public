@@ -58,6 +58,16 @@ def decide(records, flags=(), plan=PLAN, key=el.PRIMARY):
     return el.decide(plan, records, list(flags), key)
 
 
+def grouped_by_dataset(*sources, plan=PLAN):
+    """A plan grouping `sources` by dataset (step 7b): their records keep a group without a DOI, so a
+    test of identity or the survivor rule can use a record without a DOI. Grouping never changes
+    identity: Checks' paper identity reads the DOI and reference only (step 6 re-check, finding 2a)."""
+    plan = copy.deepcopy(plan)
+    plan["rules"]["grouping"] = [{"source": g["source"], "unit": "dataset" if g["source"] in sources else g["unit"]}
+                                 for g in plan["rules"]["grouping"]]
+    return plan
+
+
 # --- one rule per record, the first that applies ---------------------------------------------
 
 def test_each_rule_on_its_own():
@@ -125,9 +135,12 @@ def test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule():
                                                                               doi=False)]
     flags = [flag("exact_duplicate", "identical values", 1, 3, fid=1),
              flag("possible_duplicate", "identical values", 2, 4, fid=2)]
-    assert decide(records, flags) == {1: "in_scope", 2: "in_scope", 3: "duplicate_counted_once",
-                                      4: "duplicate_counted_once"}
-    sep = decide(records, flags, key="possible_duplicates_separate")
+    # Step 7b: grouped by paper, record 4 (no DOI) has no group: rule 5, before identity.
+    assert decide(records, flags)[4] == "group_unknown"
+    plan = grouped_by_dataset("controlled_duplicates")
+    assert decide(records, flags, plan) == {1: "in_scope", 2: "in_scope", 3: "duplicate_counted_once",
+                                            4: "duplicate_counted_once"}
+    sep = decide(records, flags, plan, key="possible_duplicates_separate")
     assert sep == {1: "in_scope", 2: "in_scope", 3: "duplicate_counted_once", 4: "in_scope"}
 
 
@@ -136,16 +149,20 @@ def test_survivor_rule_one_a_source_other_than_mpea_survives_when_it_alone_carri
     MPEA record does not: rule 1 keeps the extract record."""
     records = [cond(1, "mpea", gs=10.0, doi=False), cond(2, "controlled_duplicates", gs=10.0, doi=True),
                cond(3, "controlled_duplicates", gs=40.0)]
-    got = decide(records, [flag("possible_duplicate", "identical values", 1, 2)])
+    possible = [flag("possible_duplicate", "identical values", 1, 2)]
+    assert decide(records, possible)[1] == "group_unknown"  # step 7b: no DOI, grouped by paper
+    got = decide(records, possible, grouped_by_dataset("mpea"))
     assert got == {1: "duplicate_counted_once", 2: "in_scope", 3: "in_scope"}
 
 
 def test_survivor_rule_two_texas_am_survives_over_the_extract_by_source_order():
     records = [cond(1, "controlled_duplicates", gs=10.0, doi=False), cond(2, "tamu_fcc", gs=10.0, doi=False),
                cond(3, "tamu_fcc", gs=40.0, doi=False)]
-    got = decide(records, [flag("exact_duplicate", "identical values", 1, 2)])
+    assert decide(records, [flag("exact_duplicate", "identical values", 1, 2)])[1] == "group_unknown"  # step 7b
+    plan = grouped_by_dataset("controlled_duplicates")
+    got = decide(records, [flag("exact_duplicate", "identical values", 1, 2)], plan)
     assert got == {1: "duplicate_counted_once", 2: "in_scope", 3: "in_scope"}
-    reordered = copy.deepcopy(PLAN)
+    reordered = copy.deepcopy(plan)
     reordered["rules"]["survivor_source_order"] = ["controlled_duplicates", "mpea", "tamu_fcc"]
     assert decide(records, [flag("exact_duplicate", "identical values", 1, 2)], reordered)[1] == "in_scope"
 
@@ -205,7 +222,8 @@ def test_an_ambiguous_group_keeps_its_conflict_in_every_set():
     (`flags.raise_flags`), and the resulting sets are checked, not only the labels."""
     from test_flags import rec
     plan = copy.deepcopy(PLAN)
-    plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "controlled_duplicates", "unit": "paper"},
+    # Step 7b: B (no DOI) is grouped by dataset so that it keeps a group; identity is unchanged.
+    plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "controlled_duplicates", "unit": "dataset"},
                                  {"source": "tamu_fcc", "unit": "paper"}]
     full = [rec(1, "mpea", ys=400.0), rec(2, "controlled_duplicates", ys=400.0, doi=None),
             rec(3, "tamu_fcc", ys=440.0), rec(4, "mpea", gs=40.0, ys=300.0)]
@@ -412,3 +430,63 @@ def test_counts_known_at_the_freeze():
         {"n_records": 4, "n_alloys": 2, "n_alloys_two_grain_sizes": 2, "n_groups": 2, "resid_df": 1}
     assert got["check1_inputs_met"] and got["check2_inputs_met"] and not got["minimums_met"]
     assert got["minimums"] == {"records": False, "alloys": False, "groups": False, "resid_df": False}
+
+
+# --- Step 7b: a record without a group (owner, 2026-10-06; register 'records_without_group') -------
+
+def test_a_record_without_a_group_is_stored_but_not_eligible_with_its_own_rule():
+    """A literature record whose paper is not known (no DOI) has no group under paper grouping: it
+    gets a decision of its own, `group_unknown`, and is in no set. No group is invented."""
+    records = [*pair(1, 10.0), *pair(3, 10.0, doi=False, comp={"Co": 40.0, "Ni": 60.0})]
+    for key in (el.PRIMARY, *PLAN["sensitivity_analyses"]):
+        rules = decide(records, key=key)
+        assert (rules[3], rules[4]) == ("group_unknown", "group_unknown"), key
+        assert set(rules) == {1, 2, 3, 4}  # every stored record has its decision
+
+
+@pytest.mark.parametrize("record, expected", [
+    (dict(doi=False, kind="model_recalled"), "model_recalled"),
+    (dict(doi=False, test_type="compression"), "out_of_scope"),
+    (dict(doi=False, gs=None), "missing_value"),
+    (dict(doi=False, temp=None), "group_unknown"),     # scope not confirmed comes after it
+    (dict(doi=False, gs=0.05), "group_unknown"),        # excluded by a rule comes after it
+    (dict(doi=True, temp=None), "scope_not_confirmed"),
+])
+def test_group_unknown_is_rule_5_after_missing_value(record, expected):
+    """Owner, 2026-10-06: rule 5, after missing value and before scope not confirmed, the menu
+    exclusions, identity and the grain-size count."""
+    assert decide([cond(5, **record), *pair(1, 10.0)])[5] == expected
+
+
+def test_a_record_without_a_group_is_never_a_survivor():
+    """Before identity: a record without a group can never be chosen as the survivor of its
+    duplicate group and push out its grouped twin (the measurement would be lost). Here the plan's
+    source order would prefer the extract record, which has no DOI and so no group; the Texas A&M
+    record (grouped by dataset) survives, in primary and in every set."""
+    plan = copy.deepcopy(PLAN)
+    plan["rules"]["survivor_source_order"] = ["controlled_duplicates", "mpea", "tamu_fcc"]
+    tamu = dict(source="tamu_fcc", doi=False, batch="b1")
+    records = [cond(1, **tamu), cond(2, gs=40.0, **tamu), cond(3, "controlled_duplicates", doi=False)]
+    possible = flag("possible_duplicate", "within tolerance", 1, 3)
+    for key in (el.PRIMARY, *plan["sensitivity_analyses"]):
+        rules = decide(records, [possible], plan, key)
+        # In the set without the most influential paper the one group (the dataset) is the one removed.
+        kept = "most_influential_paper" if key == el.INFLUENCE_KEY else "in_scope"
+        assert (rules[1], rules[2], rules[3]) == (kept, kept, "group_unknown"), key
+
+
+def test_the_group_is_judged_under_each_sets_own_grouping():
+    """Texas A&M is grouped by dataset in primary and by batch in 'six_batches_as_groups': a record
+    without a batch has a group in primary and none in that set (the same `group` function)."""
+    tamu = dict(source="tamu_fcc", doi=False)
+    records = [cond(1, batch="b1", **tamu), cond(2, gs=40.0, batch="b1", **tamu),
+               cond(3, gs=20.0, batch=None, **tamu)]
+    assert decide(records) == {1: "in_scope", 2: "in_scope", 3: "in_scope"}
+    assert decide(records, key="six_batches_as_groups") == {1: "in_scope", 2: "in_scope", 3: "group_unknown"}
+
+
+def test_alloys_are_counted_on_records_with_a_group():
+    """Before the grain-size count (rule 9): a grain size held only by a record without a group does
+    not make its alloy eligible."""
+    records = [cond(1, gs=10.0), cond(2, gs=40.0, doi=False)]
+    assert decide(records) == {1: "single_grain_size", 2: "group_unknown"}

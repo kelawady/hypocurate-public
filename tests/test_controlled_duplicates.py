@@ -16,7 +16,7 @@ TRUTH = FIXTURES / "truth.csv"
 # Step 6 (owner, 2026-10-05): the restored survivor wording and decision C (rows 7-8 are a conflict).
 # Owner, 2026-10-06: rows 15-16 describe the reference plan with its test-type rule (tension only),
 # their explanation included (after the step 6 review).
-TRUTH_SHA256 = "e6e859cd127b26cad233fac11f68c09eeb29dc2e4457ea68cba530ef2355025b"
+TRUTH_SHA256 = "0503f2b8e890c9d2c474beadfdd2f72f006b9cf817cd16495f494ac881242f9c"
 # The frozen source files: fingerprint-pinned, and not written by us, so they
 # cannot hold our answers. Everything else under data/ is scanned.
 FROZEN_SOURCE_FILES = {
@@ -287,7 +287,9 @@ def test_tension_only_handling_differs_only_for_compression_rows():
 EXPECTED = {
     "exact_duplicate_verbatim": ("exact_duplicate", "counted once", "none"),
     "exact_duplicate_renamed_alloy": ("exact_duplicate", "counted once", "none"),
-    "possible_duplicate_unknown_paper": ("possible_duplicate", "counted once", "both counted separately"),
+    # Step 7b (owner, 2026-10-06): no paper reference, so no group: not eligible in any set.
+    "possible_duplicate_unknown_paper": ("possible_duplicate", "not eligible: no group (paper reference missing)",
+                                         "none"),
     # Decision C (owner, 2026-10-05; corrects PRD 5.3, which contradicted CLAUDE.md rule 4).
     "conflict_value_differs": ("conflict", "neither enters: conflict unresolved",
                                "counted once in conflicts_survivor_value"),
@@ -319,6 +321,8 @@ def test_unknown_paper_is_flagged_as_possible_duplicate_kept_not_removed():
     for t in rows:
         assert t["prd_5_3_class"] == "Possible duplicate that cannot be resolved"
         assert "Flagged as a possible duplicate, kept, not removed." in t["explanation"]
+        assert "no group is invented (owner, 2026-10-06)" in t["explanation"]  # step 7b
+        assert t["survivor_reason"].endswith("not eligible in any case (no group: the paper reference is missing)")
 
 
 # --- which record survives in the primary analysis (owner's rule, 2026-10-04) ------

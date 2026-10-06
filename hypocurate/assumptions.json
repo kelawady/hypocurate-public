@@ -236,7 +236,7 @@
     "key": "fixed_minimums",
     "name": "Fixed minimums for data sufficiency",
     "state": "in_force",
-    "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent informative papers (entry 'informative_groups') and 10 residual degrees of freedom, counted on the records a fit uses. All four must be met.",
+    "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent informative papers (entry 'informative_groups') and 10 residual degrees of freedom, counted on the records a fit uses. All four must be met. The paper minimum stays a count of informative papers, not the effective number of papers (entry 'effective_papers'); final for sprint 1 (owner, 2026-10-06).",
     "value": {
       "text": "30 records; 5 alloys; 10 papers; 10 residual degrees of freedom",
       "unit": null
@@ -290,6 +290,12 @@
         "from": "2026-10-05",
         "to": "2026-10-06",
         "note": "The paper minimum counts informative papers only (owner, 2026-10-06)."
+      },
+      {
+        "value": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent informative papers (entry 'informative_groups') and 10 residual degrees of freedom, counted on the records a fit uses. All four must be met.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Step 7b (owner, 2026-10-06): recorded as final for sprint 1; the values are unchanged."
       }
     ],
     "notes": [
@@ -4296,7 +4302,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4337,11 +4343,13 @@
             "conflict_unresolved",
             "duplicate_counted_once",
             "excluded_by_rule",
+            "group_unknown",
             "identity_unresolved",
             "in_scope",
             "invalid_value",
             "missing_value",
             "model_recalled",
+            "most_influential_paper",
             "out_of_scope",
             "scope_not_confirmed",
             "single_grain_size"
@@ -4358,7 +4366,8 @@
             "scope_not_confirmed_included",
             "six_batches_as_groups",
             "source_only_assignments",
-            "tension_and_compression"
+            "tension_and_compression",
+            "without_most_influential_paper"
           ]
         },
         {
@@ -4426,6 +4435,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 7 (owner, 2026-10-05)."
+      },
+      {
+        "value": "eligibility rules without 'group_unknown' and 'most_influential_paper'; sensitivity keys without 'without_most_influential_paper'",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 7b additions approved by the owner on 2026-10-06."
       }
     ],
     "notes": [],
@@ -4479,9 +4494,9 @@
     "key": "eligibility_rule_order",
     "name": "One eligibility rule per record, in a fixed order",
     "state": "in_force",
-    "statement": "Every record gets one rule, the first that applies: model-recalled; invalid value; out of scope; missing value; scope not confirmed; excluded by a rule; identity (ambiguous group, conflict, or not the survivor of a duplicate group); fewer than two grain sizes for its alloy; otherwise eligible. Duplicates are resolved before grain sizes are counted.",
+    "statement": "Every record gets one rule, the first that applies: model-recalled; invalid value; out of scope; missing value; no group under the set's grouping; scope not confirmed; excluded by a rule; identity (ambiguous group, conflict, or not the survivor of a duplicate group); fewer than two grain sizes for its alloy; otherwise eligible. Duplicates are resolved before grain sizes are counted. In the set without the most influential paper, that paper's primary members get 'most_influential_paper' (entry 'most_influential_paper_set').",
     "value": {
-      "text": "model_recalled, invalid_value, out_of_scope, missing_value, scope_not_confirmed, excluded_by_rule, identity, single_grain_size, in_scope",
+      "text": "model_recalled, invalid_value, out_of_scope, missing_value, group_unknown, scope_not_confirmed, excluded_by_rule, identity, single_grain_size, in_scope",
       "unit": null
     },
     "category": "data_handling",
@@ -4492,7 +4507,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4509,7 +4524,14 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Every record gets one rule, the first that applies: model-recalled; invalid value; out of scope; missing value; scope not confirmed; excluded by a rule; identity (ambiguous group, conflict, or not the survivor of a duplicate group); fewer than two grain sizes for its alloy; otherwise eligible. Duplicates are resolved before grain sizes are counted.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 7b (owner, 2026-10-06): rule 5, 'group_unknown', added after missing value."
+      }
+    ],
     "notes": [
       "Confirmation (2026-10-06): within the identity rule, definite relationships (exact duplicates, conflicts) are applied before the plan's possible-duplicate choice, which then applies to what remains.",
       "Confirmation round 2 (2026-10-06): the identity rule decides whole groups, never flag by flag: records linked by a chain of exact pairs are one measurement (one survivor); a chain touching a definite conflict follows the plan's conflict rule as one group; then the possible-duplicate choice per connected possible group. No decision depends on record ids, flag ids or insertion order."
@@ -4524,7 +4546,9 @@
       "tests/test_order_independence.py::test_a_chain_touching_a_conflict_enters_with_none_of_its_records",
       "tests/test_order_independence.py::test_permuted_ids_and_insertion_order_give_the_same_frozen_result",
       "tests/test_order_independence.py::test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order",
-      "tests/test_reference_sets.py::test_every_record_has_one_decision_with_its_rule"
+      "tests/test_reference_sets.py::test_every_record_has_one_decision_with_its_rule",
+      "tests/test_eligibility.py::test_group_unknown_is_rule_5_after_missing_value",
+      "tests/test_eligibility.py::test_a_record_without_a_group_is_never_a_survivor"
     ]
   },
   {
@@ -4595,9 +4619,9 @@
     "key": "sensitivity_one_change",
     "name": "Each sensitivity analysis changes one thing",
     "state": "in_force",
-    "statement": "Each sensitivity set differs from the primary set in exactly one named respect, and every other rule applies unchanged. The reference and default plans name eight: no exclusions; tension and compression together; six batches for Texas A&M; the same-alloy rule at 1 at.%; source-only values; scope not confirmed included; possible duplicates separate; conflicts by the survivor value. Sensitivity results are descriptive, never change the verdict, and no adjustment is made for there being eight.",
+    "statement": "Each sensitivity set differs from the primary set in exactly one named respect, and every other rule applies unchanged. The reference and default plans name nine: no exclusions; tension and compression together; six batches for Texas A&M; the same-alloy rule at 1 at.%; source-only values; scope not confirmed included; possible duplicates separate; conflicts by the survivor value; without the most influential paper. Sensitivity results are descriptive, never change the verdict, and no adjustment is made for there being nine.",
     "value": {
-      "text": "eight sets, one change each",
+      "text": "nine sets, one change each",
       "unit": null
     },
     "category": "statistical",
@@ -4608,7 +4632,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4628,7 +4652,14 @@
       ],
       "note": "What each key changes is fixed by the key itself, not by a number in the plan."
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Each sensitivity set differs from the primary set in exactly one named respect, and every other rule applies unchanged. The reference and default plans name eight: no exclusions; tension and compression together; six batches for Texas A&M; the same-alloy rule at 1 at.%; source-only values; scope not confirmed included; possible duplicates separate; conflicts by the survivor value. Sensitivity results are descriptive, never change the verdict, and no adjustment is made for there being eight.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Eight sets until step 7b (owner, 2026-10-06), which added 'without_most_influential_paper'."
+      }
+    ],
     "notes": [
       "The reference script's 'discretionary removals' analysis (PRD 10: 438 ± 67 with four records removed) is not carried over: its records were chosen after seeing outcomes, so it cannot be named in a plan locked before the data (owner, 2026-10-05).",
       "Related: 'no_multiplicity_adjustment'.",
@@ -4639,7 +4670,8 @@
       "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change",
       "tests/test_reference_sets.py::test_each_sensitivity_set_differs_only_by_its_named_change_with_duplicates_and_conflicts",
       "tests/test_sensitivity_matching.py::test_the_coarser_same_alloy_rule_recomputes_the_duplicates",
-      "tests/test_sensitivity_matching.py::test_the_one_change_rule_holds_with_recomputed_matching_flags"
+      "tests/test_sensitivity_matching.py::test_the_one_change_rule_holds_with_recomputed_matching_flags",
+      "tests/test_influential_paper.py::test_it_differs_from_primary_in_exactly_this_one_respect"
     ]
   },
   {
@@ -5009,9 +5041,9 @@
     "key": "primary_set_invariants",
     "name": "What no plan can ever do to the primary set",
     "state": "in_force",
-    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) No record connected to a definite conflict ever enters, under any plan: not both records, not one. That includes a record linked by exact duplicates to a record in conflict (the whole connected group stays out). A survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value'. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The one plan choice that remains: possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+    "statement": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) No record connected to a definite conflict ever enters, under any plan: not both records, not one. That includes a record linked by exact duplicates to a record in conflict (the whole connected group stays out). A survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value'. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. (7) A record without a group under the plan's grouping never enters (no group is invented; entry 'records_without_group'). A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze; (7) by the eligibility rule 'group_unknown'. The one plan choice that remains: possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (7), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind, source and, for (7), group under the plan's grouping, and refuses the freeze, logging the refusal, if any fails.",
     "value": {
-      "text": "six things no plan can do",
+      "text": "seven things no plan can do",
       "unit": null
     },
     "category": "data_handling",
@@ -5050,9 +5082,12 @@
         },
         {
           "ref": "python:hypocurate.pipeline.eligibility:primary_set_problems"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:has_group"
         }
       ],
-      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…], tests/test_conflict_policy.py (the reviewer's chain, through the pipeline and at the freeze); (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused. The result check at the freeze: test_each_invariant_is_checked_on_the_primary_set (all six) and the end-to-end tests in tests/test_freeze_invariants.py."
+      "note": "Tests per point: (1) test_no_plan_can_put_these_records_in_the_primary_set[exact_duplicate…], test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule; (2) test_a_conflict_enters_with_neither_record, test_no_plan_can_put_these_records_in_the_primary_set[values_disagree…], tests/test_conflict_policy.py (the reviewer's chain, through the pipeline and at the freeze); (3) test_each_rule_on_its_own, test_no_plan_can_put_these_records_in_the_primary_set[invalid_value…]; (4) test_an_ambiguous_group_enters_with_none_of_its_records, test_no_plan_can_put_these_records_in_the_primary_set[possible_duplicate…]; (5) test_a_model_recalled_record_is_stored_but_never_eligible, test_each_rule_on_its_own; (6) test_constructed_data_never_enters_a_run_not_marked_as_a_test. Plan refusals: test_invalid_plans_are_refused. The result check at the freeze: test_each_invariant_is_checked_on_the_primary_set (all six) and the end-to-end tests in tests/test_freeze_invariants.py. (7) test_a_record_without_a_group_is_stored_but_not_eligible_with_its_own_rule, test_each_invariant_is_checked_on_the_primary_set[a record without a group…], test_a_record_without_a_group_admitted_past_the_rule_is_refused_at_the_freeze."
     },
     "history": [
       {
@@ -5066,6 +5101,12 @@
         "from": "2026-10-06",
         "to": "2026-10-06",
         "note": "Before the third confirmation: point (2) let a plan choose the survivor's value counted once, and the freeze check refused only more than one record of a conflict group."
+      },
+      {
+        "value": "These hold for every plan, including any plan written by a model; no plan setting can change them. (1) An exact duplicate is never counted twice: one record of the group, chosen by the survivor rule, enters. (2) No record connected to a definite conflict ever enters, under any plan: not both records, not one. That includes a record linked by exact duplicates to a record in conflict (the whole connected group stays out). A survivor's value is counted only in the sensitivity analysis 'conflicts_survivor_value'. (3) A physically invalid value never enters. (4) A group whose identity cannot be resolved (several candidates) never enters; it is counted separately only in the sensitivity analysis 'possible_duplicates_separate'. (5) A model-recalled record never enters. (6) A constructed record (the controlled extract) never enters a run that is not marked as a test. A plan that tries (1) to (4) is refused at the rules lock and refused again when its rules are applied; (5) is refused by the database; (6) by code at record storage, inclusion and the freeze. The one plan choice that remains: possible duplicates counted once (the default) or both counted. They are also enforced on the frozen set itself: at the dataset freeze, code checks the primary set against each of (1) to (6), using the Checks flags (paper identity and physical validity computed independently of the plan's grouping and outcome) and each record's kind and source, and refuses the freeze, logging the refusal, if any fails.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Six invariants until step 7b (owner, 2026-10-06): point (7) added."
       }
     ],
     "notes": [
@@ -5099,7 +5140,9 @@
       "tests/test_mixed_groups.py::test_the_pipeline_never_admits_the_exact_duplicate_twice",
       "tests/test_order_independence.py::test_the_freeze_check_allows_at_most_one_record_per_chain",
       "tests/test_plan.py::test_invalid_plans_are_refused",
-      "tests/test_plan.py::test_the_plan_choices_that_remain"
+      "tests/test_plan.py::test_the_plan_choices_that_remain",
+      "tests/test_freeze_invariants.py::test_a_record_without_a_group_admitted_past_the_rule_is_refused_at_the_freeze",
+      "tests/test_eligibility.py::test_a_record_without_a_group_is_stored_but_not_eligible_with_its_own_rule"
     ]
   },
   {
@@ -5668,42 +5711,67 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "open decision: Open: what a fit does with a frozen record that has no group (a literature record whose paper is not known). Until decided, code fails closed and invents no group: the pooled analysis refuses the analysis stage (logged, 'records_without_group'); a per-source or sensitivity analysis is reported as not analysed, with the count, and nothing is stored for it.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Open from the step 7 build; decided by the owner in step 7b."
+      }
+    ],
     "notes": [
-      "Second-model review (2026-10-06): failing closed is safe; keep the explicit skipped-analysis record and invent no singleton papers. Still open: whether a permitted coefficient-only result should remain available when grouping is missing."
+      "Second-model review (2026-10-06): failing closed is safe; keep the explicit skipped-analysis record and invent no singleton papers. Still open: whether a permitted coefficient-only result should remain available when grouping is missing.",
+      "Step 7b (owner, 2026-10-06): decided at inclusion; the reviewer's question (a coefficient-only result when grouping is missing) no longer arises, since such a record never reaches a fit."
     ],
     "key": "records_without_group",
     "name": "Records without a group in a fit",
-    "state": "open",
-    "statement": "Open: what a fit does with a frozen record that has no group (a literature record whose paper is not known). Until decided, code fails closed and invents no group: the pooled analysis refuses the analysis stage (logged, 'records_without_group'); a per-source or sensitivity analysis is reported as not analysed, with the count, and nothing is stored for it.",
-    "value": null,
-    "decided": null,
+    "state": "in_force",
+    "statement": "A record with no group under a set's grouping (a paper-grouped record without a DOI, so its paper is not known; a batch-grouped record without a batch) is stored and shown but is not eligible: Inclusion gives it its own rule, 'group_unknown', rule 5 in the order (after missing value, before scope not confirmed, the menu exclusions, identity and the grain-size count), judged in each set under that set's own grouping. No group is ever invented. The dataset freeze also refuses a primary set holding such a record (entry 'primary_set_invariants', point 7). The statistics therefore never receive one in normal runs; their refusal (pooled refuses, a descriptive analysis is reported as not analysed) is kept as a backstop.",
+    "value": {
+      "text": "not eligible at inclusion, rule 'group_unknown' (rule 5); no group invented",
+      "unit": null
+    },
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
     "category": "statistical",
-    "affects": "Sensitivity sets that admit records without a paper (in sprint 1 only the controlled extract's, in 'possible_duplicates_separate' of a marked run); no record in the reference sets lacks a group.",
-    "reason": "A clustered standard error needs every record in a group; register 'paper_grouping_by_doi' says no group is invented.",
+    "affects": "Eligibility in every set; the extract's records without a paper (answer rows 5-6) are not eligible in any set. No record of the reference sets lacks a group, so no reference number changes.",
+    "reason": "A clustered standard error needs every record in a group; register 'paper_grouping_by_doi' says no group is invented. Deciding it at inclusion keeps the record visible with a stated reason and keeps every analysis computable.",
     "evidence": [
-      "Found while building step 7 (2026-10-06): the marked run's 'possible_duplicates_separate' set holds two extract records without a DOI."
+      "Found while building step 7 (2026-10-06): the marked run's 'possible_duplicates_separate' set holds two extract records without a DOI.",
+      "Owner's decision, 2026-10-06 (step 7b brief)."
     ],
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:NO_GROUP_RULE",
+          "equals": "group_unknown"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:has_group"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:primary_set_problems"
+        },
         {
           "ref": "python:hypocurate.pipeline.analysis:RecordsWithoutGroup"
         }
       ],
-      "done": "Fail closed: pooled refuses; a descriptive analysis is reported as not analysed with the count.",
-      "pending": "The owner's decision.",
-      "step": 8,
-      "note": null
+      "note": "The order: owner, 2026-10-06 (step 7b, question 1). Before identity, so that a record without a group is never chosen as a survivor and never pushes out its grouped twin."
     },
     "tests": [
-      "tests/test_statistics.py::test_a_record_without_a_group_is_refused_never_given_one",
-      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates"
-    ],
-    "pending": {
-      "by": "owner",
-      "before_step": 8
-    }
+      "tests/test_eligibility.py::test_a_record_without_a_group_is_stored_but_not_eligible_with_its_own_rule",
+      "tests/test_eligibility.py::test_group_unknown_is_rule_5_after_missing_value",
+      "tests/test_eligibility.py::test_a_record_without_a_group_is_never_a_survivor",
+      "tests/test_eligibility.py::test_the_group_is_judged_under_each_sets_own_grouping",
+      "tests/test_eligibility.py::test_alloys_are_counted_on_records_with_a_group",
+      "tests/test_freeze_invariants.py::test_a_record_without_a_group_admitted_past_the_rule_is_refused_at_the_freeze",
+      "tests/test_controlled_duplicates_handling.py::test_the_primary_handling_and_the_survivor_are_the_answer_files",
+      "tests/test_analysis_stage.py::test_the_statistics_backstop_is_not_reached_in_a_normal_run",
+      "tests/test_statistics.py::test_a_record_without_a_group_is_refused_never_given_one"
+    ]
   },
   {
     "sensitivity": null,
@@ -5945,7 +6013,8 @@
     ],
     "history": [],
     "notes": [
-      "Second-model confirmation (2026-10-06): a measure of how concentrated the within-alloy predictor contrast is; not an estimate of independent sample size; passing the floor of 2 does not establish reliable inference, and it supplies no replacement degrees of freedom."
+      "Second-model confirmation (2026-10-06): a measure of how concentrated the within-alloy predictor contrast is; not an estimate of independent sample size; passing the floor of 2 does not establish reliable inference, and it supplies no replacement degrees of freedom.",
+      "Step 7b (owner, 2026-10-06): I_g also chooses the paper left out of the sensitivity set 'without_most_influential_paper' (entry 'most_influential_paper_set'), through the same function ('statistics.slope_information'). The paper minimum stays a count (entry 'fixed_minimums')."
     ]
   },
   {
@@ -5993,5 +6062,77 @@
     ],
     "history": [],
     "notes": []
+  },
+  {
+    "key": "most_influential_paper_set",
+    "name": "Sensitivity set without the most influential paper",
+    "state": "in_force",
+    "statement": "The sensitivity set 'without_most_influential_paper' is the primary set minus every record of the paper (the group under the plan's grouping) holding the largest share of slope information, I_g / Σ I_g, with I_g the paper's sum of squared within-alloy deviations of the transformed grain size (entry 'effective_papers'), computed on the primary set's records. The paper is chosen by code at Inclusion from grain sizes, alloys and groups only, never from outcome values (Inclusion receives none). Shares within the numerical zero (RELATIVE_ZERO, 1e-10) of the largest are tied; a tie is broken by each tied paper's earliest record under the plan's survivor source order, then the lowest row in the source file, then the stable identity (source-version fingerprint, origin key, item index), never a database id or an order. The removed records get the rule 'most_influential_paper' in that set only; it differs from the primary set in exactly this one respect (alloys left with one grain size are the fit's own 'not used in this fit', as in every set). Without any slope information nothing is removed. Descriptive only; it never changes the verdict.",
+    "value": {
+      "text": "primary minus the paper with the largest share of slope information",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "One more sensitivity analysis in every run whose plan names it (the default and reference plans). The plan's fingerprint, so the freeze fingerprint and the calibration seeds of every run, change.",
+    "reason": "The pooled result's largest paper share (38.7% on the reference data) shows the evidence is concentrated; this set shows the result without that paper.",
+    "evidence": [
+      "Owner's decision, 2026-10-06 (step 7b brief); tie-break: step 7b planning, question 3."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:INFLUENCE_KEY",
+          "equals": "without_most_influential_paper"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:INFLUENCE_RULE",
+          "equals": "most_influential_paper"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:most_influential"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:influence_tie_key"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:slope_information"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:RELATIVE_ZERO",
+          "equals": 1e-10
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:SENSITIVITY_ANALYSES"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_influential_paper.py::test_the_slope_information_is_the_owners_formula",
+      "tests/test_influential_paper.py::test_the_design_uses_the_same_slope_information",
+      "tests/test_influential_paper.py::test_the_set_is_primary_minus_the_paper_with_the_largest_share",
+      "tests/test_influential_paper.py::test_it_differs_from_primary_in_exactly_this_one_respect",
+      "tests/test_influential_paper.py::test_a_tie_is_broken_by_the_lowest_row_whatever_the_ids_or_order",
+      "tests/test_influential_paper.py::test_a_tie_follows_the_survivor_source_order_before_the_row",
+      "tests/test_influential_paper.py::test_the_choice_uses_no_outcome_value",
+      "tests/test_influential_paper.py::test_without_any_slope_information_nothing_is_removed",
+      "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change",
+      "tests/test_reference_numbers.py::test_the_set_without_the_most_influential_paper"
+    ],
+    "history": [],
+    "notes": [
+      "Like every sensitivity set: descriptive, never changes the verdict, no multiplicity adjustment (entries 'sensitivity_one_change', 'no_multiplicity_adjustment')."
+    ]
   }
 ]

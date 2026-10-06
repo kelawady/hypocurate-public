@@ -127,6 +127,8 @@ def _direct(key, run, i):
         "scope_not_confirmed_included": primary == "scope_not_confirmed",
         "possible_duplicates_separate": in_flag("possible_duplicate"),
         "conflicts_survivor_value": in_flag("values_disagree"),
+        # Step 7b: the records of the removed paper (checked to be one whole paper below).
+        el.INFLUENCE_KEY: run["rules"][el.INFLUENCE_KEY][i] == el.INFLUENCE_RULE,
     }[key]
 
 
@@ -153,6 +155,14 @@ def _check_one_change(run):
                 # decisions change for records regrouped by the set's own flags (direct, above).
                 assert {primary[i], other[i]} <= {"in_scope", "single_grain_size", "duplicate_counted_once"}
         assert run["sets"][key] == {i for i, r in other.items() if r == "in_scope"}
+        if key == el.INFLUENCE_KEY:
+            # Step 7b: exactly the primary members of one paper (primary grouping) leave; nothing cascades.
+            assert differing == direct and {primary[i] for i in differing} == {"in_scope"}
+            st = el.settings(plan)
+            removed_groups = {el.group(run["conditions"][i], st) for i in differing}
+            assert len(removed_groups) == 1
+            assert differing == {i for i in run["sets"]["primary"]
+                                 if el.group(run["conditions"][i], st) in removed_groups}
         differing_total[key] = len(differing)
     return differing_total
 
@@ -162,7 +172,8 @@ def test_each_sensitivity_set_differs_from_primary_only_by_its_named_change(refe
     differing = _check_one_change(reference)
     assert differing["six_batches_as_groups"] == 0
     assert reference["sets"]["six_batches_as_groups"] == reference["sets"]["primary"]
-    for key in ("tension_and_compression", "source_only_assignments", "scope_not_confirmed_included"):
+    for key in ("tension_and_compression", "source_only_assignments", "scope_not_confirmed_included",
+                "without_most_influential_paper"):
         assert differing[key] > 0, key
 
 
@@ -170,6 +181,11 @@ def test_each_sensitivity_set_differs_only_by_its_named_change_with_duplicates_a
     """The same, on a marked run with the controlled extract, where possible duplicates and
     conflicts exist."""
     differing = _check_one_change(with_extract)
-    for key in ("possible_duplicates_separate", "conflicts_survivor_value", "scope_not_confirmed_included"):
+    for key in ("conflicts_survivor_value", "scope_not_confirmed_included", "without_most_influential_paper"):
         assert differing[key] > 0, key
+    # Step 7b (owner, 2026-10-06): the extract's only possible duplicates with an eligible twin (rows 5-6)
+    # have no DOI, so no group: rule 5 excludes them in every set, before identity, and this set now
+    # equals primary here. Counting possible duplicates separately is still exercised where both records
+    # have a group (test_eligibility.py::test_exact_and_possible_duplicates_are_counted_once_by_the_survivor_rule).
+    assert differing["possible_duplicates_separate"] == 0
     assert set(el.SENSITIVITY_CHANGES) == set(reference_plan(1)["sensitivity_analyses"])

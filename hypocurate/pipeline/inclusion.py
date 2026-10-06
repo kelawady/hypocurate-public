@@ -61,7 +61,10 @@ def decide_run(engine: Engine, run_id: int) -> dict[str, dict[int, str]]:
         code_stage(conn, run_id, "inclusion", {"plan": data["plan"]["fingerprint"], "records": len(read_ids),
                                                "flags": len(read_flags)},
                    {"rules": totals, "differences_from_primary": differences,
-                    "changes": {k: el.SENSITIVITY_CHANGES[k] for k in sets if k != el.PRIMARY}})
+                    "changes": {k: el.SENSITIVITY_CHANGES[k] for k in sets if k != el.PRIMARY},
+                    **({"most_influential": el.most_influential(plan, {r["id"]: r for r in records},
+                                                                el.members(primary))}
+                       if el.INFLUENCE_KEY in sets else {})})
         return sets
 
     return write(engine, run_id, "inclusion", "decide", body)

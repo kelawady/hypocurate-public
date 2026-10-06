@@ -71,6 +71,7 @@ def test_the_primary_handling_and_the_survivor_are_the_answer_files(run, t):
         "not eligible under a room-temperature plan": ("in_scope", "out_of_scope"),
         "not eligible: scope not confirmed": ("in_scope", "scope_not_confirmed"),
         "not eligible: excluded by the test-type rule (tension only)": ("in_scope", "out_of_scope"),
+        "not eligible: no group (paper reference missing)": ("in_scope", "group_unknown"),  # step 7b
     }[primary]
     assert (rules[mpea_id], rules[extract_id]) == expected
     if t["survivor_in_primary"].startswith("MPEA row"):
@@ -98,8 +99,13 @@ def test_the_sensitivity_handling_is_the_answer_files(run, t):
         assert sensitivity == "none"
         for key, rules in run["rules"].items():  # no set treats this pair differently from primary
             if key not in ("tension_and_compression", "source_only_assignments"):
-                assert (rules[mpea_id], rules[extract_id]) == \
-                    (run["rules"]["primary"][mpea_id], run["rules"]["primary"][extract_id]), key
+                expected = [run["rules"]["primary"][mpea_id], run["rules"]["primary"][extract_id]]
+                if key == "without_most_influential_paper":
+                    # Step 7b: that set removes one whole paper's primary members, whatever their duplicate
+                    # handling; it changes nothing else.
+                    expected = ["most_influential_paper" if r == "in_scope" and got == "most_influential_paper" else r
+                                for r, got in zip(expected, (rules[mpea_id], rules[extract_id]))]
+                assert [rules[mpea_id], rules[extract_id]] == expected, key
 
 
 def test_rows_15_and_16_enter_together_when_compression_is_permitted(run):

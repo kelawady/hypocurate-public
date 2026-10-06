@@ -155,6 +155,8 @@ checkpoints.freeze_dataset(engine, run_id)  # counts and fingerprint; or "no dat
 
 - **The plan** follows `PLAN_SCHEMA` exactly and holds every plan setting that affects eligibility or grouping. The default and reference plans take each value from the domain profile (`profile.py`); decision code reads those settings only from the locked plan. Some policies are fixed in code for every plan (listed in `eligibility.py` and register entry `fixed_policies_in_code`), among them the rules no plan can change for the primary set (`primary_set_invariants`).
 - **Checks and Inclusion read through their own access objects** (`dispatch.bind_code`). Inclusion receives no outcome value.
+- **A record without a group** (a paper-grouped record without a DOI) is stored and shown but not eligible: rule 5, `group_unknown`, judged under each set's grouping; no group is invented, and the freeze refuses a primary set holding one (step 7b).
+- **Nine sensitivity sets**, each one named change from the primary set. The ninth, `without_most_influential_paper`, leaves out the paper with the largest share of slope information, chosen from grain sizes, alloys and groups only (step 7b).
 - **Every write** takes `hc_write_lock(p_run => …)` in `run_transaction`, re-checks by id what it read, and logs any refusal (`audit_log`, `detail.result` "rejected").
 - **Constructed test data** (the controlled extract) enter only a run marked `{"constructed_test_data": true}` in `experiment_flags` at dispatch.
 

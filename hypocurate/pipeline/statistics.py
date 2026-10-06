@@ -208,10 +208,10 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
     informative: set = set()
     effective, largest = 0.0, None
     if used:
-        deviation = demeaned(x, alloy, len(used_alloys))
+        deviation, info = _information(x, alloy, len(used_alloys),
+                                       np.array([group_index[o.group] for o in used]), len(groups))
         contrast = np.abs(deviation)
         informative = {o.group for o, c in zip(used, contrast) if c > RELATIVE_ZERO * float(np.abs(x).max())}
-        info = np.bincount(np.array([group_index[o.group] for o in used]), deviation ** 2, len(groups))
         total = float(info.sum())
         if total > 0:
             effective, largest = total ** 2 / float(info @ info), float(info.max()) / total
@@ -223,6 +223,40 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
         uninformative_groups=tuple(g for g in groups if g not in informative),
         group_informative=np.array([g in informative for g in groups], dtype=bool),
         effective_papers=effective, largest_paper_share=largest)
+
+
+def _information(x: np.ndarray, alloy: np.ndarray, n_alloys: int, group: np.ndarray, n_groups: int) -> tuple:
+    """The within-alloy deviations of the transformed grain size, and I_g per group index: the
+    group's sum of squared deviations (register 'effective_papers'). No outcome is used."""
+    deviation = demeaned(x, alloy, n_alloys)
+    return deviation, np.bincount(group, deviation ** 2, n_groups)
+
+
+def slope_information(items: Iterable[tuple], transformation: str) -> dict[str, float]:
+    """{group: I_g} for records given as (stable identity, alloy, group, grain size in µm): the same
+    computation as `design` (identity order, alloys with two or more distinct transformed grain sizes,
+    stable centring), from grain sizes, alloys and groups only, never an outcome. Used by `design` for
+    the effective number of papers and by Inclusion to choose the paper of the sensitivity set
+    'without_most_influential_paper' (step 7b; register 'most_influential_paper_set')."""
+    rows = sorted(items, key=lambda t: t[0])
+    transform = TRANSFORMATIONS[transformation]
+    values: dict[str, list] = {}
+    for _, alloy, _, d in rows:
+        if not (math.isfinite(d) and d > 0):
+            raise StatisticsError("a record has no finite positive grain size")
+        values.setdefault(alloy, []).append(transform(d))
+    used_alloys = sorted(a for a, v in values.items() if has_contrast(v))
+    keep = set(used_alloys)
+    used = [t for t in rows if t[1] in keep]
+    groups = sorted({t[2] for t in used})
+    if not used:
+        return {}
+    alloy_index = {a: i for i, a in enumerate(used_alloys)}
+    group_index = {g: i for i, g in enumerate(groups)}
+    _, info = _information(np.array([transform(t[3]) for t in used], dtype=float),
+                           np.array([alloy_index[t[1]] for t in used], dtype=int), len(used_alloys),
+                           np.array([group_index[t[2]] for t in used], dtype=int), len(groups))
+    return {g: float(info[i]) for g, i in group_index.items()}
 
 
 def has_contrast(values: list) -> bool:

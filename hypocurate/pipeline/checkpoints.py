@@ -142,7 +142,8 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
         # The result check (owner, 2026-10-06): the primary set itself against every invariant.
         run_flags = conn.execute(text("SELECT experiment_flags FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
         broken = el.primary_set_problems(set(members[el.PRIMARY]), by_id, flags,
-                                         isinstance(run_flags, dict) and run_flags.get(CONSTRUCTED_MARK) is True)
+                                         isinstance(run_flags, dict) and run_flags.get(CONSTRUCTED_MARK) is True,
+                                         grouping=el.settings(plan).grouping)
         if broken:
             raise Refused("freeze_dataset", "invariant_broken", "; ".join(broken))
         stored = dict(conn.execute(text("SELECT record_id, rule FROM run_record WHERE run_id = :r"),
@@ -151,6 +152,8 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
             raise Refused("freeze_dataset", "changed_since_read",
                           "the stored decisions are not what the locked rules produce")
         record = {"fingerprint": fp, "counts": counts, "frozen": bool(members[el.PRIMARY])}
+        if el.INFLUENCE_KEY in sets:  # step 7b: which paper the set leaves out (group key, share, ties)
+            record["most_influential"] = el.most_influential(plan, by_id, members[el.PRIMARY])
         code_stage(conn, run_id, "dataset_freeze", {"plan": data["plan"]["fingerprint"]}, record)
         if members[el.PRIMARY]:
             conn.execute(text("INSERT INTO run_snapshot (run_id, fingerprint, n_records) VALUES (:r, :fp, :n)"),
