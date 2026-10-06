@@ -70,7 +70,12 @@ def test_the_owners_eight_decisions_are_recorded_as_decided():
         expected_state = "direction_approved" if key == "calibration_noise_levels" else "in_force"
         assert e["state"] == expected_state, key
         assert e["category"] == category, key
-        assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
+        # fixed_minimums: reworded by the owner on 2026-10-06 (informative papers); the 2026-10-05 wording is in history.
+        if key == "fixed_minimums":
+            assert e["decided"] == {"by": OWNER, "date": "2026-10-06"} and "informative" in e["statement"]
+            assert e["history"][-1]["value"].startswith("Under the default sufficiency option, a test needs at least 30")
+        else:
+            assert e["decided"] == {"by": OWNER, "date": "2026-10-05"}, key
         assert e["expert_review"] == {"status": "not_reviewed", "name": None, "date": None}, key
         assert e["applied"]["status"] == status and e["applied"].get("step") == step, key
         assert (status == "partly") == (key in PARTLY), key

@@ -236,7 +236,7 @@
     "key": "fixed_minimums",
     "name": "Fixed minimums for data sufficiency",
     "state": "in_force",
-    "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent papers and 10 residual degrees of freedom. All four must be met.",
+    "statement": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent informative papers (entry 'informative_groups') and 10 residual degrees of freedom, counted on the records a fit uses. All four must be met.",
     "value": {
       "text": "30 records; 5 alloys; 10 papers; 10 residual degrees of freedom",
       "unit": null
@@ -249,7 +249,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -284,6 +284,12 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "PRD 5.8."
+      },
+      {
+        "value": "Under the default sufficiency option, a test needs at least 30 records, 5 alloys measured at two or more grain sizes, 10 independent papers and 10 residual degrees of freedom. All four must be met.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "The paper minimum counts informative papers only (owner, 2026-10-06)."
       }
     ],
     "notes": [
@@ -296,7 +302,8 @@
       "tests/test_eligibility.py::test_counts_known_at_the_freeze",
       "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze",
-      "tests/test_statistics.py::test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes"
+      "tests/test_statistics.py::test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes",
+      "tests/test_statistics_boundaries.py::test_the_reviewers_design_never_gives_a_verdict"
     ]
   },
   {
@@ -495,14 +502,18 @@
     "notes": [
       "Conflicts with PRD 5.10, which says these assumptions are fixed at the rules lock and never estimated from the real outcomes.",
       "This is a safeguard change: it needs a second-model review in step 7 before it is applied.",
-      "Built in step 7 and awaiting the second-model review before the merge (owner, 2026-10-05). It departs from PRD 5.10, which fixes the noise levels in advance and never estimates them from the real outcomes: the estimate uses the frozen outcomes after the freeze, and can change no decision."
+      "Built in step 7 and awaiting the second-model review before the merge (owner, 2026-10-05). It departs from PRD 5.10, which fixes the noise levels in advance and never estimates them from the real outcomes: the estimate uses the frozen outcomes after the freeze, and can change no decision.",
+      "Review fixes (2026-10-06): every estimated calibration states that its intervals cover Monte Carlo uncertainty only, not uncertainty in the estimated scatter and shift, and that it is a diagnostic conditional on the estimate (truncation biases it), not independent validation. A residual at most the numerical zero of the outcome's spread within alloys is a perfect fit: scatter not estimable."
     ],
     "tests": [
       "tests/test_calibration.py::test_a_negative_shift_estimate_is_set_to_zero_and_the_result_says_so",
       "tests/test_calibration.py::test_a_shift_explained_by_the_alloys_cannot_be_estimated",
       "tests/test_calibration.py::test_method_iii_matches_an_independent_computation",
       "tests/test_calibration.py::test_method_iii_recovers_known_noise_levels_on_a_large_generated_dataset",
-      "tests/test_calibration.py::test_the_scatter_cannot_be_estimated_without_residual_freedom_in_the_full_model"
+      "tests/test_calibration.py::test_the_scatter_cannot_be_estimated_without_residual_freedom_in_the_full_model",
+      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_scatter",
+      "tests/test_statistics_boundaries.py::test_every_estimated_calibration_states_what_its_intervals_cover",
+      "tests/test_statistics_boundaries.py::test_small_real_noise_gives_an_estimable_scatter"
     ],
     "pending": {
       "by": "second-model technical review",
@@ -1868,7 +1879,7 @@
     "key": "validity_checks",
     "name": "The two validity checks",
     "state": "in_force",
-    "statement": "Check 1: at least one alloy measured at two distinct grain sizes, or nothing is fitted. Check 2: at least 1 residual degree of freedom and at least 2 independent groups, or the coefficient is reported alone with no uncertainty, no p-value and no verdict. Neither can be waived.",
+    "statement": "Check 1: at least one alloy measured at two grain sizes that are distinct after the transformation, or nothing is fitted. Check 2: at least 1 residual degree of freedom, at least 2 informative groups (entry 'informative_groups'), and a clustered standard error that is finite and above the numerical zero (entry 'numerical_zero'); otherwise the coefficient is reported alone, with the reason, and no uncertainty, no p-value and no verdict. Neither can be waived. The same checks apply to every simulated fit.",
     "value": {
       "text": "check 1: 1 alloy at 2 grain sizes; check 2: 1 residual df and 2 groups",
       "unit": null
@@ -1880,8 +1891,8 @@
       "PRD 5.7; CLAUDE.md, rule 5."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1899,13 +1910,26 @@
           "ref": "sql:ck_analysis_result_check2_consistent"
         },
         {
+          "ref": "sql:ck_analysis_result_inference_reason"
+        },
+        {
           "ref": "python:hypocurate.pipeline.statistics:MODEL_MIN_GRAIN_SIZES",
           "equals": 2
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:INFERENCE_REASONS"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Check 1: at least one alloy measured at two distinct grain sizes, or nothing is fitted. Check 2: at least 1 residual degree of freedom and at least 2 independent groups, or the coefficient is reported alone with no uncertainty, no p-value and no verdict. Neither can be waived.",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "Step 7 review, finding 1 and the owner's decision on informative papers (2026-10-06)."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_analysis_stage.py::test_use_what_is_available_with_one_group_gives_the_coefficient_only",
@@ -1913,7 +1937,10 @@
       "tests/test_data_model.py::test_stored_counts_must_be_consistent",
       "tests/test_data_model.py::test_the_validity_checks_cannot_be_waived",
       "tests/test_generated_fixed_set.py::test_one_alloy_at_two_sizes_and_a_single_group_give_no_verdict_under_either_option",
-      "tests/test_statistics.py::test_the_two_validity_checks"
+      "tests/test_statistics.py::test_the_two_validity_checks",
+      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_uncertainty_and_gives_the_coefficient_only",
+      "tests/test_statistics_boundaries.py::test_grain_sizes_equal_after_transformation_never_raise",
+      "tests/test_statistics_boundaries.py::test_the_reviewers_design_never_gives_a_verdict"
     ]
   },
   {
@@ -2148,13 +2175,15 @@
     },
     "history": [],
     "notes": [
-      "Step 7 finding (reported, not gated): on the sets frozen in step 6 the fixed method gives about 7.8% significant no-effect results for the pooled set and 8.0% for the earlier 98-record set over long runs (40,000 simulations), and the reference script's own loop gives the same; PRD 5.10's 7.2% (6.1% to 8.4%) is not reproduced."
+      "Step 7 finding (reported, not gated): on the sets frozen in step 6 the fixed method gives about 7.8% significant no-effect results for the pooled set and 8.0% for the earlier 98-record set over long runs (40,000 simulations), and the reference script's own loop gives the same; PRD 5.10's 7.2% (6.1% to 8.4%) is not reproduced.",
+      "Review fix (2026-10-06): each simulated fit gets the real fit's validity checks; a simulated standard error that is not finite or not above the numerical zero gives no inference and is not counted as significant."
     ],
     "tests": [
       "tests/test_calibration.py::test_each_world_draws_shifts_then_errors_from_one_seeded_generator",
       "tests/test_calibration.py::test_the_interval_is_the_exact_binomial_interval",
       "tests/test_calibration.py::test_the_seed_is_fixed_by_the_freeze_the_analysis_and_the_method",
-      "tests/test_generated_fixed_set.py::test_states_levels_verdicts_and_simulated_counts_equal_the_stored_values"
+      "tests/test_generated_fixed_set.py::test_states_levels_verdicts_and_simulated_counts_equal_the_stored_values",
+      "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit"
     ]
   },
   {
@@ -5286,12 +5315,19 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it, and so does the estimated power, which is the share detected in the fixed method's effect world, labelled 'estimated power under the stated assumptions'. The power is information only and uses no outcome value, so it is shown also below the minimums.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Review, smaller point (2026-10-06): detection rates both ways, with the false-positive shares."
+      }
+    ],
     "notes": [],
     "key": "smallest_effect",
     "name": "Smallest effect of interest",
     "state": "in_force",
-    "statement": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it, and so does the estimated power, which is the share detected in the fixed method's effect world, labelled 'estimated power under the stated assumptions'. The power is information only and uses no outcome value, so it is shown also below the minimums.",
+    "statement": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it. The detection rate is reported both ways, each beside its false-positive share: under the fixed assumptions (stored as the estimated power, labelled 'estimated power under the stated assumptions', shown also below the minimums, since it uses no outcome value) and under the estimated noise (withheld below the minimums). Both are detection rates of the nominal 5% test, not power for a test shown to keep false positives at 5%. Information only.",
     "value": {
       "text": "150 (default)",
       "unit": "MPa·µm^0.5"
@@ -5304,7 +5340,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "applied": {
       "status": "yes",
@@ -5321,8 +5357,11 @@
       "note": null
     },
     "tests": [
+      "tests/test_analysis_stage.py::test_the_estimated_detection_rate_is_never_stored_for_a_withheld_result",
       "tests/test_calibration.py::test_estimated_power_is_the_fixed_methods_effect_share_and_needs_no_outcome",
-      "tests/test_statistics.py::test_the_default_plan_locks_the_calibration_with_each_default_from_its_named_setting"
+      "tests/test_statistics.py::test_the_default_plan_locks_the_calibration_with_each_default_from_its_named_setting",
+      "tests/test_statistics_boundaries.py::test_below_the_minimums_the_fixed_detection_rate_is_shown_and_the_estimated_one_withheld",
+      "tests/test_statistics_boundaries.py::test_detection_rates_are_reported_both_ways_with_the_false_positive_shares"
     ]
   },
   {
@@ -5363,16 +5402,20 @@
         },
         {
           "ref": "sql:ck_run_evidence_level"
+        },
+        {
+          "ref": "sql:ck_run_evidence_level_iff_completed"
         }
       ],
-      "note": "Copied onto the run by the copy path only; the database checks it agrees with the outcome, verdict and exploratory label but does not require it on a completed run."
+      "note": "Copied onto the run by the copy path; required on every completed run and only on one, and checked against the outcome, verdict and exploratory label by the database (review, smaller point, 2026-10-06)."
     },
     "tests": [
+      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates",
+      "tests/test_analysis_stage.py::test_the_evidence_level_must_agree_with_the_outcome",
+      "tests/test_completion.py::test_a_completed_run_needs_its_evidence_level",
       "tests/test_statistics.py::test_every_result_state_has_its_evidence_level",
       "tests/test_statistics.py::test_the_evidence_scale_is_the_owners",
-      "tests/test_statistics.py::test_the_level_never_feeds_back_into_the_outcome_or_verdict",
-      "tests/test_analysis_stage.py::test_the_evidence_level_must_agree_with_the_outcome",
-      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates"
+      "tests/test_statistics.py::test_the_level_never_feeds_back_into_the_outcome_or_verdict"
     ]
   },
   {
@@ -5382,12 +5425,19 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Each per-source result has one of four labels, from the locked test and the sign only, no new threshold: 'not enough data' (no p-value; also when the pooled result has none, or a coefficient is exactly zero); 'agrees' (the same decision as pooled at the plan's threshold and the same sign); 'conflicts' (the opposite sign from pooled); 'same direction, different decision' (the same sign, a different decision). Descriptive only; never the verdict.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Review, smaller point (2026-10-06): a zero coefficient has its own reason."
+      }
+    ],
     "notes": [],
     "key": "per_source_labels",
     "name": "Per-source labels",
     "state": "in_force",
-    "statement": "Each per-source result has one of four labels, from the locked test and the sign only, no new threshold: 'not enough data' (no p-value; also when the pooled result has none, or a coefficient is exactly zero); 'agrees' (the same decision as pooled at the plan's threshold and the same sign); 'conflicts' (the opposite sign from pooled); 'same direction, different decision' (the same sign, a different decision). Descriptive only; never the verdict.",
+    "statement": "Each per-source result has one of four labels, from the locked test and the sign only, no new threshold: 'not enough data' (no p-value; also when the pooled result has none, or a coefficient is exactly zero); 'agrees' (the same decision as pooled at the plan's threshold and the same sign); 'conflicts' (the opposite sign from pooled); 'same direction, different decision' (the same sign, a different decision). Descriptive only; never the verdict. Each 'not enough data' carries its reason: no p-value, the pooled result without a decision, or a zero coefficient (zero direction is not missing inference).",
     "value": {
       "text": "agrees; conflicts; same direction, different decision; not enough data",
       "unit": null
@@ -5400,7 +5450,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "applied": {
       "status": "yes",
@@ -5416,14 +5466,24 @@
         },
         {
           "ref": "sql:ck_analysis_result_label_per_source_only"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:LABEL_REASONS",
+          "equals": [
+            "no_p_value",
+            "pooled_without_decision",
+            "zero_coefficient"
+          ]
         }
       ],
       "note": "The edge rules for a pooled result without a decision and a zero coefficient are Claude Code's, stated in planning."
     },
     "tests": [
-      "tests/test_statistics.py::test_the_four_per_source_labels",
+      "tests/test_analysis_stage.py::test_a_label_reason_is_stored_exactly_with_not_enough_data",
       "tests/test_reference_numbers.py::test_mpea_alone_1_per_source_in_the_pooled_run",
-      "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run"
+      "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run",
+      "tests/test_statistics.py::test_the_four_per_source_labels",
+      "tests/test_statistics_boundaries.py::test_a_zero_coefficient_has_its_own_reason"
     ]
   },
   {
@@ -5433,14 +5493,21 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Each fit (pooled, per source, sensitivity) uses only alloys with at least two distinct grain sizes among that analysis's own records: the model's own condition, applied by code to grain sizes only. The frozen set is not changed; the records not used are counted and reported as 'not used in this fit'. The stored counts, and the minimums, are the fit's.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Review, finding 3 (2026-10-06): 9.0 and 9.000000000000002 µm transform to one value."
+      }
+    ],
     "notes": [
       "No effect on the reference numbers: the two sources share no alloy."
     ],
     "key": "fit_alloy_rule",
     "name": "Which records a fit uses",
     "state": "in_force",
-    "statement": "Each fit (pooled, per source, sensitivity) uses only alloys with at least two distinct grain sizes among that analysis's own records: the model's own condition, applied by code to grain sizes only. The frozen set is not changed; the records not used are counted and reported as 'not used in this fit'. The stored counts, and the minimums, are the fit's.",
+    "statement": "Each fit (pooled, per source, sensitivity) uses only alloys with at least two grain sizes among that analysis's own records that are distinct after the transformation (by more than the numerical zero): the model's own condition, applied by code to grain sizes only. The frozen set is not changed; the records not used are counted and reported as 'not used in this fit'. The stored counts, and the minimums, are the fit's.",
     "value": {
       "text": "two or more distinct grain sizes per alloy, within each fit",
       "unit": null
@@ -5453,7 +5520,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "applied": {
       "status": "yes",
@@ -5469,8 +5536,10 @@
       "note": null
     },
     "tests": [
+      "tests/test_analysis_stage.py::test_the_database_refuses_records_not_accounted_for",
       "tests/test_statistics.py::test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes",
-      "tests/test_analysis_stage.py::test_the_database_refuses_records_not_accounted_for"
+      "tests/test_statistics_boundaries.py::test_grain_sizes_equal_after_transformation_never_raise",
+      "tests/test_statistics_boundaries.py::test_nearly_equal_transformed_grain_sizes_are_not_distinct"
     ]
   },
   {
@@ -5569,7 +5638,9 @@
       "date": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Second-model review (2026-10-06): failing closed is safe; keep the explicit skipped-analysis record and invent no singleton papers. Still open: whether a permitted coefficient-only result should remain available when grouping is missing."
+    ],
     "key": "records_without_group",
     "name": "Records without a group in a fit",
     "state": "open",
@@ -5602,5 +5673,103 @@
       "by": "owner",
       "before_step": 8
     }
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "state": "in_force",
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "key": "informative_groups",
+    "name": "Informative papers",
+    "statement": "The minimum of independent papers, and validity check 2's 'at least two groups', count only informative papers: papers whose records help estimate the slope, that is, with at least one record whose transformed grain size differs from its alloy's average by more than the numerical zero. Uninformative papers stay in the fit and are listed with the result, but are not counted. The standard error's small-sample factor and the t distribution's degrees of freedom still use every group of the fit (statsmodels' definition).",
+    "value": {
+      "text": "count informative papers for the minimum and for check 2",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Validity check 2, the paper minimum, the withheld state and the evidence level; on the reference sets every group is informative, so no reference number changed.",
+    "reason": "Groups whose records sit at their alloy's average grain size add nothing to the slope's clustered uncertainty, so counting them inflated the number of independent papers (second-model review, finding 1).",
+    "evidence": [
+      "Second-model review, finding 1 (ChatGPT, 2026-10-06): docs/reviews/step07_review_chatgpt.md.",
+      "Owner's decision, 2026-10-06."
+    ],
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:minimums"
+        },
+        {
+          "ref": "sql:n_groups_informative"
+        },
+        {
+          "ref": "sql:ck_analysis_result_check2_consistent"
+        }
+      ],
+      "note": "Whether the degrees of freedom should also count informative papers only is not decided; they use every group, as CLAUDE.md rule 6 states."
+    },
+    "tests": [
+      "tests/test_statistics_boundaries.py::test_the_reviewers_design_never_gives_a_verdict",
+      "tests/test_statistics_boundaries.py::test_a_paper_is_informative_when_its_records_vary_after_removing_the_alloy_average",
+      "tests/test_analysis_stage.py::test_the_reviewers_design_through_the_database",
+      "tests/test_analysis_stage.py::test_the_database_counts_informative_groups_for_check_2_and_the_minimum"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "state": "in_force",
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "key": "numerical_zero",
+    "name": "Numerical zero",
+    "statement": "A quantity counts as zero when it is at most 1e-10 times its natural scale in the same units: a transformed grain-size difference or contrast against the largest transformed grain size; the clustered standard error against sqrt(Σ ỹ² / Σ x̃²), the slope scale of the data; the residual sum of squares of the scatter estimate against the outcome's spread within alloys (squared). Below it: grain sizes are not distinct, an uncertainty is not estimable (coefficient only), or scatter is not estimable. The same check applies to every simulated fit.",
+    "value": {
+      "text": "1e-10 relative to the natural scale",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Numerical boundaries only: rounding residue is about 1e-16 of the scale, real measurement scatter many orders above 1e-10; no reference number changed.",
+    "reason": "Second-model review, findings 1, 3 and 4: a zero or rounding-residue standard error gave p = 0; equal transformed grain sizes raised an error; a perfect fit was taken for real scatter.",
+    "evidence": [
+      "Second-model review (ChatGPT, 2026-10-06): docs/reviews/step07_review_chatgpt.md."
+    ],
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:RELATIVE_ZERO",
+          "equals": 1e-10
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_uncertainty_and_gives_the_coefficient_only",
+      "tests/test_statistics_boundaries.py::test_small_real_noise_keeps_the_uncertainty_estimable",
+      "tests/test_statistics_boundaries.py::test_the_uncertainty_check_is_scale_aware",
+      "tests/test_statistics_boundaries.py::test_grain_sizes_equal_after_transformation_never_raise",
+      "tests/test_statistics_boundaries.py::test_nearly_equal_transformed_grain_sizes_are_not_distinct",
+      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_scatter",
+      "tests/test_statistics_boundaries.py::test_small_real_noise_gives_an_estimable_scatter",
+      "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit"
+    ]
   }
 ]
