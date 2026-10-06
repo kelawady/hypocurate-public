@@ -56,9 +56,14 @@ class World:
         return self.val("INSERT INTO source_version (source_id, label, obtained_on) "
                         "VALUES (:s, :l, '2026-10-04') RETURNING id", s=self.source[key], l=label)
 
-    def add_file(self, version, path, content):
-        self.run_sql("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)",
-                     v=version, p=path, h=sha(content), c=content)
+    def add_file(self, version, path, content, role=None):
+        """A file of the version; `role` (step 8a, 0005) left out means the database's default, 'data'."""
+        if role is None:
+            self.run_sql("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)",
+                         v=version, p=path, h=sha(content), c=content)
+        else:
+            self.run_sql("INSERT INTO source_file (source_version_id, path, sha256, content, role) "
+                         "VALUES (:v, :p, :h, :c, :o)", v=version, p=path, h=sha(content), c=content, o=role)
 
     def files(self, version):
         return {p: bytes(c) for p, c in self.rows(
@@ -126,10 +131,15 @@ class World:
         return vid
 
     # --- runs -------------------------------------------------------------------------
-    def run(self, vid=None, sources=("mpea", "tamu_fcc")):
-        """Dispatch: a queued run with a run_source row for every registered source."""
+    def run(self, vid=None, sources=("mpea", "tamu_fcc"), agents=False):
+        """Dispatch: a queued run with a run_source row for every registered source; with `agents`,
+        the world's settings version of every role recorded too (needed for model calls, step 8a)."""
         vid = vid or self.dispatched()
         rid = self.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
+        if agents:
+            for role in ("planner", "curator", "critic", "analyst", "commentator"):
+                self.run_sql("INSERT INTO run_agent_setting VALUES (:r, :o, :s)", r=rid, o=role,
+                             s=self.agent_setting(role))
         for key in self.source:
             if key in sources:
                 self.run_sql("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
@@ -192,11 +202,11 @@ class World:
         self.run_sql("INSERT INTO run_snapshot (run_id, fingerprint, n_records) VALUES (:r, :fp, :n)",
                      r=rid, fp=FP, n=n)
 
-    def frozen(self, n=4, per_source=None, option="fixed_minimum", keys=(), mins=(4, 1, 2, 1)):
+    def frozen(self, n=4, per_source=None, option="fixed_minimum", keys=(), mins=(4, 1, 2, 1), agents=False):
         """A running run, locked and frozen, with n eligible records in its primary set.
         per_source: {"mpea": 3, "tamu_fcc": 1}; default: all from MPEA."""
         per_source = per_source or {"mpea": n}
-        rid = self.running()
+        rid = self.running(agents=agents)
         self.lock(rid, option=option, keys=keys, mins=mins)
         primary = self.analysis_set(rid)
         recs = []
@@ -260,11 +270,32 @@ class World:
         return self.val("INSERT INTO stage_result (run_id, stage, role, attempt) VALUES (:r, :s, :o, :a) RETURNING id",
                         r=rid, s=stage, o=role, a=attempt)
 
-    def call(self, rid, stage_id, max_cost=0.5, role="planner"):
+    AGENT_TEST_VERSION = 1000  # the world's own settings; tests that create settings use small versions
+
+    def agent_setting(self, role):
+        """The world's settings version for a role, created once (agent_setting is append-only)."""
+        found = self.val("SELECT id FROM agent_setting WHERE role = :o AND version = :v", o=role, v=self.AGENT_TEST_VERSION)
+        return found or self.val("INSERT INTO agent_setting (role, version, instruction, model) "
+                                 "VALUES (:o, :v, 'test', 'model-a') RETURNING id", o=role, v=self.AGENT_TEST_VERSION)
+
+    def invocation(self, rid, stage_id, role="planner"):
+        """Step 8a (0005): a run invocation for the stage, with the setting recorded for the run at
+        dispatch (a run made with `agents=True`)."""
+        setting = self.val("SELECT agent_setting_id FROM run_agent_setting WHERE run_id = :r AND role = :o",
+                           r=rid, o=role)
+        assert setting is not None, "make the run with agents=True to record its agent settings at dispatch"
+        return self.val("INSERT INTO agent_invocation (scope, run_id, stage_result_id, role, agent_setting_id) "
+                        "VALUES ('run', :r, :s, :o, :a) RETURNING id", r=rid, s=stage_id, o=role, a=setting)
+
+    def call(self, rid, stage_id, max_cost=0.5, role=None):
+        """A model call, with its invocation (step 8a, 0005). The role defaults to the stage's; a
+        different role is refused by the invocation (0005), as a test may want to show."""
+        role = role or self.val("SELECT role FROM stage_result WHERE id = :s", s=stage_id)
+        inv = self.invocation(rid, stage_id, role)
         return self.val(
-            "INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost) "
-            "VALUES (:r, :s, :o, 'model-a', 'prices-2026-10', :m) RETURNING id",
-            r=rid, s=stage_id, o=role, m=max_cost)
+            "INSERT INTO model_call (run_id, stage_result_id, invocation_id, role, model, price_table_version, "
+            "max_cost) VALUES (:r, :s, :i, :o, 'model-a', 'prices-2026-10', :m) RETURNING id",
+            r=rid, s=stage_id, i=inv, o=role, m=max_cost)
 
     def finish_call(self, call_id, status="succeeded", usage=(1000, 200, 0, 0.01)):
         i, o, c, cost = usage if usage else (None, None, None, None)

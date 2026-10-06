@@ -24,6 +24,8 @@ from hypocurate.db.models import Base
 
 REPO = Path(__file__).resolve().parents[1]
 MIGRATION = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0001").module
+# Step 8a: 0005 adds three append-only tables with their own checked inserts.
+MIGRATION_0005 = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0005").module
 
 
 def snapshot(engine) -> dict:
@@ -57,6 +59,9 @@ def expected_triggers() -> set[tuple[str, str]]:
     names |= {(t, f"hc_{t}_no_truncate") for t in m.APPEND_ONLY + m.NO_DELETE + ["hypothesis_version_source"]}
     names |= {(t, f"hc_{t}_no_delete") for t in m.NO_DELETE}
     names |= {(t, f) for t, _, f in m.CHECKED}
+    m5 = MIGRATION_0005
+    names |= {(t, f"hc_{t}_append_only") for t in m5.APPEND_ONLY} | {(t, f"hc_{t}_no_truncate") for t in m5.APPEND_ONLY}
+    names |= {(t, f) for t, _, f in m5.CHECKED}
     return names
 
 

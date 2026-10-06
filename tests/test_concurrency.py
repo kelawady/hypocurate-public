@@ -307,7 +307,7 @@ def test_following_the_protocol_does_not_deadlock(w):
 
 
 def test_following_the_protocol_on_model_calls_does_not_deadlock(w):
-    rid = w.running()
+    rid = w.running(agents=True)
     call = w.call(rid, w.stage(rid))
     finish = ("UPDATE model_call SET status = 'interrupted', finished_at = now() WHERE id = :c "
               "AND status = 'started'")
