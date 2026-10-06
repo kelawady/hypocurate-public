@@ -1896,7 +1896,7 @@
     "key": "validity_checks",
     "name": "The two validity checks",
     "state": "in_force",
-    "statement": "Check 1: at least one alloy measured at two grain sizes that are distinct after the transformation, or nothing is fitted. Check 2: at least 1 residual degree of freedom, at least 2 informative groups (entry 'informative_groups'), and a clustered standard error that is finite and above the numerical zero (entry 'numerical_zero'); otherwise the coefficient is reported alone, with the reason, and no uncertainty, no p-value and no verdict. Neither can be waived. The same checks apply to every simulated fit.",
+    "statement": "Check 1: at least one alloy measured at two grain sizes that are distinct after the transformation, or nothing is fitted. Check 2: at least 1 residual degree of freedom, at least 2 informative groups (entry 'informative_groups'), an effective number of papers of at least 2 (entry 'effective_papers'), and a clustered standard error that is finite and above the numerical zero (entry 'numerical_zero'); otherwise the coefficient is reported alone, with the reason, and no uncertainty, no p-value and no verdict. Neither can be waived. The same checks apply to every simulated fit.",
     "value": {
       "text": "check 1: 1 alloy at 2 grain sizes; check 2: 1 residual df and 2 groups",
       "unit": null
@@ -1945,6 +1945,12 @@
         "from": "2026-10-04",
         "to": "2026-10-06",
         "note": "Step 7 review, finding 1 and the owner's decision on informative papers (2026-10-06)."
+      },
+      {
+        "value": "Check 1: at least one alloy measured at two grain sizes that are distinct after the transformation, or nothing is fitted. Check 2: at least 1 residual degree of freedom, at least 2 informative groups (entry 'informative_groups'), and a clustered standard error that is finite and above the numerical zero (entry 'numerical_zero'); otherwise the coefficient is reported alone, with the reason, and no uncertainty, no p-value and no verdict. Neither can be waived. The same checks apply to every simulated fit.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Re-check (owner, 2026-10-06): concentrated evidence."
       }
     ],
     "notes": [],
@@ -1954,6 +1960,7 @@
       "tests/test_data_model.py::test_stored_counts_must_be_consistent",
       "tests/test_data_model.py::test_the_validity_checks_cannot_be_waived",
       "tests/test_generated_fixed_set.py::test_one_alloy_at_two_sizes_and_a_single_group_give_no_verdict_under_either_option",
+      "tests/test_recheck_fixes.py::test_the_nudged_design_gives_no_verdict",
       "tests/test_statistics.py::test_the_two_validity_checks",
       "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_uncertainty_and_gives_the_coefficient_only",
       "tests/test_statistics_boundaries.py::test_grain_sizes_equal_after_transformation_never_raise",
@@ -5338,13 +5345,19 @@
         "from": "2026-10-05",
         "to": "2026-10-06",
         "note": "Review, smaller point (2026-10-06): detection rates both ways, with the false-positive shares."
+      },
+      {
+        "value": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it. The detection rate is reported both ways, each beside its false-positive share: under the fixed assumptions (stored as the estimated power, labelled 'estimated power under the stated assumptions', shown also below the minimums, since it uses no outcome value) and under the estimated noise (withheld below the minimums). Both are detection rates of the nominal 5% test, not power for a test shown to keep false positives at 5%. Information only.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Re-check (2026-10-06): the note states the plan's locked threshold, not a fixed 5%."
       }
     ],
     "notes": [],
     "key": "smallest_effect",
     "name": "Smallest effect of interest",
     "state": "in_force",
-    "statement": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it. The detection rate is reported both ways, each beside its false-positive share: under the fixed assumptions (stored as the estimated power, labelled 'estimated power under the stated assumptions', shown also below the minimums, since it uses no outcome value) and under the estimated noise (withheld below the minimums). Both are detection rates of the nominal 5% test, not power for a test shown to keep false positives at 5%. Information only.",
+    "statement": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it. The detection rate is reported both ways, each beside its false-positive share: under the fixed assumptions (stored as the estimated power, labelled 'estimated power under the stated assumptions', shown also below the minimums, since it uses no outcome value) and under the estimated noise (withheld below the minimums). Both are detection rates of the nominal test at the plan's locked threshold α (stated in the note), not power for a test shown to keep false positives at α. Information only.",
     "value": {
       "text": "150 (default)",
       "unit": "MPa·µm^0.5"
@@ -5376,6 +5389,7 @@
     "tests": [
       "tests/test_analysis_stage.py::test_the_estimated_detection_rate_is_never_stored_for_a_withheld_result",
       "tests/test_calibration.py::test_estimated_power_is_the_fixed_methods_effect_share_and_needs_no_outcome",
+      "tests/test_recheck_fixes.py::test_the_detection_note_states_the_plans_threshold",
       "tests/test_statistics.py::test_the_default_plan_locks_the_calibration_with_each_default_from_its_named_setting",
       "tests/test_statistics_boundaries.py::test_below_the_minimums_the_fixed_detection_rate_is_shown_and_the_estimated_one_withheld",
       "tests/test_statistics_boundaries.py::test_detection_rates_are_reported_both_ways_with_the_false_positive_shares"
@@ -5755,7 +5769,14 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "A quantity counts as zero when it is at most 1e-10 times its natural scale in the same units: a transformed grain-size difference or contrast against the largest transformed grain size; the clustered standard error against sqrt(Σ ỹ² / Σ x̃²), the slope scale of the data; the residual sum of squares of the scatter estimate against the outcome's spread within alloys (squared). Below it: grain sizes are not distinct, an uncertainty is not estimable (coefficient only), or scatter is not estimable. The same check applies to every simulated fit.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Re-check findings 4 and 5 (2026-10-06): the adjacent-gap rule could remove a contrast when a record was added; rounding at the scale of large baselines was taken for real residuals."
+      }
+    ],
     "notes": [],
     "state": "in_force",
     "decided": {
@@ -5764,9 +5785,9 @@
     },
     "key": "numerical_zero",
     "name": "Numerical zero",
-    "statement": "A quantity counts as zero when it is at most 1e-10 times its natural scale in the same units: a transformed grain-size difference or contrast against the largest transformed grain size; the clustered standard error against sqrt(Σ ỹ² / Σ x̃²), the slope scale of the data; the residual sum of squares of the scatter estimate against the outcome's spread within alloys (squared). Below it: grain sizes are not distinct, an uncertainty is not estimable (coefficient only), or scatter is not estimable. The same check applies to every simulated fit.",
+    "statement": "An arithmetic safeguard, not a scientific minimum. A transformed grain-size range counts as zero when it is at most 1e-10 times the largest transformed grain size (decided on the full range, so adding a record never removes a contrast). Residuals count as zero (a perfect fit: no uncertainty, no scatter) when their root mean square is at most the larger of 1e-10 times the outcome's root mean square within alloys and 1e-12 times the largest outcome magnitude (rounding also comes from the baselines). A clustered standard error must also exceed 1e-10 × sqrt(Σ ỹ² / Σ x̃²). Within-alloy centring subtracts each alloy's first value before the mean (stable centring). The same checks apply to every simulated fit.",
     "value": {
-      "text": "1e-10 relative to the natural scale",
+      "text": "1e-10 of the natural scale; residuals also 1e-12 of the largest outcome",
       "unit": null
     },
     "category": "statistical",
@@ -5781,32 +5802,44 @@
         {
           "ref": "python:hypocurate.pipeline.statistics:RELATIVE_ZERO",
           "equals": 1e-10
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:ARITHMETIC_ZERO",
+          "equals": 1e-12
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:has_contrast"
         }
       ],
       "note": null
     },
     "tests": [
+      "tests/test_recheck_fixes.py::test_a_perfect_fit_is_judged_the_same_whatever_the_baselines",
+      "tests/test_recheck_fixes.py::test_a_perfect_fit_with_large_baselines_and_a_tiny_slope_gives_no_inference",
+      "tests/test_recheck_fixes.py::test_adding_a_record_never_removes_an_alloys_contrast",
+      "tests/test_recheck_fixes.py::test_an_alloy_keeps_its_contrast_in_a_design_when_a_middle_record_is_added",
+      "tests/test_recheck_fixes.py::test_small_real_noise_with_large_baselines_stays_estimable",
+      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_scatter",
       "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_uncertainty_and_gives_the_coefficient_only",
-      "tests/test_statistics_boundaries.py::test_small_real_noise_keeps_the_uncertainty_estimable",
-      "tests/test_statistics_boundaries.py::test_the_uncertainty_check_is_scale_aware",
       "tests/test_statistics_boundaries.py::test_grain_sizes_equal_after_transformation_never_raise",
       "tests/test_statistics_boundaries.py::test_nearly_equal_transformed_grain_sizes_are_not_distinct",
-      "tests/test_statistics_boundaries.py::test_an_exact_fit_has_no_estimable_scatter",
       "tests/test_statistics_boundaries.py::test_small_real_noise_gives_an_estimable_scatter",
-      "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit"
+      "tests/test_statistics_boundaries.py::test_small_real_noise_keeps_the_uncertainty_estimable",
+      "tests/test_statistics_boundaries.py::test_the_simulations_apply_the_same_check_to_each_simulated_fit",
+      "tests/test_statistics_boundaries.py::test_the_uncertainty_check_is_scale_aware"
     ]
   },
   {
     "key": "informative_groups_in_inference",
     "name": "Informative papers in the uncertainty and the test",
     "state": "in_force",
-    "statement": "The clustered standard error sums the scores of informative papers only, its small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative papers, and the one-sided test uses a t distribution with (informative papers − 1) degrees of freedom: the same count as validity check 2 and the paper minimum. Applied in the real fits and in every simulated fit. With uninformative papers present this gives a larger standard error and fewer degrees of freedom than counting every paper (the cautious direction); where every paper is informative it equals statsmodels' clustered result.",
+    "statement": "The clustered standard error sums every paper's score; its small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative papers, and the one-sided test uses a t distribution with (informative papers − 1) degrees of freedom: the same count as validity check 2's group count and the paper minimum. Applied in the real fits and in every simulated fit. Where every paper is informative it equals statsmodels' clustered result.",
     "value": {
       "text": "G = informative papers in the factor and in the degrees of freedom",
       "unit": null
     },
     "category": "statistical",
-    "affects": "Standard errors, p-values and simulated rejection rates of any fit with uninformative papers; on the reference sets every paper is informative, so no reference number changed.",
+    "affects": "Standard errors, p-values and simulated rejection rates of any fit with uninformative papers; on the reference sets every paper is informative.",
     "reason": "An uninformative paper adds nothing to the slope's clustered variance; counting it in G/(G-1) and in the degrees of freedom made the test less cautious than its information supports.",
     "evidence": [
       "Owner's decision, 2026-10-06, after the second-model review (docs/reviews/step07_review_chatgpt.md, finding 1)."
@@ -5840,14 +5873,77 @@
       "note": null
     },
     "tests": [
+      "tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only",
       "tests/test_informative_inference.py::test_the_factor_and_degrees_of_freedom_count_informative_papers_only",
       "tests/test_informative_inference.py::test_the_result_is_more_cautious_than_counting_every_paper",
       "tests/test_informative_inference.py::test_where_every_paper_is_informative_nothing_changes",
-      "tests/test_informative_inference.py::test_every_simulated_fit_counts_informative_papers_only"
+      "tests/test_recheck_fixes.py::test_simulated_fits_keep_every_papers_score",
+      "tests/test_recheck_fixes.py::test_the_counterexample_keeps_every_papers_score"
+    ],
+    "history": [
+      {
+        "value": "The clustered standard error sums the scores of informative papers only, its small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative papers, and the one-sided test uses a t distribution with (informative papers − 1) degrees of freedom: the same count as validity check 2 and the paper minimum. Applied in the real fits and in every simulated fit. With uninformative papers present this gives a larger standard error and fewer degrees of freedom than counting every paper (the cautious direction); where every paper is informative it equals statsmodels' clustered result.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Re-check finding 2 (2026-10-06): dropping uninformative papers' scores from the sum is not always cautious (a small contrast times a large residual can matter); every score is kept, the informative count applies to the factor and the degrees of freedom only."
+      }
+    ],
+    "notes": [
+      "CLAUDE.md rule 6 reworded to match (owner, 2026-10-06).",
+      "Fewer counted papers raise the factor and lower the degrees of freedom; this is an approximation, not a guarantee of false-positive control (re-check finding 2)."
+    ]
+  },
+  {
+    "key": "effective_papers",
+    "name": "Effective number of papers",
+    "state": "in_force",
+    "statement": "For every analysis, the effective number of papers (Σ I_g)² / Σ I_g², with I_g a paper's sum of squared within-alloy deviations of the transformed grain size, and the largest single paper's share max I_g / Σ I_g are computed and stored with the result. Validity check 2 requires an effective number of at least 2; below that, the coefficient only, with the reason 'evidence_concentrated'. The paper minimum (10) remains the count of informative papers. The same check applies in every simulated fit.",
+    "value": {
+      "text": "check 2 needs an effective number of papers of at least 2",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Validity check 2 and the evidence level when the slope information is concentrated in one paper. On the reference sets: pooled 3.94 effective papers (largest share 39%), MPEA alone 3.93 (39%); check 2 still passes, so no verdict changed.",
+    "reason": "Counting papers with any non-zero contrast does not show that they contribute independent information: the reviewer's nudged design had eleven informative papers but almost all information in one, and gave p ≈ 5e-58 with a 51% null rejection rate.",
+    "evidence": [
+      "Second-model re-check (ChatGPT, 2026-10-06), finding 1: docs/reviews/step07_recheck_chatgpt.md (MacKinnon, Nielsen and Webb on cluster count versus effective information).",
+      "Owner's decision, 2026-10-06."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:MIN_EFFECTIVE_PAPERS",
+          "equals": 2.0
+        },
+        {
+          "ref": "sql:ck_analysis_result_check2_consistent"
+        },
+        {
+          "ref": "sql:effective_papers"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_recheck_fixes.py::test_the_nudged_design_gives_no_verdict",
+      "tests/test_recheck_fixes.py::test_the_effective_number_of_papers_is_the_owners_formula",
+      "tests/test_recheck_fixes.py::test_every_simulated_fit_requires_two_effective_papers",
+      "tests/test_recheck_fixes.py::test_the_effective_number_and_share_are_reported_with_every_result",
+      "tests/test_analysis_stage.py::test_the_database_requires_two_effective_papers_for_check_2",
+      "tests/test_analysis_stage.py::test_the_effective_number_and_share_are_stored_with_every_result"
     ],
     "history": [],
-    "notes": [
-      "CLAUDE.md rule 6 reworded to match (owner, 2026-10-06)."
-    ]
+    "notes": []
   }
 ]
