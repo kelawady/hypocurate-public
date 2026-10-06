@@ -73,6 +73,8 @@ def test_permuted_ids_and_insertion_order_give_identical_results(db, monkeypatch
     results = [_permuted_analysis(db, vid, sources, seed, monkeypatch, marked) for seed in (0, 1, 2)]
     first = results[0]
     assert first[0]["analyses"][0]["estimate"] is not None and len(first[2]) == 2 * len(first[1])
+    # Step 7b: the set without the most influential paper is analysed and compared too.
+    assert "sensitivity:without_most_influential_paper" in {e["analysis"] for e in first[0]["analyses"]}
     for other in results[1:]:
         assert other[0] == first[0]  # the record of statistical significance and the decision, seeds included
         assert other[1] == first[1]  # every analysis result

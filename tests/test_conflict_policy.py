@@ -57,8 +57,10 @@ SHAPES = {
 def _chain(shape="only through B"):
     (ya, da, ra), (yb, db, rb), (yc, dc, rc), expected = SHAPES[shape]
     plan = survivor_plan(PLAN)
+    # Step 7b: C (no DOI in one shape) is grouped by dataset so that it keeps a group; identity is
+    # unchanged (Checks' paper identity never reads the grouping).
     plan["rules"]["grouping"] = [{"source": "mpea", "unit": "paper"}, {"source": "tamu_fcc", "unit": "paper"},
-                                 {"source": "controlled_duplicates", "unit": "paper"}]
+                                 {"source": "controlled_duplicates", "unit": "dataset"}]
     full = [rec(1, "mpea", ys=ya, doi=da, reference=ra), rec(2, "tamu_fcc", ys=yb, doi=db, reference=rb),
             rec(3, "controlled_duplicates", ys=yc, doi=dc, reference=rc),
             rec(4, "mpea", gs=40.0, ys=300.0, doi=da, reference=ra)]
@@ -89,9 +91,9 @@ def test_the_freeze_check_refuses_any_record_of_a_conflict_connected_group(no_va
     plan, records, flags, _ = _chain(shape)
     recs = {r["id"]: r for r in records}
     for member in (1, 2, 3):  # A alone (only exact-linked to the conflict), B alone, C alone
-        problems = el.primary_set_problems({member, 4}, recs, flags, True)
+        problems = el.primary_set_problems({member, 4}, recs, flags, True, grouping=el.settings(plan).grouping)
         assert any("conflict" in p for p in problems), member
-    assert el.primary_set_problems({4}, recs, flags, True) == []
+    assert el.primary_set_problems({4}, recs, flags, True, grouping=el.settings(plan).grouping) == []
 
 
 # --- through the real pipeline: the controlled extract's conflicting rows 7-8 --------------------------

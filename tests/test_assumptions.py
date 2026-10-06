@@ -58,9 +58,9 @@ def test_every_category_has_entries_and_keys_are_unique():
 # Step 6 completed same_alloy_rule, sufficiency_options, controlled_extract_disabled and
 # assigned_value_statuses, and added constructed_test_runs (its label and exclusion: steps 7, 10).
 # Step 7 completed tamu_grouping_unit, papers_independent, validity_checks, fixed_minimums,
-# grain_size_transformation_at_analysis and reference_numbers; records_without_group is open, with
-# the code failing closed until the owner decides.
-PARTLY = {"constructed_test_runs", "records_without_group"}
+# grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
+# the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
+PARTLY = {"constructed_test_runs"}
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -127,10 +127,16 @@ def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review
     """Finding 4. The pairing rule was the open entry; the owner decided it on 2026-10-05 (step 5)
     and added the possible-duplicate case and the rule for several candidates in step 6 planning.
     Step 6 recorded two new open decisions for the owner (steps 7 and 8). Step 7: the owner decided
-    the first; a new one (records without a group) is open before step 8."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["curator_tabular_sources", "records_without_group"]
+    the first; a new one (records without a group) was open before step 8, and the owner decided it in
+    step 7b (2026-10-06)."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["curator_tabular_sources"]
     assert {e["key"]: e["pending"]["before_step"] for e in REGISTER if e["state"] == "open"} == {
-        "curator_tabular_sources": 8, "records_without_group": 8}
+        "curator_tabular_sources": 8}
+    grouped = BY_KEY["records_without_group"]
+    assert grouped["state"] == "in_force" and grouped["decided"] == {"by": OWNER, "date": "2026-10-06"}
+    assert "pending" not in grouped and grouped["applied"]["status"] == "yes"
+    assert grouped["history"][-1]["value"].startswith("open decision: Open: what a fit does with a frozen record")
+    assert "'group_unknown', rule 5" in grouped["statement"] and "No group is ever invented" in grouped["statement"]
     below = BY_KEY["below_minimum_display"]
     assert below["state"] == "in_force" and below["decided"] == {"by": OWNER, "date": "2026-10-05"}
     assert "not even a coefficient" in " ".join(below["notes"]) and below["history"][-1]["value"].startswith("open")
@@ -235,7 +241,9 @@ def test_the_step_6_decisions_carry_the_owners_wording():
     assert "CLAUDE.md rule 4" in conflicts["reason"] and "PRD 5.3" in conflicts["reason"]
     one = BY_KEY["sensitivity_one_change"]
     assert "exactly one named respect" in one["statement"] and "never change the verdict" in one["statement"]
-    assert "no adjustment is made for there being eight" in one["statement"]
+    # Step 7b (owner, 2026-10-06): a ninth set; the eight-set wording is kept in the history.
+    assert "no adjustment is made for there being nine" in one["statement"]
+    assert "no adjustment is made for there being eight" in one["history"][-1]["value"]
     assert "discretionary removals" in " ".join(one["notes"])
     access = BY_KEY["code_role_access"]["statement"]
     assert "Inclusion receives no outcome value" in access and "Not claimed: that outcomes play no part at all" in access
@@ -247,9 +255,13 @@ def test_the_step_6_decisions_carry_the_owners_wording():
     for key in ("sensitivity_one_change", "code_role_access", "constructed_test_runs", "record_extraction_provenance",
                 "eligibility_rule_order", "conflicts_not_pooled", "freeze_counts"):
         e = BY_KEY[key]
-        # conflicts_not_pooled was made a fixed rule by the owner on 2026-10-06.
-        date = "2026-10-06" if key == "conflicts_not_pooled" else "2026-10-05"
+        # conflicts_not_pooled was made a fixed rule by the owner on 2026-10-06; step 7b (owner, 2026-10-06)
+        # reworded sensitivity_one_change and eligibility_rule_order, each with its 2026-10-05 wording in history.
+        changed = ("conflicts_not_pooled", "sensitivity_one_change", "eligibility_rule_order")
+        date = "2026-10-06" if key in changed else "2026-10-05"
         assert e["decided"] == {"by": OWNER, "date": date} and e["expert_review"]["status"] == "not_reviewed"
+        if key in changed[1:]:
+            assert e["history"][-1]["from"] == "2026-10-05"
 
 
 def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history():
@@ -467,11 +479,10 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
     assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["curator_tabular_sources", "records_without_group",
-                                                             "an_open_question"]
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["curator_tabular_sources", "an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert first.count("Not decided (owner, before step 8)") == 2
-    assert "3 open decisions</strong>" in html
+    assert first.count("Not decided (owner, before step 8)") == 1  # records_without_group decided in step 7b
+    assert "2 open decisions</strong>" in html
     second = re.split(r"<h2>", html)[2]
     assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
     assert "pending: second-model technical review, before step 8" in second
@@ -482,9 +493,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
     count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert count == {"in_force": len(REGISTER) - 3, "open": 2, "direction_approved": 1}
+    assert count == {"in_force": len(REGISTER) - 2, "open": 1, "direction_approved": 1}
     assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
-    assert "2 open decisions</strong>" in summary
+    assert "1 open decision</strong>" in summary
     assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")

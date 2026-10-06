@@ -23,21 +23,30 @@ Each record gets one rule code, the first that applies (owner, 2026-10-05):
 3. `out_of_scope`: a known value outside the scope (test type; reported temperature outside
    the room-temperature range, or a band outside the scope; microstructure, or phase class).
 4. `missing_value`: composition, predictor or outcome without an accepted value.
-5. `scope_not_confirmed`: a scope value missing, or held with a status the plan does not accept.
-6. `excluded_by_rule`: an exclusion rule from the menu (for example grain size below 0.1 µm).
-7. Identity, among records that passed 1–6, per flag the plan maps:
+5. `group_unknown`: the record has no group under the set's grouping (a paper-grouped record
+   without a DOI; a batch-grouped record without a batch). No group is invented (owner,
+   2026-10-06, step 7b; register 'records_without_group'). After rules 1-4, so that a record out of
+   scope or missing a value keeps that more basic reason; before identity, so that a record without
+   a group is never chosen as a survivor and never pushes out its grouped twin; before the
+   grain-size count, so that alloys are counted on records that can be analysed.
+6. `scope_not_confirmed`: a scope value missing, or held with a status the plan does not accept.
+7. `excluded_by_rule`: an exclusion rule from the menu (for example grain size below 0.1 µm).
+8. Identity, among records that passed 1–7, per flag the plan maps:
    `identity_unresolved` (every record of an ambiguous group), `conflict_unresolved` (every
    record of a group whose values disagree), `duplicate_counted_once` (every record but the
    survivor of an exact or possible duplicate group).
-8. `single_grain_size`: the alloy (same-alloy rule) has fewer than the plan's distinct grain
-   sizes among records that passed 1–7, so duplicates are resolved before grain sizes are
+9. `single_grain_size`: the alloy (same-alloy rule) has fewer than the plan's distinct grain
+   sizes among records that passed 1–8, so duplicates are resolved before grain sizes are
    counted (owner, 2026-10-05).
-9. `in_scope`: eligible.
+10. `in_scope`: eligible.
 
 **Sensitivity sets** (register 'sensitivity_one_change'): each differs from the primary set in
 exactly one named respect; every other rule applies unchanged. `SENSITIVITY_CHANGES` lists
 the change of each key. The variation each key applies is fixed by the key (its name in the
-vocabulary), not by a number in the plan.
+vocabulary), not by a number in the plan. The set 'without_most_influential_paper' (step 7b; displayed
+"without the group with the largest share of slope information") is the primary set minus every
+record of the group (a paper, a dataset or a batch) holding the largest share of within-alloy
+grain-size contrast (`most_influential`); its records get `most_influential_paper` in that set only.
 """
 from __future__ import annotations
 
@@ -46,9 +55,20 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Mapping
 
+from hypocurate.pipeline import statistics
 from hypocurate.sources.normalize import same_alloy_key
 
 PRIMARY = "primary"
+# Rule 5 (owner, 2026-10-06; register 'records_without_group').
+NO_GROUP_RULE = "group_unknown"
+# The sensitivity set without the most influential paper, and the rule its removed records get in
+# that set (owner, 2026-10-06; register 'most_influential_paper_set').
+INFLUENCE_KEY = "without_most_influential_paper"
+INFLUENCE_RULE = "most_influential_paper"
+# Its display name (owner, 2026-10-06, on the second model's review): the removed group may be a paper,
+# a dataset or a batch, and its share is of within-alloy grain-size contrast, not necessarily the group
+# whose removal changes the slope most. The internal key and rule keep their names.
+INFLUENCE_DISPLAY_NAME = "without the group with the largest share of slope information"
 # Sprint 1 supports one model (CLAUDE.md rule 6): its outcome is yield strength. Plan validation
 # refuses any other (re-check finding 2b; register 'supported_outcomes').
 SUPPORTED_OUTCOMES = ("yield_strength",)
@@ -119,6 +139,9 @@ SENSITIVITY_CHANGES = {
     "possible_duplicates_separate": "records of unresolved or possible duplicate groups count as separate "
                                     "measurements",
     "conflicts_survivor_value": "conflict groups are counted once by the survivor rule",
+    INFLUENCE_KEY: "the records of the group (a paper, a dataset or a batch, by the plan's grouping) with the largest "
+                   "share of slope information, that is of within-alloy grain-size contrast, from grain sizes, alloys "
+                   "and groups only, are removed; not necessarily the group whose removal changes the slope most",
 }
 
 
@@ -188,6 +211,8 @@ def settings(plan: Mapping[str, Any], key: str = PRIMARY) -> Settings:
                                               for k, c, rule in base.flag_rules))
     if key == "conflicts_survivor_value":
         return base  # its one change is `conflict_survivor`, set above
+    if key == INFLUENCE_KEY:
+        return base  # its one change is applied to the primary set's decisions (`decide`)
     raise KeyError(f"no change is defined for the analysis {key!r}")
 
 
@@ -229,6 +254,11 @@ def _missing(rec: Mapping, st: Settings) -> bool:
         return True
     return not (_known(rec, st.predictor, st) and _known(rec, st.outcome, st)) or \
         rec["values"].get(st.predictor) is None
+
+
+def has_group(rec: Mapping, st: Settings) -> bool:
+    """Rule 5: does the record have a group under the set's grouping (`group`)?"""
+    return group(rec, st) is not None
 
 
 def _excluded(rec: Mapping, st: Settings) -> bool:
@@ -286,7 +316,7 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
         if flag_rule(f, st) == "invalid_value":
             for rid in f["records"]:
                 rules.setdefault(rid, "invalid_value")
-    for r in records.values():  # 3-6
+    for r in records.values():  # 3-7
         if r["id"] in rules:
             continue
         sc = scope(r, st)
@@ -294,12 +324,14 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
             rules[r["id"]] = "out_of_scope"
         elif _missing(r, st):
             rules[r["id"]] = "missing_value"
+        elif not has_group(r, st):
+            rules[r["id"]] = NO_GROUP_RULE
         elif sc == "unconfirmed" and not st.scope_unconfirmed_ok:
             rules[r["id"]] = "scope_not_confirmed"
         elif _excluded(r, st):
             rules[r["id"]] = "excluded_by_rule"
-    _identity(records, flags, rules, st)
-    sizes: dict[str, set] = defaultdict(set)  # 8
+    _identity(records, flags, rules, st)  # 8
+    sizes: dict[str, set] = defaultdict(set)  # 9
     for r in records.values():
         if r["id"] not in rules:
             sizes[alloy(r, st.decimals)].add(r["values"][st.predictor])
@@ -307,7 +339,54 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
         if r["id"] not in rules:
             rules[r["id"]] = ("single_grain_size" if len(sizes[alloy(r, st.decimals)]) < st.min_grain_sizes
                               else "in_scope")
+    if key == INFLUENCE_KEY:  # the set's one change, on the primary decisions above
+        for i in most_influential(plan, records, members(rules))["records"]:
+            rules[i] = INFLUENCE_RULE
     return rules
+
+
+def most_influential(plan: Mapping[str, Any], records: Mapping[int, Mapping], ids: Iterable[int]) -> dict:
+    """The group under the primary grouping (a paper, a dataset or a batch: `unit`) holding the largest
+    share of slope information, that is of within-alloy grain-size contrast, among the primary set's
+    records `ids`; not necessarily the group whose removal changes the slope most (owner, 2026-10-06;
+    register 'most_influential_paper_set'; displayed as `INFLUENCE_DISPLAY_NAME`). I_g comes from `statistics.slope_information`: grain sizes, alloys
+    (the plan's same-alloy rule) and groups only; the records carry no outcome value. Shares within
+    `statistics.RELATIVE_ZERO` of the largest are tied; a tie is broken by each tied paper's earliest
+    record under (the plan's survivor source order, the lowest row in the source file, the stable
+    identity: source-version fingerprint, origin key, item index), never a database id or an order.
+    Without any slope information nothing is removed (reason 'no_slope_information')."""
+    st = settings(plan)
+    # A primary record without a group exists only if rule 5 was bypassed; it is no paper's, and the
+    # freeze's invariant (7) refuses such a primary set.
+    chosen = [records[i] for i in ids if group(records[i], st) is not None]
+    items = [(f"{r['version_fingerprint']}|{r['origin']}|{r['item_index']}", alloy(r, st.decimals), group(r, st),
+              r["values"][st.predictor]) for r in chosen]
+    info = statistics.slope_information(items, plan["variables"]["predictor"]["transformation"])
+    total = sum(info.values())
+    if not total > 0:
+        return {"group": None, "unit": None, "display": f"{INFLUENCE_DISPLAY_NAME} (no group removed)", "share": None,
+                "tied": [], "records": [], "n_records": 0, "n_alloys": 0, "reason": "no_slope_information"}
+    top = max(info.values())
+    tied = sorted(g for g, v in info.items() if v >= top - statistics.RELATIVE_ZERO * top)
+
+    def earliest(g: str) -> tuple:
+        return min(influence_tie_key(r, st) for r in chosen if group(r, st) == g)
+
+    pick = min(tied, key=earliest)
+    removed = sorted(r["id"] for r in chosen if group(r, st) == pick)
+    unit = pick.split(":", 1)[0]  # 'paper', 'dataset' or 'batch': the group key's prefix (`group_in`)
+    return {"group": pick, "unit": unit, "display": f"{INFLUENCE_DISPLAY_NAME} (the removed group is a {unit})",
+            "share": info[pick] / total, "tied": tied, "records": removed,
+            "n_records": len(removed), "n_alloys": len({alloy(records[i], st.decimals) for i in removed}),
+            "reason": None}
+
+
+def influence_tie_key(rec: Mapping, st: Settings) -> tuple:
+    """The tie-break of `most_influential` for one record (owner, 2026-10-06): the plan's survivor
+    source order, the row in the source file, then the stable identity."""
+    order = st.survivor_order.index(rec["source"]) if rec["source"] in st.survivor_order else len(st.survivor_order)
+    return (order, rec["row"] if rec["row"] is not None else math.inf, rec["version_fingerprint"], rec["origin"],
+            rec["item_index"])
 
 
 class MissingSetFlags(ValueError):
@@ -338,14 +417,16 @@ def flags_for(key: str, flags: list[Mapping], set_flags: Mapping[str, list] | No
 
 
 def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: Iterable[Mapping],
-                         marked: bool) -> list[str]:
+                         marked: bool, *, grouping: Mapping[str, str]) -> list[str]:
     """The result check of the freeze (owner, 2026-10-06; register 'primary_set_invariants'): what
     in the primary set itself breaks an invariant, whatever the plan said. `flags` are the Checks
     flags, including every retained pairwise exact or conflict result (two-record flags inside
     mixed groups), so exact and conflict pairs are checked pair by pair, never through a group's
     label (confirmation, 2026-10-06); identity and validity are independent of the plan's grouping
     and outcome. `records` gives
-    each member's kind and source; `marked` is the run's test mark. Empty if nothing."""
+    each member's kind, source, paper and batch; `marked` is the run's test mark; `grouping` is the
+    primary set's grouping (source -> unit), for invariant (7), no record without a group (step 7b,
+    owner 2026-10-06), checked with `group_in` itself, not through rule 5. Empty if nothing."""
     from hypocurate.sources.versions import SOURCES
     out = []
     flags = list(flags)
@@ -376,6 +457,9 @@ def primary_set_problems(members: set, records: Mapping[int, Mapping], flags: It
     constructed = sorted(i for i in members if getattr(SOURCES.get(records[i]["source"]), "constructed", False))
     if constructed and not marked:
         out.append(f"constructed records in a run not marked as a test: {constructed}")
+    ungrouped = sorted(i for i in members if group_in(records[i], grouping) is None)
+    if ungrouped:
+        out.append(f"records without a group: {ungrouped}")
     return out
 
 
@@ -464,7 +548,12 @@ def members(rules: Mapping[int, str]) -> list[int]:
 
 def group(rec: Mapping, st: Settings) -> str | None:
     """The record's independent group under the set's grouping (PRD 5.7)."""
-    unit = st.grouping.get(rec["source"])
+    return group_in(rec, st.grouping)
+
+
+def group_in(rec: Mapping, grouping: Mapping[str, str]) -> str | None:
+    """The record's group under a grouping (source -> unit), or None: no group is invented."""
+    unit = grouping.get(rec["source"])
     if unit == "paper":
         return f"paper:{rec['paper']}" if rec["paper"] else None
     if unit == "dataset":

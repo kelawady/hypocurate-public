@@ -59,18 +59,19 @@ FLAG_KINDS = frozenset({"exact_duplicate", "possible_duplicate", "values_disagre
                         "scope_not_confirmed", "invalid_value", "model_recalled"})
 # Step 6 additions (owner, 2026-10-05): the category "several candidates" (an ambiguous match
 # group), the rules "missing_value", "identity_unresolved" and "conflict_unresolved", and the
-# sensitivity keys "no_exclusions" and "conflicts_survivor_value".
+# sensitivity keys "no_exclusions" and "conflicts_survivor_value". Step 7b (owner, 2026-10-06): the
+# rules "group_unknown" and "most_influential_paper", the key "without_most_influential_paper".
 FLAG_CATEGORIES = frozenset({"identical values", "differ beyond tolerance", "within tolerance",
                              "outside scope", "scope not confirmed", "physically impossible",
                              "several candidates"})
 ELIGIBILITY_RULES = frozenset({"in_scope", "out_of_scope", "scope_not_confirmed", "invalid_value",
                                "duplicate_counted_once", "model_recalled", "single_grain_size",
                                "excluded_by_rule", "missing_value", "identity_unresolved",
-                               "conflict_unresolved"})
+                               "conflict_unresolved", "group_unknown", "most_influential_paper"})
 SENSITIVITY_KEYS = frozenset({"tension_and_compression", "six_batches_as_groups", "same_alloy_1_at_pct",
                               "source_only_assignments", "possible_duplicates_separate",
                               "scope_not_confirmed_included", "removal_after_lock", "no_exclusions",
-                              "conflicts_survivor_value"})
+                              "conflicts_survivor_value", "without_most_influential_paper"})
 ANALYSIS_SET_KEYS = frozenset({"primary"}) | SENSITIVITY_KEYS
 
 

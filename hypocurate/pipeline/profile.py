@@ -77,10 +77,12 @@ SMALLEST_EFFECT = 150.0
 
 # --- Sensitivity analyses (owner, 2026-10-05; register 'sensitivity_one_change') ---------
 # Each differs from the primary set in exactly one named respect; descriptive only, never
-# changes the verdict, no adjustment for there being eight.
+# changes the verdict, no adjustment for there being nine. The ninth, without the most influential
+# paper, added by the owner on 2026-10-06 (step 7b; register 'most_influential_paper_set').
 SENSITIVITY_ANALYSES = ("no_exclusions", "tension_and_compression", "six_batches_as_groups", "same_alloy_1_at_pct",
                         "source_only_assignments", "scope_not_confirmed_included",
-                        "possible_duplicates_separate", "conflicts_survivor_value")
+                        "possible_duplicates_separate", "conflicts_survivor_value",
+                        "without_most_influential_paper")
 
 # --- Tags (PRD 5.5; register 'tag_starting_lists'; seeded by migration 0002) -------------
 TAG_STARTING_LISTS: Mapping[str, tuple[str, ...]] = MappingProxyType({

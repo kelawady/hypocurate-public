@@ -40,7 +40,7 @@ def test_the_reference_plan_is_the_default_plan_under_the_owners_decisions():
     assert ref["sensitivity_analyses"] == [
         "no_exclusions", "tension_and_compression", "six_batches_as_groups", "same_alloy_1_at_pct",
         "source_only_assignments", "scope_not_confirmed_included", "possible_duplicates_separate",
-        "conflicts_survivor_value"]
+        "conflicts_survivor_value", "without_most_influential_paper"]  # the ninth: owner, 2026-10-06 (step 7b)
     assert ref["eligibility_rules"] == [
         {"flag_kind": "invalid_value", "rule": "invalid_value"},
         {"flag_kind": "exact_duplicate", "rule": "duplicate_counted_once"},

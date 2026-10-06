@@ -103,13 +103,15 @@ CASES = {
         pair=BOTH_CARRY_PAPER,
         explanation="Same measurement with the formula written in another notation; the composition in atomic percent is identical, so matching must use the normalized composition.",
     ),
+    # Owner, 2026-10-06 (step 7b): a record without a paper reference has no group, so it is not
+    # eligible (rule 'group_unknown', before identity), in the primary set and in every sensitivity set.
     "possible_duplicate_unknown_paper": dict(
         duplicate_status="possible_duplicate",
         prd_class="Possible duplicate that cannot be resolved",
-        primary_analysis="counted once",
-        sensitivity_analysis="both counted separately",
-        pair=ONLY_MPEA_CARRIES_PAPER,
-        explanation="Same alloy, grain size, value and test conditions, but the paper reference is blank, so it cannot be confirmed as the same measurement. Flagged as a possible duplicate, kept, not removed.",
+        primary_analysis="not eligible: no group (paper reference missing)",
+        sensitivity_analysis="none",
+        pair=ONLY_MPEA_CARRIES_PAPER + "; this record is not eligible in any case (no group: the paper reference is missing)",
+        explanation="Same alloy, grain size, value and test conditions, but the paper reference is blank, so it cannot be confirmed as the same measurement. Flagged as a possible duplicate, kept, not removed. Without a paper reference it has no group for the paper-grouped uncertainty, so it is not eligible in the primary analysis or in any sensitivity analysis; no group is invented (owner, 2026-10-06).",
     ),
     "missing_test_condition": dict(
         duplicate_status="possible_duplicate",

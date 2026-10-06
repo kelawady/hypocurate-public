@@ -8,7 +8,7 @@ which reads the frozen sets through the Statistics access object:
 | Reference result | Path |
 |---|---|
 | Pooled | reference run (MPEA + Texas A&M, fixed minimums): its pooled analysis |
-| Eight sensitivity sets | the same reference run: each set's sensitivity analysis |
+| Nine sensitivity sets (the ninth approved 2026-10-06) | the same reference run: each set's sensitivity analysis |
 | MPEA alone (1) | the reference run's per-source analysis for MPEA: full numbers, label "agrees"; run level 6 |
 | MPEA alone (2) | a run that chose MPEA only, "use what is available": pooled analysis; it meets every minimum, so full numbers, a verdict, not exploratory; level 6 |
 | MPEA alone (3) | a run that chose MPEA only, fixed minimums: pooled analysis; full numbers, a verdict; level 6 |
@@ -55,6 +55,9 @@ APPROVED = {
     "sensitivity:scope_not_confirmed_included": (103, 23, 22, 79, "432.4", "64.9", "6.7e-7"),
     "sensitivity:possible_duplicates_separate": (97, 22, 20, 74, "424.9", "64.4", "1.3e-6"),
     "sensitivity:conflicts_survivor_value": (97, 22, 20, 74, "424.9", "64.4", "1.3e-6"),
+    # Step 7b: without the group with the largest share of slope information; approved by the owner on
+    # 2026-10-06 as reported (register 'reference_numbers').
+    "sensitivity:without_most_influential_paper": (89, 22, 19, 66, "393.5", "90.5", "1.9e-4"),
 }
 TAMU = (21, 9, 1, 11, "1173.3")  # coefficient only (step 6 table; CLAUDE.md: "≈ 1173")
 
@@ -217,3 +220,64 @@ def test_every_reference_result_matches_the_reference_implementation(runs, key):
     for mine, theirs in ((got["estimate"], expected["k"]), (got["std_error"], expected["se"]),
                          (got["p_value"], expected["p"])):
         assert (mine is None and theirs is None) or math.isclose(mine, theirs, rel_tol=1e-9)
+
+
+# --- step 7b: the set without the most influential paper (owner, 2026-10-06) ------------------------
+
+INFLUENCE = "sensitivity:without_most_influential_paper"
+
+
+def _information_by_group(rows):
+    """Test-side I_g (pandas; register 'effective_papers'), independent of the package."""
+    f = rs.frame(rows)
+    dev = f["x"] - f.groupby("alloy")["x"].transform("mean")
+    return (dev ** 2).groupby(f["group"]).sum()
+
+
+def test_the_set_without_the_most_influential_paper(runs):
+    """The paper removed is the one test-side pandas finds with the largest I_g on the pooled set
+    (no tie on these data); the set is the primary set minus exactly its records; its result matches
+    the independent implementations; it is descriptive and leaves the decision as the pooled result
+    alone gives it."""
+    from hypocurate.pipeline import statistics as st
+    ref = runs["reference"]
+    data = ref["data"]
+    info = _information_by_group(_rows(data, "primary")).sort_values(ascending=False)
+    assert info.iloc[0] > info.iloc[1] * (1 + 1e-6)  # a clear maximum: the tie-break is not used here
+    removed = info.index[0]
+    assert info.iloc[0] / info.sum() == pytest.approx(ref["analyses"]["pooled"]["counts"]["largest_paper_share"],
+                                                       rel=1e-12)
+    by_id = {r["id"]: r for r in data["records"]}
+    group_of = lambda r: "dataset:tamu_fcc" if r["source"] == "tamu_fcc" else f"paper:{r['paper']}"  # noqa: E731
+    assert set(data["sets"]["without_most_influential_paper"]) == {
+        i for i in data["sets"]["primary"] if group_of(by_id[i]) != removed}
+    got = ref["analyses"][INFLUENCE]
+    rows = _rows(data, "without_most_influential_paper")
+    decimal = rs.fit_informative(rows)
+    assert got["counts"]["n_groups_informative"] == decimal["groups_informative"]
+    assert got["df"] == decimal["df"]
+    for mine, theirs in ((got["estimate"], decimal["k"]), (got["std_error"], decimal["se"]),
+                         (got["p_value"], decimal["p"])):
+        assert math.isclose(mine, theirs, rel_tol=1e-9)
+    effective, share = rs.effective_papers(rows)
+    assert math.isclose(got["counts"]["effective_papers"], effective, rel_tol=1e-9)
+    assert math.isclose(got["counts"]["largest_paper_share"], share, rel_tol=1e-9)
+    assert got["label"] is None and "verdict" not in got
+    pooled = ref["analyses"]["pooled"]
+    assert ref["out"]["decision"] == st.decision(pooled, reference_plan(1), ref["out"]["freeze_fingerprint"])
+
+
+def test_the_set_without_the_most_influential_paper_as_approved(runs):
+    """Approved by the owner on 2026-10-06, as reported: the counts, k, its standard error and p (in
+    APPROVED, also checked by `test_each_sensitivity_set`), the four quantities and the removed group."""
+    ref = runs["reference"]
+    got = ref["analyses"][INFLUENCE]
+    check_approved(got, APPROVED[INFLUENCE])
+    c = got["counts"]
+    assert (c["n_groups_informative"], got["df"]) == (19, 18)
+    assert within(c["effective_papers"], "3.24") and within(c["largest_paper_share"], "0.521")
+    pooled = ref["analyses"]["pooled"]["counts"]
+    removed = set(ref["data"]["sets"]["primary"]) - set(ref["data"]["sets"]["without_most_influential_paper"])
+    by_id = {r["id"]: r for r in ref["data"]["records"]}
+    assert len(removed) == 8 and len({same_alloy_key(by_id[i]["composition"], 1) for i in removed}) == 1
+    assert pooled["n_records"] - len(removed) == c["n_records"]

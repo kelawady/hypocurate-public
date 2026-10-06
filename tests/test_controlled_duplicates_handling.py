@@ -34,6 +34,34 @@ def run(admin, database_url, template_database):
         yield decisions(engine, rid)
 
 
+def expected_removed(run):
+    """The records the set without the group with the largest share of slope information must leave out,
+    derived here independently of the result being checked (second model's review, point 3; owner,
+    2026-10-06): from the primary members' conditions (no outcome), with the reference plan's grouping
+    (MPEA and the extract by the paper's DOI hash, Texas A&M by dataset) and its same-alloy rule (0.1
+    at.%): x = d^-1/2, each alloy with two or more grain sizes, I_g = Σ (x - alloy mean)², the largest I_g.
+    No package code is used; a tie would make the check ambiguous, so a clear maximum is required."""
+    from collections import defaultdict
+    from hypocurate.sources.normalize import same_alloy_key
+    members = [run["conditions"][i] for i in run["sets"]["primary"]]
+    group = lambda c: "dataset" if c["source"] == "tamu_fcc" else c["paper"]  # noqa: E731
+    by_alloy = defaultdict(list)
+    for c in members:
+        by_alloy[same_alloy_key(c["composition"], 1)].append(c)
+    info = defaultdict(float)
+    for cs in by_alloy.values():
+        xs = [c["values"]["grain_size"] ** -0.5 for c in cs]
+        if len(set(xs)) < 2:
+            continue
+        mean = sum(xs) / len(xs)
+        for c, x in zip(cs, xs):
+            info[group(c)] += (x - mean) ** 2
+    ranked = sorted(info.values(), reverse=True)
+    assert ranked[0] > ranked[1] * (1 + 1e-6)
+    top = max(info, key=info.get)
+    return {c["id"] for c in members if group(c) == top}
+
+
 def ids(run, t):
     """The extract record of answer row t and its MPEA source record."""
     by_origin = {o: i for i, o in run["origin"].items()}
@@ -71,6 +99,7 @@ def test_the_primary_handling_and_the_survivor_are_the_answer_files(run, t):
         "not eligible under a room-temperature plan": ("in_scope", "out_of_scope"),
         "not eligible: scope not confirmed": ("in_scope", "scope_not_confirmed"),
         "not eligible: excluded by the test-type rule (tension only)": ("in_scope", "out_of_scope"),
+        "not eligible: no group (paper reference missing)": ("in_scope", "group_unknown"),  # step 7b
     }[primary]
     assert (rules[mpea_id], rules[extract_id]) == expected
     if t["survivor_in_primary"].startswith("MPEA row"):
@@ -98,8 +127,14 @@ def test_the_sensitivity_handling_is_the_answer_files(run, t):
         assert sensitivity == "none"
         for key, rules in run["rules"].items():  # no set treats this pair differently from primary
             if key not in ("tension_and_compression", "source_only_assignments"):
-                assert (rules[mpea_id], rules[extract_id]) == \
-                    (run["rules"]["primary"][mpea_id], run["rules"]["primary"][extract_id]), key
+                expected = [run["rules"]["primary"][mpea_id], run["rules"]["primary"][extract_id]]
+                if key == "without_most_influential_paper":
+                    # Step 7b: that set removes the primary members of one group, whatever their duplicate
+                    # handling, and changes nothing else; the removed records are derived independently.
+                    removed = expected_removed(run)
+                    expected = ["most_influential_paper" if i in removed else r
+                                for i, r in zip((mpea_id, extract_id), expected)]
+                assert [rules[mpea_id], rules[extract_id]] == expected, key
 
 
 def test_rows_15_and_16_enter_together_when_compression_is_permitted(run):
@@ -109,3 +144,9 @@ def test_rows_15_and_16_enter_together_when_compression_is_permitted(run):
         extract_id, mpea_id = ids(run, t)
         rules = run["rules"]["tension_and_compression"]
         assert (rules[mpea_id], rules[extract_id]) == ("in_scope", "in_scope")
+
+
+def test_the_set_without_the_largest_share_removes_the_independently_derived_records(run):
+    """The whole set, not only the answer rows: exactly the independently derived group leaves."""
+    removed = expected_removed(run)
+    assert removed and run["sets"]["without_most_influential_paper"] == run["sets"]["primary"] - removed

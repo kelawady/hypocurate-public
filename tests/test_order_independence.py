@@ -27,9 +27,12 @@ from hypocurate.sources.record import AdapterResult
 from test_eligibility import PLAN, cond
 from test_flags import rec
 
+# Step 7b: C (the extract record, no DOI) is grouped by dataset so that it keeps a group; identity is
+# unchanged (Checks' paper identity reads the DOI and reference only, never the grouping).
 GROUPING = [{"source": "mpea", "unit": "paper"}, {"source": "tamu_fcc", "unit": "paper"},
-            {"source": "controlled_duplicates", "unit": "paper"}]
+            {"source": "controlled_duplicates", "unit": "dataset"}]
 D = "10.1016/j.test.2026.042"
+GROUPS = {g["source"]: g["unit"] for g in GROUPING}
 
 
 def plan_counting_possible_both():
@@ -66,7 +69,8 @@ def _decide_abc(plan, ids: dict, order: list):
     members = {k: el.members(r) for k, r in sets.items()}
     fp = checkpoints.freeze_fingerprint("p" * 64, by_id, members, sets, {})
     return ({k: {name[i]: r for i, r in rules.items()} for k, rules in sets.items()}, fp,
-            el.primary_set_problems(set(members["primary"]), by_id, flags, True))
+            el.primary_set_problems(set(members["primary"]), by_id, flags, True,
+                                    grouping=el.settings(plan).grouping))
 
 
 def test_the_reviewers_chain_gives_the_same_result_for_every_id_and_order():
@@ -102,15 +106,15 @@ def test_a_chain_touching_a_conflict_enters_with_none_of_its_records():
 def test_the_freeze_check_allows_at_most_one_record_per_chain():
     """A and C in the primary set, B out: no single exact pair is wholly inside, but A and C are
     the same measurement through B."""
-    recs = {i: {"id": i, "source": "mpea", "kind": "measured"} for i in (1, 2, 3)}
+    recs = {i: {"id": i, "source": "mpea", "kind": "measured", "paper": "p", "batch": None} for i in (1, 2, 3)}
     flags = [{"id": 1, "kind": "exact_duplicate", "category": "identical values", "records": [1, 2]},
              {"id": 2, "kind": "exact_duplicate", "category": "identical values", "records": [2, 3]}]
-    problems = el.primary_set_problems({1, 3}, recs, flags, True)
+    problems = el.primary_set_problems({1, 3}, recs, flags, True, grouping=GROUPS)
     assert len(problems) == 1 and "exact duplicate" in problems[0]
-    assert el.primary_set_problems({1}, recs, flags, True) == []
+    assert el.primary_set_problems({1}, recs, flags, True, grouping=GROUPS) == []
     conflict = [{"id": 1, "kind": "exact_duplicate", "category": "identical values", "records": [1, 2]},
                 {"id": 2, "kind": "values_disagree", "category": "differ beyond tolerance", "records": [2, 3]}]
-    assert any("conflict" in p for p in el.primary_set_problems({1, 3}, recs, conflict, True))
+    assert any("conflict" in p for p in el.primary_set_problems({1, 3}, recs, conflict, True, grouping=GROUPS))
 
 
 # --- through the real pipeline ------------------------------------------------------------------
@@ -171,6 +175,9 @@ def test_permuted_ids_and_insertion_order_give_the_same_frozen_result(db, monkey
     results = [_permuted_run(db, vid, sources, seed, monkeypatch, marked) for seed in (0, 1, 2)]
     first = results[0]
     assert len(first[0]) > 1000 and first[1]["primary"]
+    # Step 7b: the set without the most influential paper is among those compared, and it removes a paper.
+    assert first[1]["without_most_influential_paper"] and \
+        first[1]["without_most_influential_paper"] != first[1]["primary"]
     for other in results[1:]:
         assert other[0] == first[0]  # every record's decision
         assert other[1] == first[1]  # the primary set and every sensitivity set

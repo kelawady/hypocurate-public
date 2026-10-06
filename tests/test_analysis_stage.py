@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 import pipeline_world as pw
 from hypocurate.db.engine import make_engine
 from hypocurate.pipeline import analysis, completion, results
+from hypocurate.pipeline.plan import reference_plan
 from hypocurate.pipeline.writes import TEST_RUN_LABEL, Refused
 from pipeline_fixtures import frozen_run
 from stats_world import audit_codes, rows_of, run_on, small_rows, val
@@ -46,6 +47,19 @@ def calibration_rows(engine, rid):
     return rows_of(engine, "SELECT * FROM calibration_result WHERE run_id = :r ORDER BY id", r=rid)
 
 
+INFLUENCE = "without_most_influential_paper"
+
+
+def calibration_reasons(engine, rid, influence: bool) -> set:
+    """(status, reason) of the calibration rows of the set without the most influential paper
+    (`influence`), or of every other analysis (step 7b: that set is analysed on its own records, so
+    its validity checks can fail where the others pass)."""
+    return {(c.status, c.reason) for c in rows_of(
+        engine, "SELECT c.status, c.reason, a.key FROM calibration_result c JOIN analysis_result ar "
+                "ON ar.id = c.analysis_result_id JOIN analysis_set a ON a.id = ar.analysis_set_id "
+                "WHERE c.run_id = :r", r=rid) if (c.key == INFLUENCE) == influence}
+
+
 # --- sufficient with a verdict (the reference run) ------------------------------------------------
 
 def test_every_analysis_is_stored_with_both_calibrations(reference):
@@ -56,7 +70,7 @@ def test_every_analysis_is_stored_with_both_calibrations(reference):
         ("sensitivity", k, None) for k in ("no_exclusions", "tension_and_compression", "six_batches_as_groups",
                                            "same_alloy_1_at_pct", "source_only_assignments",
                                            "scope_not_confirmed_included", "possible_duplicates_separate",
-                                           "conflicts_survivor_value")]
+                                           "conflicts_survivor_value", "without_most_influential_paper")]
     assert all(r.withheld is False and r.test_run_label is None and r.n_records_not_used == 0 for r in rows)
     cal = calibration_rows(engine, rid)
     assert len(cal) == 2 * len(rows)
@@ -138,7 +152,10 @@ def test_below_the_minimums_every_analysis_holds_counts_and_records_only(engine)
     assert pooled["checks"]["inference_valid"] and pooled["estimated_power"] is not None  # no outcome used
     for r in result_rows(engine, rid):
         assert r.withheld and r.estimate is None and r.std_error is None and r.p_value is None
-    assert {(c.status, c.reason) for c in calibration_rows(engine, rid)} == {("unavailable", "below_minimums")}
+    assert calibration_reasons(engine, rid, influence=False) == {("unavailable", "below_minimums")}
+    # Step 7b: without the most influential paper (here the papers cross the alloys) one alloy is left,
+    # so that set's check 2 fails and its validity reason takes precedence (decision 5 of step 7).
+    assert calibration_reasons(engine, rid, influence=True) == {("unavailable", "insufficient_groups")}
     # Nothing computed from outcomes anywhere in what is stored: the real outcomes can be anything.
     facts = rows_of(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'gap_facts'", r=rid)[0][0]
     assert facts["minimums_missed"] == ["alloys", "groups", "records", "resid_df"]
@@ -165,7 +182,8 @@ def test_use_what_is_available_gives_an_exploratory_verdict_on_the_same_data(eng
     assert out["decision"]["verdict"] in ("supported", "not_supported") and out["decision"]["label"] == "exploratory"
     pooled = result_rows(engine, rid)[0]
     assert not pooled.withheld and not pooled.minimums_met and pooled.p_value is not None
-    assert {c.method: c.status for c in calibration_rows(engine, rid)}["fixed"] == "computed"
+    assert {c.method: c.status for c in calibration_rows(engine, rid) if c.analysis_result_id == pooled.id}[
+        "fixed"] == "computed"
     completion.copy_decision(engine, rid)
     assert rows_of(engine, "SELECT outcome, exploratory, evidence_level FROM run WHERE id = :r", r=rid) == [
         ("sufficient", True, 5)]
@@ -178,7 +196,9 @@ def test_use_what_is_available_with_one_group_gives_the_coefficient_only(engine)
     assert (out["decision"]["state"], out["decision"]["evidence_level"]) == ("coefficient_only", 4)
     assert pooled["estimate"] is not None and pooled["std_error"] is None and pooled["p_value"] is None
     assert out["decision"]["verdict"] is None
-    assert {(c.status, c.reason) for c in calibration_rows(engine, rid)} == {("unavailable", "insufficient_groups")}
+    assert calibration_reasons(engine, rid, influence=False) == {("unavailable", "insufficient_groups")}
+    # Step 7b: removing the one paper leaves no record: no coefficient for that set.
+    assert calibration_reasons(engine, rid, influence=True) == {("unavailable", "coefficient_not_fitted")}
 
 
 def test_the_fixed_option_with_one_group_withholds_even_the_coefficient(engine):
@@ -186,7 +206,8 @@ def test_the_fixed_option_with_one_group_withholds_even_the_coefficient(engine):
     rid = run_on(engine, small_rows(3, papers=1))
     out = analysis.run_statistics(engine, rid)
     assert out["decision"]["evidence_level"] == 3 and out["analyses"][0]["estimate"] is None
-    assert {(c.status, c.reason) for c in calibration_rows(engine, rid)} == {("unavailable", "insufficient_groups")}
+    assert calibration_reasons(engine, rid, influence=False) == {("unavailable", "insufficient_groups")}
+    assert calibration_reasons(engine, rid, influence=True) == {("unavailable", "coefficient_not_fitted")}  # step 7b
 
 
 # --- no dataset frozen ------------------------------------------------------------------------------
@@ -234,13 +255,11 @@ def test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_
     analysis.run_statistics(engine, real)
     assert TEST_RUN_LABEL == LABEL
     assert out["test_run_label"] == LABEL and out["decision"]["evidence_level"] == 6  # keeps its level
-    # The extract's two records without a paper enter only 'possible_duplicates_separate': that descriptive
-    # analysis is not analysed (no group invented), and nothing is stored for it; the others are.
-    assert out["not_analysed"] == [{"analysis": "sensitivity:possible_duplicates_separate", "scope": "sensitivity",
-                                    "set": "possible_duplicates_separate", "source": None,
-                                    "reason": "records_without_group", "n_records_without_group": 2,
-                                    "n_records_in_set": out["not_analysed"][0]["n_records_in_set"]}]
-    assert "possible_duplicates_separate" not in {r.set_key for r in result_rows(engine, marked)}
+    # Step 7b (owner, 2026-10-06): the extract's two records without a paper are not eligible at
+    # inclusion (`group_unknown`), in every set, so every analysis is analysed and the statistics'
+    # backstop is never reached; before, 'possible_duplicates_separate' was not analysed.
+    assert out["not_analysed"] == []
+    assert "possible_duplicates_separate" in {r.set_key for r in result_rows(engine, marked)}
     assert {r.test_run_label for r in result_rows(engine, marked)} == {LABEL}
     assert {c.test_run_label for c in calibration_rows(engine, marked)} == {LABEL}
     assert rows_of(engine, "SELECT output->>'test_run_label' FROM stage_result WHERE run_id = :r "
@@ -510,3 +529,26 @@ def test_the_database_refuses_a_p_value_without_its_description_and_quantities(e
     with pytest.raises(IntegrityError, match="ck_analysis_result_p_value_description"):
         _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1, p_value_description="exact p-value")
     _insert_result(engine, rid, estimate=1.0, std_error=1.0, p_value=0.1)
+
+
+def test_the_statistics_backstop_is_not_reached_in_a_normal_run(engine):
+    """Step 7b (owner, 2026-10-06; register 'records_without_group'): records without a group are decided
+    at inclusion, so a normal run never reaches the statistics' refusal (kept as a backstop, tested in
+    test_statistics.py). The marked run with the extract, whose rows 5-6 have no DOI: those two records
+    are `group_unknown` and in no set; every analysis is analysed; no `records_without_group` refusal is
+    logged."""
+    pw.registered(engine, ("mpea", "controlled_duplicates"))
+    rid = pw.through_freeze(engine, sources=("mpea", "controlled_duplicates"), marked=True)
+    out = analysis.run_statistics(engine, rid)
+    assert out["not_analysed"] == []
+    rules = dict(rows_of(engine, "SELECT r.source_item_key, rr.rule FROM run_record rr JOIN record r "
+                                 "ON r.id = rr.record_id WHERE rr.run_id = :r AND r.source_item_key LIKE 'extract%'",
+                         r=rid))
+    assert (rules["extract.csv:row:4"], rules["extract.csv:row:5"]) == ("group_unknown", "group_unknown")
+    in_sets = val(engine, "SELECT count(*) FROM analysis_set_record asr JOIN analysis_set a ON a.id = "
+                          "asr.analysis_set_id JOIN record r ON r.id = asr.record_id WHERE a.run_id = :r AND "
+                          "r.source_item_key IN ('extract.csv:row:4', 'extract.csv:row:5')", r=rid)
+    assert in_sets == 0
+    assert val(engine, "SELECT count(*) FROM audit_log WHERE run_id = :r AND detail->>'code' = "
+                       "'records_without_group'", r=rid) == 0
+    assert len(out["analyses"]) == 3 + len(reference_plan(1)["sensitivity_analyses"])
