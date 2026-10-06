@@ -2206,7 +2206,8 @@
     "history": [],
     "notes": [
       "Step 7 finding (reported, not gated): on the sets frozen in step 6 the fixed method gives about 7.8% significant no-effect results for the pooled set and 8.0% for the earlier 98-record set over long runs (40,000 simulations), and the reference script's own loop gives the same; PRD 5.10's 7.2% (6.1% to 8.4%) is not reproduced.",
-      "Review fix (2026-10-06): each simulated fit gets the real fit's validity checks; a simulated standard error that is not finite or not above the numerical zero gives no inference and is not counted as significant."
+      "Review fix (2026-10-06): each simulated fit gets the real fit's validity checks; a simulated standard error that is not finite or not above the numerical zero gives no inference and is not counted as significant.",
+      "Deferred (owner, 2026-10-06, on the second model's review of step 7b; backlog, before the final evaluation): an analysis-specific simulation seed (from a fingerprint of the analysis's own stable records and design, the simulation settings and the calibration method, keeping the run fingerprint for provenance), so that adding an unrelated set does not change other analyses' draws; and about 10,000 simulations (95% Monte Carlo margin about ±0.5 points at an 8% rate, against about ±1.2 with 2,000). Not done now."
     ],
     "tests": [
       "tests/test_calibration.py::test_each_world_draws_shifts_then_errors_from_one_seeded_generator",
@@ -5004,7 +5005,7 @@
       "name": null,
       "date": null
     },
-    "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary.",
+    "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary. The ninth, without the group with the largest share of slope information (approved by the owner on 2026-10-06, as reported): 89 records, 22 alloys, 19 groups, 66 residual degrees of freedom, k = 393.5 ± 90.5, p ≈ 1.9e-4.",
     "applied": {
       "status": "yes",
       "settings": [
@@ -5026,7 +5027,8 @@
       }
     ],
     "notes": [
-      "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day."
+      "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day.",
+      "Step 7b (owner, 2026-10-06): the approved values above are unchanged (recomputed bit-identical); the ninth sensitivity set's values approved as reported (field 'sensitivity')."
     ],
     "tests": [
       "tests/test_reference_numbers.py::test_each_sensitivity_set",
@@ -5034,7 +5036,8 @@
       "tests/test_reference_numbers.py::test_pooled",
       "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze",
-      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
+      "tests/test_reference_numbers.py::test_the_set_without_the_most_influential_paper_as_approved"
     ]
   },
   {
@@ -5668,7 +5671,9 @@
       "date": null
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "Deferred (owner, 2026-10-06, on the second model's review of step 7b; backlog, before the final evaluation): an analysis-specific simulation seed (from a fingerprint of the analysis's own stable records and design, the simulation settings and the calibration method, keeping the run fingerprint for provenance), so that adding an unrelated set does not change other analyses' draws; and about 10,000 simulations (95% Monte Carlo margin about ±0.5 points at an 8% rate, against about ±1.2 with 2,000). Not done now."
+    ],
     "key": "results_pure_function",
     "name": "Results are a pure function of the frozen set and the plan",
     "state": "in_force",
@@ -6065,18 +6070,19 @@
   },
   {
     "key": "most_influential_paper_set",
-    "name": "Sensitivity set without the most influential paper",
+    "name": "Sensitivity set without the group with the largest share of slope information",
     "state": "in_force",
-    "statement": "The sensitivity set 'without_most_influential_paper' is the primary set minus every record of the paper (the group under the plan's grouping) holding the largest share of slope information, I_g / Σ I_g, with I_g the paper's sum of squared within-alloy deviations of the transformed grain size (entry 'effective_papers'), computed on the primary set's records. The paper is chosen by code at Inclusion from grain sizes, alloys and groups only, never from outcome values (Inclusion receives none). Shares within the numerical zero (RELATIVE_ZERO, 1e-10) of the largest are tied; a tie is broken by each tied paper's earliest record under the plan's survivor source order, then the lowest row in the source file, then the stable identity (source-version fingerprint, origin key, item index), never a database id or an order. The removed records get the rule 'most_influential_paper' in that set only; it differs from the primary set in exactly this one respect (alloys left with one grain size are the fit's own 'not used in this fit', as in every set). Without any slope information nothing is removed. Descriptive only; it never changes the verdict.",
+    "statement": "The sensitivity set displayed \"without the group with the largest share of slope information\" (internal key 'without_most_influential_paper') is the primary set minus every record of the group under the plan's grouping (a paper, a dataset or a batch; the display states which) holding the largest share of slope information, I_g / Σ I_g, with I_g the group's sum of squared within-alloy deviations of the transformed grain size (entry 'effective_papers'), computed on the primary set's records. This is the largest share of within-alloy grain-size contrast, not necessarily the group whose removal changes the slope most: a group with much contrast whose outcomes lie close to the fitted line changes the slope little. The group is chosen by code at Inclusion from grain sizes, alloys and groups only, never from outcome values (Inclusion receives none). Shares within the numerical zero (RELATIVE_ZERO, 1e-10) of the largest are tied; a tie is broken by each tied group's earliest record under the plan's survivor source order, then the lowest row in the source file, then the stable identity (source-version fingerprint, origin key, item index), never a database id or an order. The removed records get the rule 'most_influential_paper' in that set only; it differs from the primary set in exactly this one respect (alloys left with one grain size are the fit's own 'not used in this fit', as in every set). Without any slope information nothing is removed. Descriptive only; it never changes the verdict.",
     "value": {
-      "text": "primary minus the paper with the largest share of slope information",
+      "text": "primary minus the group with the largest share of slope information",
       "unit": null
     },
     "category": "statistical",
     "affects": "One more sensitivity analysis in every run whose plan names it (the default and reference plans). The plan's fingerprint, so the freeze fingerprint and the calibration seeds of every run, change.",
     "reason": "The pooled result's largest paper share (38.7% on the reference data) shows the evidence is concentrated; this set shows the result without that paper.",
     "evidence": [
-      "Owner's decision, 2026-10-06 (step 7b brief); tie-break: step 7b planning, question 3."
+      "Owner's decision, 2026-10-06 (step 7b brief); tie-break: step 7b planning, question 3.",
+      "Second-model review (ChatGPT, 2026-10-06), point 2: docs/reviews/step07b_review_chatgpt.md; the owner's decision of the same day."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -6098,6 +6104,10 @@
         {
           "ref": "python:hypocurate.pipeline.eligibility:INFLUENCE_RULE",
           "equals": "most_influential_paper"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:INFLUENCE_DISPLAY_NAME",
+          "equals": "without the group with the largest share of slope information"
         },
         {
           "ref": "python:hypocurate.pipeline.eligibility:most_influential"
@@ -6128,11 +6138,22 @@
       "tests/test_influential_paper.py::test_the_choice_uses_no_outcome_value",
       "tests/test_influential_paper.py::test_without_any_slope_information_nothing_is_removed",
       "tests/test_reference_sets.py::test_each_sensitivity_set_differs_from_primary_only_by_its_named_change",
-      "tests/test_reference_numbers.py::test_the_set_without_the_most_influential_paper"
+      "tests/test_reference_numbers.py::test_the_set_without_the_most_influential_paper",
+      "tests/test_influential_paper.py::test_the_display_states_whether_the_removed_group_is_a_paper_a_dataset_or_a_batch",
+      "tests/test_controlled_duplicates_handling.py::test_the_set_without_the_largest_share_removes_the_independently_derived_records"
     ],
-    "history": [],
+    "history": [
+      {
+        "value": "The sensitivity set 'without_most_influential_paper' is the primary set minus every record of the paper (the group under the plan's grouping) holding the largest share of slope information, I_g / Σ I_g, with I_g the paper's sum of squared within-alloy deviations of the transformed grain size (entry 'effective_papers'), computed on the primary set's records. The paper is chosen by code at Inclusion from grain sizes, alloys and groups only, never from outcome values (Inclusion receives none). Shares within the numerical zero (RELATIVE_ZERO, 1e-10) of the largest are tied; a tie is broken by each tied paper's earliest record under the plan's survivor source order, then the lowest row in the source file, then the stable identity (source-version fingerprint, origin key, item index), never a database id or an order. The removed records get the rule 'most_influential_paper' in that set only; it differs from the primary set in exactly this one respect (alloys left with one grain size are the fit's own 'not used in this fit', as in every set). Without any slope information nothing is removed. Descriptive only; it never changes the verdict.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Reworded by the owner on the second model's review (2026-10-06): display name, the kind of group, and what the share measures. The internal key and rule are unchanged."
+      }
+    ],
     "notes": [
-      "Like every sensitivity set: descriptive, never changes the verdict, no multiplicity adjustment (entries 'sensitivity_one_change', 'no_multiplicity_adjustment')."
+      "Like every sensitivity set: descriptive, never changes the verdict, no multiplicity adjustment (entries 'sensitivity_one_change', 'no_multiplicity_adjustment').",
+      "On the reference data (approved by the owner, 2026-10-06): the removed group is a paper (DOI 10.1007/s11661-019-05231-y; 8 records, 1 alloy; share 38.7%); 89 records, 22 alloys, 19 informative papers, 66 residual df, k = 393.5 ± 90.5 (one standard error), p ≈ 1.9e-4, effective number 3.24, largest share 52.1%, t df 18.",
+      "Deferred (owner, 2026-10-06, on the second model's review of step 7b; backlog, before the final evaluation): an analysis-specific simulation seed (from a fingerprint of the analysis's own stable records and design, the simulation settings and the calibration method, keeping the run fingerprint for provenance), so that adding an unrelated set does not change other analyses' draws; and about 10,000 simulations (95% Monte Carlo margin about ±0.5 points at an 8% rate, against about ±1.2 with 2,000). Not done now."
     ]
   }
 ]

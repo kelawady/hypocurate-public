@@ -43,9 +43,10 @@ Each record gets one rule code, the first that applies (owner, 2026-10-05):
 **Sensitivity sets** (register 'sensitivity_one_change'): each differs from the primary set in
 exactly one named respect; every other rule applies unchanged. `SENSITIVITY_CHANGES` lists
 the change of each key. The variation each key applies is fixed by the key (its name in the
-vocabulary), not by a number in the plan. The set 'without_most_influential_paper' (step 7b) is the
-primary set minus every record of the paper holding the largest share of slope information
-(`most_influential`); its records get `most_influential_paper` in that set only.
+vocabulary), not by a number in the plan. The set 'without_most_influential_paper' (step 7b; displayed
+"without the group with the largest share of slope information") is the primary set minus every
+record of the group (a paper, a dataset or a batch) holding the largest share of within-alloy
+grain-size contrast (`most_influential`); its records get `most_influential_paper` in that set only.
 """
 from __future__ import annotations
 
@@ -64,6 +65,10 @@ NO_GROUP_RULE = "group_unknown"
 # that set (owner, 2026-10-06; register 'most_influential_paper_set').
 INFLUENCE_KEY = "without_most_influential_paper"
 INFLUENCE_RULE = "most_influential_paper"
+# Its display name (owner, 2026-10-06, on the second model's review): the removed group may be a paper,
+# a dataset or a batch, and its share is of within-alloy grain-size contrast, not necessarily the group
+# whose removal changes the slope most. The internal key and rule keep their names.
+INFLUENCE_DISPLAY_NAME = "without the group with the largest share of slope information"
 # Sprint 1 supports one model (CLAUDE.md rule 6): its outcome is yield strength. Plan validation
 # refuses any other (re-check finding 2b; register 'supported_outcomes').
 SUPPORTED_OUTCOMES = ("yield_strength",)
@@ -134,8 +139,9 @@ SENSITIVITY_CHANGES = {
     "possible_duplicates_separate": "records of unresolved or possible duplicate groups count as separate "
                                     "measurements",
     "conflicts_survivor_value": "conflict groups are counted once by the survivor rule",
-    INFLUENCE_KEY: "the records of the most influential paper (the largest share of slope information, from "
-                   "grain sizes, alloys and groups only) are removed",
+    INFLUENCE_KEY: "the records of the group (a paper, a dataset or a batch, by the plan's grouping) with the largest "
+                   "share of slope information, that is of within-alloy grain-size contrast, from grain sizes, alloys "
+                   "and groups only, are removed; not necessarily the group whose removal changes the slope most",
 }
 
 
@@ -340,9 +346,10 @@ def decide(plan: Mapping[str, Any], records: Iterable[Mapping], flags: Iterable[
 
 
 def most_influential(plan: Mapping[str, Any], records: Mapping[int, Mapping], ids: Iterable[int]) -> dict:
-    """The paper (the group under the primary grouping) holding the largest share of slope
-    information among the primary set's records `ids` (owner, 2026-10-06; register
-    'most_influential_paper_set'). I_g comes from `statistics.slope_information`: grain sizes, alloys
+    """The group under the primary grouping (a paper, a dataset or a batch: `unit`) holding the largest
+    share of slope information, that is of within-alloy grain-size contrast, among the primary set's
+    records `ids`; not necessarily the group whose removal changes the slope most (owner, 2026-10-06;
+    register 'most_influential_paper_set'; displayed as `INFLUENCE_DISPLAY_NAME`). I_g comes from `statistics.slope_information`: grain sizes, alloys
     (the plan's same-alloy rule) and groups only; the records carry no outcome value. Shares within
     `statistics.RELATIVE_ZERO` of the largest are tied; a tie is broken by each tied paper's earliest
     record under (the plan's survivor source order, the lowest row in the source file, the stable
@@ -357,8 +364,8 @@ def most_influential(plan: Mapping[str, Any], records: Mapping[int, Mapping], id
     info = statistics.slope_information(items, plan["variables"]["predictor"]["transformation"])
     total = sum(info.values())
     if not total > 0:
-        return {"group": None, "share": None, "tied": [], "records": [], "n_records": 0, "n_alloys": 0,
-                "reason": "no_slope_information"}
+        return {"group": None, "unit": None, "display": f"{INFLUENCE_DISPLAY_NAME} (no group removed)", "share": None,
+                "tied": [], "records": [], "n_records": 0, "n_alloys": 0, "reason": "no_slope_information"}
     top = max(info.values())
     tied = sorted(g for g, v in info.items() if v >= top - statistics.RELATIVE_ZERO * top)
 
@@ -367,7 +374,9 @@ def most_influential(plan: Mapping[str, Any], records: Mapping[int, Mapping], id
 
     pick = min(tied, key=earliest)
     removed = sorted(r["id"] for r in chosen if group(r, st) == pick)
-    return {"group": pick, "share": info[pick] / total, "tied": tied, "records": removed,
+    unit = pick.split(":", 1)[0]  # 'paper', 'dataset' or 'batch': the group key's prefix (`group_in`)
+    return {"group": pick, "unit": unit, "display": f"{INFLUENCE_DISPLAY_NAME} (the removed group is a {unit})",
+            "share": info[pick] / total, "tied": tied, "records": removed,
             "n_records": len(removed), "n_alloys": len({alloy(records[i], st.decimals) for i in removed}),
             "reason": None}
 

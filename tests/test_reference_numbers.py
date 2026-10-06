@@ -8,7 +8,7 @@ which reads the frozen sets through the Statistics access object:
 | Reference result | Path |
 |---|---|
 | Pooled | reference run (MPEA + Texas A&M, fixed minimums): its pooled analysis |
-| Eight sensitivity sets | the same reference run: each set's sensitivity analysis |
+| Nine sensitivity sets (the ninth approved 2026-10-06) | the same reference run: each set's sensitivity analysis |
 | MPEA alone (1) | the reference run's per-source analysis for MPEA: full numbers, label "agrees"; run level 6 |
 | MPEA alone (2) | a run that chose MPEA only, "use what is available": pooled analysis; it meets every minimum, so full numbers, a verdict, not exploratory; level 6 |
 | MPEA alone (3) | a run that chose MPEA only, fixed minimums: pooled analysis; full numbers, a verdict; level 6 |
@@ -55,6 +55,9 @@ APPROVED = {
     "sensitivity:scope_not_confirmed_included": (103, 23, 22, 79, "432.4", "64.9", "6.7e-7"),
     "sensitivity:possible_duplicates_separate": (97, 22, 20, 74, "424.9", "64.4", "1.3e-6"),
     "sensitivity:conflicts_survivor_value": (97, 22, 20, 74, "424.9", "64.4", "1.3e-6"),
+    # Step 7b: without the group with the largest share of slope information; approved by the owner on
+    # 2026-10-06 as reported (register 'reference_numbers').
+    "sensitivity:without_most_influential_paper": (89, 22, 19, 66, "393.5", "90.5", "1.9e-4"),
 }
 TAMU = (21, 9, 1, 11, "1173.3")  # coefficient only (step 6 table; CLAUDE.md: "≈ 1173")
 
@@ -264,15 +267,12 @@ def test_the_set_without_the_most_influential_paper(runs):
     assert ref["out"]["decision"] == st.decision(pooled, reference_plan(1), ref["out"]["freeze_fingerprint"])
 
 
-# Step 7b values on the reference data, as reported to the owner (2026-10-06); not yet approved as
-# reference numbers. Records, alloys, groups, residual df, k, standard error, p-value (as stated).
-INFLUENCE_REPORTED = (89, 22, 19, 66, "393.5", "90.5", "1.9e-4")
-
-
-def test_the_set_without_the_most_influential_paper_as_reported(runs):
+def test_the_set_without_the_most_influential_paper_as_approved(runs):
+    """Approved by the owner on 2026-10-06, as reported: the counts, k, its standard error and p (in
+    APPROVED, also checked by `test_each_sensitivity_set`), the four quantities and the removed group."""
     ref = runs["reference"]
     got = ref["analyses"][INFLUENCE]
-    check_approved(got, INFLUENCE_REPORTED)
+    check_approved(got, APPROVED[INFLUENCE])
     c = got["counts"]
     assert (c["n_groups_informative"], got["df"]) == (19, 18)
     assert within(c["effective_papers"], "3.24") and within(c["largest_paper_share"], "0.521")

@@ -1,5 +1,8 @@
-"""Step 7b (owner, 2026-10-06): the sensitivity set "without the most influential paper"; register
-'most_influential_paper_set'.
+"""Step 7b (owner, 2026-10-06): the sensitivity set displayed "without the group with the largest share of
+slope information" (internal key 'without_most_influential_paper'); register 'most_influential_paper_set'.
+The removed group may be a paper, a dataset or a batch, and its share is of within-alloy grain-size
+contrast, not necessarily the group whose removal changes the slope most (owner, on the second model's
+review, 2026-10-06).
 
 The set is the primary set minus every record of the paper (the group under the primary grouping)
 that holds the largest share of slope information, I_g = the group's sum of squared within-alloy
@@ -174,7 +177,12 @@ def test_the_choice_uses_no_outcome_value():
 
 def test_the_change_is_named_and_in_the_default_plan():
     assert KEY in PLAN["sensitivity_analyses"] and KEY in el.SENSITIVITY_CHANGES
-    assert "most influential" in el.SENSITIVITY_CHANGES[KEY]
+    # Owner, on the second model's review (2026-10-06): the description names the group, its kinds and what
+    # the share measures.
+    change = el.SENSITIVITY_CHANGES[KEY]
+    assert "largest share of slope information" in change and "a paper, a dataset or a batch" in change
+    assert "within-alloy grain-size contrast" in change and "not necessarily the group whose removal changes the slope most" in change
+    assert el.INFLUENCE_DISPLAY_NAME == "without the group with the largest share of slope information"
     assert not el.needs_own_flags(PLAN, KEY)  # it changes no matching setting: primary's flags apply
 
 
@@ -187,3 +195,22 @@ def test_the_numerical_zero_decides_ties():
     records[1]["values"]["grain_size"] = 41.0
     assert _chosen(records)["tied"] == ["paper:pa"]
     assert math.isclose(st.RELATIVE_ZERO, 1e-10)
+
+
+@pytest.mark.parametrize("source, batch, grouping, unit", [
+    ("mpea", None, None, "paper"),
+    ("tamu_fcc", None, None, "dataset"),
+    ("tamu_fcc", "b1", "batch", "batch"),
+])
+def test_the_display_states_whether_the_removed_group_is_a_paper_a_dataset_or_a_batch(source, batch, grouping, unit):
+    """Owner, 2026-10-06 (second model's review, point 2): the display names the kind of group removed."""
+    plan = copy.deepcopy(PLAN)
+    if grouping:
+        plan["rules"]["grouping"] = [{**g, "unit": grouping} if g["source"] == source else g
+                                     for g in plan["rules"]["grouping"]]
+    doi = source == "mpea"
+    records = [cond(1, source, gs=10.0, doi=doi, batch=batch), cond(2, source, gs=40.0, doi=doi, batch=batch)]
+    chosen = el.most_influential(plan, {r["id"]: r for r in records}, [1, 2])
+    assert chosen["unit"] == unit and chosen["group"].startswith(unit + ":")
+    assert chosen["display"] == f"without the group with the largest share of slope information (the removed group is a {unit})"
+    assert _chosen([cond(1, gs=9.0), cond(2, gs=9.0)])["display"].endswith("(no group removed)")
