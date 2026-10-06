@@ -79,7 +79,10 @@ def test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes():
             ("r6", "C", "p4", 3.0, 300.0)]
     d = st.design(obs(rows), "inverse_square_root")
     assert (d.n, d.n_alloys, d.n_groups, d.n_records_in_set, d.n_alloys_not_used) == (3, 1, 2, 6, 2)
-    assert d.resid_df == 1 and d.coefficient_fitted and d.counts_allow_inference
+    assert d.resid_df == 1 and d.coefficient_fitted
+    # Re-check (owner, 2026-10-06): the two papers carry unequal information (effective number 1.8 < 2),
+    # so check 2 fails on concentrated evidence; the counts below are unaffected.
+    assert not d.counts_allow_inference and d.counts_reason == "evidence_concentrated"
     entry = st.analysis_entry(d, g.plan("use_available", minimums=(3, 1, 2, 1)), withheld=False)
     assert entry["counts"]["n_records_not_used"] == 3
     assert entry["minimums"]["records"] == {"count": 3, "minimum": 3, "met": True}
@@ -93,7 +96,11 @@ def test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes():
     ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p2", 1.0, 2.0)], False, False),              # one grain size
     ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p2", 4.0, 2.0)], True, False),               # resid df 0
     ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p1", 4.0, 2.0), ("c", "A", "p1", 9.0, 3.0)], True, False),  # 1 group
-    ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p2", 4.0, 2.0), ("c", "A", "p1", 9.0, 3.0)], True, True),
+    # Re-check (owner, 2026-10-06): this design's information is concentrated in p1 (effective number
+    # about 1.1), so check 2 now fails; the balanced case after it passes.
+    ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p2", 4.0, 2.0), ("c", "A", "p1", 9.0, 3.0)], True, False),
+    ([("a", "A", "p1", 1.0, 1.0), ("b", "A", "p1", 4.0, 2.0), ("c", "A", "p2", 1.0, 1.5), ("d", "A", "p2", 4.0, 2.9)],
+     True, True),
 ])
 def test_the_two_validity_checks(rows, check1, check2):
     d = st.design(obs(rows), "inverse_square_root")

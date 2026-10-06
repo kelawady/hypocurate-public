@@ -21,10 +21,15 @@ the records the fit uses** (owner, 2026-10-05).
 **Informative papers** (owner, 2026-10-06; register 'informative_groups'): a group is informative
 when at least one of its records differs from its alloy's average transformed grain size by more
 than the numerical zero, so that the group helps estimate the slope. Uninformative groups stay in
-the fit and are listed, but are not counted for the paper minimum, for validity check 2, for the standard error's
-small-sample factor or for the t distribution's degrees of freedom (owner, 2026-10-06; register
-'informative_groups_in_inference'; CLAUDE.md rule 6). The clustered covariance sums the scores of
-informative groups only (an uninformative group's score is zero up to rounding).
+the fit and are listed, but are not counted for the paper minimum, for validity check 2's group count, for the standard
+error's small-sample factor or for the t distribution's degrees of freedom (owner, 2026-10-06;
+register 'informative_groups_in_inference'; CLAUDE.md rule 6). The clustered covariance sums
+**every** group's score (re-check finding 2: a small contrast times a large residual can matter).
+
+**Effective number of papers** (owner, 2026-10-06; register 'effective_papers'): with I_g a group's
+sum of squared within-alloy deviations of the transformed grain size, (Σ I_g)² / Σ I_g², and the
+largest single group's share max I_g / Σ I_g, stored with every result. Validity check 2 needs at
+least `MIN_EFFECTIVE_PAPERS` (2); below it the coefficient alone, reason 'evidence_concentrated'.
 
 **The two validity checks** can never be waived (CLAUDE.md rule 5): (1) a coefficient can be fitted
 when at least one alloy has two distinct grain sizes; (2) inference is valid with at least 1
@@ -32,11 +37,15 @@ residual degree of freedom (records - alloys - 1), at least 2 informative groups
 standard error that is finite and above the scale-aware numerical zero (review finding 1). Check 1
 only: the coefficient alone, no uncertainty, no p-value, no verdict, with the reason.
 
-**Numerical zero** (`RELATIVE_ZERO`, register 'numerical_zero'): a quantity counts as zero when it is
-at most `RELATIVE_ZERO` times its natural scale in the same units: a predictor contrast against the
-largest transformed grain size; a standard error against sqrt(Σ ỹ² / Σ x̃²), the slope scale of the
-data. Rounding residue is about 1e-16 of the scale; any real measurement scatter is many orders above
-1e-10.
+**Numerical zero** (`RELATIVE_ZERO`, `ARITHMETIC_ZERO`, register 'numerical_zero'): an arithmetic
+safeguard, not a scientific minimum. A predictor range counts as zero when it is at most
+`RELATIVE_ZERO` (1e-10) times the largest transformed grain size. Residuals count as zero (a perfect
+fit, so no uncertainty and no scatter can be estimated) when their root mean square is at most the
+larger of `RELATIVE_ZERO` times the outcome's spread within alloys and `ARITHMETIC_ZERO` (1e-12) times
+the largest outcome magnitude (re-check finding 5: rounding comes from the baselines too). A standard
+error must also exceed `RELATIVE_ZERO` × sqrt(Σ ỹ² / Σ x̃²). Within-alloy centring subtracts each
+alloy's first value before taking the mean (stable centring). Rounding residue is about 1e-16 of these
+scales; real measurement scatter is many orders above them.
 
 **Below the minimums under the fixed option** (owner, 2026-10-05, decision 1): when the pooled fit
 misses any minimum, every analysis of the run is withheld: counts against each minimum, which were
@@ -62,6 +71,10 @@ from scipy import stats
 MODEL_MIN_GRAIN_SIZES = 2
 # A quantity at most this fraction of its natural scale is numerically zero (register 'numerical_zero').
 RELATIVE_ZERO = 1e-10
+# Residuals at most this fraction of the largest outcome magnitude are rounding (register 'numerical_zero').
+ARITHMETIC_ZERO = 1e-12
+# Validity check 2: the effective number of papers at least this (owner, 2026-10-06; register 'effective_papers').
+MIN_EFFECTIVE_PAPERS = 2.0
 # The predictor's transformation, by the locked plan's code (register
 # 'grain_size_transformation_at_analysis').
 TRANSFORMATIONS = MappingProxyType({"inverse_square_root": lambda d: d ** -0.5})
@@ -78,12 +91,14 @@ OUTCOME_WORDING = MappingProxyType({
 BELOW_MINIMUMS_LABEL = "data found; not enough to test"
 EXPLORATORY_LABEL = "exploratory"
 POWER_LABEL = "estimated power under the stated assumptions"
-DETECTION_NOTE = ("detection rates of the nominal 5% test under the stated assumptions (fixed and estimated noise), "
-                  "with its false-positive shares under the same assumptions; not power for a test shown to keep "
-                  "false positives at 5%")
+def detection_note(alpha: float) -> str:
+    """The detection note with the plan's locked threshold (re-check, smaller point)."""
+    return (f"detection rates of the nominal α = {alpha:g} test (the plan's locked threshold) under the stated "
+            f"assumptions (fixed and estimated noise), with its false-positive shares under the same assumptions; "
+            f"not power for a test shown to keep false positives at α = {alpha:g}")
 
 # Why validity check 2 failed (stored with the result; migration 0004).
-INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "uncertainty_not_estimable")
+INFERENCE_REASONS = ("coefficient_not_fitted", "insufficient_groups", "evidence_concentrated", "uncertainty_not_estimable")
 
 # The evidence level (owner, 2026-10-05; register 'evidence_level_scale'): descriptive only, derived
 # by `evidence_level` from the result state, never by an agent; it never affects the outcome or the
@@ -132,6 +147,8 @@ class Design:
     n_groups_informative: int = 0
     uninformative_groups: tuple = ()
     group_informative: np.ndarray = None  # per group index: does the group count (informative)?
+    effective_papers: float = 0.0  # (Σ I_g)² / Σ I_g²; 0 without a coefficient
+    largest_paper_share: float | None = None  # max I_g / Σ I_g
 
     @property
     def n(self) -> int:
@@ -147,9 +164,19 @@ class Design:
 
     @property
     def counts_allow_inference(self) -> bool:
-        """Validity check 2's counts: a residual degree of freedom and two informative groups. The
-        standard error must also be estimable (`fit`)."""
-        return self.coefficient_fitted and self.resid_df >= 1 and self.n_groups_informative >= 2
+        """Validity check 2's structure: a residual degree of freedom, two informative groups and an
+        effective number of papers of at least two. The standard error must also be estimable (`fit`)."""
+        return self.counts_reason is None
+
+    @property
+    def counts_reason(self) -> str | None:
+        if not self.coefficient_fitted:
+            return "coefficient_not_fitted"
+        if not (self.resid_df >= 1 and self.n_groups_informative >= 2):
+            return "insufficient_groups"
+        if not self.effective_papers >= MIN_EFFECTIVE_PAPERS:
+            return "evidence_concentrated"
+        return None
 
 
 def design(observations: Iterable[Observation], transformation: str) -> Design:
@@ -163,7 +190,7 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
         if not (math.isfinite(o.grain_size) and o.grain_size > 0 and math.isfinite(o.outcome)):
             raise StatisticsError("a record in a frozen set has no finite positive grain size or finite outcome")
         values.setdefault(o.alloy, []).append(transform(o.grain_size))
-    used_alloys = sorted(a for a, v in values.items() if distinct_values(v) >= MODEL_MIN_GRAIN_SIZES)
+    used_alloys = sorted(a for a, v in values.items() if has_contrast(v))  # MODEL_MIN_GRAIN_SIZES = 2
     keep = set(used_alloys)
     used = [o for o in obs if o.alloy in keep]
     groups = sorted({o.group for o in used})
@@ -172,34 +199,55 @@ def design(observations: Iterable[Observation], transformation: str) -> Design:
     x = np.array([transform(o.grain_size) for o in used], dtype=float)
     alloy = np.array([alloy_index[o.alloy] for o in used], dtype=int)
     informative: set = set()
+    effective, largest = 0.0, None
     if used:
-        contrast = np.abs(demeaned(x, alloy, len(used_alloys)))
+        deviation = demeaned(x, alloy, len(used_alloys))
+        contrast = np.abs(deviation)
         informative = {o.group for o, c in zip(used, contrast) if c > RELATIVE_ZERO * float(np.abs(x).max())}
+        info = np.bincount(np.array([group_index[o.group] for o in used]), deviation ** 2, len(groups))
+        total = float(info.sum())
+        if total > 0:
+            effective, largest = total ** 2 / float(info @ info), float(info.max()) / total
     return Design(
         x=x, y=np.array([o.outcome for o in used], dtype=float), alloy=alloy,
         group=np.array([group_index[o.group] for o in used], dtype=int),
         n_alloys=len(used_alloys), n_groups=len(groups), n_records_in_set=len(obs),
         n_alloys_not_used=len(values) - len(used_alloys), n_groups_informative=len(informative),
         uninformative_groups=tuple(g for g in groups if g not in informative),
-        group_informative=np.array([g in informative for g in groups], dtype=bool))
+        group_informative=np.array([g in informative for g in groups], dtype=bool),
+        effective_papers=effective, largest_paper_share=largest)
 
 
-def distinct_values(values: list) -> int:
-    """How many values differ from each other by more than the numerical zero (relative to the
-    largest): numerical distinctness of transformed grain sizes (review finding 3)."""
-    ordered = sorted(values)
-    tolerance = RELATIVE_ZERO * max(abs(v) for v in ordered)
-    return 1 + sum(1 for a, b in zip(ordered, ordered[1:]) if b - a > tolerance)
+def has_contrast(values: list) -> bool:
+    """At least two distinct transformed grain sizes: the full range exceeds the numerical zero
+    (relative to the largest value). Adding a value can never remove a contrast (re-check finding 4)."""
+    return max(values) - min(values) > RELATIVE_ZERO * max(abs(v) for v in values)
 
 
 def demeaned(values: np.ndarray, alloy: np.ndarray, n_alloys: int) -> np.ndarray:
-    """Each value minus its alloy's mean (works on the last axis, for one or many outcome rows)."""
+    """Each value minus its alloy's mean (works on the last axis, for one or many outcome rows).
+    Stable centring (re-check finding 5): each alloy's first value is subtracted before the mean is
+    taken, so large baselines do not swamp the within-alloy differences."""
     counts = np.bincount(alloy, minlength=n_alloys).astype(float)
+    first = np.full(n_alloys, -1)
+    for i in range(alloy.size - 1, -1, -1):
+        first[alloy[i]] = i
     if values.ndim == 1:
-        return values - (np.bincount(alloy, values, n_alloys) / counts)[alloy]
+        shifted = values - values[first][alloy]
+        return shifted - (np.bincount(alloy, shifted, n_alloys) / counts)[alloy]
+    shifted = values - values[:, first][:, alloy]
     indicator = np.zeros((alloy.size, n_alloys))
     indicator[np.arange(alloy.size), alloy] = 1.0
-    return values - ((values @ indicator) / counts)[:, alloy]
+    return shifted - ((shifted @ indicator) / counts)[:, alloy]
+
+
+def residuals_numerically_zero(residuals: np.ndarray, centred: np.ndarray, raw: np.ndarray) -> np.ndarray:
+    """Per row (last axis): are the residuals rounding residue? Their root mean square at most the
+    larger of RELATIVE_ZERO × the centred outcome's root mean square and ARITHMETIC_ZERO × the largest
+    raw outcome magnitude (register 'numerical_zero')."""
+    rms = lambda v: np.sqrt(np.mean(v ** 2, axis=-1))  # noqa: E731
+    floor = np.maximum(RELATIVE_ZERO * rms(centred), ARITHMETIC_ZERO * np.max(np.abs(raw), axis=-1))
+    return rms(residuals) <= floor
 
 
 def small_sample_factor(n: int, n_alloys: int, n_groups: int) -> float:
@@ -238,10 +286,12 @@ def fit(d: Design) -> Fit | None:
     if not math.isfinite(k):
         raise StatisticsError("the coefficient is not finite")
     if not d.counts_allow_inference:
-        return Fit(k, None, None, None, None, "insufficient_groups")
+        return Fit(k, None, None, None, None, d.counts_reason)
     e = yd - k * xd
-    # Informative groups only (owner, 2026-10-06): their scores, their count in the factor and the df.
-    scores = np.bincount(d.group, xd * e, d.n_groups)[d.group_informative]
+    if bool(residuals_numerically_zero(e, yd, d.y)):
+        return Fit(k, None, None, None, None, "uncertainty_not_estimable")
+    # Every group's score in the sum (re-check finding 2); informative groups in the factor and the df.
+    scores = np.bincount(d.group, xd * e, d.n_groups)
     variance = float(scores @ scores) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
     se = math.sqrt(variance) if math.isfinite(variance) and variance >= 0 else math.nan
     if not (math.isfinite(se) and se > RELATIVE_ZERO * math.sqrt(float(yd @ yd) / sxx)):
@@ -329,13 +379,13 @@ def decision(pooled: Mapping | None, plan: Mapping, freeze_fingerprint: str | No
 def analysis_entry(d: Design, plan: Mapping, withheld: bool) -> dict:
     """One analysis: counts, checks, minimums, and (unless withheld) the numbers from outcomes."""
     m = minimums(d, plan["sufficiency"])
-    counts_reason = None if d.counts_allow_inference else \
-        "coefficient_not_fitted" if not d.coefficient_fitted else "insufficient_groups"
+    counts_reason = d.counts_reason
     entry = {
         "counts": {"n_records_in_set": d.n_records_in_set, "n_records": d.n,
                    "n_records_not_used": d.n_records_in_set - d.n, "n_alloys": d.n_alloys,
                    "n_alloys_not_used": d.n_alloys_not_used, "n_groups": d.n_groups,
-                   "n_groups_informative": d.n_groups_informative, "resid_df": d.resid_df},
+                   "n_groups_informative": d.n_groups_informative, "resid_df": d.resid_df,
+                   "effective_papers": d.effective_papers, "largest_paper_share": d.largest_paper_share},
         "uninformative_groups": list(d.uninformative_groups),
         # Withheld: judged on the counts only (no outcome is used, so no standard error is computed).
         "checks": {"coefficient_fitted": d.coefficient_fitted, "inference_valid": d.counts_allow_inference},

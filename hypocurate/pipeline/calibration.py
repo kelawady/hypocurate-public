@@ -62,7 +62,8 @@ from typing import Mapping
 import numpy as np
 from scipy import stats
 
-from hypocurate.pipeline.statistics import RELATIVE_ZERO, Design, demeaned, small_sample_factor
+from hypocurate.pipeline.statistics import (ARITHMETIC_ZERO, RELATIVE_ZERO, Design, demeaned,
+                                            residuals_numerically_zero, small_sample_factor)
 
 CONFIDENCE = 0.95
 FLAG_WORDING = {
@@ -114,13 +115,14 @@ def significant_count(d: Design, outcomes: np.ndarray, alpha: float) -> int:
     e = yd - k[:, None] * xd[None, :]
     groups = np.zeros((d.n, d.n_groups))
     groups[np.arange(d.n), d.group] = 1.0
-    # Informative groups only, as in the real fit (owner, 2026-10-06).
-    scores = ((e * xd[None, :]) @ groups)[:, d.group_informative]
+    # Every group's score, informative groups in the factor and the df, as in the real fit.
+    scores = (e * xd[None, :]) @ groups
     variance = (scores ** 2).sum(axis=1) / sxx ** 2 * small_sample_factor(d.n, d.n_alloys, d.n_groups_informative)
     with np.errstate(divide="ignore", invalid="ignore"):
         se = np.sqrt(variance)
         scale = np.sqrt((yd ** 2).sum(axis=1) / sxx)
-        valid = np.isfinite(se) & np.isfinite(k) & (se > RELATIVE_ZERO * scale)
+        valid = (np.isfinite(se) & np.isfinite(k) & (se > RELATIVE_ZERO * scale)
+                 & ~residuals_numerically_zero(e, yd, outcomes))
         t = np.where(valid, k / np.where(valid, se, 1.0), 0.0)
     p = stats.t.sf(t, d.n_groups_informative - 1)
     return int(np.count_nonzero(valid & (p < alpha)))
@@ -158,8 +160,14 @@ def henderson_iii(d: Design) -> dict:
     groups[np.arange(n), d.group] = 1.0
     reduced = np.column_stack([alloys, d.x])
     full = np.column_stack([alloys, groups, d.x])
-    rss_r, rank_r = _rss_and_rank(reduced, d.y)
-    rss_f, rank_f = _rss_and_rank(full, d.y)
+    # Stable centring: both models have alloy intercepts, so subtracting each alloy's first value
+    # changes no residual and keeps large baselines out of the least squares.
+    first = {}
+    for i, a in enumerate(d.alloy):
+        first.setdefault(int(a), d.y[i])
+    y = d.y - np.array([first[int(a)] for a in d.alloy])
+    rss_r, rank_r = _rss_and_rank(reduced, y)
+    rss_f, rank_f = _rss_and_rank(full, y)
     q, _ = np.linalg.qr(reduced)
     residual_groups = groups - q @ (q.T @ groups)
     trace = float((residual_groups ** 2).sum())
@@ -167,9 +175,10 @@ def henderson_iii(d: Design) -> dict:
     tss_within = float(within @ within)
     out = {"estimation": "henderson_iii", "rss_reduced": rss_r, "rank_reduced": rank_r, "rss_full": rss_f,
            "rank_full": rank_f, "trace": trace, "n_records": n, "tss_within_alloys": tss_within}
-    # Review finding 4: a residual at most the numerical zero of the outcome's within-alloy spread is
-    # rounding residue (a perfect fit), not scatter.
-    if n <= rank_f or not (math.isfinite(rss_f) and rss_f > (RELATIVE_ZERO ** 2) * tss_within):
+    # Review finding 4 and re-check finding 5: residuals at most the numerical zero (of the outcome's
+    # within-alloy spread, or of the largest outcome magnitude) are rounding residue, not scatter.
+    floor = max((RELATIVE_ZERO ** 2) * tss_within, n * (ARITHMETIC_ZERO * float(np.abs(d.y).max())) ** 2)
+    if n <= rank_f or not (math.isfinite(rss_f) and rss_f > floor):
         return {**out, "reason": "scatter_not_estimable"}
     scatter_sq = rss_f / (n - rank_f)
     out["scatter_squared"] = scatter_sq

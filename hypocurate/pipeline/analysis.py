@@ -132,7 +132,7 @@ def analyse(plan: Mapping, data: Mapping) -> dict:
         # even below the minimums (owner, decision 5).
         fixed = cal.calibrate(d, plan["calibration"], alpha, fp, entry["analysis"], "fixed")
         entry["estimated_power"], entry["power_label"] = fixed["effect"]["share"], st.POWER_LABEL
-        entry["detection_note"] = st.DETECTION_NOTE
+        entry["detection_note"] = st.detection_note(alpha)
         if withheld:
             entry["calibration"] = {"fixed": _unavailable("below_minimums"),
                                     "estimated": _unavailable("below_minimums")}
@@ -190,8 +190,8 @@ _RESULT = text(
     "INSERT INTO analysis_result (run_id, scope, analysis_set_id, source_id, n_records, n_alloys, n_groups, resid_df, "
     "check1_passed, check2_passed, minimums_met, estimate, std_error, p_value, estimated_power, label, withheld, "
     "n_records_not_used, test_run_label, n_groups_informative, inference_reason, label_reason, "
-    "estimated_power_estimated_noise) VALUES (:r, :scope, :set, :src, :n, :a, :g, :df, :c1, :c2, :mm, :est, :se, "
-    ":p, :pw, :lab, :wh, :nu, :tl, :gi, :ir, :lr, :pe) RETURNING id")
+    "estimated_power_estimated_noise, effective_papers, largest_paper_share) VALUES (:r, :scope, :set, :src, :n, :a, "
+    ":g, :df, :c1, :c2, :mm, :est, :se, :p, :pw, :lab, :wh, :nu, :tl, :gi, :ir, :lr, :pe, :ep, :ls) RETURNING id")
 _CALIBRATION = text(
     "INSERT INTO calibration_result (run_id, analysis_result_id, method, status, reason, assumptions, n_simulations, "
     "seed, null_share, null_ci_low, null_ci_high, effect_share, effect_ci_low, effect_ci_high, confidence_flag, "
@@ -255,7 +255,8 @@ def run_statistics(engine: Engine, run_id: int) -> dict:
                 c1=e["checks"]["coefficient_fitted"], c2=e["checks"]["inference_valid"], mm=e["minimums_met"],
                 est=e["estimate"], se=e["std_error"], p=e["p_value"], pw=e["estimated_power"], lab=e["label"],
                 wh=e["withheld"], nu=c["n_records_not_used"], tl=label, gi=c["n_groups_informative"],
-                ir=e["inference_reason"], lr=e["label_reason"], pe=e["estimated_power_estimated_noise"])).scalar_one()
+                ir=e["inference_reason"], lr=e["label_reason"], pe=e["estimated_power_estimated_noise"],
+                ep=c["effective_papers"] if c["n_alloys"] else None, ls=c["largest_paper_share"])).scalar_one()
             for method in ("fixed", "estimated"):
                 conn.execute(_CALIBRATION, _calibration_row(run_id, rid, method, e["calibration"][method], label))
         output = {**record, "test_run_label": label}

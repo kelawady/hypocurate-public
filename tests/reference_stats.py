@@ -84,27 +84,47 @@ def informative_groups(rows, relative_zero=1e-10) -> set:
     return set(f.loc[contrast > relative_zero * f["x"].abs().max(), "group"])
 
 
-def fit_informative(rows) -> dict:
-    """The owner's rule of 2026-10-06 computed independently with an explicit sandwich (numpy, dummy
-    variables, no statsmodels): the clustered covariance sums the scores of informative groups only, the
-    small-sample factor is G/(G-1) × (N-1)/(N-K) with G the informative groups, and the one-sided p-value
-    uses t with G - 1 degrees of freedom."""
+def fit_informative(rows, count: str = "informative") -> dict:
+    """The owner's rule (2026-10-06, as corrected after the re-check), computed independently in
+    60-digit decimal arithmetic (Python's `decimal`), so floating-point conditioning cannot affect it:
+    within-alloy centring, k = Σ x̃ỹ / Σ x̃², residuals e = ỹ - k x̃, the clustered variance summing
+    **every** paper's score (no filtering), the factor G/(G-1) × (N-1)/(N-K) and a one-sided t test
+    with G - 1 degrees of freedom, where G is the informative papers (`count="informative"`) or every
+    paper (`count="all"`, the earlier definition). It shares no code with the package."""
+    from decimal import Decimal, localcontext
     f = frame(rows)
-    informative = informative_groups(rows)
-    alloys = sorted(f["alloy"].unique())
-    x = np.column_stack([f["x"].to_numpy()] + [(f["alloy"] == a).to_numpy(dtype=float) for a in alloys])
-    y = f["y"].to_numpy()
-    bread = np.linalg.inv(x.T @ x)
-    beta = bread @ x.T @ y
-    e = y - x @ beta
-    meat = np.zeros((x.shape[1], x.shape[1]))
-    for g in informative:
-        rows_g = (f["group"] == g).to_numpy()
-        s = x[rows_g].T @ e[rows_g]
-        meat += np.outer(s, s)
-    n, k_params, g_inf = len(f), x.shape[1], len(informative)
-    factor = (g_inf / (g_inf - 1)) * ((n - 1) / (n - k_params))
-    se = float(np.sqrt((bread @ meat @ bread)[0, 0] * factor))
-    k = float(beta[0])
-    return {"k": k, "se": se, "p": float(stats.t.sf(k / se, g_inf - 1)), "groups_informative": g_inf,
-            "groups": f["group"].nunique()}
+    groups_inf = informative_groups(rows)
+    with localcontext() as ctx:
+        ctx.prec = 60
+        x = [Decimal(v) for v in f["x"]]
+        y = [Decimal(v) for v in f["y"]]
+        alloys, groups = list(f["alloy"]), list(f["group"])
+        mean_x, mean_y = {}, {}
+        for a in set(alloys):
+            idx = [i for i, b in enumerate(alloys) if b == a]
+            mean_x[a] = sum(x[i] for i in idx) / len(idx)
+            mean_y[a] = sum(y[i] for i in idx) / len(idx)
+        xt = [x[i] - mean_x[alloys[i]] for i in range(len(x))]
+        yt = [y[i] - mean_y[alloys[i]] for i in range(len(y))]
+        sxx = sum(v * v for v in xt)
+        k = sum(a * b for a, b in zip(xt, yt)) / sxx
+        e = [yt[i] - k * xt[i] for i in range(len(x))]
+        scores = {}
+        for i, g in enumerate(groups):
+            scores[g] = scores.get(g, Decimal(0)) + xt[i] * e[i]
+        n, k_params = len(x), len(set(alloys)) + 1
+        g_count = len(groups_inf) if count == "informative" else len(set(groups))
+        factor = (Decimal(g_count) / (g_count - 1)) * (Decimal(n - 1) / (n - k_params))
+        variance = sum(s * s for s in scores.values()) / (sxx * sxx) * factor
+        se = float(variance.sqrt())
+    return {"k": float(k), "se": se, "p": float(stats.t.sf(float(k) / se, g_count - 1)), "df": g_count - 1,
+            "groups_informative": len(groups_inf), "groups": len(set(groups))}
+
+
+def effective_papers(rows) -> tuple:
+    """Test-side: (Σ I_g)² / Σ I_g² and max I_g / Σ I_g, I_g a paper's sum of squared within-alloy
+    deviations of the transformed grain size."""
+    f = frame(rows)
+    dev = f["x"] - f.groupby("alloy")["x"].transform("mean")
+    info = (dev ** 2).groupby(f["group"]).sum()
+    return float(info.sum() ** 2 / (info ** 2).sum()), float(info.max() / info.sum())
