@@ -33,11 +33,11 @@ OWNER = "owner (Khalid El-Awady)"
 OWNER_DECISIONS = {
     "tamu_test_temperature": ("scientific", "yes", None),
     "permitted_test_types": ("scientific", "yes", None),
-    "tamu_grouping_unit": ("statistical", "partly", 7),  # the adapter's unit and the plan's grouping; inference
+    "tamu_grouping_unit": ("statistical", "yes", None),  # step 7: the groups used in inference
     "same_alloy_rule": ("scientific", "yes", None),
-    "fixed_minimums": ("statistical", "partly", 7),  # plan default and freeze counts; the check deciding outcomes
+    "fixed_minimums": ("statistical", "yes", None),  # step 7: the check deciding the outcome
     "values_disagree_tolerance": ("data_handling", "yes", None),
-    "calibration_noise_levels": ("statistical", "not_yet", 7),
+    "calibration_noise_levels": ("statistical", "yes", None),  # step 7: built, its review pending
     "tag_starting_lists": ("data_handling", "yes", None),
 }
 
@@ -57,9 +57,10 @@ def test_every_category_has_entries_and_keys_are_unique():
 
 # Step 6 completed same_alloy_rule, sufficiency_options, controlled_extract_disabled and
 # assigned_value_statuses, and added constructed_test_runs (its label and exclusion: steps 7, 10).
-PARTLY = {"tamu_grouping_unit", "papers_independent", "validity_checks", "fixed_minimums",
-          "grain_size_transformation_at_analysis", "constructed_test_runs",
-          "reference_numbers"}  # owner, 2026-10-06: coefficients reproduced by the statistics module in step 7
+# Step 7 completed tamu_grouping_unit, papers_independent, validity_checks, fixed_minimums,
+# grain_size_transformation_at_analysis and reference_numbers; records_without_group is open, with
+# the code failing closed until the owner decides.
+PARTLY = {"constructed_test_runs", "records_without_group"}
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -87,10 +88,14 @@ def test_decisions_carry_the_owners_wording():
     assert "min(|a|, |b|)" in BY_KEY["values_disagree_tolerance"]["statement"]
     assert "conflict_pairing_rule" in " ".join(BY_KEY["values_disagree_tolerance"]["notes"])
     calibration = BY_KEY["calibration_noise_levels"]
-    assert "fixed at the rules lock and applied by code" in calibration["statement"]
-    assert "no person or agent chooses the values" in calibration["statement"]
+    # Step 7 (owner, 2026-10-05): reported both ways; the estimation method stated exactly.
+    assert "Henderson's method III" in calibration["statement"] and "fixed at the rules lock" in calibration["statement"]
+    assert "No person or agent chooses a value" in calibration["statement"]
     notes = " ".join(calibration["notes"])
-    assert "PRD 5.10" in notes and "second-model review in step 7" in notes and "both ways" in notes
+    assert "PRD 5.10" in notes and "second-model review" in notes
+    assert "fixed at the rules lock and applied by code" in calibration["history"][-1]["value"]
+    assert "both ways" in calibration["history"][-1]["note"]
+    assert "Both are stored" in BY_KEY["calibration_both_ways"]["statement"]
     assert BY_KEY["p_threshold_comparison"]["value"]["text"] == "p < α (α = 0.05 by default)"
 
 
@@ -116,11 +121,14 @@ def test_the_survivor_rule_has_the_owners_step_1_wording():
 def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review():
     """Finding 4. The pairing rule was the open entry; the owner decided it on 2026-10-05 (step 5)
     and added the possible-duplicate case and the rule for several candidates in step 6 planning.
-    Step 6 recorded two new open decisions for the owner (steps 7 and 8)."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["below_minimum_display", "curator_tabular_sources"]
+    Step 6 recorded two new open decisions for the owner (steps 7 and 8). Step 7: the owner decided
+    the first; a new one (records without a group) is open before step 8."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["curator_tabular_sources", "records_without_group"]
     assert {e["key"]: e["pending"]["before_step"] for e in REGISTER if e["state"] == "open"} == {
-        "below_minimum_display": 7, "curator_tabular_sources": 8}
-    assert "not even a coefficient" in " ".join(BY_KEY["below_minimum_display"]["notes"])
+        "curator_tabular_sources": 8, "records_without_group": 8}
+    below = BY_KEY["below_minimum_display"]
+    assert below["state"] == "in_force" and below["decided"] == {"by": OWNER, "date": "2026-10-05"}
+    assert "not even a coefficient" in " ".join(below["notes"]) and below["history"][-1]["value"].startswith("open")
     pairing = BY_KEY["conflict_pairing_rule"]
     assert pairing["state"] == "in_force" and "pending" not in pairing
     assert pairing["decided"] == {"by": OWNER, "date": "2026-10-05"}
@@ -139,7 +147,7 @@ def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review
         "same paper with the same alloy, grain size and test conditions. Rows within one source are always "
         "separate measurements (repeat specimens).")
     assert [e["key"] for e in REGISTER if e["state"] == "direction_approved"] == ["calibration_noise_levels"]
-    assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 7}
+    assert BY_KEY["calibration_noise_levels"]["pending"] == {"by": "second-model technical review", "before_step": 8}
 
 
 REVIEW_ADDITIONS = {
@@ -245,7 +253,8 @@ def test_the_approved_reference_numbers_keep_the_earlier_values_in_their_history
     assert e["decided"] == {"by": OWNER, "date": "2026-10-06"} and e["state"] == "in_force"
     assert "k = 424.9 ± 64.4" in e["statement"] and "k = 424.1 ± 62.2" in e["statement"]
     assert "must reproduce them independently" in e["statement"]
-    assert e["applied"]["status"] == "partly" and e["applied"]["step"] == 7
+    # Step 7: reproduced by the statistics module (tests/test_reference_numbers.py).
+    assert e["applied"]["status"] == "yes" and "tests/test_reference_numbers.py::test_pooled" in e["tests"]
     assert "k = 428 ± 64" in e["history"][0]["value"] and "77 records" in e["history"][0]["value"]
     assert "database rule" in " ".join(BY_KEY["constructed_test_runs"]["notes"])
 
@@ -453,14 +462,14 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
     assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["below_minimum_display", "curator_tabular_sources",
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["curator_tabular_sources", "records_without_group",
                                                              "an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert "Not decided (owner, before step 7)" in first and "Not decided (owner, before step 8)" in first
+    assert first.count("Not decided (owner, before step 8)") == 2
     assert "3 open decisions</strong>" in html
     second = re.split(r"<h2>", html)[2]
     assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
-    assert "pending: second-model technical review, before step 7" in second
+    assert "pending: second-model technical review, before step 8" in second
 
 
 def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
@@ -515,7 +524,7 @@ def test_each_row_expands_to_reason_evidence_history_and_sensitivity():
         assert str(escape(text)) in body, text
     applied = re.search(r'<tbody id="session_length"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>python:hypocurate.web.app:SESSION_MAX_AGE</code>" in applied
-    assert "Not yet: step 7" in re.search(r'<tbody id="exponent_fixed"(.*?)</tbody>', html, re.S).group(1)
+    assert "Not yet: step 9" in re.search(r'<tbody id="spending_caps"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>tests/test_login.py::test_session_expires_after_max_age</code>" in applied
     assert "Named settings (reference and value checks only)" in applied
 

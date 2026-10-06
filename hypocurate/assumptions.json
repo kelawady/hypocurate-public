@@ -137,7 +137,7 @@
     },
     "sensitivity": "Six batches as six groups.",
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.grouping_unit",
@@ -148,9 +148,6 @@
           "equals": "dataset"
         }
       ],
-      "done": "The adapter gives every record one group (the dataset) and refuses any other grouping unit; the plan states the grouping per source, and the sensitivity set 'six_batches_as_groups' groups the Texas A&M records by batch (step 6).",
-      "pending": "Using the groups in inference (step 7).",
-      "step": 7,
       "note": null
     },
     "history": [
@@ -169,6 +166,8 @@
       "tests/test_adapter_tamu.py::test_the_batch_grouping_unit_is_refused_until_the_owner_decides",
       "tests/test_checkpoints.py::test_the_lock_refuses_settings_that_leave_out_a_chosen_source",
       "tests/test_eligibility.py::test_grouping_is_read_from_the_locked_plan",
+      "tests/test_reference_numbers.py::test_each_sensitivity_set",
+      "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run",
       "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
     ]
   },
@@ -259,7 +258,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.profile:FIXED_MINIMUMS",
@@ -272,11 +271,11 @@
         },
         {
           "ref": "sql:hc_run_update"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:minimums"
         }
       ],
-      "done": "The four minimums are each plan's default (step 6); the database checks that 'minimums met' agrees with them; the freeze records the counts and whether they are met, as information.",
-      "pending": "The fixed-minimum check that decides the outcome, computed by code (step 7).",
-      "step": 7,
       "note": null
     },
     "history": [
@@ -287,13 +286,17 @@
         "note": "PRD 5.8."
       }
     ],
-    "notes": [],
+    "notes": [
+      "Step 7 (owner, 2026-10-05): the minimums are counted on the records a fit actually uses, not on the whole frozen set."
+    ],
     "tests": [
+      "tests/test_analysis_stage.py::test_below_the_minimums_every_analysis_holds_counts_and_records_only",
       "tests/test_data_model.py::test_fixed_minimum_sufficient_needs_the_minimums_met",
       "tests/test_data_model.py::test_minimums_met_must_agree_with_the_plan",
       "tests/test_eligibility.py::test_counts_known_at_the_freeze",
       "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions",
-      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze",
+      "tests/test_statistics.py::test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes"
     ]
   },
   {
@@ -441,10 +444,10 @@
     "key": "calibration_noise_levels",
     "name": "Calibration assumptions",
     "state": "direction_approved",
-    "statement": "The scatter per record and the shift per paper used in the calibration simulation are estimated by code from the frozen dataset's residuals after the dataset freeze. The estimation method is fixed at the rules lock and applied by code; no person or agent chooses the values. The smallest effect that matters is a query setting.",
+    "statement": "For the 'estimated' calibration, the scatter per record (σe) and the shift per group (σu) are estimated by code from each analysis's frozen records with Henderson's method III, fixed at the rules lock: fit the locked model (RSS_R, rank r_R) and the same model with one intercept per group (RSS_F, rank r_F); σe² = RSS_F / (N - r_F); σu² = max(0, (RSS_R - RSS_F - (r_F - r_R) σe²) / tr(Z'M_R Z)). A negative estimate set to zero is recorded with its value before truncation. Not estimable (N <= r_F, RSS_F zero, or the trace zero): the estimated calibration of that analysis is 'unavailable' with the reason, and the fixed one is still reported. No person or agent chooses a value. A flag, never a gate.",
     "value": {
-      "text": "scatter and per-paper shift estimated from the frozen residuals; smallest effect default 150",
-      "unit": "MPa·µm^0.5"
+      "text": "Henderson's method III from the frozen records; unavailable when not estimable",
+      "unit": "MPa"
     },
     "category": "statistical",
     "affects": "The calibration shares shown with the report (a flag, never a gate).",
@@ -463,8 +466,16 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:CALIBRATION_ESTIMATION",
+          "equals": "henderson_iii"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.calibration:henderson_iii"
+        }
+      ],
       "note": null
     },
     "history": [
@@ -473,17 +484,29 @@
         "from": "2026-10-04",
         "to": "2026-10-05",
         "note": "PRD 5.10 and 17, decision 10."
+      },
+      {
+        "value": "The scatter per record and the shift per paper used in the calibration simulation are estimated by code from the frozen dataset's residuals after the dataset freeze. The estimation method is fixed at the rules lock and applied by code; no person or agent chooses the values. The smallest effect that matters is a query setting.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Direction approved before step 7; replaced by the owner's step 7 decision (both ways)."
       }
     ],
     "notes": [
       "Conflicts with PRD 5.10, which says these assumptions are fixed at the rules lock and never estimated from the real outcomes.",
       "This is a safeguard change: it needs a second-model review in step 7 before it is applied.",
-      "Alternative to compare in that review: report calibration both ways, with data-derived noise levels and with the fixed defaults."
+      "Built in step 7 and awaiting the second-model review before the merge (owner, 2026-10-05). It departs from PRD 5.10, which fixes the noise levels in advance and never estimates them from the real outcomes: the estimate uses the frozen outcomes after the freeze, and can change no decision."
     ],
-    "tests": [],
+    "tests": [
+      "tests/test_calibration.py::test_a_negative_shift_estimate_is_set_to_zero_and_the_result_says_so",
+      "tests/test_calibration.py::test_a_shift_explained_by_the_alloys_cannot_be_estimated",
+      "tests/test_calibration.py::test_method_iii_matches_an_independent_computation",
+      "tests/test_calibration.py::test_method_iii_recovers_known_noise_levels_on_a_large_generated_dataset",
+      "tests/test_calibration.py::test_the_scatter_cannot_be_estimated_without_residual_freedom_in_the_full_model"
+    ],
     "pending": {
       "by": "second-model technical review",
-      "before_step": 7
+      "before_step": 8
     }
   },
   {
@@ -625,15 +648,22 @@
     },
     "sensitivity": "Per-source estimates.",
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:fit"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [
       "The two sources' separate estimates differ: about 427 (MPEA) and about 1173 (Texas A&M)."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_reference_numbers.py::test_pooled",
+      "tests/test_statistics.py::test_the_fit_matches_the_reference_on_a_hand_made_dataset"
+    ]
   },
   {
     "key": "exponent_fixed",
@@ -661,13 +691,23 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:TRANSFORMATION",
+          "equals": "inverse_square_root"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:TRANSFORMATIONS"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_statistics.py::test_the_model_is_the_one_supported_model"
+    ]
   },
   {
     "key": "model_form",
@@ -695,13 +735,25 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:MODEL",
+          "equals": "hall_petch_alloy_intercepts"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:TRANSFORMATIONS"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
+      "tests/test_statistics.py::test_the_fit_matches_the_reference_on_a_hand_made_dataset",
+      "tests/test_statistics.py::test_the_model_is_the_one_supported_model"
+    ]
   },
   {
     "key": "baseline_per_alloy",
@@ -729,15 +781,22 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:demeaned"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [
       "Omitted factors that vary with grain size within an alloy can bias k; see entry 'association_not_causation'."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
+      "tests/test_statistics.py::test_the_fit_matches_the_reference_on_a_hand_made_dataset"
+    ]
   },
   {
     "key": "association_not_causation",
@@ -766,11 +825,18 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:VERDICT_WORDING.supported",
+          "equals": "supported under the stated model, in the sources searched"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_statistics.py::test_the_wording_is_scoped_to_the_sources_searched"
+    ],
     "history": [],
     "notes": [
       "For step 10: the run screen's verdict wording must say 'supported under the stated model' and never imply proof of cause."
@@ -844,15 +910,21 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
-      "note": "The adapters keep the reported grain-size SD where a source has one."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.fields:frozen_analysis_data"
+        }
+      ],
+      "note": "The adapters keep the reported grain-size SD where a source has one; Statistics does not receive it."
     },
     "history": [],
     "notes": [
       "Added in step 4b while writing the entries the owner listed."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_access_statistics.py::test_the_complete_input_of_statistics"
+    ]
   },
   {
     "key": "measurement_error_not_propagated",
@@ -881,11 +953,17 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:fit"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation"
+    ],
     "history": [],
     "notes": []
   },
@@ -1468,13 +1546,23 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:fit"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:demeaned"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
+      "tests/test_statistics.py::test_the_fit_matches_the_reference_on_a_hand_made_dataset"
+    ]
   },
   {
     "key": "equal_row_weights",
@@ -1503,11 +1591,17 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:fit"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation"
+    ],
     "history": [],
     "notes": []
   },
@@ -1537,15 +1631,23 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:small_sample_factor"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [
-      "The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula."
+      "The reference numbers used statsmodels' default cluster correction; step 7 states the exact formula.",
+      "Step 7: the exact formula is G/(G-1) × (N-1)/(N-K), K = alloys + 1, statsmodels' default for clustered errors (statistics.small_sample_factor)."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_generated_fixed_set.py::test_coefficient_uncertainty_and_p_match_the_reference_implementation",
+      "tests/test_statistics.py::test_the_small_sample_correction_is_statsmodels_default"
+    ]
   },
   {
     "key": "few_groups_approximate",
@@ -1574,11 +1676,20 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:small_sample_factor"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:one_sided_p"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_statistics.py::test_the_small_sample_correction_is_statsmodels_default"
+    ],
     "history": [],
     "notes": []
   },
@@ -1608,22 +1719,23 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.versions:SOURCES.mpea.grouping_unit",
           "equals": "paper"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.eligibility:group"
         }
       ],
-      "done": "Each MPEA record's group is its paper (the source's grouping unit is 'paper').",
-      "pending": "Independence is assumed, not established; the groups are first used in inference in step 7.",
-      "step": 7,
-      "note": null
+      "note": "Independence is assumed, not established."
     },
     "history": [],
     "notes": [],
     "tests": [
-      "tests/test_adapter_mpea.py::test_paper_identity_is_the_doi"
+      "tests/test_adapter_mpea.py::test_paper_identity_is_the_doi",
+      "tests/test_reference_numbers.py::test_every_reference_result_matches_the_reference_implementation"
     ]
   },
   {
@@ -1652,13 +1764,24 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:one_sided_p"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:ALPHA",
+          "equals": 0.05
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_statistics.py::test_a_zero_standard_error_gives_a_defined_p_value",
+      "tests/test_statistics.py::test_the_test_is_one_sided"
+    ]
   },
   {
     "key": "p_threshold_comparison",
@@ -1686,13 +1809,19 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:significant"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_statistics.py::test_supported_exactly_when_p_is_strictly_below_alpha"
+    ]
   },
   {
     "key": "no_multiplicity_adjustment",
@@ -1721,11 +1850,17 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:significant"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_reference_numbers.py::test_each_sensitivity_set"
+    ],
     "history": [],
     "notes": []
   },
@@ -1755,26 +1890,30 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "sql:ck_analysis_result_check1_consistent"
         },
         {
           "ref": "sql:ck_analysis_result_check2_consistent"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:MODEL_MIN_GRAIN_SIZES",
+          "equals": 2
         }
       ],
-      "done": "The database checks necessary conditions on stored counts (check 1 needs an alloy; check 2 needs a residual degree of freedom and two groups).",
-      "pending": "The full rules computed by code from the frozen dataset (two distinct grain sizes; exact alloy and group counts).",
-      "step": 7,
       "note": null
     },
     "history": [],
     "notes": [],
     "tests": [
-      "tests/test_data_model.py::test_the_validity_checks_cannot_be_waived",
+      "tests/test_analysis_stage.py::test_use_what_is_available_with_one_group_gives_the_coefficient_only",
       "tests/test_data_model.py::test_check_one_failing_means_no_estimate",
-      "tests/test_data_model.py::test_stored_counts_must_be_consistent"
+      "tests/test_data_model.py::test_stored_counts_must_be_consistent",
+      "tests/test_data_model.py::test_the_validity_checks_cannot_be_waived",
+      "tests/test_generated_fixed_set.py::test_one_alloy_at_two_sizes_and_a_single_group_give_no_verdict_under_either_option",
+      "tests/test_statistics.py::test_the_two_validity_checks"
     ]
   },
   {
@@ -1897,13 +2036,24 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:decision"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:result_state"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_calibration.py::test_calibration_never_changes_the_outcome_or_the_verdict",
+      "tests/test_reference_numbers.py::test_each_sensitivity_set",
+      "tests/test_reference_numbers.py::test_mpea_alone_1_per_source_in_the_pooled_run"
+    ]
   },
   {
     "key": "selection_and_missingness",
@@ -1932,11 +2082,18 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:OUTCOME_WORDING.sufficient",
+          "equals": "sufficient in the sources searched"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_statistics.py::test_the_wording_is_scoped_to_the_sources_searched"
+    ],
     "history": [],
     "notes": []
   },
@@ -1966,13 +2123,39 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:CALIBRATION_SIMULATIONS",
+          "equals": 2000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:CALIBRATION_SCATTER_MPA",
+          "equals": 60.0
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:CALIBRATION_SHIFT_MPA",
+          "equals": 40.0
+        },
+        {
+          "ref": "python:hypocurate.pipeline.calibration:exact_interval"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.calibration:seed"
+        }
+      ],
       "note": null
     },
     "history": [],
-    "notes": [],
-    "tests": []
+    "notes": [
+      "Step 7 finding (reported, not gated): on the sets frozen in step 6 the fixed method gives about 7.8% significant no-effect results for the pooled set and 8.0% for the earlier 98-record set over long runs (40,000 simulations), and the reference script's own loop gives the same; PRD 5.10's 7.2% (6.1% to 8.4%) is not reproduced."
+    ],
+    "tests": [
+      "tests/test_calibration.py::test_each_world_draws_shifts_then_errors_from_one_seeded_generator",
+      "tests/test_calibration.py::test_the_interval_is_the_exact_binomial_interval",
+      "tests/test_calibration.py::test_the_seed_is_fixed_by_the_freeze_the_analysis_and_the_method",
+      "tests/test_generated_fixed_set.py::test_states_levels_verdicts_and_simulated_counts_equal_the_stored_values"
+    ]
   },
   {
     "key": "normal_errors_in_calibration",
@@ -2000,15 +2183,21 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.calibration:simulate"
+        }
+      ],
       "note": null
     },
     "history": [],
     "notes": [
       "The full error model is entry 'calibration_error_model'."
     ],
-    "tests": []
+    "tests": [
+      "tests/test_calibration.py::test_each_world_draws_shifts_then_errors_from_one_seeded_generator"
+    ]
   },
   {
     "key": "calibration_error_model",
@@ -2037,11 +2226,18 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.calibration:simulate"
+        }
+      ],
       "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_calibration.py::test_each_world_draws_shifts_then_errors_from_one_seeded_generator",
+      "tests/test_calibration.py::test_the_simulation_runs_the_locked_test_exactly_as_the_reference_implementation"
+    ],
     "history": [],
     "notes": []
   },
@@ -2049,9 +2245,9 @@
     "key": "reference_test_tolerance",
     "name": "Reference-test tolerance",
     "state": "in_force",
-    "statement": "The fixed-plan reference test passes when k and its uncertainty are within ±1 of the reference values.",
+    "statement": "Two tiers. Against the approved reference numbers, which are rounded: half a unit in the last digit stated (k and its standard error stated to 0.1, so ±0.05; a p-value stated to two significant figures must round to them); counts exact. Against the independent reference implementation on the same frozen data: relative 1e-9.",
     "value": {
-      "text": "±1 on k and on its uncertainty",
+      "text": "±0.05 on k and SE; p within its rounding; 1e-9 relative against the reference implementation",
       "unit": "MPa·µm^0.5"
     },
     "category": "statistical",
@@ -2061,8 +2257,8 @@
       "PRD 5.7."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -2071,15 +2267,30 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:tests/test_reference_numbers.py:half a unit in the last digit"
+        }
+      ],
       "note": null
     },
-    "history": [],
-    "notes": [
-      "The reference values are recomputed before step 7 (decision 'permitted_test_types')."
+    "history": [
+      {
+        "value": "The fixed-plan reference test passes when k and its uncertainty are within ±1 of the reference values.",
+        "from": "2026-10-04",
+        "to": "2026-10-05",
+        "note": "Step 7 (owner, 2026-10-05)."
+      }
     ],
-    "tests": []
+    "notes": [
+      "Tighter than the earlier ±1, which the PRD set before the numbers were recomputed; approved by the owner on 2026-10-05."
+    ],
+    "tests": [
+      "tests/test_reference_numbers.py::test_every_reference_result_matches_the_reference_implementation",
+      "tests/test_reference_numbers.py::test_half_a_unit_in_the_last_digit",
+      "tests/test_reference_numbers.py::test_pooled"
+    ]
   },
   {
     "key": "paper_grouping_by_doi",
@@ -2714,22 +2925,23 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.sources.record:HARMONIZED_FIELDS.grain_size",
           "equals": "µm"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:TRANSFORMATIONS"
         }
       ],
-      "done": "Records carry grain size in µm only.",
-      "pending": "The transformation the locked plan names (variables.predictor.transformation), applied when the analysis data are built (step 7).",
-      "step": 7,
       "note": null
     },
     "history": [],
     "notes": [],
     "tests": [
-      "tests/test_adapter_mpea.py::test_every_record_has_the_common_fields_with_their_units"
+      "tests/test_adapter_mpea.py::test_every_record_has_the_common_fields_with_their_units",
+      "tests/test_statistics.py::test_the_model_is_the_one_supported_model"
     ]
   },
   {
@@ -3454,7 +3666,7 @@
     "key": "plan_named_parts",
     "name": "The plan's schema",
     "state": "in_force",
-    "statement": "A plan's content follows PLAN_SCHEMA exactly and is read only through it, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped, and the plan model refuses content its projection would change. Since step 6 the schema holds every setting that affects which records are eligible or how they are grouped ('rules'), the domain profile and version the defaults came from ('profile'), and an optional flag category in each eligibility rule.",
+    "statement": "A plan's content follows PLAN_SCHEMA exactly and is read only through it, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped, and the plan model refuses content its projection would change. Since step 6 the schema holds every setting that affects which records are eligible or how they are grouped ('rules'), the domain profile and version the defaults came from ('profile'), and an optional flag category in each eligibility rule. Step 7 adds the 'calibration' part (both methods, the number of simulations, the fixed scatter and shift, the estimation method and the smallest effect).",
     "value": {
       "text": "PLAN_SCHEMA (nested, named keys and vocabulary leaves)",
       "unit": null
@@ -3500,6 +3712,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5 wording; extended by the owner in step 6 planning (2026-10-05)."
+      },
+      {
+        "value": "A plan's content follows PLAN_SCHEMA exactly and is read only through it, recursively: named keys at every level, vocabulary values (else 'unrecognized'), numbers, integers, common field names and units; unknown keys, free text and values that do not fit are dropped, and the plan model refuses content its projection would change. Since step 6 the schema holds every setting that affects which records are eligible or how they are grouped ('rules'), the domain profile and version the defaults came from ('profile'), and an optional flag category in each eligibility rule.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 7 (owner, 2026-10-05)."
       }
     ],
     "notes": [
@@ -3511,7 +3729,8 @@
       "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
       "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
       "tests/test_plan.py::test_invalid_plans_are_refused",
-      "tests/test_plan.py::test_the_default_plan_is_valid_and_is_its_own_projection"
+      "tests/test_plan.py::test_the_default_plan_is_valid_and_is_its_own_projection",
+      "tests/test_statistics.py::test_an_invalid_calibration_part_is_refused_at_the_lock"
     ]
   },
   {
@@ -4011,7 +4230,7 @@
     "key": "code_vocabularies",
     "name": "Vocabularies of codes our own code writes",
     "state": "in_force",
-    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys, and the codes in the locked plan's rules (source keys, grouping units, value statuses, profile names, single phase) reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 write these codes. Adding one is a register change needing the owner's approval.",
+    "statement": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys, and the codes in the locked plan's rules (source keys, grouping units, value statuses, profile names, single phase), and the calibration and estimation methods (step 7) reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 write these codes. Adding one is a register change needing the owner's approval.",
     "value": {
       "text": "flag kinds, flag categories, eligibility rules, sensitivity keys, plan rule codes",
       "unit": null
@@ -4125,6 +4344,19 @@
             "not_required",
             "required"
           ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:CALIBRATION_METHODS",
+          "equals": [
+            "estimated",
+            "fixed"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:ESTIMATION_METHODS",
+          "equals": [
+            "henderson_iii"
+          ]
         }
       ],
       "note": null
@@ -4135,6 +4367,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5. Step 6 additions approved by the owner on 2026-10-05 (planning, questions 3, 5, 6, 9 and decision C)."
+      },
+      {
+        "value": "Flag kinds and categories, eligibility rule codes, analysis-set and sensitivity keys, and the codes in the locked plan's rules (source keys, grouping units, value statuses, profile names, single phase) reach blinded views only from fixed vocabularies, else 'unrecognized'. Steps 6 and 7 write these codes. Adding one is a register change needing the owner's approval.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 7 (owner, 2026-10-05)."
       }
     ],
     "notes": [],
@@ -4355,7 +4593,7 @@
     "key": "code_role_access",
     "name": "Inclusion and Checks read through access objects",
     "state": "in_force",
-    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds.",
+    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds. Step 7 (owner, 2026-10-05; a safeguard change): Statistics binds only at the analysis stage and receives exactly the locked plan and the frozen data (the frozen sets and, for their records only, what the model needs, outcome included); the gap facts bind at the analysis stage and when a run closed without a freeze, and receive no outcome value.",
     "value": {
       "text": "Inclusion: plan, record conditions, flag kinds; Checks: plan, all values",
       "unit": null
@@ -4388,16 +4626,27 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Step 7 (owner, 2026-10-05)."
+      }
+    ],
     "notes": [
       "Step 6 review, finding 2 (2026-10-06): Inclusion's list gains 'set_flags' (each sensitivity set's matching flags from the completed Checks result: codes and record ids, no numbers)."
     ],
     "tests": [
-      "tests/test_access_code_roles.py::test_the_code_lists_match_the_owners_decision",
-      "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",
-      "tests/test_access_code_roles.py::test_only_code_roles_bind_without_an_agent_setting",
       "tests/test_access_code_roles.py::test_an_agent_setting_cannot_bind_as_a_code_role",
       "tests/test_access_code_roles.py::test_code_roles_do_not_bind_at_any_other_stage",
+      "tests/test_access_code_roles.py::test_inclusion_receives_no_outcome_value",
+      "tests/test_access_code_roles.py::test_only_code_roles_bind_without_an_agent_setting",
+      "tests/test_access_code_roles.py::test_the_code_lists_match_the_owners_decision",
+      "tests/test_access_statistics.py::test_records_outside_the_frozen_sets_never_reach_statistics",
+      "tests/test_access_statistics.py::test_the_complete_input_of_statistics",
+      "tests/test_access_statistics.py::test_the_gap_facts_receive_no_outcome_value",
+      "tests/test_access_statistics.py::test_the_lists_are_the_owners_decision",
       "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
     ]
   },
@@ -4480,10 +4729,17 @@
         {
           "ref": "python:hypocurate.pipeline.writes:CONSTRUCTED_MARK",
           "equals": "constructed_test_data"
+        },
+        {
+          "ref": "python:hypocurate.db.models:TEST_RUN_LABEL",
+          "equals": "test run: includes constructed data"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.results:REAL_RUN"
         }
       ],
-      "done": "The mark and the refusals at storage, inclusion and freeze (step 6).",
-      "pending": "The label wherever a marked run's outcome, verdict or numbers are stored or shown, and the exclusion from aggregates and lists of real results (steps 7 and 10).",
+      "done": "The mark and the refusals at storage, inclusion and freeze (step 6). Step 7: the label on every stored analysis and calibration result and on the statistics and gap-facts stage results of a marked run (checked by the database for result rows), and one named condition that leaves marked runs out of every aggregate (pipeline/results.py, REAL_RUN).",
+      "pending": "The label and the exclusion on every screen and list (step 10).",
       "step": 10,
       "note": "The guard is in code; the database itself does not refuse a constructed record."
     },
@@ -4493,8 +4749,10 @@
       "Step 6 review (2026-10-06), for a later step: a source whose definition is unknown to the code should fail closed (be treated as constructed, or refused), not pass the guard."
     ],
     "tests": [
-      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
-      "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records"
+      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates",
+      "tests/test_analysis_stage.py::test_a_marked_run_with_no_dataset_frozen_is_labelled_too",
+      "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records",
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test"
     ]
   },
   {
@@ -4546,16 +4804,22 @@
   {
     "key": "below_minimum_display",
     "name": "What a run below the fixed minimums shows",
-    "state": "open",
-    "statement": "Open: what a run below the fixed minimums may show besides 'insufficient'.",
-    "value": null,
+    "state": "in_force",
+    "statement": "Under the fixed-minimum option, when the pooled fit misses any minimum, every analysis of the run (pooled, per source and sensitivity) is withheld: it holds the counts against each minimum, which minimums were missed and the records found (for a plot drawn in step 10), and no coefficient, no fitted line and nothing else computed from the outcome values; this applies even where check 2 fails, so the coefficient-only rule applies only to results whose numbers are shown. Label: 'data found; not enough to test'. The estimated power, which uses no outcome value, is still shown.",
+    "value": {
+      "text": "counts, minimums missed and records found; nothing from outcomes; run-wide",
+      "unit": null
+    },
     "category": "statistical",
     "affects": "The gap report and the run viewer for runs below the minimums.",
     "reason": "The sufficiency option must not be choosable after seeing an estimate.",
     "evidence": [
       "Owner, step 6 approval (2026-10-05)."
     ],
-    "decided": null,
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
     "expert_review": {
       "status": "not_reviewed",
       "name": null,
@@ -4563,19 +4827,40 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 7,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:BELOW_MINIMUMS_LABEL",
+          "equals": "data found; not enough to test"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:pooled_withheld"
+        },
+        {
+          "ref": "sql:ck_analysis_result_withheld_set"
+        }
+      ],
       "note": null
     },
-    "history": [],
-    "notes": [
-      "Owner's starting position: the counts and which minimums were not met, and nothing derived from outcome values, not even a coefficient, so that the sufficiency option cannot be chosen after seeing an estimate."
+    "history": [
+      {
+        "value": "open decision: Open: what a run below the fixed minimums may show besides 'insufficient'.",
+        "from": "2026-10-05",
+        "to": "2026-10-05",
+        "note": "Open from step 6 approval; decided by the owner in step 7 planning."
+      }
     ],
-    "tests": [],
-    "pending": {
-      "by": "owner",
-      "before_step": 7
-    }
+    "notes": [
+      "Owner's starting position: the counts and which minimums were not met, and nothing derived from outcome values, not even a coefficient, so that the sufficiency option cannot be chosen after seeing an estimate.",
+      "The database computes 'withheld' itself (migration 0004) and refuses a number in a withheld result."
+    ],
+    "tests": [
+      "tests/test_analysis_stage.py::test_below_the_minimums_every_analysis_holds_counts_and_records_only",
+      "tests/test_analysis_stage.py::test_the_database_computes_withheld_and_refuses_a_number_in_a_withheld_result",
+      "tests/test_analysis_stage.py::test_the_fixed_option_with_one_group_withholds_even_the_coefficient",
+      "tests/test_analysis_stage.py::test_withheld_results_do_not_depend_on_the_outcome_values",
+      "tests/test_reference_numbers.py::test_texas_am_alone_3_fixed_minimums_withheld"
+    ]
   },
   {
     "key": "curator_tabular_sources",
@@ -4636,7 +4921,7 @@
     },
     "sensitivity": "The eight sensitivity sets of the reference plan; their recomputed values are in the step 6 summary.",
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "file:CLAUDE.md:Pooled: 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6"
@@ -4645,10 +4930,7 @@
           "ref": "file:CLAUDE.md:First source alone (MPEA): 76 records, 13 alloys, 19 papers, k = 424.1 ± 62.2, p ≈ 1.1e-6"
         }
       ],
-      "done": "The record counts, alloys, groups and residual degrees of freedom are regression tests on the pipeline's frozen sets (step 6).",
-      "pending": "The coefficients, uncertainties and p-values, reproduced independently by the statistics module and made regression tests (step 7).",
-      "step": 7,
-      "note": "The step 6 values come from a test-side script, not from package code."
+      "note": null
     },
     "history": [
       {
@@ -4662,8 +4944,12 @@
       "Approved by the owner on 2026-10-06; CLAUDE.md 'Reference numbers' updated the same day."
     ],
     "tests": [
-      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
-      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze"
+      "tests/test_reference_numbers.py::test_each_sensitivity_set",
+      "tests/test_reference_numbers.py::test_mpea_alone_1_per_source_in_the_pooled_run",
+      "tests/test_reference_numbers.py::test_pooled",
+      "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run",
+      "tests/test_reference_sets.py::test_the_counts_known_at_the_freeze",
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
     ]
   },
   {
@@ -4940,5 +5226,381 @@
     "tests": [
       "tests/test_plan.py::test_invalid_plans_are_refused"
     ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [
+      "A departure from PRD 5.10 (a safeguard change): second-model review before the merge."
+    ],
+    "key": "calibration_both_ways",
+    "name": "Calibration reported both ways",
+    "state": "in_force",
+    "statement": "Per-run calibration is run twice for every analysis whose inference is valid and whose numbers are shown: once with the fixed scatter and per-group shift of the plan (PRD 5.10's 60 and 40 MPa by default), and once with both estimated by code from the frozen records (entry 'calibration_noise_levels'). Both are stored. The methods are fixed at the rules lock in the plan's 'calibration' part. Calibration stays a flag, never a gate.",
+    "value": {
+      "text": "fixed and estimated, both stored",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The calibration results stored per analysis (two rows: method 'fixed' and 'estimated').",
+    "reason": "Fixed values alone describe the test on illustrative noise; estimated values describe it on noise like this run's. Showing both lets a reader see how much the assumptions matter.",
+    "evidence": [
+      "Owner, step 7 brief (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:CALIBRATION_METHODS",
+          "equals": [
+            "fixed",
+            "estimated"
+          ]
+        },
+        {
+          "ref": "sql:ck_calibration_result_method_iff_analysis"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_analysis_stage.py::test_every_analysis_is_stored_with_both_calibrations",
+      "tests/test_calibration.py::test_the_estimated_method_uses_the_estimates_and_the_fixed_method_the_plan",
+      "tests/test_calibration.py::test_calibration_never_changes_the_outcome_or_the_verdict",
+      "tests/test_statistics.py::test_an_invalid_calibration_part_is_refused_at_the_lock"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "smallest_effect",
+    "name": "Smallest effect of interest",
+    "state": "in_force",
+    "statement": "The smallest effect that matters is a query setting in the plan's 'calibration' part, default 150 MPa·µm^0.5. The calibration's effect world uses it, and so does the estimated power, which is the share detected in the fixed method's effect world, labelled 'estimated power under the stated assumptions'. The power is information only and uses no outcome value, so it is shown also below the minimums.",
+    "value": {
+      "text": "150 (default)",
+      "unit": "MPa·µm^0.5"
+    },
+    "category": "statistical",
+    "affects": "The calibration's effect world and the estimated power; never the outcome or the verdict.",
+    "reason": "PRD 5.8 and 5.10; owner, step 7 brief.",
+    "evidence": [
+      "PRD 5.8, 5.10, 17 (decisions 8 and 10); owner, step 7 brief and planning decision 5 (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SMALLEST_EFFECT",
+          "equals": 150.0
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:POWER_LABEL",
+          "equals": "estimated power under the stated assumptions"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_calibration.py::test_estimated_power_is_the_fixed_methods_effect_share_and_needs_no_outcome",
+      "tests/test_statistics.py::test_the_default_plan_locks_the_calibration_with_each_default_from_its_named_setting"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "evidence_level_scale",
+    "name": "Evidence level",
+    "state": "in_force",
+    "statement": "Every run's statistics result stores an evidence level from 1 to 6, derived by one tested function from the result state, never by an agent: 6 sufficient with a verdict; 5 use what is available with a minimum missed (exploratory); 4 inference invalid, coefficient only; 3 below the minimums under the fixed option; 2 coefficient cannot be fitted; 1 no dataset frozen. Precedence: no freeze; below the minimums (fixed option); not fitted; coefficient only; exploratory; sufficient. Descriptive only; it never affects the outcome or the verdict. A marked test run keeps its level beside its test label. A partly sufficient original question keeps the level of its own pooled result state.",
+    "value": {
+      "text": "1 to 6",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "What is stored and shown with a run; filtering runs by level.",
+    "reason": "A single descriptive scale of how far a run got, computed by code.",
+    "evidence": [
+      "Owner, step 7 (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:EVIDENCE_LEVELS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:evidence_level"
+        },
+        {
+          "ref": "sql:ck_run_evidence_level"
+        }
+      ],
+      "note": "Copied onto the run by the copy path only; the database checks it agrees with the outcome, verdict and exploratory label but does not require it on a completed run."
+    },
+    "tests": [
+      "tests/test_statistics.py::test_every_result_state_has_its_evidence_level",
+      "tests/test_statistics.py::test_the_evidence_scale_is_the_owners",
+      "tests/test_statistics.py::test_the_level_never_feeds_back_into_the_outcome_or_verdict",
+      "tests/test_analysis_stage.py::test_the_evidence_level_must_agree_with_the_outcome",
+      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "per_source_labels",
+    "name": "Per-source labels",
+    "state": "in_force",
+    "statement": "Each per-source result has one of four labels, from the locked test and the sign only, no new threshold: 'not enough data' (no p-value; also when the pooled result has none, or a coefficient is exactly zero); 'agrees' (the same decision as pooled at the plan's threshold and the same sign); 'conflicts' (the opposite sign from pooled); 'same direction, different decision' (the same sign, a different decision). Descriptive only; never the verdict.",
+    "value": {
+      "text": "agrees; conflicts; same direction, different decision; not enough data",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "The label stored with each per-source result.",
+    "reason": "The PRD names the labels (PRD 7, analysis_result) but does not define them.",
+    "evidence": [
+      "Owner, step 7 planning decisions 2 and 3 (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:LABELS",
+          "equals": [
+            "agrees",
+            "conflicts",
+            "same_direction_different_decision",
+            "not_enough_data"
+          ]
+        },
+        {
+          "ref": "sql:ck_analysis_result_label_per_source_only"
+        }
+      ],
+      "note": "The edge rules for a pooled result without a decision and a zero coefficient are Claude Code's, stated in planning."
+    },
+    "tests": [
+      "tests/test_statistics.py::test_the_four_per_source_labels",
+      "tests/test_reference_numbers.py::test_mpea_alone_1_per_source_in_the_pooled_run",
+      "tests/test_reference_numbers.py::test_texas_am_alone_1_per_source_in_the_pooled_run"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [
+      "No effect on the reference numbers: the two sources share no alloy."
+    ],
+    "key": "fit_alloy_rule",
+    "name": "Which records a fit uses",
+    "state": "in_force",
+    "statement": "Each fit (pooled, per source, sensitivity) uses only alloys with at least two distinct grain sizes among that analysis's own records: the model's own condition, applied by code to grain sizes only. The frozen set is not changed; the records not used are counted and reported as 'not used in this fit'. The stored counts, and the minimums, are the fit's.",
+    "value": {
+      "text": "two or more distinct grain sizes per alloy, within each fit",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Per-source and sensitivity fits where an alloy qualifies only pooled.",
+    "reason": "PRD 5.7 ('which alloys can be used'); the eligibility rule counts grain sizes over the whole primary set.",
+    "evidence": [
+      "Owner, step 7 planning decisions 7 and 12 (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:MODEL_MIN_GRAIN_SIZES",
+          "equals": 2
+        },
+        {
+          "ref": "sql:n_records_not_used"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_statistics.py::test_a_fit_uses_only_alloys_with_two_distinct_grain_sizes",
+      "tests/test_analysis_stage.py::test_the_database_refuses_records_not_accounted_for"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "copy_decision_only_copies",
+    "name": "The decision is copied, not recomputed",
+    "state": "in_force",
+    "statement": "The analysis stage stores the run's decision (outcome, verdict, exploratory label, evidence level) with the freeze fingerprint it belongs to; it does not complete the run. A separate function copies the stored decision onto the run, unchanged, and completes it; it refuses, and logs the refusal, when the decision is missing or belongs to a different freeze. 'Partly sufficient' is not set by it (a step 8 decision).",
+    "value": {
+      "text": "store, then copy unchanged",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "How a run's outcome reaches the run row (orchestration in steps 8 and 9).",
+    "reason": "The Analyst runs after the statistics, and 'partly sufficient' needs the Planner's narrower question.",
+    "evidence": [
+      "Owner, step 7 planning decision 6 and addition 11 (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.completion:copy_decision"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_completion.py::test_the_decision_is_copied_unchanged",
+      "tests/test_completion.py::test_it_refuses_a_missing_decision_and_logs_it",
+      "tests/test_completion.py::test_it_refuses_a_decision_of_another_freeze_and_logs_it",
+      "tests/test_completion.py::test_it_copies_what_is_stored_and_never_recomputes",
+      "tests/test_completion.py::test_the_database_checks_the_copy_again"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "results_pure_function",
+    "name": "Results are a pure function of the frozen set and the plan",
+    "state": "in_force",
+    "statement": "The statistics read only the frozen sets (through the Statistics access object) and the locked plan. Records are sorted by stable identity before any arithmetic, and seeds come from the freeze fingerprint, the analysis and the method, so the same data give the same numbers whatever the record ids or insertion order.",
+    "value": {
+      "text": "identity order; seed from the freeze",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Reproducibility of every result.",
+    "reason": "PRD 13.1; owner, step 7 brief.",
+    "evidence": [
+      "Owner, step 7 brief (2026-10-05)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-05"
+    },
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statistics:design"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.calibration:seed"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_permutation_stats.py::test_permuted_ids_and_insertion_order_give_identical_results",
+      "tests/test_statistics.py::test_results_do_not_depend_on_record_order_or_ids"
+    ]
+  },
+  {
+    "sensitivity": null,
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "history": [],
+    "notes": [],
+    "key": "records_without_group",
+    "name": "Records without a group in a fit",
+    "state": "open",
+    "statement": "Open: what a fit does with a frozen record that has no group (a literature record whose paper is not known). Until decided, code fails closed and invents no group: the pooled analysis refuses the analysis stage (logged, 'records_without_group'); a per-source or sensitivity analysis is reported as not analysed, with the count, and nothing is stored for it.",
+    "value": null,
+    "decided": null,
+    "category": "statistical",
+    "affects": "Sensitivity sets that admit records without a paper (in sprint 1 only the controlled extract's, in 'possible_duplicates_separate' of a marked run); no record in the reference sets lacks a group.",
+    "reason": "A clustered standard error needs every record in a group; register 'paper_grouping_by_doi' says no group is invented.",
+    "evidence": [
+      "Found while building step 7 (2026-10-06): the marked run's 'possible_duplicates_separate' set holds two extract records without a DOI."
+    ],
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.analysis:RecordsWithoutGroup"
+        }
+      ],
+      "done": "Fail closed: pooled refuses; a descriptive analysis is reported as not analysed with the count.",
+      "pending": "The owner's decision.",
+      "step": 8,
+      "note": null
+    },
+    "tests": [
+      "tests/test_statistics.py::test_a_record_without_a_group_is_refused_never_given_one",
+      "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates"
+    ],
+    "pending": {
+      "by": "owner",
+      "before_step": 8
+    }
   }
 ]
