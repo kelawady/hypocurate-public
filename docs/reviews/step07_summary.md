@@ -1,6 +1,6 @@
 # Build step 7 — summary for review
 
-Date: 2026-10-06. Branch: `step-07-statistics`, code at `d3da7c4`; GitHub Actions on it: success (1,104 passed, runtime image OK), https://github.com/kelawady/hypocurate/actions/runs/37398444475. **Status: built, the whole suite passes (1,104 tests, locally and in the test image); not yet reviewed by the second model; not merged.** PRD Section 15, step 7, as the owner scoped it: the statistics module, the validity checks, data sufficiency, the verdict and per-run calibration.
+Date: 2026-10-06. Branch: `step-07-statistics`. **Status: reviewed by the second model (ChatGPT, 2026-10-06: "not safe to merge", four findings and smaller points); the owner accepted all of them with a decision on informative papers; fixed (code at `fb5fd62`; GitHub Actions success, 1,131 passed, runtime image OK: https://github.com/kelawady/hypocurate/actions/runs/37403929929), each fix with tests that failed on the code before it; the whole suite passes (1,131 tests). Not merged; awaiting the re-check.** The first build was `d3da7c4` (1,104 tests; GitHub run https://github.com/kelawady/hypocurate/actions/runs/37398444475). The review is `docs/reviews/step07_review_chatgpt.md` (verbatim); the fixes are in section "Second-model review and fixes" and in `docs/reviews/step07_fix_packet.md`. **This summary describes the state after the fixes.** PRD Section 15, step 7, as the owner scoped it: the statistics module, the validity checks, data sufficiency, the verdict and per-run calibration.
 
 The suite is the gate. This summary is for the second model, which uses `docs/reviews/checklist.md`; the packet is `docs/reviews/step07_review_packet.md`. **Three changes are safeguard changes and need the review before the merge** (CLAUDE.md, "How we work" item 5; the owner approved them subject to it): the access-layer change (two code roles and one field), migration 0004, and the estimated calibration (a departure from PRD 5.10).
 
@@ -39,6 +39,29 @@ Owner's additions before the build:
 15. **Evidence level 1 to 6**, stored with each run's statistics result, derived by one tested function from the result state, never by an agent: 6 sufficient with a verdict; 5 exploratory; 4 coefficient only; 3 below the minimums under the fixed option; 2 coefficient cannot be fitted; 1 no dataset frozen. Descriptive; a marked run keeps its level beside its label. Stored in the decision and as `run.evidence_level` (0004). A partly sufficient original question keeps the level of its own pooled result state.
 16. `test_reference_numbers.py` states the path that produces each reference result, with Texas A&M alone and MPEA alone shown three ways each.
 
+## Second-model review and fixes (ChatGPT, 2026-10-06)
+
+**Owner's decision (2026-10-06):** the minimum of 10 independent papers counts only informative papers: papers whose records help estimate the slope (non-zero grain-size variation after removing each alloy's average). Uninformative papers are kept and listed but not counted. The same count is used for validity check 2 (at least 2). Register entry `informative_groups`.
+
+| Finding | Fix | Tests (failed on the code before the fix unless marked) |
+|---|---|---|
+| **1 (high).** An unestimable clustered uncertainty gave "supported" with p = 0: the reviewer's design (five alloys × six records, grain sizes 16, 16/9, 4, 4, 4, 4; only the first paper varies within alloys) gave k = 400, SE = 0, p = 0, level 6; its null simulation rejected 50.5% | Informative papers (the owner's decision): a paper counts when one of its records differs from its alloy's average transformed grain size by more than the numerical zero; check 2 and the paper minimum count these. Inference also needs a clustered SE that is finite and above a scale-aware numerical zero (`RELATIVE_ZERO` = 1e-10 of sqrt(Σỹ²/Σx̃²)); otherwise the coefficient alone, with `inference_reason` "insufficient_groups" or "uncertainty_not_estimable". Every simulated fit gets the same checks (no inference, never significant). The database: `n_groups_informative`, `inference_reason`, check 2's constraint an implication on the informative count, the trigger's minimum on the informative count | `test_the_reviewers_design_never_gives_a_verdict` (both options: fixed → withheld, level 3; use what is available → k = 400 only, level 4); `test_a_paper_is_informative_when_its_records_vary_after_removing_the_alloy_average`; `test_an_exact_fit_has_no_estimable_uncertainty_and_gives_the_coefficient_only`; `test_the_simulations_apply_the_same_check_to_each_simulated_fit`; `test_the_reviewers_design_through_the_database`; `test_the_database_counts_informative_groups_for_check_2_and_the_minimum`; `test_the_database_takes_an_uncertainty_that_cannot_be_estimated`. Guards (passed before; they stop the fix from overshooting): `test_small_real_noise_keeps_the_uncertainty_estimable`, `test_the_uncertainty_check_is_scale_aware` |
+| **2 (medium).** The result trigger bounded the alloy count by the display label (rounded to 0.1 at.%) while the plan may round finer: Fe50.01Ni49.99 and Fe50.04Ni49.96 (both "Fe50Ni50") were refused under 0.01 at.% | The bound is removed (n_records ≥ 2 × n_alloys remains) | `test_two_alloys_with_one_display_label_are_stored` (end to end, three grain sizes each, `same_alloy_decimals` = 2: refused with "n_alloys cannot exceed…" before); `test_the_display_label_no_longer_bounds_the_alloy_count` (changed from a case of `test_stored_counts_must_be_consistent`, below) |
+| **3 (medium).** 9.0 and 9.000000000000002 µm transform to one value: both checks passed, then `fit` raised ZeroDivisionError, which bypassed the stage's error handling | An alloy counts only when its transformed grain sizes differ by more than the numerical zero (`distinct_values`); `fit` refuses a zero predictor variation or a non-finite coefficient as a `StatisticsError`; the stage turns **any** exception into a logged refusal (`statistics_failed`, with the error's type and text) | `test_grain_sizes_equal_after_transformation_never_raise` (level 2, no exception); `test_nearly_equal_transformed_grain_sizes_are_not_distinct`; `test_an_unexpected_error_in_the_statistics_is_a_logged_refusal` (a ZeroDivisionError escaped before) |
+| **4 (medium).** A perfect fit (RSS ≈ 9.3e-25) was taken for real scatter (≈ 2e-13 MPa) and calibrated | Scatter not estimable when RSS_F ≤ RELATIVE_ZERO² × Σỹ² (the outcome's spread within alloys) | `test_an_exact_fit_has_no_estimable_scatter`; guard (passed before): `test_small_real_noise_gives_an_estimable_scatter` (σ = 0.01 MPa is estimated) |
+| Smaller: what the intervals cover | Every calibration carries `interval_note`; the estimated one: "Monte Carlo (simulation) uncertainty only, not uncertainty in the estimated scatter and shift … a diagnostic … not independent validation" | `test_every_estimated_calibration_states_what_its_intervals_cover` |
+| Smaller: detection rates both ways | `detection` per analysis: fixed and estimated, each with its false-positive share and the noise used; `estimated_power` (fixed) and `estimated_power_estimated_noise` stored; the estimated one withheld below the minimums (the database refuses it on a withheld result); `detection_note`: detection rates of the nominal 5% test, not power for a test shown to keep 5% | `test_detection_rates_are_reported_both_ways_with_the_false_positive_shares`; `test_below_the_minimums_the_fixed_detection_rate_is_shown_and_the_estimated_one_withheld`; `test_the_estimated_detection_rate_is_never_stored_for_a_withheld_result` |
+| Smaller: a zero coefficient's own reason | `label_reason`: "no_p_value", "pooled_without_decision" or "zero_coefficient", present exactly with "not enough data" (stored and checked by the database) | `test_a_zero_coefficient_has_its_own_reason` (5 cases); `test_a_label_reason_is_stored_exactly_with_not_enough_data` |
+| Smaller: evidence level required | `ck_run_evidence_level_iff_completed`: present exactly on a completed run | `test_a_completed_run_needs_its_evidence_level` |
+| Smaller: records without a group | Unchanged: fails closed; the decision stays open (register note added) | — |
+
+**What the fixes do not do.**
+- The standard error's small-sample factor G/(G−1) and the t distribution's G − 1 degrees of freedom still use every group of the fit (statsmodels' definition; CLAUDE.md rule 6 says "groups − 1"). An uninformative group adds nothing to the variance but still counts there. **Whether the degrees of freedom should count informative papers only is for the owner**; on the reference sets every group is informative, so it changes nothing there.
+- A withheld analysis is judged on its counts only (no outcome is used, so no standard error is computed); its check 2 can only fail on the counts.
+- The numerical zero (1e-10 relative) is not a scientific threshold: rounding residue is about 1e-16 of the scale, and the guards show that noise of 0.001 MPa on hundreds of MPa is still estimable.
+
+**Reference numbers after the fixes: none changed.** Recomputed on the reference run (pooled, both per-source results, all eight sensitivity sets): every coefficient, standard error and p-value is bit-identical, every simulated count under both calibrations is identical, and the freeze fingerprint is unchanged (`3ec87f58…`). **The group count stays 20, and all 20 groups are informative**: every paper in the pooled set has at least one record whose transformed grain size differs from its alloy's average. That is true of each MPEA paper (19 of 19) and of the Texas A&M dataset (1 of 1); every sensitivity set's groups are all informative too. The paper minimum is therefore still met (20 ≥ 10) and check 2 still passes. The estimated-noise detection rates, now reported: pooled 97.2% (fixed 100%), MPEA 96.1% (fixed 100%).
+
 ## What was built
 
 | Path | What it is |
@@ -60,12 +83,12 @@ Owner's additions before the build:
 ## The model and the test
 
 `statistics.py`, for each analysis:
-1. **The fit's records.** Sort by stable identity (source-version fingerprint, origin key, item index). Keep alloys with at least two distinct grain sizes among this analysis's records (`MODEL_MIN_GRAIN_SIZES = 2`); count the others as "not used in this fit".
+1. **The fit's records.** Sort by stable identity (source-version fingerprint, origin key, item index). Keep alloys with at least two grain sizes among this analysis's records that are distinct after the transformation by more than the numerical zero (`MODEL_MIN_GRAIN_SIZES = 2`); count the others as "not used in this fit". Mark each group informative when one of its records differs from its alloy's average transformed grain size by more than the numerical zero; list the uninformative ones.
 2. **The estimate.** x = d^-1/2 (the plan's transformation); remove each alloy's mean from x and y; k = Σ x̃ỹ / Σ x̃². The same as OLS with one intercept per alloy.
 3. **The standard error.** Per group g, s_g = Σ_{i∈g} x̃_i e_i with e = ỹ − k x̃; V = Σ s_g² / (Σ x̃²)² × G/(G−1) × (N−1)/(N−K), K = alloys + 1 (statsmodels' default cluster correction).
 4. **The test.** t = k / √V; p = P(T > t), T ~ t(G − 1); "supported" exactly when p < α (the plan's, 0.05).
-5. **Validity checks.** Check 1: at least one alloy with two distinct grain sizes. Check 2: N − alloys − 1 ≥ 1 and G ≥ 2. Check 1 only: k alone.
-6. **Minimums,** on the fit's counts: records, alloys (each with two or more grain sizes), groups, residual df.
+5. **Validity checks.** Check 1: at least one alloy with two distinct grain sizes. Check 2: N − alloys − 1 ≥ 1, at least 2 informative groups, and an SE that is finite and above RELATIVE_ZERO × sqrt(Σỹ²/Σx̃²). Check 1 only: k alone, with the reason (`insufficient_groups` or `uncertainty_not_estimable`).
+6. **Minimums,** on the fit's counts: records, alloys (each with two or more grain sizes), informative groups, residual df.
 7. **Groups** come from the same function Inclusion and the freeze counts use (`eligibility.group`, the set's own grouping), and alloys from `eligibility.alloy` (the set's same-alloy rule).
 
 ## Result states
@@ -76,13 +99,13 @@ The pooled analysis decides; per-source and sensitivity results go through the s
 |---|---|---|---|
 | Sufficient with a verdict (6) | Validity checks pass; minimums met (either option) | Counts, both checks, minimums, k, SE, t, df, p, α, estimated power, both calibrations; decision: outcome sufficient, verdict "supported" (p < α) or "not supported" "under the stated model, in the sources searched", not exploratory | — |
 | Exploratory (5) | "Use what is available", checks pass, a minimum missed | As above, `exploratory` true, label "exploratory" | — |
-| Coefficient only (4) | Check 1 passes, check 2 fails, and the minimums do not withhold (use what is available, or a plan whose own minimums are met) | Counts, checks, k only; calibration "unavailable: insufficient groups"; outcome insufficient | SE, p, verdict, power, calibration |
+| Coefficient only (4) | Check 1 passes, check 2 fails (fewer than 2 informative groups, no residual df, or an unestimable SE), and the minimums do not withhold (use what is available, or a plan whose own minimums are met) | Counts (all and informative groups, the uninformative ones listed), checks, k only, the reason; calibration "unavailable" with that reason; outcome insufficient | SE, p, verdict, power, calibration |
 | Below the minimums, fixed option (3) | Fixed option and the pooled fit misses any minimum, whether check 2 passes or fails | Run-wide: every analysis holds its counts against each minimum, the minimums missed and the records found (stable identities); label "data found; not enough to test"; estimated power where check 2 passes (no outcome used); calibration "unavailable: below minimums" (or the validity reason if a check fails); gap facts; outcome insufficient | Everything computed from outcomes, in every analysis: k, SE, t, p, verdict, estimated calibration |
 | Not fitted (2) | Check 1 fails and the minimums do not withhold. The pooled set of a frozen run always has an alloy with two grain sizes (eligibility rule 8), so this is reachable only in the pure function and in per-source or sensitivity analyses | Counts; calibration "unavailable: coefficient not fitted" | k and everything after it |
 | No dataset frozen (1) | No eligible record | Decision (no freeze fingerprint); gap facts; the run-level calibration row "unavailable: no dataset frozen" written at the freeze | Everything else |
 | Marked test run (any level) | Any state, on a run with `constructed_test_data` | The same, plus "test run: includes constructed data" on every analysis and calibration row (the database checks: present exactly when the run is marked) and in the `statistics` and `gap_facts` stage results; keeps its level | Left out of every aggregate through `results.REAL_RUN` |
 
-Calibration rows per analysis: `fixed` and `estimated`, each "computed" or "unavailable" with one reason: `coefficient_not_fitted`, `insufficient_groups`, `below_minimums`, or, for the estimated method only, `scatter_not_estimable` / `shift_not_estimable`.
+Calibration rows per analysis: `fixed` and `estimated`, each "computed" or "unavailable" with one reason: `coefficient_not_fitted`, `insufficient_groups`, `uncertainty_not_estimable` (the result's inference reason), `below_minimums`, or, for the estimated method only, `scatter_not_estimable` / `shift_not_estimable`. Every computed calibration states what its intervals cover (`interval_note`).
 
 ## Calibration (the safeguard change for review)
 
@@ -197,6 +220,15 @@ The freeze fingerprint of the reference run changed from step 6 (`93c44b22…`) 
   - `reference_numbers`: applied "yes";
   - the "Not yet" example now uses `spending_caps`.
 
+
+**Review round (2026-10-06): 27 new tests** (1,131 in all): `tests/test_statistics_boundaries.py` (19) and eight database tests in `test_analysis_stage.py` (7) and `test_completion.py` (1). Changed, none removed:
+- `test_data_model.py`: the case `(4, 2, 2, "cannot exceed the distinct alloys")` of `test_stored_counts_must_be_consistent` became `test_the_display_label_no_longer_bounds_the_alloy_count` (the bound is removed on the reviewer's finding 2; the new test checks such a result is stored); raw inserts give `n_groups_informative`; raw completions give an evidence level (one test's completion uses level 6 so that the verdict constraint is still the one that refuses).
+- `test_concurrency.py`: the completion statement gives an evidence level.
+- `test_migrations_step7.py`: `test_the_new_result_function_keeps_every_check_of_0001` lists three changed checks (record count, display-label bound removed, minimum on informative groups).
+- `test_statistics.py`, `test_calibration.py`: `Design.inference_valid` is now `counts_allow_inference` (counts alone no longer decide check 2); the fake calibration in `test_calibration_never_changes_the_outcome_or_the_verdict` carries noise values (the detection report reads them).
+- `test_assumptions.py`: `fixed_minimums` is decided on 2026-10-06 (the informative-paper wording), with the 2026-10-05 wording checked in its history.
+- Helpers: `model_builder.result()` takes `informative` (default: every group); `model_builder.complete()` gives an evidence level consistent with the outcome; the access world's original run gives its informative count; `stats_world.run_on` takes plan `rules`.
+
 ## Mutation checks
 
 Each safeguard was switched off in a scratch copy of the package (`PYTHONPATH` to the copy, `data/` linked, run from outside the repository, the import checked). Each mutation was run against the tests that should catch it. A control run with no change passes.
@@ -231,6 +263,27 @@ Each safeguard was switched off in a scratch copy of the package (`PYTHONPATH` t
 
 Every mutation is caught (25 of 25). "Errors" are module fixtures that fail because the mutated code produces results the database refuses or the reference cannot match; they count as caught. Full output in the packet.
 
+
+**Review round (2026-10-06):** 13 mutations of the fixes, each caught:
+
+| Mutation | Result |
+|---|---|
+| f01: every group counted as informative | 4 failed, 49 passed |
+| f02: no numerical-zero check on the SE | 1 failed, 18 passed |
+| f03: simulations without the validity check | 1 failed, 18 passed |
+| f04: raw grain sizes distinct (not transformed) | 1 failed, 18 passed |
+| f05: any positive residual is scatter | 1 failed, 18 passed |
+| f06: only StatisticsError caught | 1 failed, 33 passed |
+| f07: trigger: paper minimum on all groups | 2 failed, 40 passed |
+| f08: database: check 2 on all groups | 2 failed, 32 passed |
+| f10: zero coefficient without its reason | 2 failed, 17 passed |
+| f11: estimated detection rate not withheld | 1 failed, 18 passed |
+| f12: no interval note on the estimated method | 1 failed, 18 passed |
+| f13: evidence level not required | 1 failed, 7 passed |
+| f09: trigger: display-label bound put back | 2 failed, 185 passed |
+
+f09's first attempt broke the SQL through shell quoting and tested nothing; it was re-run correctly (output in the fix packet). The first round's 25 mutations were not re-run on the fixed code.
+
 ## Assumptions register
 
 108 entries (was 100): 105 in force, 2 open, 1 direction approved; 104 applied "yes", 2 "partly", 2 "not yet". Every entry decided in step 7 is by the owner on 2026-10-05, not reviewed by an expert.
@@ -248,6 +301,9 @@ Every mutation is caught (25 of 25). "Errors" are module fixtures that fail beca
 - **Moved to "yes":** `model_form`, `shared_coefficient`, `exponent_fixed`, `baseline_per_alloy`, `ols_alloy_intercepts`, `equal_row_weights`, `cluster_robust_se` (with the exact formula in a note), `few_groups_approximate`, `one_sided_test`, `p_threshold_comparison`, `no_multiplicity_adjustment`, `pooled_gives_verdict`, `association_not_causation`, `selection_and_missingness`, `mean_grain_size_only`, `measurement_error_not_propagated`, `papers_independent`, `tamu_grouping_unit`, `grain_size_transformation_at_analysis`, `validity_checks`, `fixed_minimums`, `calibration_simulation` (with the 7.2% finding), `normal_errors_in_calibration`, `calibration_error_model`, `reference_numbers`.
 - **Still partly applied:** `constructed_test_runs`. Done: the labels and `REAL_RUN`. Pending: the screens, step 10.
 
+
+**Review round (2026-10-06): 110 entries.** New: `informative_groups` (the owner's decision), `numerical_zero`. Reworded, with the earlier wording in history: `validity_checks`, `fixed_minimums`, `per_source_labels` (reasons), `smallest_effect` (detection both ways), `fit_alloy_rule` (transformed distinctness). Notes: `calibration_noise_levels` (interval note, perfect fit), `calibration_simulation` (checks in each simulated fit), `evidence_level_scale` (required), `records_without_group` (the reviewer's question).
+
 ## Decisions I made while building (for the owner and the reviewer)
 
 1. **Records without a group** (now the open register entry `records_without_group`). The marked run with the controlled extract puts two extract records without a DOI into `possible_duplicates_separate`. A clustered standard error needs every record in a group, and the register says no group is invented. Code fails closed:
@@ -257,10 +313,10 @@ Every mutation is caught (25 of 25). "Errors" are module fixtures that fail beca
    No record of the reference sets lacks a group. **Owner's decision needed** before step 8.
 2. **The gap facts read through their own code role** (`gap_facts`), not the Statistics role. That keeps Statistics' list exactly as approved, and the gap facts can be shown to read no outcome value.
 3. **Real results by a code condition, not a database view** (`results.REAL_RUN`). A view would have changed the schema tests of step 3; the condition is one named place.
-4. **The evidence level is not required by the database** on a completed run. Only agreement is checked, so that the step 3 to 6 helpers that complete runs directly keep working. The copy path always writes it.
+4. ~~The evidence level is not required by the database on a completed run.~~ Superseded by the review: it is required (`ck_run_evidence_level_iff_completed`); the test helpers that complete runs directly now give one.
 5. **The calibration reason when a run is withheld and a check fails** is the validity reason (`coefficient_not_fitted`, `insufficient_groups`), not `below_minimums`. The trigger enforces this precedence.
-6. **Label edge rules:** pooled without a decision, or a coefficient of exactly zero, gives "not enough data".
-7. **A zero standard error** gives p = 0 when k > 0 and 1 otherwise, and stores no t (JSON cannot hold infinity).
+6. **Label edge rules:** pooled without a decision, or a coefficient of exactly zero, gives "not enough data", now with its reason (`label_reason`).
+7. ~~A zero standard error gives p = 0 when k > 0.~~ Superseded by the review (finding 1): an SE at or below the numerical zero gives no inference (coefficient only).
 
 ## PRD corrections and clarifications (for the next PRD update)
 
@@ -276,13 +332,22 @@ Every mutation is caught (25 of 25). "Errors" are module fixtures that fail beca
 
 ## Open items
 
-1. **Second-model review** of the three safeguard changes, then the owner's sign-off. `calibration_noise_levels` moves to "in force" after it.
-2. **Owner:** `records_without_group` (before step 8); `curator_tabular_sources` (before step 8, from step 6).
-3. **Step 8:** the Analyst explains the stored record and gap facts only; the orchestrator calls `copy_decision` after the Analyst; how "partly sufficient" reaches the run.
-4. **Step 10:** the plot from the stored records found (below the minimums: raw data, no fitted line); the label and `REAL_RUN` on every screen and list; the workbook.
-5. **Carried:** the step 5 and step 6 open items for steps 8 to 10; live registration of sources (owner).
+1. **Second-model re-check** of the fixes (the review was 2026-10-06), then the owner's sign-off. `calibration_noise_levels` moves to "in force" after it.
+2. **Owner:** whether the t distribution's degrees of freedom (and the small-sample factor) should count informative papers only (section "Second-model review and fixes").
+3. **Owner:** `records_without_group` (before step 8; the reviewer asks whether a permitted coefficient-only result should stay available when grouping is missing); `curator_tabular_sources` (before step 8, from step 6).
+4. **Step 8:** the Analyst explains the stored record and gap facts only; the orchestrator calls `copy_decision` after the Analyst; how "partly sufficient" reaches the run.
+5. **Step 10:** the plot from the stored records found (below the minimums: raw data, no fitted line); the label and `REAL_RUN` on every screen and list; the workbook.
+6. **Carried:** the step 5 and step 6 open items for steps 8 to 10; live registration of sources (owner).
 
-## Questions for the reviewer
+## Questions for the re-check
+
+1. Are the four findings closed: can any design still give a verdict, a p-value or a standard error without at least two informative papers and an estimable uncertainty, in a real fit or a simulated one?
+2. Is "informative paper" implemented as the owner defined it, and is the numerical zero (1e-10 of the natural scale) applied consistently and never acting as a scientific threshold?
+3. Does migration 0004, as changed, enforce check 2, the reasons and the evidence level completely, and is the downgrade still exact?
+4. Is anything new computed from outcome values below the minimums (detection rates, reasons, notes)?
+5. Is any claim stronger than the code supports?
+
+## Questions for the first review (answered in its text)
 
 1. Is the estimated calibration (method III, truncation recorded, unavailable when not estimable) a sound and honestly described departure from PRD 5.10, and can it influence any decision?
 2. Can Statistics or the gap facts reach anything beyond their lists: a record outside the frozen sets, a value as reported, another run's data, or (gap facts) an outcome value?
