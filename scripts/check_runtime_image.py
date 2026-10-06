@@ -39,7 +39,11 @@ REQUIRED = ["hypocurate/web/main.py", "hypocurate/worker.py", "data/manifest.jso
             "hypocurate/db/migrations/versions/0003_record_extraction.py",
             "hypocurate/pipeline/profile.py", "hypocurate/pipeline/plan.py", "hypocurate/pipeline/checkpoints.py",
             "hypocurate/pipeline/extract.py", "hypocurate/pipeline/flags.py", "hypocurate/pipeline/checks.py",
-            "hypocurate/pipeline/eligibility.py", "hypocurate/pipeline/inclusion.py", "hypocurate/pipeline/writes.py"]
+            "hypocurate/pipeline/eligibility.py", "hypocurate/pipeline/inclusion.py", "hypocurate/pipeline/writes.py",
+            # Step 7: the statistics, the calibration, the analysis stage, the copy path, migration 0004.
+            "hypocurate/pipeline/statistics.py", "hypocurate/pipeline/calibration.py",
+            "hypocurate/pipeline/analysis.py", "hypocurate/pipeline/completion.py", "hypocurate/pipeline/results.py",
+            "hypocurate/db/migrations/versions/0004_statistics_results.py"]
 FORBIDDEN_DIRS = {"tests", "docs", "reviews", "fixtures", "scripts"}
 FORBIDDEN_NAMES = re.compile(r"(truth.*|build.*\.py|step\d\d_.*|checklist\.md|conftest\.py|test_.*\.py)$")
 

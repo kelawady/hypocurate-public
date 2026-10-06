@@ -186,7 +186,9 @@ def original_run(w: World) -> int:
     """A completed 'partly sufficient' run with OTHER in its records, coefficient, stage
     outputs and commentary: the run a narrower question comes from."""
     rid = w.running(sources=("mpea",))
-    w.lock(rid)
+    # Step 7 (owner's decision 1): under the fixed option a run below the minimums stores no
+    # coefficient, so this run, which holds OTHER as its coefficient, uses what is available.
+    w.lock(rid, option="use_available")
     w.search(rid, "mpea")
     recs = store_value_records(w, rid, OTHER)
     primary = w.analysis_set(rid)
@@ -194,9 +196,9 @@ def original_run(w: World) -> int:
         w.decide(rid, rec)
         w.add(primary, rec)
     w.freeze(rid, len(recs))
-    sql(w, "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, resid_df, "
-           "check1_passed, check2_passed, minimums_met, estimate) "
-           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, true, false, false, :e)", r=rid, s=primary, e=OTHER)
+    sql(w, "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
+           "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate) "
+           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, 1, true, false, false, :e)", r=rid, s=primary, e=OTHER)
     stage(w, rid, "analyst", "analyst", f"k = {OTHER}")
     w.complete(rid, "partly_sufficient")
     cid = stage(w, rid, "commentator", "commentator", f"the coefficient {OTHER}")

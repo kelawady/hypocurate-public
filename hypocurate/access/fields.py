@@ -500,6 +500,47 @@ def outcome(conn: Connection, ctx: Context) -> dict:
     return {"status": row.status, "outcome": row.outcome, "verdict": row.verdict, "exploratory": row.exploratory}
 
 
+def frozen_analysis_data(conn: Connection, ctx: Context) -> dict:
+    """For Statistics (code; step 7): the frozen sets and, for their records only, what the model
+    needs. The outcome value is the locked plan's outcome field (sprint 1: yield strength), through
+    `_number` (a value status and a finite number, else None). Refused without a freeze."""
+    snapshot = conn.execute(text("SELECT fingerprint FROM run_snapshot WHERE run_id = :r"),
+                            dict(r=ctx.run_id)).scalar_one_or_none()
+    if snapshot is None:
+        raise Refused("not_frozen")
+    content = conn.execute(text("SELECT content FROM plan WHERE run_id = :r"), dict(r=ctx.run_id)).scalar_one()
+    outcome_field = (project(content, PLAN_SCHEMA) or {}).get("variables", {}).get("outcome", {}).get("field")
+    sets: dict[str, list[int]] = {}
+    for key, record_id in _rows(conn, "SELECT a.key, asr.record_id FROM analysis_set a "
+                                      "LEFT JOIN analysis_set_record asr ON asr.analysis_set_id = a.id "
+                                      "WHERE a.run_id = :r ORDER BY a.key, asr.record_id", r=ctx.run_id):
+        key = vocab.code(key, vocab.ANALYSIS_SET_KEYS)
+        sets.setdefault(key, [])
+        if record_id is not None:
+            sets[key].append(record_id)
+    members = {i for ids in sets.values() for i in ids}
+    records = []
+    for r in _stored_records(conn, ctx):
+        if r.id not in members:
+            continue
+        h = r.harmonized if isinstance(r.harmonized, Mapping) else {}
+        reported = r.reported if isinstance(r.reported, Mapping) else {}
+        batch_column = BATCH_COLUMNS.get(r.source)
+        batch = reported.get(batch_column, {}).get("text") if batch_column else None
+        doi = r.paper_doi if isinstance(r.paper_doi, str) and r.paper_doi.strip() else None
+        records.append({
+            "id": r.id, "source": r.source,
+            "version_fingerprint": r.version_fingerprint, "origin": r.source_item_key, "item_index": r.item_index,
+            "composition": _composition(h.get("composition")),
+            "paper": identity_hash(doi_group_key(doi)) if doi else None,
+            "batch": identity_hash(batch) if isinstance(batch, str) and batch.strip() else None,
+            "grain_size": _number(h.get("grain_size")),
+            "outcome": _number(h.get(outcome_field)) if outcome_field in OUTCOME_FIELDS else None,
+        })
+    return {"freeze_fingerprint": snapshot, "outcome_field": outcome_field if outcome_field in OUTCOME_FIELDS
+            else None, "sets": sets, "records": records}
+
+
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "claim": claim, "domain": domain, "sources_meta": sources_meta, "tag_values": tag_values,
     "record_counts": record_counts, "plan_fields_to_extract": plan_fields_to_extract,
@@ -508,4 +549,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
     "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
+    "frozen_analysis_data": frozen_analysis_data,
 }

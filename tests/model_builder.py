@@ -214,24 +214,43 @@ class World:
         return rid, sets, recs
 
     def result(self, rid, set_id, scope="pooled", n=4, alloys=1, groups=2, source=None, minimums_met=None,
-               mins=(4, 1, 2, 1)):
-        """An analysis result whose fields follow the validity-check definitions."""
+               mins=(4, 1, 2, 1), informative=None):
+        """An analysis result whose fields follow the validity-check definitions. Step 7 review fixes:
+        `informative` groups (default: every group) count for check 2 and the paper minimum."""
+        informative = groups if informative is None else informative
         resid = n - alloys - 1
         check1 = alloys >= 1
-        check2 = check1 and resid >= 1 and groups >= 2
+        check2 = check1 and resid >= 1 and informative >= 2
         if minimums_met is None:
-            minimums_met = n >= mins[0] and alloys >= mins[1] and groups >= mins[2] and resid >= mins[3]
+            minimums_met = n >= mins[0] and alloys >= mins[1] and informative >= mins[2] and resid >= mins[3]
+        # Step 7 (migration 0004): a result is withheld (no number from outcomes) when the run uses
+        # the fixed option and its pooled result misses a minimum; the database computes it.
+        option = self.val("SELECT sufficiency_option FROM plan WHERE run_id = :r", r=rid)
+        pooled = self.val("SELECT withheld FROM analysis_result WHERE run_id = :r AND scope = 'pooled'", r=rid)
+        withheld = (option == "fixed_minimum" and not minimums_met) if scope == "pooled" else bool(pooled)
+        counts_check2 = check2
+        check1, check2 = check1 and not withheld, check2 and not withheld  # only for the values below
         return self.val(
             "INSERT INTO analysis_result (run_id, scope, analysis_set_id, source_id, n_records, n_alloys, n_groups, "
-            "resid_df, check1_passed, check2_passed, minimums_met, estimate, std_error, p_value) "
-            "VALUES (:r, :sc, :s, :src, :n, :a, :g, :df, :c1, :c2, :mm, :est, :se, :p) RETURNING id",
+            "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate, std_error, p_value, "
+            "effective_papers, largest_paper_share, t_df, p_value_description) VALUES (:r, :sc, :s, :src, :n, :a, :g, "
+            ":gi, :df, :c1, :c2, :mm, :est, :se, :p, :ep, :ls, :tdf, :pd) RETURNING id",
             r=rid, sc=scope, s=set_id, src=self.source[source] if source else None, n=n, a=alloys, g=groups,
-            df=resid, c1=check1, c2=check2, mm=minimums_met, est=428.0 if check1 else None,
+            # Re-check: the effective number of papers, as if every informative paper carried equal information.
+            gi=informative, ep=float(informative), df=resid, c1=alloys >= 1, c2=counts_check2, mm=minimums_met,
+            ls=1.0 / informative if informative else None, tdf=informative - 1 if check2 else None,
+            pd="approximate, nominal, one-sided cluster-robust p-value under the locked method" if check2 else None,
+            est=428.0 if check1 else None,
             se=64.0 if check2 else None, p=1e-6 if check2 else None)
 
-    def complete(self, rid, outcome, verdict=None, exploratory=False):
+    def complete(self, rid, outcome, verdict=None, exploratory=False, level=None):
+        """Step 7 review fixes: a completed run needs its evidence level. The default is a level
+        consistent with the outcome (6 or 5 with a verdict, else 1); the real one comes from the copy path."""
+        if level is None:
+            level = (5 if exploratory else 6) if verdict else 1
         self.run_sql("UPDATE run SET status = 'completed', completed_at = now(), outcome = :o, verdict = :v, "
-                     "exploratory = :x WHERE id = :r", o=outcome, v=verdict, x=exploratory, r=rid)
+                     "exploratory = :x, evidence_level = :e WHERE id = :r", o=outcome, v=verdict, x=exploratory,
+                     e=level, r=rid)
 
     def fail(self, rid, reason="worker stopped"):
         self.run_sql("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r",

@@ -81,6 +81,10 @@ GROUPING_UNITS = frozenset({"paper", "dataset", "batch"})
 VALUE_STATUSES = frozenset({"converted", "assigned_from_source", "assigned_by_decision"})
 PROFILE_NAMES = frozenset({"grain_size_strengthening"})
 SINGLE_PHASE = frozenset({"required", "not_required"})
+# Step 7 (owner, 2026-10-05): the calibration methods and the estimation method of the
+# 'estimated' calibration (register 'calibration_both_ways', 'calibration_noise_levels').
+CALIBRATION_METHODS = frozenset({"fixed", "estimated"})
+ESTIMATION_METHODS = frozenset({"henderson_iii"})
 
 
 def code(value: Any, vocabulary: frozenset[str]) -> str:

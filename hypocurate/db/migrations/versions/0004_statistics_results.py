@@ -1,0 +1,409 @@
+"""Step 7 results: the withheld state, the records a fit does not use, the test-run label, both
+calibration methods, the fourth per-source label and the run's evidence level (build step 7).
+
+Revision ID: 0004
+Revises: 0003
+Create Date: 2026-10-05
+
+Approved by the owner on 2026-10-05, subject to the second-model review before merging. Additive:
+0001 to 0003 are untouched; the two trigger functions replaced here keep every check of 0001.
+
+analysis_result:
+- `withheld` (owner, decision 1): under the fixed option, when the pooled fit misses a minimum,
+  every analysis of the run holds counts only. **The database computes it**: the insert trigger
+  derives it from the plan and the pooled result (for the pooled row: fixed option and minimums
+  not met; for any other row: the run's pooled row, which must exist first). A caller's value
+  must agree; a missing value is filled in. Estimate, standard error and p-value are present
+  exactly when their check passed **and the row is not withheld** (the three CHECKs of 0001 keep
+  their names, with "AND NOT withheld" added).
+- `n_records_not_used` (decision 7): records of the set the fit does not use (alloys with fewer
+  than two distinct grain sizes within this analysis). The trigger now checks
+  n_records + n_records_not_used = the records of the set used; the stored counts are the fit's.
+  The trigger no longer bounds the alloy count by the display label (review finding 2).
+- `n_groups_informative` (owner, 2026-10-06): the groups that help estimate the slope; the paper
+  minimum and validity check 2 count these. `ck_analysis_result_check2_consistent` becomes an
+  implication (check 2 needs a coefficient, a residual degree of freedom and two informative groups,
+  but can also fail on an unestimable uncertainty), and `inference_reason` states why it failed
+  (derived by the trigger where the counts determine it; 'uncertainty_not_estimable' must be given).
+- `effective_papers` ((Σ I_g)² / Σ I_g², I_g a paper's sum of squared within-alloy deviations of the
+  transformed grain size) and `largest_paper_share` (re-check, owner 2026-10-06): check 2 also needs
+  an effective number of at least 2; below it the reason is 'evidence_concentrated'.
+- `t_df` and `p_value_description` (merge decision, owner 2026-10-06): a p-value is stored with the fixed
+  description "approximate, nominal, one-sided cluster-robust p-value under the locked method", its t
+  degrees of freedom (informative papers - 1), the effective number and the largest share.
+- `label_reason` (present exactly with "not enough data") and `estimated_power_estimated_noise`
+  (the detection rate under the estimated noise; never on a withheld result).
+- `test_run_label`: "test run: includes constructed data" exactly when the run is marked.
+- The label CHECK gains `same_direction_different_decision` (decision 2/3); a label only on a
+  per-source row; an estimated power only where inference is valid.
+
+calibration_result:
+- `method` ('fixed' or 'estimated'): present exactly on rows of an analysis; the one run-level
+  row ("no dataset frozen") has none. The unique index becomes (run, analysis, method).
+- Reasons gain `below_minimums`, `scatter_not_estimable`, `shift_not_estimable`,
+  `uncertainty_not_estimable` (an unavailable reason follows the result's inference reason).
+- `test_run_label`, as above.
+- The insert trigger: computed only where inference is valid and the result is not withheld;
+  where it is, the fixed method must be computed and the estimated one is computed or names why
+  the noise cannot be estimated; every other reason must match the validity checks and the
+  withheld state.
+
+run:
+- `evidence_level` 1 to 6 (owner, 2026-10-05; register 'evidence_level_scale'). Written only by
+  the copy path (`pipeline/completion.py`); when present it must agree with the outcome: 6 = a
+  verdict and not exploratory, 5 = a verdict and exploratory, 1 to 4 = no verdict; required on
+  every completed run, and only on one (review fixes, 2026-10-06).
+
+Marked runs are left out of every aggregate by `pipeline/results.py` (`real_runs`), in code, not by
+a view (register 'constructed_test_runs').
+
+Works with the previous release's code: that code writes no analysis or calibration result
+except the run-level "no dataset frozen" row, which keeps its shape (an unmarked run needs no
+label), and never completes a run.
+
+Downgrade refuses while any row uses what 0004 adds (a withheld result, an unused record, a test
+label, an estimated calibration, a new reason or label, an evidence level), then restores 0001's
+functions, constraints and index exactly.
+
+Rules for every migration (README, "Database migrations"): it runs inside the one upgrade
+transaction (no CONCURRENTLY, no autocommit_block); it keeps working with the previous release's
+code; and it has a downgrade.
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0004'
+down_revision = '0003'
+branch_labels = None
+depends_on = None
+
+TEST_RUN_LABEL = "test run: includes constructed data"
+MARKED = "coalesce((SELECT experiment_flags->>'constructed_test_data' FROM run WHERE id = NEW.run_id) = 'true', false)"
+
+# 0001's functions, verbatim (restored by the downgrade).
+ANALYSIS_RESULT_INSERT_0001 = """
+    CREATE OR REPLACE FUNCTION hc_analysis_result_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s analysis_set; p plan; set_count int; set_alloys int;
+    BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('analysis results are written only while the run is running');
+        END IF;
+        IF NOT hc_is_frozen(NEW.run_id) THEN
+            PERFORM hc_reject('analysis results come after the dataset freeze');
+        END IF;
+        SELECT * INTO s FROM analysis_set WHERE id = NEW.analysis_set_id;
+        IF NEW.scope IN ('pooled', 'per_source') AND s.key IS DISTINCT FROM 'primary' THEN
+            PERFORM hc_reject('pooled and per-source results use the primary set');
+        END IF;
+        IF NEW.scope = 'sensitivity' AND s.key = 'primary' THEN
+            PERFORM hc_reject('a sensitivity result uses a sensitivity set');
+        END IF;
+        SELECT count(*), count(DISTINCT r.alloy) INTO set_count, set_alloys FROM analysis_set_record sr
+            JOIN record r ON r.id = sr.record_id
+            JOIN source_version sv ON sv.id = r.source_version_id
+            WHERE sr.analysis_set_id = NEW.analysis_set_id
+              AND (NEW.source_id IS NULL OR sv.source_id = NEW.source_id);
+        IF NEW.n_records <> set_count THEN
+            PERFORM hc_reject('n_records must equal the records of the set used');
+        END IF;
+        IF NEW.n_alloys > set_alloys THEN
+            PERFORM hc_reject('n_alloys cannot exceed the distinct alloys of the set used');
+        END IF;
+        SELECT * INTO p FROM plan WHERE run_id = NEW.run_id;
+        IF NEW.minimums_met <> (NEW.n_records >= p.min_records AND NEW.n_alloys >= p.min_alloys
+                                AND NEW.n_groups >= p.min_groups AND NEW.resid_df >= p.min_resid_df) THEN
+            PERFORM hc_reject('minimums_met must agree with the counts and the plan''s minimums');
+        END IF;
+        RETURN NEW;
+    END $$
+    """
+
+CALIBRATION_INSERT_0001 = """
+    CREATE OR REPLACE FUNCTION hc_calibration_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE a analysis_result;
+    BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('calibration is recorded only while the run is running');
+        END IF;
+        IF NEW.analysis_result_id IS NULL THEN
+            IF hc_is_frozen(NEW.run_id) THEN
+                PERFORM hc_reject('a dataset was frozen: calibration is reported per analysis');
+            END IF;
+            RETURN NEW;
+        END IF;
+        SELECT * INTO a FROM analysis_result WHERE id = NEW.analysis_result_id;
+        IF (NEW.status = 'computed') <> a.check2_passed THEN
+            PERFORM hc_reject('calibration is computed exactly when inference is valid');
+        END IF;
+        IF NEW.reason = 'coefficient_not_fitted' AND a.check1_passed
+           OR NEW.reason = 'insufficient_groups' AND NOT (a.check1_passed AND NOT a.check2_passed) THEN
+            PERFORM hc_reject('the reason calibration is unavailable must match the validity checks');
+        END IF;
+        RETURN NEW;
+    END $$
+    """
+
+ANALYSIS_RESULT_INSERT_0004 = """
+    CREATE OR REPLACE FUNCTION hc_analysis_result_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE s analysis_set; p plan; set_count int; pooled analysis_result; computed boolean;
+    BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('analysis results are written only while the run is running');
+        END IF;
+        IF NOT hc_is_frozen(NEW.run_id) THEN
+            PERFORM hc_reject('analysis results come after the dataset freeze');
+        END IF;
+        SELECT * INTO s FROM analysis_set WHERE id = NEW.analysis_set_id;
+        IF NEW.scope IN ('pooled', 'per_source') AND s.key IS DISTINCT FROM 'primary' THEN
+            PERFORM hc_reject('pooled and per-source results use the primary set');
+        END IF;
+        IF NEW.scope = 'sensitivity' AND s.key = 'primary' THEN
+            PERFORM hc_reject('a sensitivity result uses a sensitivity set');
+        END IF;
+        -- Review finding 2: the alloy count is no longer bounded by the display label (record.alloy),
+        -- which is rounded to 0.1 at.% while the plan's same-alloy rule may be finer. The bound
+        -- n_records >= 2 * n_alloys (a CHECK) remains.
+        SELECT count(*) INTO set_count FROM analysis_set_record sr
+            JOIN record r ON r.id = sr.record_id
+            JOIN source_version sv ON sv.id = r.source_version_id
+            WHERE sr.analysis_set_id = NEW.analysis_set_id
+              AND (NEW.source_id IS NULL OR sv.source_id = NEW.source_id);
+        IF NEW.n_records + NEW.n_records_not_used <> set_count THEN
+            PERFORM hc_reject('n_records must equal the records of the set used, less those the fit does not use');
+        END IF;
+        SELECT * INTO p FROM plan WHERE run_id = NEW.run_id;
+        -- The paper minimum counts informative groups only (owner, 2026-10-06).
+        IF NEW.minimums_met <> (NEW.n_records >= p.min_records AND NEW.n_alloys >= p.min_alloys
+                                AND NEW.n_groups_informative >= p.min_groups AND NEW.resid_df >= p.min_resid_df) THEN
+            PERFORM hc_reject('minimums_met must agree with the counts and the plan''s minimums');
+        END IF;
+        -- Why check 2 failed, where the structure determines it; an unestimable uncertainty must be stated.
+        IF NEW.inference_reason IS NULL AND NOT NEW.check2_passed THEN
+            NEW.inference_reason := CASE WHEN NOT NEW.check1_passed THEN 'coefficient_not_fitted'
+                                         WHEN NOT (NEW.resid_df >= 1 AND NEW.n_groups_informative >= 2)
+                                         THEN 'insufficient_groups'
+                                         WHEN coalesce(NEW.effective_papers, 0) < 2 THEN 'evidence_concentrated' END;
+        END IF;
+        -- Step 7, decision 1: withheld run-wide when the pooled fit misses a minimum under the fixed option.
+        IF NEW.scope = 'pooled' THEN
+            computed := p.sufficiency_option = 'fixed_minimum' AND NOT NEW.minimums_met;
+        ELSE
+            SELECT * INTO pooled FROM analysis_result WHERE run_id = NEW.run_id AND scope = 'pooled';
+            IF NOT FOUND THEN
+                PERFORM hc_reject('the pooled result is written before any other result of the run');
+            END IF;
+            computed := pooled.withheld;
+        END IF;
+        IF NEW.withheld IS NULL THEN
+            NEW.withheld := computed;
+        ELSIF NEW.withheld <> computed THEN
+            PERFORM hc_reject('withheld must equal: the fixed option and the pooled minimums not met');
+        END IF;
+        IF (NEW.test_run_label IS NOT NULL) <> """ + MARKED + """ THEN
+            PERFORM hc_reject('a result carries the test-run label exactly when its run is marked as a test');
+        END IF;
+        RETURN NEW;
+    END $$
+    """
+
+CALIBRATION_INSERT_0004 = """
+    CREATE OR REPLACE FUNCTION hc_calibration_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE a analysis_result; expected text;
+    BEGIN
+        IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'running' THEN
+            PERFORM hc_reject('calibration is recorded only while the run is running');
+        END IF;
+        IF (NEW.test_run_label IS NOT NULL) <> """ + MARKED + """ THEN
+            PERFORM hc_reject('a result carries the test-run label exactly when its run is marked as a test');
+        END IF;
+        IF NEW.analysis_result_id IS NULL THEN
+            IF hc_is_frozen(NEW.run_id) THEN
+                PERFORM hc_reject('a dataset was frozen: calibration is reported per analysis');
+            END IF;
+            RETURN NEW;
+        END IF;
+        SELECT * INTO a FROM analysis_result WHERE id = NEW.analysis_result_id;
+        IF NEW.status = 'computed' AND NOT (a.check2_passed AND NOT a.withheld) THEN
+            PERFORM hc_reject('calibration is computed exactly when inference is valid and the result is not withheld');
+        END IF;
+        IF NEW.status = 'unavailable' AND a.check2_passed AND NOT a.withheld
+           AND NOT (NEW.method = 'estimated' AND NEW.reason IN ('scatter_not_estimable', 'shift_not_estimable')) THEN
+            PERFORM hc_reject('calibration is computed exactly when inference is valid and the result is not withheld '
+                              '(the estimated method may name why the noise cannot be estimated)');
+        END IF;
+        IF NEW.status = 'unavailable' AND NOT (a.check2_passed AND NOT a.withheld) THEN
+            expected := CASE WHEN NOT a.check1_passed THEN 'coefficient_not_fitted'
+                             WHEN NOT a.check2_passed THEN a.inference_reason
+                             ELSE 'below_minimums' END;
+            IF NEW.reason IS NOT NULL AND NEW.reason <> expected THEN  -- a missing reason: the CHECK refuses it
+                PERFORM hc_reject('the reason calibration is unavailable must match the validity checks');
+            END IF;
+        END IF;
+        RETURN NEW;
+    END $$
+    """
+
+NEW_LABELS = "('agrees', 'conflicts', 'not_enough_data', 'same_direction_different_decision')"
+OLD_LABELS = "('agrees', 'conflicts', 'not_enough_data')"
+NEW_REASONS = ("('no_dataset_frozen', 'coefficient_not_fitted', 'insufficient_groups', 'below_minimums', "
+               "'scatter_not_estimable', 'shift_not_estimable', 'uncertainty_not_estimable', 'evidence_concentrated')")
+INFERENCE_REASONS = ("('coefficient_not_fitted', 'insufficient_groups', 'evidence_concentrated', "
+                     "'uncertainty_not_estimable')")
+LABEL_REASONS = "('no_p_value', 'pooled_without_decision', 'zero_coefficient')"
+COUNTS_ALLOW = "(resid_df >= 1 AND n_groups_informative >= 2)"
+SPREAD = "coalesce(effective_papers, 0) >= 2"  # re-check (owner, 2026-10-06): two effective papers
+P_VALUE_DESCRIPTION = "approximate, nominal, one-sided cluster-robust p-value under the locked method"
+# Merge decision (owner, 2026-10-06): a p-value is stored with its description, the t degrees of freedom
+# (informative papers - 1), the effective number of papers and the largest paper's share.
+REPORTED_TOGETHER = ("(t_df IS NULL) = (p_value IS NULL) AND (p_value_description IS NULL) = (p_value IS NULL) "
+                     "AND (p_value IS NULL OR (t_df = n_groups_informative - 1 AND effective_papers IS NOT NULL "
+                     "AND largest_paper_share IS NOT NULL))")
+INFERENCE_REASON = ("(inference_reason IS NULL) = check2_passed "
+                    "AND (inference_reason IS NOT DISTINCT FROM 'coefficient_not_fitted') = NOT check1_passed "
+                    f"AND (inference_reason IS DISTINCT FROM 'insufficient_groups' OR NOT {COUNTS_ALLOW}) "
+                    f"AND (inference_reason IS DISTINCT FROM 'evidence_concentrated' OR ({COUNTS_ALLOW} AND NOT {SPREAD})) "
+                    f"AND (inference_reason IS DISTINCT FROM 'uncertainty_not_estimable' OR ({COUNTS_ALLOW} AND {SPREAD}))")
+OLD_REASONS = "('no_dataset_frozen', 'coefficient_not_fitted', 'insufficient_groups')"
+
+EVIDENCE_LEVEL = ("evidence_level IS NULL OR (evidence_level BETWEEN 1 AND 6 AND outcome IS NOT NULL "
+                  "AND (evidence_level = 6) = (verdict IS NOT NULL AND NOT exploratory) "
+                  "AND (evidence_level = 5) = (verdict IS NOT NULL AND exploratory))")
+EVIDENCE_LEVEL_REQUIRED = "(evidence_level IS NOT NULL) = (status = 'completed')"
+
+IN_USE = """
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM analysis_result WHERE withheld OR n_records_not_used <> 0
+                   OR test_run_label IS NOT NULL OR label = 'same_direction_different_decision'
+                   OR n_groups_informative <> n_groups OR inference_reason = 'uncertainty_not_estimable'
+                   OR label_reason IS NOT NULL OR estimated_power_estimated_noise IS NOT NULL
+                   OR effective_papers IS NOT NULL OR inference_reason = 'evidence_concentrated'
+                   OR t_df IS NOT NULL OR p_value_description IS NOT NULL)
+           OR EXISTS (SELECT 1 FROM calibration_result WHERE method = 'estimated' OR test_run_label IS NOT NULL
+                      OR reason IN ('below_minimums', 'scatter_not_estimable', 'shift_not_estimable',
+                                    'uncertainty_not_estimable', 'evidence_concentrated'))
+           OR EXISTS (SELECT 1 FROM run WHERE evidence_level IS NOT NULL) THEN
+            RAISE EXCEPTION USING MESSAGE = 'hypocurate: 0004 cannot be downgraded while step 7 results use it',
+                                  ERRCODE = 'check_violation';
+        END IF;
+    END $$
+    """
+
+
+def upgrade() -> None:
+    # analysis_result
+    op.add_column('analysis_result', sa.Column('withheld', sa.Boolean(), nullable=True))
+    op.execute("UPDATE analysis_result SET withheld = false")
+    op.create_check_constraint(op.f('ck_analysis_result_withheld_set'), 'analysis_result', 'withheld IS NOT NULL')
+    op.add_column('analysis_result', sa.Column('n_records_not_used', sa.Integer(), server_default=sa.text('0'),
+                                               nullable=False))
+    op.create_check_constraint(op.f('ck_analysis_result_not_used_not_negative'), 'analysis_result',
+                               'n_records_not_used >= 0')
+    op.add_column('analysis_result', sa.Column('test_run_label', sa.Text(), nullable=True))
+    op.create_check_constraint(op.f('ck_analysis_result_test_run_label'), 'analysis_result',
+                               f"test_run_label IS NULL OR test_run_label = '{TEST_RUN_LABEL}'")
+    # Review fixes (2026-10-06): informative groups, the reason inference is missing, the label's reason,
+    # the detection rate under the estimated noise.
+    op.add_column('analysis_result', sa.Column('n_groups_informative', sa.Integer(), nullable=True))
+    op.execute("UPDATE analysis_result SET n_groups_informative = n_groups")  # none on the live database
+    op.alter_column('analysis_result', 'n_groups_informative', nullable=False)
+    op.create_check_constraint(op.f('ck_analysis_result_informative_within_groups'), 'analysis_result',
+                               'n_groups_informative BETWEEN 0 AND n_groups')
+    for column in ('inference_reason', 'label_reason'):
+        op.add_column('analysis_result', sa.Column(column, sa.Text(), nullable=True))
+    op.add_column('analysis_result', sa.Column('estimated_power_estimated_noise', sa.Double(), nullable=True))
+    # Re-check (owner, 2026-10-06): the effective number of papers and the largest paper's share.
+    op.add_column('analysis_result', sa.Column('effective_papers', sa.Double(), nullable=True))
+    op.add_column('analysis_result', sa.Column('largest_paper_share', sa.Double(), nullable=True))
+    op.create_check_constraint(op.f('ck_analysis_result_effective_papers'), 'analysis_result',
+                               'effective_papers IS NULL OR effective_papers >= 0')
+    op.create_check_constraint(op.f('ck_analysis_result_largest_paper_share'), 'analysis_result',
+                               'largest_paper_share IS NULL OR (largest_paper_share > 0 AND largest_paper_share <= 1)')
+    op.add_column('analysis_result', sa.Column('t_df', sa.Integer(), nullable=True))
+    op.add_column('analysis_result', sa.Column('p_value_description', sa.Text(), nullable=True))
+    op.create_check_constraint(op.f('ck_analysis_result_p_value_description'), 'analysis_result',
+                               f"p_value_description IS NULL OR p_value_description = '{P_VALUE_DESCRIPTION}'")
+    op.create_check_constraint(op.f('ck_analysis_result_reported_together'), 'analysis_result', REPORTED_TOGETHER)
+    op.create_check_constraint(op.f('ck_analysis_result_inference_reason_value'), 'analysis_result',
+                               f"inference_reason IS NULL OR inference_reason IN {INFERENCE_REASONS}")
+    op.create_check_constraint(op.f('ck_analysis_result_label_reason_value'), 'analysis_result',
+                               f"label_reason IS NULL OR label_reason IN {LABEL_REASONS}")
+    op.create_check_constraint(op.f('ck_analysis_result_label_reason'), 'analysis_result',
+                               "(label_reason IS NOT NULL) = (label IS NOT DISTINCT FROM 'not_enough_data')")
+    op.create_check_constraint(op.f('ck_analysis_result_power_estimated_noise'), 'analysis_result',
+                               "estimated_power_estimated_noise IS NULL OR (check2_passed AND NOT withheld "
+                               "AND estimated_power_estimated_noise BETWEEN 0 AND 1)")
+    for name, expr in (("estimate_iff_check1", "(check1_passed AND NOT withheld) = (estimate IS NOT NULL)"),
+                       ("std_error_iff_check2", "(check2_passed AND NOT withheld) = (std_error IS NOT NULL)"),
+                       ("p_value_iff_check2", "(check2_passed AND NOT withheld) = (p_value IS NOT NULL)"),
+                       ("label", f"label IS NULL OR label IN {NEW_LABELS}"),
+                       ("check2_consistent", f"NOT check2_passed OR (check1_passed AND {COUNTS_ALLOW} AND {SPREAD})")):
+        op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
+        op.create_check_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', expr)
+    op.create_check_constraint(op.f('ck_analysis_result_inference_reason'), 'analysis_result', INFERENCE_REASON)
+    op.create_check_constraint(op.f('ck_analysis_result_label_per_source_only'), 'analysis_result',
+                               "label IS NULL OR scope = 'per_source'")
+    op.create_check_constraint(op.f('ck_analysis_result_power_needs_check2'), 'analysis_result',
+                               'estimated_power IS NULL OR check2_passed')
+    op.execute(ANALYSIS_RESULT_INSERT_0004)
+    # calibration_result
+    op.add_column('calibration_result', sa.Column('method', sa.Text(), nullable=True))
+    op.create_check_constraint(op.f('ck_calibration_result_method'), 'calibration_result',
+                               "method IS NULL OR method IN ('fixed', 'estimated')")
+    op.create_check_constraint(op.f('ck_calibration_result_method_iff_analysis'), 'calibration_result',
+                               '(method IS NULL) = (analysis_result_id IS NULL)')
+    op.add_column('calibration_result', sa.Column('test_run_label', sa.Text(), nullable=True))
+    op.create_check_constraint(op.f('ck_calibration_result_test_run_label'), 'calibration_result',
+                               f"test_run_label IS NULL OR test_run_label = '{TEST_RUN_LABEL}'")
+    op.drop_constraint(op.f('ck_calibration_result_reason'), 'calibration_result', type_='check')
+    op.create_check_constraint(op.f('ck_calibration_result_reason'), 'calibration_result',
+                               f"reason IS NULL OR reason IN {NEW_REASONS}")
+    op.drop_index('uq_calibration_result_scope', table_name='calibration_result', postgresql_nulls_not_distinct=True)
+    op.create_index('uq_calibration_result_scope', 'calibration_result', ['run_id', 'analysis_result_id', 'method'],
+                    unique=True, postgresql_nulls_not_distinct=True)
+    op.execute(CALIBRATION_INSERT_0004)
+    # run
+    op.add_column('run', sa.Column('evidence_level', sa.SmallInteger(), nullable=True))
+    op.create_check_constraint(op.f('ck_run_evidence_level'), 'run', EVIDENCE_LEVEL)
+    # Review (smaller point): required on every completed run. Needs no completed run to exist
+    # (true on the live database, where no run was ever dispatched); otherwise the upgrade fails whole.
+    op.create_check_constraint(op.f('ck_run_evidence_level_iff_completed'), 'run', EVIDENCE_LEVEL_REQUIRED)
+
+
+def downgrade() -> None:
+    op.execute(IN_USE)
+    op.drop_constraint(op.f('ck_run_evidence_level_iff_completed'), 'run', type_='check')
+    op.drop_constraint(op.f('ck_run_evidence_level'), 'run', type_='check')
+    op.drop_column('run', 'evidence_level')
+    op.execute(CALIBRATION_INSERT_0001)
+    op.drop_index('uq_calibration_result_scope', table_name='calibration_result', postgresql_nulls_not_distinct=True)
+    op.create_index('uq_calibration_result_scope', 'calibration_result', ['run_id', 'analysis_result_id'],
+                    unique=True, postgresql_nulls_not_distinct=True)
+    op.drop_constraint(op.f('ck_calibration_result_reason'), 'calibration_result', type_='check')
+    op.create_check_constraint(op.f('ck_calibration_result_reason'), 'calibration_result',
+                               f"reason IS NULL OR reason IN {OLD_REASONS}")
+    for name in ('test_run_label', 'method_iff_analysis', 'method'):
+        op.drop_constraint(op.f(f'ck_calibration_result_{name}'), 'calibration_result', type_='check')
+    op.drop_column('calibration_result', 'test_run_label')
+    op.drop_column('calibration_result', 'method')
+    op.execute(ANALYSIS_RESULT_INSERT_0001)
+    for name in ('power_needs_check2', 'label_per_source_only', 'inference_reason', 'power_estimated_noise',
+                 'label_reason', 'label_reason_value', 'inference_reason_value', 'informative_within_groups',
+                 'effective_papers', 'largest_paper_share', 'p_value_description', 'reported_together'):
+        op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
+    for name, expr in (("estimate_iff_check1", "check1_passed = (estimate IS NOT NULL)"),
+                       ("std_error_iff_check2", "check2_passed = (std_error IS NOT NULL)"),
+                       ("p_value_iff_check2", "check2_passed = (p_value IS NOT NULL)"),
+                       ("label", f"label IS NULL OR label IN {OLD_LABELS}"),
+                       ("check2_consistent", "check2_passed = (check1_passed AND resid_df >= 1 AND n_groups >= 2)")):
+        op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
+        op.create_check_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', expr)
+    # After the constraints that name them are restored (a dropped column takes its constraints with it).
+    for column in ('estimated_power_estimated_noise', 'label_reason', 'inference_reason', 'n_groups_informative',
+                   'effective_papers', 'largest_paper_share', 't_df', 'p_value_description'):
+        op.drop_column('analysis_result', column)
+    for name in ('test_run_label', 'not_used_not_negative', 'withheld_set'):
+        op.drop_constraint(op.f(f'ck_analysis_result_{name}'), 'analysis_result', type_='check')
+    op.drop_column('analysis_result', 'test_run_label')
+    op.drop_column('analysis_result', 'n_records_not_used')
+    op.drop_column('analysis_result', 'withheld')

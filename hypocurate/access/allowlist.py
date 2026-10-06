@@ -36,7 +36,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Mapping
 
-from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FLAG_CATEGORIES, FLAG_KINDS,
+from hypocurate.access.vocabulary import (CALIBRATION_METHODS, CATEGORY_FIELDS, ELIGIBILITY_RULES, ESTIMATION_METHODS, FLAG_CATEGORIES, FLAG_KINDS,
                                           GROUPING_UNITS, PHASE_CLASSES, PROCESSING_METHODS, PROFILE_NAMES,
                                           SENSITIVITY_KEYS, SINGLE_PHASE, SOURCE_KEYS, TEMPERATURE_BANDS, TEST_TYPES,
                                           VALUE_STATUSES)
@@ -44,8 +44,9 @@ from hypocurate.access.vocabulary import (CATEGORY_FIELDS, ELIGIBILITY_RULES, FL
 ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 # The code roles of PRD 4 (step 6, owner 2026-10-05): Inclusion and Checks are code, not
 # agents. They read through access objects too, bound by `dispatch.bind_code`, so their reads
-# are logged. No agent setting can bind as one of them.
-CODE_ROLES = ("inclusion", "checks")
+# are logged. No agent setting can bind as one of them. Step 7 (owner, 2026-10-05; a safeguard
+# change, reviewed by a second model): Statistics and the gap facts.
+CODE_ROLES = ("inclusion", "checks", "statistics", "gap_facts")
 ALL_ROLES = ROLES + CODE_ROLES
 
 # none: queued or failed. before_lock: running, no plan. curation: plan locked, no dataset
@@ -102,6 +103,12 @@ FIELDS = MappingProxyType({
                          "field's status, grain size and test temperature, and the category values from their "
                          "vocabularies. No outcome value, no value as reported, no free text.",
     "outcome": "The run's status, outcome, verdict and exploratory label.",
+    "frozen_analysis_data": "For Statistics (code; step 7), once the dataset is frozen: the freeze's "
+                            "fingerprint; the frozen sets (keys from the vocabulary, record ids); and per "
+                            "record in any frozen set, and only those: id, source, stable identity "
+                            "(source-version fingerprint, origin key, item index), composition, the paper "
+                            "(from the DOI) and the batch as hashes, grain size, and the plan's outcome value. "
+                            "No record outside the frozen sets, no value as reported, no free text.",
 })
 
 _ANALYSIS = frozenset({"claim", "domain", "sources_meta", "plan", "records_full", "decisions", "flags_full",
@@ -141,6 +148,13 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
 CODE_ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
     "inclusion": MappingProxyType({"curation": frozenset({"plan", "record_conditions", "flags_kind", "set_flags"})}),
     "checks": MappingProxyType({"curation": frozenset({"plan", "records_full"})}),
+    # Step 7 (owner, 2026-10-05): Statistics reads only the frozen set, after the freeze, and
+    # never decides inclusion. The gap facts read no outcome value: counts, decisions, coverage.
+    "statistics": MappingProxyType({"analysis": frozenset({"plan", "frozen_analysis_data"})}),
+    "gap_facts": MappingProxyType({
+        "analysis": frozenset({"plan", "decisions", "stored_record_counts", "coverage"}),
+        "closed_without_freeze": frozenset({"plan", "decisions", "stored_record_counts", "coverage"}),
+    }),
 })
 
 
@@ -219,6 +233,9 @@ PLAN_SCHEMA = MappingProxyType({
               "room_temperature_min": "number", "room_temperature_max": "number", "single_phase": SINGLE_PHASE,
               "accepted_value_statuses": ("list", VALUE_STATUSES),
               "grouping": ("list", {"source": SOURCE_KEYS, "unit": GROUPING_UNITS})},
+    # Step 7 (owner, 2026-10-05): the calibration is fixed at the rules lock, both methods.
+    "calibration": {"methods": ("list", CALIBRATION_METHODS), "n_simulations": "integer", "scatter": "number",
+                    "shift": "number", "estimation": ESTIMATION_METHODS, "smallest_effect": "number"},
 })
 POWER_SCHEMA = MappingProxyType({"method": POWER_METHODS, "within_paper_similarity": "number",
                                  "smallest_effect": "number", "scatter": "number"})

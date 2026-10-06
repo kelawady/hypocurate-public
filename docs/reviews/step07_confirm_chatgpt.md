@@ -1,0 +1,19 @@
+# Step 7 — second-model confirmation (ChatGPT), 2026-10-06
+
+Saved verbatim as pasted by the owner.
+
+The implementation fixes close the outstanding blockers. The remaining issue is how strongly the statistical result is described.
+1. Nudged design: fixed. I reproduced an effective count of 1.000000000064; the fit now returns the coefficient without uncertainty or a p-value, with reason evidence_concentrated. The definition is sound as a measure of concentration of within-alloy predictor contrast. A floor of 2 is a reasonable rejection safeguard, but passing it does not establish reliable inference. It is not an estimate of independent sample size.
+2. Covariance: fixed. Every paper’s score remains in the covariance, in both real fits and simulations. The informative count controls the correction factor and degrees of freedom. For the five-paper counterexample, I reproduced:
+   - Corrected result: SE 0.011605, p 0.27360, 1 degree of freedom.
+   - All-papers comparison: SE 0.009174, p 0.16849, 4 degrees of freedom.
+   The corrected result is more cautious in this case. The simulation comparison against the independent calculation also passed.
+3. Independent check: fixed for the identified problem. The Decimal implementation calculates the covariance independently and retains all scores; it no longer repeats the erroneous filtering assumption. However, “floating-point conditioning cannot affect it” overstates matters: the transformed inputs and informative-paper classification still originate in ordinary floating-point calculations, and the tail probability uses SciPy. It independently checks the implementation—not the statistical validity of the chosen correction or degrees of freedom.
+4. Distinct grain sizes: fixed. The full-range comparison removes the adjacent-gap defect. Adding the middle value no longer removes an alloy’s contrast. The targeted example and randomized insertion checks passed.
+5. Numerical zero: fixed. Stable centring and the floor based on the original outcome scale close the large-baseline/tiny-slope example. Perfect fits with shifted baselines correctly withhold uncertainty; real noise of 0.01 MPa remains estimable. The same safeguard operates in simulations and variance estimation. At the data’s scale, this is an arithmetic tolerance, not a meaningful scientific noise threshold.
+6. Changed validity tests: fixed; no protection lost identified. The original cases still check their record selection and counts. Their expected validity changes follow the new concentration rule. The added balanced case supplies a positive control, so an implementation that simply rejects everything would fail.
+7. Real-data interpretation: partly fixed—reporting needs qualification. Report all four quantities together: 20 informative papers, effective concentration count 3.94, largest paper share 38.7%, and a t reference distribution with 19 degrees of freedom. Describe the p-value as an approximate, nominal, one-sided cluster-robust p-value under the locked method.
+   Do not describe this as 20 similarly informative papers, or as literally equivalent to 3.94 independent papers. The concentration diagnostic does not supply replacement degrees of freedom. It does weaken confidence in the nominal calibration, especially alongside the previously reported roughly 8% simulated rejection rate at nominal 5%. Concentrated cluster leverage is a recognized difficulty for conventional clustered inference. MacKinnon, Nielsen and Webb
+Nothing new that blocks merging. Two small wording cleanups remain: qualify the Decimal independence claim, and replace the stale “statsmodels” description in the counterexample test.
+I reconstructed the packet changes and ran nine focused checks successfully. I did not rerun the full database suite or migration; the local numerical environment also reported a NumPy/SciPy compatibility warning.
+Safe to merge.
