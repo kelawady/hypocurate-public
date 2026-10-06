@@ -44,21 +44,28 @@ def audit(engine, run_id):
                                  "ORDER BY id"), dict(r=run_id)).all()
 
 
+# The two code roles of step 6. Step 7 adds Statistics and the gap facts (test_access_statistics.py).
+STEP6_ROLES = ("inclusion", "checks")
+
+
 def test_the_code_lists_match_the_owners_decision():
-    assert CODE_ROLES == ("inclusion", "checks") and ALL_ROLES == ROLES + CODE_ROLES
+    # Step 7 (owner, 2026-10-05): Statistics and the gap facts added (changed from step 6's two).
+    assert CODE_ROLES == ("inclusion", "checks", "statistics", "gap_facts") and ALL_ROLES == ROLES + CODE_ROLES
     assert not set(CODE_ROLES) & set(ALLOWED)  # the agent table is unchanged
-    assert {r: set(s) for r, s in CODE_ALLOWED.items()} == {"inclusion": {"curation"}, "checks": {"curation"}}
+    assert {r: set(s) for r, s in CODE_ALLOWED.items()} == {
+        "inclusion": {"curation"}, "checks": {"curation"}, "statistics": {"analysis"},
+        "gap_facts": {"analysis", "closed_without_freeze"}}
     # set_flags: step 6 review, finding 2 (each sensitivity set's matching flags, codes and ids only).
     assert allowed("inclusion", "curation") == {"plan", "record_conditions", "flags_kind", "set_flags"}
     assert allowed("checks", "curation") == {"plan", "records_full"}
-    for role in CODE_ROLES:
+    for role in STEP6_ROLES:
         for stage in ("none", "before_lock", "analysis", "closed_without_freeze", "final", "final_without_freeze"):
             assert allowed(role, stage) == frozenset()
 
 
 def test_code_roles_bind_at_curation_and_every_bind_is_logged(engine):
     world = aw.build(engine, "curation")
-    for role in CODE_ROLES:
+    for role in STEP6_ROLES:
         access = bind_code(engine, world.run, role)
         assert (access.context.role, access.context.stage, access.context.agent_setting_id) == (role, "curation", None)
     rows = [r for r in audit(engine, world.run) if r.function == "bind" and r.role in CODE_ROLES]
@@ -69,7 +76,7 @@ def test_code_roles_bind_at_curation_and_every_bind_is_logged(engine):
 @pytest.mark.parametrize("stage", ["queued", "before_lock", "analysis", "closed_without_freeze", "final"])
 def test_code_roles_do_not_bind_at_any_other_stage(engine, stage):
     world = aw.build(engine, stage)
-    for role in CODE_ROLES:
+    for role in STEP6_ROLES:
         with pytest.raises(AccessDenied) as denied:
             bind_code(engine, world.run, role)
         assert denied.value.code == "empty_list"
