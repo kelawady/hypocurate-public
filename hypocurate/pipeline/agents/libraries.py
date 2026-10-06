@@ -33,3 +33,24 @@ def load():
     import dspy
     dspy.configure_cache(enable_disk_cache=False, enable_memory_cache=False)
     return litellm, dspy
+
+
+def lm15():
+    """DSPy's provider-neutral request, response and error types (after `load`)."""
+    load()
+    from dspy import lm15 as module
+    return module
+
+
+def litellm_engine(**client_options):
+    """DSPy's one-attempt litellm engine (after `load`)."""
+    load()
+    from dspy.clients.engines.litellm_engine import LiteLLMEngine
+    return LiteLLMEngine(**client_options)
+
+
+def request_kwargs(request) -> dict:
+    """A DSPy request as the keyword arguments litellm receives (after `load`)."""
+    load()
+    from dspy.clients.lm15_boundary import request_kwargs as convert
+    return convert(request, "chat")

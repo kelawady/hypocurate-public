@@ -1,0 +1,148 @@
+"""Reserving and recording model calls; the spending caps (step 8a; register 'spending_caps').
+
+**Before every request** (`reserve`): one transaction checks the caps and records the call as
+started with its maximum cost; it is finished before the request is sent, so no model call ever
+happens inside a database transaction. A run call takes the run's lock first (the locking protocol);
+every reservation then takes one month-wide advisory lock, so two reservations can never both pass
+the monthly cap. The caps count every recorded call at its reported cost, or at its maximum cost
+while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
+- a run: at most `RUN_CAP_USD` over all its calls;
+- a registration invocation (the Curator): at most `CURATION_CAP_USD` over its calls;
+- the calendar month (UTC, by the database's start time): at most `MONTH_CAP_USD` over every call
+  recorded in this database;
+- optionally a lower ceiling the caller names (the live curation call: $0.50, owner 2026-10-06),
+  over the same run or invocation.
+A refusal sends nothing, is logged in `audit_log` in its own transaction (function 'model_call',
+result 'rejected', a fixed code) and raises `SpendingRefused`.
+
+**After the request** (`finish`): one transaction (a run call takes the run's lock first) finishes
+the call exactly once, with the reported usage and its cost, or as failed with no usage (counted at
+its maximum cost) and a fixed code. Never any provider text.
+
+Limitation, stated plainly: the monthly cap counts the calls recorded in this database only; calls
+made from another database (a local or test database) are not counted toward the live site's month.
+"""
+from __future__ import annotations
+
+import json
+import logging
+from decimal import Decimal
+
+from sqlalchemy import Connection, Engine, bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
+
+from hypocurate.access.layer import ACCESS_LOCK_TIMEOUT_MS
+from hypocurate.access.stage import actual_stage
+from hypocurate.db.retry import run_transaction
+from hypocurate.pipeline.agents.prices import PRICE_TABLE_VERSION
+
+LOG = logging.getLogger("hypocurate.pipeline")
+RUN_CAP_USD = Decimal("2")         # CLAUDE.md rule 12; register 'spending_caps'
+MONTH_CAP_USD = Decimal("50")      # CLAUDE.md rule 12; register 'spending_caps'
+CURATION_CAP_USD = Decimal("2")    # step 8a (owner, 2026-10-06): one curation, like one run
+MONTH_LOCK_KEY = 0x68636D6F6E7468  # pg_advisory_xact_lock key of the monthly cap ("hcmonth")
+CODES = {
+    "spending_cap_run": "the run's model calls would exceed the per-run cap",
+    "spending_cap_curation": "the curation's model calls would exceed the per-curation cap",
+    "spending_cap_month": "the month's model calls would exceed the monthly cap",
+    "ceiling_reached": "the calls would exceed the ceiling set for this call",
+    "invocation_unknown": "no such invocation",
+}
+FINISH_CODES = ("model_auth", "provider_rejected", "provider_unavailable", "cost_unknown")
+
+
+class SpendingRefused(Exception):
+    """No request was sent; the refusal is logged."""
+
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(f"model call refused: {CODES[code]}")
+
+
+_AUDIT = text("INSERT INTO audit_log (run_id, role, stage, function, allowed, detail) "
+              "VALUES (:r, :role, :stage, 'model_call', false, :d)").bindparams(bindparam("d", type_=JSONB))
+_MONTH_TOTAL = ("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
+                "WHERE date_trunc('month', started_at AT TIME ZONE 'UTC') = date_trunc('month', now() AT TIME ZONE 'UTC')")
+
+
+def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, ceiling: Decimal | None = None) -> int:
+    """The new call's id, recorded as started; or SpendingRefused (logged)."""
+    if not isinstance(max_cost, Decimal) or not max_cost > 0:
+        raise ValueError("max_cost must be a positive Decimal")
+
+    def transaction(conn: Connection):
+        conn.execute(text(f"SET LOCAL lock_timeout = {int(ACCESS_LOCK_TIMEOUT_MS)}"))
+        inv = conn.execute(text("SELECT scope, run_id, stage_result_id, role FROM agent_invocation WHERE id = :i"),
+                           dict(i=invocation_id)).one_or_none()
+        if inv is None:
+            return ("refused", "invocation_unknown", None, None, None)
+        if inv.scope == "run":
+            status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=inv.run_id)).scalar_one()
+            stage = actual_stage(conn, inv.run_id, status)
+            spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
+                                      "WHERE run_id = :r"), dict(r=inv.run_id)).scalar_one()
+            cap, cap_code = RUN_CAP_USD, "spending_cap_run"
+        else:
+            stage = "registration"
+            spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
+                                      "WHERE invocation_id = :i"), dict(i=invocation_id)).scalar_one()
+            cap, cap_code = CURATION_CAP_USD, "spending_cap_curation"
+        conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=MONTH_LOCK_KEY))
+        month = conn.execute(text(_MONTH_TOTAL)).scalar_one()
+        code = (cap_code if spent + max_cost > cap else
+                "ceiling_reached" if ceiling is not None and spent + max_cost > ceiling else
+                "spending_cap_month" if month + max_cost > MONTH_CAP_USD else None)
+        if code:
+            return ("refused", code, inv, stage, {"spent": str(spent), "month": str(month)})
+        call = conn.execute(text(
+            "INSERT INTO model_call (run_id, stage_result_id, invocation_id, role, model, price_table_version, max_cost) "
+            "VALUES (:r, :s, :i, :o, :m, :p, :c) RETURNING id"),
+            dict(r=inv.run_id, s=inv.stage_result_id, i=invocation_id, o=inv.role, m=model, p=PRICE_TABLE_VERSION,
+                 c=max_cost)).scalar_one()
+        return ("reserved", call, None, None, None)
+
+    outcome = run_transaction(engine, transaction)
+    if outcome[0] == "reserved":
+        return outcome[1]
+    _, code, inv, stage, totals = outcome
+    _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals)
+    raise SpendingRefused(code)
+
+
+def _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals) -> None:
+    detail = {"result": "rejected", "code": code, "invocation": int(invocation_id), "max_cost": str(max_cost)}
+    if ceiling is not None:
+        detail["ceiling"] = str(ceiling)
+    detail.update(totals or {})
+    row = dict(r=inv.run_id if inv else None, role=inv.role if inv else "invalid", stage=stage or "none", d=detail)
+    try:
+        run_transaction(engine, lambda conn: conn.execute(_AUDIT, row))
+    except Exception as error:  # the process log is the fallback
+        LOG.error(json.dumps({"refusal_fallback": {**row, "function": "model_call"}, "error": type(error).__name__},
+                             sort_keys=True, default=str))
+
+
+def finish(engine: Engine, call_id: int, status: str, *, input_tokens: int | None = None,
+           output_tokens: int | None = None, cached_tokens: int | None = None, cost: Decimal | None = None,
+           code: str | None = None) -> None:
+    """Finishes the call once: 'succeeded' with its usage and cost, or 'failed' / 'interrupted' with
+    no usage and a fixed code."""
+    if status == "succeeded":
+        if None in (input_tokens, output_tokens, cached_tokens, cost):
+            raise ValueError("a succeeded call has its usage and cost")
+    elif status in ("failed", "interrupted"):
+        if code not in FINISH_CODES and status == "failed":
+            raise ValueError(f"unknown code {code!r}")
+    else:
+        raise ValueError(status)
+
+    def transaction(conn: Connection):
+        conn.execute(text(f"SET LOCAL lock_timeout = {int(ACCESS_LOCK_TIMEOUT_MS)}"))
+        run_id = conn.execute(text("SELECT run_id FROM model_call WHERE id = :c"), dict(c=call_id)).scalar_one()
+        if run_id is not None:
+            conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id))
+        conn.execute(text("UPDATE model_call SET status = :st, input_tokens = :i, output_tokens = :o, "
+                          "cached_tokens = :c, cost = :cost, error = :e, finished_at = now() WHERE id = :id"),
+                     dict(st=status, i=input_tokens, o=output_tokens, c=cached_tokens, cost=cost, e=code, id=call_id))
+
+    run_transaction(engine, transaction)
