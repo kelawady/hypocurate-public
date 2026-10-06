@@ -13,3 +13,11 @@ from hypocurate.access.layer import _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, Access
 def access_for(engine, run_id, role, stage, source_key=None, lock_timeout_ms=ACCESS_LOCK_TIMEOUT_MS):
     return Access(engine, AccessContext(run_id, role, stage, source_key), lock_timeout_ms=lock_timeout_ms,
                   _trusted=_TRUSTED)
+
+
+def registration_access_for(engine, invocation_id, source_version_id, role="curator", stage="registration",
+                            source_key=None, lock_timeout_ms=ACCESS_LOCK_TIMEOUT_MS):
+    """A registration context (step 8a) the dispatcher would or would not produce."""
+    return Access(engine, AccessContext(None, role, stage, source_key, None, source_version_id=source_version_id,
+                                        invocation_id=invocation_id), lock_timeout_ms=lock_timeout_ms,
+                  _trusted=_TRUSTED)

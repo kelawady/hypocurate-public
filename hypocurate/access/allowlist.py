@@ -53,7 +53,10 @@ ALL_ROLES = ROLES + CODE_ROLES
 # frozen and no 'no dataset frozen' record. analysis: dataset frozen, running.
 # closed_without_freeze: curation ended with no dataset frozen (insufficient), running.
 # final: completed after a dataset freeze. final_without_freeze: completed with no dataset frozen.
-STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final", "final_without_freeze")
+# registration (step 8a, owner 2026-10-06): not a run stage; the Curator reads one sealed source
+# version, bound by a registration invocation (`dispatch.bind_invocation`), with no run.
+STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final", "final_without_freeze",
+          "registration")
 
 FIELDS = MappingProxyType({
     "claim": "The claim in words: query number, version number, text, and whether it is a narrower question.",
@@ -65,8 +68,11 @@ FIELDS = MappingProxyType({
     "record_counts": "Per chosen source, computed by code from its sealed version: the number of records, "
                      "per field the count of each status, and per value of each non-outcome category field "
                      "the count of records.",
-    "plan_fields_to_extract": "From the locked plan, the list of fields to extract, and nothing else.",
-    "source_content": "The sealed files of the one source the Curator reads, as recorded for the run.",
+    "source_documentation": "For the Curator at registration (step 8a): the documentation files of the one "
+                            "sealed source version its invocation names, as text, with the source's key. "
+                            "No data file, no claim, no plan, no other version.",
+    "curation_targets": "For the Curator at registration (step 8a): the fields it may propose a value for, "
+                        "with each field's vocabulary or unit (vocabulary.CURATION_TARGETS).",
     "record_metadata": "Per stored record: id, source, item index, kind, alloy label and composition, DOI "
                        "(DOI syntax only), each field's status, and the non-outcome category values from "
                        "their vocabularies. No measured number of any field, no paper title, no origin key.",
@@ -120,8 +126,10 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
     "planner": MappingProxyType({
         "before_lock": frozenset({"claim", "domain", "sources_meta", "tag_values", "record_counts"}),
     }),
+    # Owner, 2026-10-06 (step 8a, Q2): the Curator runs when a source version is registered, never in a
+    # run. It reads that version's documentation and the target fields, and nothing at any run stage.
     "curator": MappingProxyType({
-        "curation": frozenset({"plan_fields_to_extract", "sources_meta", "source_content"}),
+        "registration": frozenset({"source_documentation", "curation_targets"}),
     }),
     "critic": MappingProxyType({
         "curation": frozenset({"sources_meta", "record_metadata", "flags_kind"}),

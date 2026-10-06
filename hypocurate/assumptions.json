@@ -3426,7 +3426,7 @@
     "key": "access_allow_lists",
     "name": "Allowed fields per role and stage",
     "state": "in_force",
-    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. The Curator receives nothing at any run stage: it reads one sealed source version when that version is registered (stage 'registration', no run), and then only that version's documentation and the fields it may propose values for (step 8a). On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope), or for the Curator only its invocation's source version. Every read and every refusal is logged.",
     "value": {
       "text": "the table in hypocurate/access/allowlist.py (ALLOWED)",
       "unit": null
@@ -3440,7 +3440,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3473,7 +3473,8 @@
             "analysis",
             "closed_without_freeze",
             "final",
-            "final_without_freeze"
+            "final_without_freeze",
+            "registration"
           ]
         }
       ],
@@ -3485,6 +3486,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5 first build; changed by the owner before the review."
+      },
+      {
+        "value": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06, Q2): the Curator moved from the curation stage (its own source's data files and the fields to extract) to registration."
       }
     ],
     "notes": [
@@ -3495,7 +3502,8 @@
       "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
       "tests/test_access_projected.py::test_nothing_from_another_run_reaches_any_role",
       "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
-      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze"
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze",
+      "tests/test_access_layer.py::test_the_curator_has_nothing_in_any_run"
     ]
   },
   {
@@ -3781,10 +3789,10 @@
       }
     ],
     "notes": [
-      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval."
+      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval.",
+      "Step 8a (2026-10-06): the step 5 Curator test named here was replaced (the Curator no longer reads the plan's fields to extract); the plan's projection is still covered by the other named tests."
     ],
     "tests": [
-      "tests/test_access_layer.py::test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim",
       "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
       "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
       "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
@@ -4039,7 +4047,7 @@
     "key": "access_context_dispatcher",
     "name": "Access objects come only from the dispatcher",
     "state": "in_force",
-    "statement": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+    "statement": "An access object is created only by the trusted dispatcher, around an immutable context captured once: hypocurate.access.dispatch.bind(run, agent setting) reads the role from the run's recorded agent settings and the stage from the database, and binds no run role to a source; hypocurate.access.dispatch.bind_invocation(invocation) (step 8a) reads run or source version, role and agent setting from one invocation record (agent_invocation), so a call's run, setting and source are never assembled separately, and binds a registration invocation to the one sealed source version it names. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
     "value": {
       "text": "dispatch.bind only",
       "unit": null
@@ -4052,7 +4060,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4065,11 +4073,21 @@
       "settings": [
         {
           "ref": "python:hypocurate.access.dispatch:bind"
+        },
+        {
+          "ref": "python:hypocurate.access.dispatch:bind_invocation"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06): one invocation record per agent call (step 5 re-check); the Curator binds at registration, not to a run's source."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_dispatch.py::test_bind_refuses_a_setting_or_source_the_run_did_not_record",
@@ -4080,7 +4098,7 @@
     "key": "access_logging",
     "name": "What the audit log records, and its fallback",
     "state": "in_force",
-    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out.",
+    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, unknown invocation, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out. A registration read (step 8a) is logged with no run, naming the source version and the invocation.",
     "value": {
       "text": "allowed / denied / failed; process log as fallback",
       "unit": null
@@ -4094,7 +4112,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4109,6 +4127,7 @@
           "ref": "python:hypocurate.access.layer:FAILURES",
           "equals": [
             "unknown_run",
+            "unknown_invocation",
             "lock_timeout",
             "reader_error",
             "database_error",
@@ -4127,6 +4146,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Before the step 5 re-check: the error raised was chained to the original."
+      },
+      {
+        "value": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06): the failure 'unknown invocation' and registration reads."
       }
     ],
     "notes": [],

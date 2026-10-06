@@ -36,6 +36,20 @@ CATEGORY_VOCABULARIES: Mapping[str, frozenset[str]] = {
 }
 
 
+# --- What the Curator may propose (step 8a; owner, Q2) -------------------------------------
+# Per target field: its vocabulary (a value must be one of these) or, for the test temperature, a
+# number in °C. The fields a table may lack; the Curator proposes a source-wide value for them only
+# where the table gives none. The same list is the database's (models.CURATION_FIELDS).
+CURATION_TARGETS: Mapping[str, Mapping[str, Any]] = {
+    "test_type": {"vocabulary": sorted(TEST_TYPES)},
+    "phase_class": {"vocabulary": sorted(PHASE_CLASSES)},
+    "test_temperature": {"unit": "°C"},
+    "test_temperature_band": {"vocabulary": sorted(TEMPERATURE_BANDS)},
+    "microstructure": {"vocabulary": sorted(MICROSTRUCTURE_TOKENS),
+                       "form": "one or more of the vocabulary joined by '+'"},
+}
+
+
 def category(field: str, value: Any) -> str:
     """A category value as a blinded view shows it: itself if it is in the field's
     vocabulary, otherwise `UNRECOGNIZED`."""

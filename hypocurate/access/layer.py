@@ -44,6 +44,13 @@ in the database is therefore not unconditional.
 
 **Never call the access layer while holding the same run's lock**: the call would wait for
 it, and fails after the lock timeout (logged as a failure).
+
+**Registration reads** (step 8a, owner 2026-10-06): the Curator reads one sealed source version,
+with no run. Its context has no run and names the version and the registration invocation
+(`dispatch.bind_invocation`). Each read checks in its transaction that the invocation exists, is
+a registration invocation of this role on this version, and that the version is sealed; then the
+stage is 'registration', otherwise 'none'. A sealed version never changes, so there is no lock to
+take. Audit rows have no run; their detail names the version and the invocation.
 """
 from __future__ import annotations
 
@@ -77,14 +84,14 @@ DENIALS = {
     "not_on_list": "the field is not on the role's list at the run's stage",
     "no_source": "the Curator reads one named source; none was bound",
     "source_not_recorded": "the source is not recorded for this run",
-    "source_not_for_role": "only the Curator is bound to a source",
+    "source_not_for_role": "no run role is bound to a source (the Curator reads a source version at registration)",
     "setting_not_recorded": "the agent setting is not recorded for this run",
     "empty_list": "the role has no field at this stage",
     "checks_not_done": "no completed Checks result for this run",
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
     "not_frozen": "no dataset is frozen for this run",
 }
-FAILURES = ("unknown_run", "lock_timeout", "reader_error", "database_error", "file_guard")
+FAILURES = ("unknown_run", "unknown_invocation", "lock_timeout", "reader_error", "database_error", "file_guard")
 FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}
 _SOURCE_KEY = re.compile(r"[a-z][a-z0-9_]{0,40}")
 
@@ -112,6 +119,10 @@ def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | Non
         d["actual_stage"] = actual
     if ctx.source_key is not None:
         d["source"] = bounded_source(ctx.source_key)
+    if ctx.source_version_id is not None:
+        d["source_version"] = int(ctx.source_version_id)
+    if ctx.invocation_id is not None:
+        d["invocation"] = int(ctx.invocation_id)
     for name, raw, valid in (("role", ctx.role, ALL_ROLES), ("stage", ctx.stage, STAGES)):
         if bounded(raw, valid) == "invalid" and raw != "invalid":
             d[f"given_{name}_length"] = len(raw) if isinstance(raw, str) else -1
@@ -130,7 +141,7 @@ def log_failure(engine: Engine, ctx: AccessContext, function: str, code: str, ru
     the process log if the database cannot take it."""
     run_id = ctx.run_id if run_known else None
     detail = _detail(ctx, "failed", code, **extra)
-    if not run_known:
+    if not run_known and ctx.run_id is not None:
         detail["requested_run"] = int(ctx.run_id)
     try:
         run_transaction(engine, lambda conn: conn.execute(_AUDIT, _row(ctx, run_id, function, False, detail)))
@@ -163,8 +174,11 @@ class Access:
                  _trusted: object = None):
         if _trusted is not _TRUSTED:
             raise TypeError("an access object is created only by hypocurate.access.dispatch.bind")
-        if not isinstance(context, AccessContext) or not isinstance(context.run_id, int):
-            raise TypeError("an access object needs an AccessContext with an integer run id")
+        if not isinstance(context, AccessContext) or not (
+                isinstance(context.run_id, int) or context.run_id is None
+                and isinstance(context.source_version_id, int) and isinstance(context.invocation_id, int)):
+            raise TypeError("an access object needs an AccessContext with an integer run id, or (registration) "
+                            "an integer source version and invocation")
         object.__setattr__(self, "_engine", engine)
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_lock_timeout_ms", int(lock_timeout_ms))
@@ -211,9 +225,9 @@ class Access:
             log_failure(engine, ctx, field, code, **extra)
             raise AccessFailed(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), field, code)
         kind = outcome[0]
-        if kind == "unknown_run":
-            log_failure(engine, ctx, name, "unknown_run", run_known=False)
-            raise AccessFailed(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), name, "unknown_run")
+        if kind in ("unknown_run", "unknown_invocation"):
+            log_failure(engine, ctx, name, kind, run_known=False)
+            raise AccessFailed(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), name, kind)
         if kind == "denied":
             field, code = outcome[1]
             raise AccessDenied(bounded(ctx.role, ALL_ROLES), bounded(ctx.stage, STAGES), bounded(field, FUNCTIONS),
@@ -222,10 +236,16 @@ class Access:
 
     def _transaction(self, conn: Connection, ctx: AccessContext, function: str, fields: tuple) -> tuple:
         conn.execute(text(f"SET LOCAL lock_timeout = {self._lock_timeout_ms}"))
-        if not conn.execute(text("SELECT EXISTS (SELECT 1 FROM run WHERE id = :r)"), dict(r=ctx.run_id)).scalar_one():
-            return ("unknown_run",)
-        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=ctx.run_id)).scalar_one()
-        actual = actual_stage(conn, ctx.run_id, status)
+        if ctx.run_id is None:  # a registration read (step 8a): no run, no lock; the invocation decides
+            actual = registration_stage(conn, ctx)
+            if actual is None:
+                return ("unknown_invocation",)
+        else:
+            if not conn.execute(text("SELECT EXISTS (SELECT 1 FROM run WHERE id = :r)"),
+                                dict(r=ctx.run_id)).scalar_one():
+                return ("unknown_run",)
+            status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=ctx.run_id)).scalar_one()
+            actual = actual_stage(conn, ctx.run_id, status)
         if not fields:  # role_input with nothing on the list: never an empty input
             code = ("unknown_role" if ctx.role not in ALL_ROLES else "unknown_stage" if ctx.stage not in STAGES
                     else "empty_list")
@@ -254,6 +274,19 @@ class Access:
         for field in fields:
             conn.execute(_AUDIT, _row(ctx, ctx.run_id, field, True, _detail(ctx, "allowed", None, actual)))
         return ("allowed", values)
+
+
+def registration_stage(conn: Connection, ctx: AccessContext) -> str | None:
+    """'registration' when the context's invocation is a registration invocation of its role on its
+    version and that version is sealed; 'none' otherwise; None when there is no such invocation."""
+    row = conn.execute(text("SELECT i.scope, i.role, i.source_version_id, sv.sealed_at IS NOT NULL AS sealed "
+                            "FROM agent_invocation i LEFT JOIN source_version sv ON sv.id = i.source_version_id "
+                            "WHERE i.id = :i"), dict(i=ctx.invocation_id)).one_or_none()
+    if row is None:
+        return None
+    ok = (row.scope == "registration" and row.role == ctx.role and row.source_version_id == ctx.source_version_id
+          and row.sealed)
+    return "registration" if ok else "none"
 
 
 def _policy(ctx: AccessContext, field: str, actual: str) -> str | None:

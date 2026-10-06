@@ -101,7 +101,7 @@ def engine(migrated_database):
 def inputs_of(engine, world, role, stage=None):
     """The role's projected input, through the real dispatcher (role from the run's agent
     settings, stage from the database). `stage` is only checked."""
-    access = bind(engine, world.run, world.settings[role], source_key="mpea" if role == "curator" else None)
+    access = bind(engine, world.run, world.settings[role])
     assert stage is None or access.context.stage == stage
     return role_input(access)
 
@@ -216,12 +216,10 @@ def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
     checked = 0
     for role in ROLES:
         if allowed(role, world_stage):
+            # Step 8a: the Curator has nothing at any run stage (its registration input is tested in
+            # tests/test_access_curator.py), so every role checked here is a run role.
             got = inputs_of(engine, world, role, world_stage)
-            if role != "curator":  # the Curator's input is its own source's bytes
-                assert leaks(got, [aw.OTHER]) == [], role
-            else:
-                assert str(aw.OTHER).encode() not in got["source_content"]["files"]["mpea_planted.csv"]
-                assert leaks({k: v for k, v in got.items() if k != "source_content"}, [aw.OTHER]) == []
+            assert leaks(got, [aw.OTHER]) == [], role
             checked += 1
     assert checked >= 1
     if world_stage == "before_lock":

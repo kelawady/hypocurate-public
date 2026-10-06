@@ -32,7 +32,24 @@ from hypocurate.sources.manifest import REPO_ROOT, load_manifest
 DATA_DIR = REPO_ROOT / "data"
 MAX_FILE_BYTES = 5 * 1024 * 1024  # the source_file CHECK (owner decision, 2026-10-04)
 # The source_file path CHECK, in Python, so an unsafe path is refused before the database sees it.
+# A data file (0001's rule). Step 8a (migration 0005): the rule by role; a path tells its role.
 SAFE_STORED_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)")
+DOCUMENTATION_PATH = re.compile(r"documentation/[A-Za-z0-9][A-Za-z0-9._-]*[.](tex|xml|md|txt)")
+CURATION_PATH = "curation.json"
+DOCUMENTATION_DIR = "documentation"
+
+
+def file_role(path: str) -> str:
+    """'data', 'documentation' or 'curation', from the path alone (the database's rule by role);
+    RegistrationError for a path no role allows."""
+    if isinstance(path, str):
+        if path == CURATION_PATH:
+            return "curation"
+        if DOCUMENTATION_PATH.fullmatch(path):
+            return "documentation"
+        if SAFE_STORED_PATH.fullmatch(path) and not path.startswith(DOCUMENTATION_DIR + "/"):
+            return "data"
+    raise RegistrationError(f"unsafe stored path {path!r}")
 
 
 class RegistrationError(Exception):
@@ -53,8 +70,7 @@ def files_digest(files: Mapping[str, bytes]) -> str:
     """SHA-256 of one line "<sha256>  <path>\\n" per file, sorted by path bytewise
     (the database sorts with COLLATE "C"). The same as `hc_files_digest`."""
     for path in files:
-        if not SAFE_STORED_PATH.fullmatch(path):
-            raise RegistrationError(f"unsafe stored path {path!r}")
+        file_role(path)
     listing = "".join(f"{sha256_hex(files[p])}  {p}\n" for p in sorted(files, key=lambda p: p.encode()))
     return sha256_hex(listing.encode("utf-8"))
 
@@ -259,6 +275,16 @@ class SealedVersion:
 
     def __post_init__(self):
         object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
+
+    @property
+    def data_files(self) -> Mapping[str, bytes]:
+        """The files an adapter reads (step 8a: a version may also hold documentation and curation)."""
+        return MappingProxyType({p: c for p, c in self.files.items() if file_role(p) == "data"})
+
+    @property
+    def documentation(self) -> Mapping[str, bytes]:
+        """The source's own documentation, which the Curator reads (step 8a)."""
+        return MappingProxyType({p: c for p, c in self.files.items() if file_role(p) == "documentation"})
 
     def verify(self) -> None:
         """Raises UnsealedVersion unless the version is sealed and its bytes give exactly
