@@ -30,7 +30,8 @@ LAYOUT = [
     "requirements.lock",
     "requirements-dev.lock",
 ]
-SECRET_NAMES = {"HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD", "DATABASE_URL"}
+# Step 8a: the model provider's key (ANTHROPIC_API_KEY), entered by the owner only.
+SECRET_NAMES = {"HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD", "DATABASE_URL", "ANTHROPIC_API_KEY"}
 
 
 def read(path):
