@@ -1,10 +1,31 @@
 # Build step 7b — summary for review
 
+> **Update (2026-10-06): the owner decided to merge step 7b**, on the second model's "safe to merge" (`docs/reviews/step07b_review_chatgpt.md`, verbatim), and approved the new sensitivity set's reference numbers as reported. Two small changes and a recorded deferral came first (section "Second-model review and the owner's decisions"). The set is now displayed **"without the group with the largest share of slope information"**; the internal key `without_most_influential_paper` and rule `most_influential_paper` are unchanged. Where this summary says "the most influential paper" below, read that display name.
+
 Date: 2026-10-06. Branch: `step-07b-group-and-influence` (from `main` at `0f31698`). **Status: built (code at `c5f74f0`), the whole suite passes (1,186 locally, 1,186 in the test image; GitHub Actions success, runtime image OK: https://github.com/kelawady/hypocurate/actions/runs/37474428306); pushed; not merged** (owner's instruction: "full suite, summary, review packet, push, and stop. Do not merge."). A small step between 7 and 8, applying two owner decisions of 2026-10-06. **Both touch safeguards** (an eligibility rule, the freeze check's invariants, the sensitivity sets), so they need the second model's review before any merge (CLAUDE.md, "How we work" item 5). The review packet is `docs/reviews/step07b_review_packet.md`; the checklist is `docs/reviews/checklist.md`.
 
 **Not changed:** no migration (below), no change to `render.yaml`, `.github/workflows/`, the Dockerfile, Compose or dependencies. No agent, no model call, no screen. No PRD document is changed; corrections are listed at the end.
 
-## The owner's decisions (2026-10-06)
+## Second-model review and the owner's decisions (2026-10-06)
+
+**The review** (ChatGPT, `docs/reviews/step07b_review_chatgpt.md`, verbatim): no serious defect or merge blocker; rule 5's position, invariant (7)'s independence, the new set's determinism, outcome blindness and single change, the shared information calculation, and the answer-file changes confirmed. Three non-blocking points. **"Safe to merge."** The reviewer states it did not rerun the database suite, the reference comparison or the 1,186-test suite.
+
+**The owner's decisions:**
+1. **Merge step 7b** ("This is my decision, on ChatGPT's 'safe to merge'"), after two small changes on the branch, the full suite and a green run.
+2. **The new set's reference numbers are approved as reported:** 89 records, 22 alloys, 19 groups, 66 residual df, k = 393.5 ± 90.5 (one standard error), p ≈ 1.9e-4. They are now in `APPROVED` in `test_reference_numbers.py` (checked by `test_each_sensitivity_set` and against statsmodels by `test_every_reference_result_matches_the_reference_implementation`), and in the register (`reference_numbers`, field `sensitivity`; note in `most_influential_paper_set`).
+3. **Review point 2, the display:** the set is displayed "without the group with the largest share of slope information", stating whether the removed group is a paper, a dataset or a batch; the internal key stays. `eligibility.INFLUENCE_DISPLAY_NAME`; `most_influential` now returns `unit` ('paper', 'dataset' or 'batch', the group key's prefix) and `display`, e.g. "without the group with the largest share of slope information (the removed group is a paper)", recorded in the Inclusion stage result and the freeze record. The register says that this is **the largest share of within-alloy grain-size contrast, not necessarily the group whose removal changes the slope most** (`most_influential_paper_set` reworded, earlier wording in its history; `SENSITIVITY_CHANGES` says the same). On the reference data the removed group is a paper.
+4. **Review point 3, the test:** `test_the_sensitivity_handling_is_the_answer_files` now derives the expected removed records independently of the result being checked. `expected_removed(run)` computes I_g in plain Python from the primary members' conditions (no outcome), with the reference plan's grouping and same-alloy rule, and no package code; it requires a clear maximum. A new test, `test_the_set_without_the_largest_share_removes_the_independently_derived_records`, checks the whole set against it. Mutations m07 (smallest share) and m08 (most records) run against this file alone: 4 and 7 failures.
+5. **Review point 1, deferred (not done now):** an analysis-specific simulation seed and about 10,000 simulations, before the final evaluation. In the backlog below and in the notes of `calibration_simulation`, `results_pure_function` and `most_influential_paper_set`.
+
+**Tests added for these changes:** `test_the_display_states_whether_the_removed_group_is_a_paper_a_dataset_or_a_batch` (3 cases), `test_the_set_without_the_largest_share_removes_the_independently_derived_records`; the new set's case is added to the two parametrized reference tests by its entry in `APPROVED`. **Changed:** `test_the_change_is_named_and_in_the_default_plan` (the new description); `test_the_set_without_the_most_influential_paper_as_reported` renamed `…_as_approved` (it reads `APPROVED`); the "none" branch of `test_the_sensitivity_handling_is_the_answer_files` (above).
+
+## Backlog (deferred; PRD Section 18)
+
+1. **An analysis-specific simulation seed** (review point 1). Today the seed is SHA-256 of the run's freeze fingerprint, the analysis and the method. So adding an unrelated set (as here) changes every analysis's draws, although their data and settings are identical. Derive it from a fingerprint of the analysis's own stable records and design, the simulation settings and the calibration method; keep the run fingerprint for provenance. The set's name alone is not enough.
+2. **About 10,000 simulations** per world. At an 8% rejection rate, 2,000 give a 95% Monte Carlo margin of about ±1.2 points, about ±0.5 with 10,000. With 2,000, the before/after table in this summary is consistent with simulation noise but does not prove noise is the only explanation.
+Both before the final evaluation (owner, 2026-10-06).
+
+## The owner's decisions in the brief (2026-10-06)
 
 From the brief:
 1. **Records without a paper reference are decided at inclusion.** Such a record is stored and shown but is not eligible for the primary set, with its own recorded reason. The statistics never receive one; their existing refusal stays as a backstop, and a test shows it is no longer reached in normal runs. The open register entry `records_without_group` is resolved. No group is ever invented.
@@ -213,8 +234,9 @@ One code commit, `c5f74f0`: the two decisions share `eligibility.py`, the regist
 
 ## Open items
 
-1. **Second-model review** of this step (both changes are safeguard changes), then the owner's decision on merging.
-2. **Owner:** approve or not the new set's values as reference numbers (they are pinned in `test_reference_numbers.py` as "reported, not yet approved").
+1. ~~Second-model review, then the owner's decision on merging.~~ Done: "safe to merge"; the owner decided to merge (2026-10-06).
+2. ~~Owner: approve or not the new set's values.~~ Approved as reported (2026-10-06).
+2a. **Backlog, before the final evaluation:** an analysis-specific simulation seed; about 10,000 simulations (section "Backlog").
 3. **Owner, before step 8:** `curator_tabular_sources` (unchanged).
 4. Step 8 waits for the owner's go.
 
