@@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
 
 ## Status
 
-Build step 6 of 12 (PRD Section 15): the plan, the two checkpoints, inclusion and checks. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), the access layer with its audit log and the file guard for pipeline processes (step 5), plus the plan model, the rules lock, record storage, the code checks that raise flags, the eligibility decisions and the dataset freeze (step 6). The statistics, the agents and the screens come in later steps.
+Build step 7 of 12 (PRD Section 15): the statistics, the validity checks, data sufficiency, the verdict and per-run calibration. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), the access layer with its audit log and the file guard for pipeline processes (step 5), plus the plan model, the rules lock, record storage, the code checks that raise flags, the eligibility decisions and the dataset freeze (step 6), plus the supported model, the two validity checks, the fixed-minimum check, the verdict, per-run calibration both ways, the record of statistical significance, the gap facts and the copy of the decision onto the run (step 7). The agents, the worker, the screens, the plot and the workbook come in later steps.
 
 ## Set up secrets (once)
 
@@ -158,9 +158,27 @@ checkpoints.freeze_dataset(engine, run_id)  # counts and fingerprint; or "no dat
 - **Every write** takes `hc_write_lock(p_run => …)` in `run_transaction`, re-checks by id what it read, and logs any refusal (`audit_log`, `detail.result` "rejected").
 - **Constructed test data** (the controlled extract) enter only a run marked `{"constructed_test_data": true}` in `experiment_flags` at dispatch.
 
+## Statistics, calibration and the decision
+
+Code in `hypocurate/pipeline/` (step 7; PRD 5.7 to 5.10). No agent, no model call, no screen or plot yet.
+
+```python
+from hypocurate.pipeline import analysis, completion
+analysis.run_statistics(engine, run_id)   # every analysis, both calibrations, the record of significance, gap facts
+completion.copy_decision(engine, run_id)  # copies the stored decision onto the run and completes it (steps 8/9 call it)
+```
+
+- **One model** (`statistics.py`): yield strength = baseline per alloy + k × (grain size in µm)^-1/2, OLS with alloy intercepts, cluster-robust SE by group with statsmodels' small-sample correction, one-sided t test with groups − 1 df; "supported" when p < α. Each fit uses only alloys with two or more distinct grain sizes among its records; the minimums are counted on those records.
+- **The two validity checks** can never be waived. Under the fixed option, a pooled fit that misses any minimum withholds every analysis of the run: counts and records only, "data found; not enough to test". "Use what is available" waives the minimums only and labels the result exploratory.
+- **Calibration** (`calibration.py`) is reported both ways for each analysis whose numbers are shown: with the plan's fixed scatter and shift, and with both estimated from the frozen records (Henderson's method III). A flag, never a gate. The seed comes from the freeze fingerprint, the analysis and the method.
+- **Statistics reads only the frozen sets** through its own access object (`bind_code(…, "statistics")`, analysis stage only); the gap facts read no outcome value. Results are a pure function of the frozen set and the locked plan.
+- **The decision** (outcome, verdict, exploratory, evidence level 1 to 6) is stored in the "statistics" stage result and copied onto the run unchanged; the copy refuses a missing decision or one from another freeze.
+- **Marked test runs** carry "test run: includes constructed data" on every stored result; aggregates use `results.REAL_RUN`.
+- **Software correctness** is checked against an independent statsmodels implementation on the test side (`tests/reference_stats.py`); statsmodels is a development dependency only.
+
 ## Access layer
 
-Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8). The code roles Inclusion and Checks (step 6) read through access objects too, bound by `dispatch.bind_code` at the curation stage only.
+Every agent reads data only through an access object for one run, role and stage (`hypocurate/access/`; PRD 4). There is no agent yet (step 8). The code roles read through access objects too, bound by `dispatch.bind_code`: Inclusion and Checks (step 6) at the curation stage only; Statistics (step 7) at the analysis stage only; the gap facts (step 7) at the analysis stage and when a run closed without a freeze.
 
 ```python
 from hypocurate.access import bind, role_input
