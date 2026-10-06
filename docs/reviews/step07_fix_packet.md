@@ -1,5 +1,7 @@
 # Build step 7 — fix packet for the second model's re-check
 
+> **Correction (2026-10-06, after the re-check):** this packet says that putting the uninformative groups' scores back into the covariance sum is an equivalent mutation. **That claim is false**: a small contrast times a large residual can matter (the reviewer's five-paper counterexample). Every score is now kept; see `docs/reviews/step07_fix2_packet.md` and the summary's section "Re-check and fixes". The text below is kept as it was.
+
 Date: 2026-10-06. Branch: `step-07-statistics`. Code reviewed: commit `496644e` (this packet and the summary update are added in the next commit and change no code). GitHub Actions on that commit: success (1,138 passed, runtime image OK), https://github.com/kelawady/hypocurate/actions/runs/37415861832.
 
 Generated from the files on disk by a script, so every diff and output below is quoted exactly.
