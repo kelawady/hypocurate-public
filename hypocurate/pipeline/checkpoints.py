@@ -33,7 +33,8 @@ from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
 from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
-from hypocurate.pipeline.writes import (CONSTRUCTED_MARK, Refused, code_stage, constructed_unmarked, decide_sets,
+from hypocurate.pipeline.writes import (CONSTRUCTED_MARK, TEST_RUN_LABEL, Refused, code_stage, constructed_unmarked,
+                                        decide_sets, marked,
                                         flag_index,
                                         inclusion_input, log_refusal,
                                         record_identity, record_ids, require_checks_cover, run_record_sources,
@@ -155,8 +156,10 @@ def freeze_dataset(engine: Engine, run_id: int) -> dict:
             conn.execute(text("INSERT INTO run_snapshot (run_id, fingerprint, n_records) VALUES (:r, :fp, :n)"),
                          dict(r=run_id, fp=fp, n=len(members[el.PRIMARY])))
         else:
-            conn.execute(text("INSERT INTO calibration_result (run_id, status, reason) "
-                              "VALUES (:r, 'unavailable', 'no_dataset_frozen')"), dict(r=run_id))
+            # Step 7 (migration 0004): the row of a marked run carries the test-run label.
+            conn.execute(text("INSERT INTO calibration_result (run_id, status, reason, test_run_label) "
+                              "VALUES (:r, 'unavailable', 'no_dataset_frozen', :l)"),
+                         dict(r=run_id, l=TEST_RUN_LABEL if marked(conn, run_id) else None))
         return record
 
     return write(engine, run_id, "checkpoint", "freeze_dataset", body)

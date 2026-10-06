@@ -8,7 +8,9 @@ and content that the sprint-1 template does not support.
 
 Every plan setting that affects which records are eligible or how they are grouped is in the
 plan (`rules`, `scope`, `exclusion_rules`, `eligibility_rules`, `sufficiency`), and the
-plan records the domain profile its defaults came from (`profile`). The default and the
+plan records the domain profile its defaults came from (`profile`). Step 7 adds the calibration,
+fixed at the lock (`calibration`: both methods, the number of simulations, the fixed scatter and
+shift, the estimation method and the smallest effect). The default and the
 reference plans are built from the domain profile (`hypocurate.pipeline.profile`), its one
 named place for each default. Plans are fixed inputs in step 6; the Planner (step 8) fills the
 same template.
@@ -32,7 +34,7 @@ from hypocurate.pipeline import profile as p
 from hypocurate.pipeline.eligibility import SUPPORTED_OUTCOMES, fixed_rule_problems
 
 PARTS = ("hypothesis_version", "variables", "scope", "model", "sufficiency", "fields_to_extract", "exclusion_rules",
-         "eligibility_rules", "verdict_statement", "sensitivity_analyses", "profile", "rules")
+         "eligibility_rules", "verdict_statement", "sensitivity_analyses", "profile", "rules", "calibration")
 RULES = ("same_alloy_decimals", "duplicate_tolerance", "survivor_source_order", "min_grain_sizes",
          "room_temperature_min", "room_temperature_max", "single_phase", "accepted_value_statuses", "grouping")
 # What each eligibility-rule code does when the plan names it for a flag (PRD 5.3).
@@ -77,6 +79,9 @@ def default_plan(hypothesis_version_id: int) -> dict:
                   "single_phase": p.SINGLE_PHASE,
                   "accepted_value_statuses": list(p.ACCEPTED_VALUE_STATUSES),
                   "grouping": [{"source": s, "unit": u} for s, u in p.GROUPING.items()]},
+        "calibration": {"methods": list(p.CALIBRATION_METHODS), "n_simulations": p.CALIBRATION_SIMULATIONS,
+                        "scatter": float(p.CALIBRATION_SCATTER_MPA), "shift": float(p.CALIBRATION_SHIFT_MPA),
+                        "estimation": p.CALIBRATION_ESTIMATION, "smallest_effect": float(p.SMALLEST_EFFECT)},
     }
 
 
@@ -165,6 +170,16 @@ def _check_template(c: dict) -> None:
     problems = fixed_rule_problems(c["eligibility_rules"])
     if problems:
         raise PlanError("the plan breaks a fixed rule for the primary set: " + "; ".join(problems))
+    cal = c["calibration"]
+    # Step 7 (owner, 2026-10-05): calibration is reported both ways, each method fixed here.
+    if set(cal) != {"methods", "n_simulations", "scatter", "shift", "estimation", "smallest_effect"} or \
+            cal["methods"] != ["fixed", "estimated"] or not 1 <= cal["n_simulations"] <= 100_000 or \
+            not (math.isfinite(cal["scatter"]) and cal["scatter"] > 0) or \
+            not (math.isfinite(cal["shift"]) and cal["shift"] >= 0) or \
+            not (math.isfinite(cal["smallest_effect"]) and cal["smallest_effect"] > 0):
+        raise PlanError("the calibration names both methods (fixed, estimated), a number of simulations, a "
+                        "positive scatter, a shift of zero or more, its estimation method and a positive "
+                        "smallest effect")
     keys = c["sensitivity_analyses"]
     if len(set(keys)) != len(keys) or not set(keys) <= SENSITIVITY_KEYS - {"removal_after_lock"}:
         raise PlanError("sensitivity analyses are named once each, from the vocabulary")

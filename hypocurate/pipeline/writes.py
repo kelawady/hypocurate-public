@@ -38,13 +38,14 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from hypocurate.access.layer import ACCESS_LOCK_TIMEOUT_MS
 from hypocurate.access.stage import actual_stage
+from hypocurate.db.models import TEST_RUN_LABEL  # noqa: F401 (re-exported for the write paths)
 from hypocurate.db.retry import run_transaction
 from hypocurate.pipeline.binding import binding, record_identity  # noqa: F401 (shared with the access layer)
 
 LOG = logging.getLogger("hypocurate.pipeline")
 LOCK_TIMEOUT_MS = ACCESS_LOCK_TIMEOUT_MS
 # The roles under which the pipeline's own writes are logged.
-WRITE_ROLES = ("extraction", "checks", "inclusion", "checkpoint")
+WRITE_ROLES = ("extraction", "checks", "inclusion", "checkpoint", "statistics", "completion")
 CODES = {
     "stage_mismatch": "the run is not at the stage this step needs",
     "changed_since_read": "the run's records, flags or decisions changed after they were read",
@@ -59,8 +60,20 @@ CODES = {
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
     "set_flags_missing": "the completed Checks result lacks the flags a sensitivity set needs",
     "invariant_broken": "the primary set breaks a rule no plan can change (register 'primary_set_invariants')",
+    # Step 7.
+    "records_without_group": "a record in a frozen set has no group, so the grouped uncertainty cannot be computed",
+    "decision_missing": "no stored decision for this run",
+    "decision_not_current": "the stored decision belongs to a different freeze than the run's",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
+# Step 7 (owner, 2026-10-05; register 'constructed_test_runs'): TEST_RUN_LABEL, on every stored
+# result of a marked run, comes from one named place, the database model, whose CHECKs use it.
+
+
+def marked(conn: Connection, run_id: int) -> bool:
+    """Is the run marked as a test with constructed data?"""
+    flags = conn.execute(text("SELECT experiment_flags FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
+    return isinstance(flags, dict) and flags.get(CONSTRUCTED_MARK) is True
 
 
 class Refused(Exception):

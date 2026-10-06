@@ -19,7 +19,7 @@ from typing import Mapping
 from hypocurate.sources.normalize import SAME_ALLOY_DECIMALS
 
 PROFILE_NAME = "grain_size_strengthening"
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2  # 2: the calibration defaults (step 7)
 
 # --- Variables and the supported model (PRD 5.7) ---------------------------------------
 OUTCOME = ("yield_strength", "MPa")
@@ -60,6 +60,20 @@ GROUPING = MappingProxyType({"mpea": "paper", "tamu_fcc": "dataset", "controlled
 # --- Data sufficiency (PRD 5.8; register 'fixed_minimums', 'sufficiency_options') ---------
 SUFFICIENCY_OPTION = "fixed_minimum"
 FIXED_MINIMUMS = MappingProxyType({"min_records": 30, "min_alloys": 5, "min_groups": 10, "min_resid_df": 10})
+
+# --- Calibration on generated data (PRD 5.10; owner, 2026-10-05; step 7) ----------------
+# Reported both ways, each method fixed at the rules lock (register 'calibration_both_ways'):
+# 'fixed' uses the scatter and per-paper shift below (PRD 5.10's illustrative values, register
+# 'calibration_simulation'); 'estimated' estimates them by code from the frozen residuals with
+# Henderson's method III (register 'calibration_noise_levels'). A flag, never a gate.
+CALIBRATION_METHODS = ("fixed", "estimated")
+CALIBRATION_SIMULATIONS = 2000  # per simulated world
+CALIBRATION_SCATTER_MPA = 60.0  # per record, fixed method
+CALIBRATION_SHIFT_MPA = 40.0  # per group (paper), fixed method
+CALIBRATION_ESTIMATION = "henderson_iii"
+# The smallest effect that matters (register 'smallest_effect'): a query setting, in MPa·µm^0.5.
+# The effect world of the calibration and the estimated power use it.
+SMALLEST_EFFECT = 150.0
 
 # --- Sensitivity analyses (owner, 2026-10-05; register 'sensitivity_one_change') ---------
 # Each differs from the primary set in exactly one named respect; descriptive only, never
