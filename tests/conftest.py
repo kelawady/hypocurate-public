@@ -15,6 +15,16 @@ from sqlalchemy import make_url, text
 from hypocurate.db import migrate
 from hypocurate.db.engine import database_reachable, make_engine
 
+# Step 8b: the regression suite makes no live model call (owner's standing requirement). For the whole test
+# process, and every guarded child it starts (they copy this environment): no provider credential, and the
+# provider's address is a closed local port, so a request without the stub's own address and key can never
+# leave the machine. Tests that call an agent pass the stub's address (stub_provider.client_options).
+NO_PROVIDER = "http://127.0.0.1:9"
+for _name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+    os.environ.pop(_name, None)
+os.environ["ANTHROPIC_API_BASE"] = NO_PROVIDER
+os.environ["ANTHROPIC_BASE_URL"] = NO_PROVIDER
+
 HOW_TO = (
     "This test needs PostgreSQL. Run the suite with `docker compose run --rm test`, "
     "or start the database with `docker compose up -d db` and set DATABASE_URL "

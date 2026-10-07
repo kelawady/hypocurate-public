@@ -65,6 +65,7 @@ class StubProvider:
         self.requests: list[dict] = []
         self.script: deque = deque()
         self._callback = None
+        self._responder = None
         stub = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -73,7 +74,12 @@ class StubProvider:
                 stub.requests.append({"path": self.path, "headers": dict(self.headers), "raw": raw})
                 if stub._callback:
                     stub._callback()
-                step = stub.script.popleft() if stub.script else error(500, "api_error", "no scripted reply")
+                if stub.script:
+                    step = stub.script.popleft()
+                elif stub._responder:
+                    step = stub._responder(raw.decode("utf-8", "replace"))
+                else:
+                    step = error(500, "api_error", "no scripted reply")
                 if step["kind"] == "sleep":
                     time.sleep(step["seconds"])
                     step = reply("too late")
@@ -97,6 +103,12 @@ class StubProvider:
 
     def queue(self, *steps):
         self.script.extend(steps)
+        return self
+
+    def respond(self, responder):
+        """Step 8b: when the script is empty, `responder(raw request text)` gives the reply (a whole run calls
+        several roles; a test can answer each by the output field its request asks for)."""
+        self._responder = responder
         return self
 
     def on_request(self, callback):

@@ -163,10 +163,34 @@ def gap_facts(gap: Mapping, minimums: Mapping | None) -> dict:
     rules: dict[str, int] = {}
     for d in gap["decisions"]["records"]:
         rules[d["rule"]] = rules.get(d["rule"], 0) + 1
+    sources = [{"source": s["source"], "search_status": s["search_status"], "nothing_found": s["nothing_found"],
+                "kind": nothing_found_kind(s, gap["decisions"])} for s in gap["coverage"]["sources"]]
     return {"minimums": minimums, "minimums_missed": sorted(k for k, v in (minimums or {}).items() if not v["met"]),
             "records_lacking_fields": lacking, "eligibility_rules": dict(sorted(rules.items())),
-            "sources": [{"source": s["source"], "search_status": s["search_status"], "nothing_found": s["nothing_found"]}
-                        for s in gap["coverage"]["sources"]]}
+            "sources": sources, "kind": run_nothing_found_kind(sources)}
+
+
+# The kind of "nothing found" (PRD 3.1, 14.3; owner, 2026-10-07; register 'nothing_found_kinds'), decided by
+# code from stored facts: a failed search; missing evidence (searched, but no record of the source entered the
+# primary set); never 'reported_negative' in sprint 1 (no source states a negative result).
+def nothing_found_kind(source: Mapping, decisions: Mapping) -> str | None:
+    if source["search_status"] == "not_selected":
+        return None
+    if source["search_status"] == "failed":
+        return "failed_search"
+    primary = set(decisions["sets"].get("primary") or [])
+    if any(d["source"] == source["source"] and d["record"] in primary for d in decisions["records"]):
+        return None  # records of this source are in the primary set
+    return "missing_evidence"
+
+
+def run_nothing_found_kind(sources: list[Mapping]) -> str | None:
+    """For the run: None when some source contributed records; 'failed_search' when every chosen source failed;
+    otherwise 'missing_evidence'."""
+    chosen = [s for s in sources if s["search_status"] != "not_selected"]
+    if any(s["kind"] is None for s in chosen):
+        return None
+    return "failed_search" if chosen and all(s["kind"] == "failed_search" for s in chosen) else "missing_evidence"
 
 
 def empty_minimums(plan: Mapping) -> dict:

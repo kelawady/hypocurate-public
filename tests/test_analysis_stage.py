@@ -226,7 +226,10 @@ def test_a_run_with_no_dataset_frozen_gets_level_one_and_its_gap_facts(engine):
     assert facts["minimums_missed"] == ["alloys", "groups", "records", "resid_df"]
     assert facts["minimums"]["records"] == {"count": 0, "minimum": 30, "met": False}
     assert facts["eligibility_rules"] == {"missing_value": 1, "out_of_scope": 2}
-    assert facts["sources"] == [{"source": "mpea", "search_status": "searched", "nothing_found": None}]
+    # Step 8b (owner, 2026-10-07): code classifies the kind of nothing found (PRD 14.3).
+    assert facts["sources"] == [{"source": "mpea", "search_status": "searched", "nothing_found": None,
+                                 "kind": "missing_evidence"}]
+    assert facts["kind"] == "missing_evidence"
     assert val(engine, "SELECT count(*) FROM analysis_result WHERE run_id = :r", r=rid) == 0
     completion.copy_decision(engine, rid)
     assert rows_of(engine, "SELECT status, outcome, verdict, evidence_level FROM run WHERE id = :r", r=rid) == [
@@ -238,7 +241,7 @@ def test_the_gap_facts_hold_no_text_and_no_outcome_value(engine):
     analysis.run_statistics(engine, rid)
     facts = rows_of(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'gap_facts'", r=rid)[0][0]
     assert set(facts) == {"minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources",
-                          "test_run_label"}
+                          "kind", "test_run_label"}  # step 8b: the run's kind of nothing found
     yields = {r[0] for r in rows_of(engine, "SELECT (harmonized->'yield_strength'->>'value') FROM record "
                                             "WHERE extraction_run_id = :r", r=rid)}
     flat = repr(facts)
@@ -557,3 +560,34 @@ def test_the_statistics_backstop_is_not_reached_in_a_normal_run(engine):
     assert val(engine, "SELECT count(*) FROM audit_log WHERE run_id = :r AND detail->>'code' = "
                        "'records_without_group'", r=rid) == 0
     assert len(out["analyses"]) == 3 + len(reference_plan(1)["sensitivity_analyses"])
+
+
+# --- step 8b: the kind of "nothing found" (owner, 2026-10-07; PRD 3.1, 14.3) ------------------------------
+
+def _src(name, status):
+    return {"source": name, "search_status": status, "nothing_found": "failed_search" if status == "failed" else None}
+
+
+DECISIONS = {"records": [{"record": 1, "source": "mpea", "eligible": True, "rule": "in_scope"},
+                         {"record": 2, "source": "tamu_fcc", "eligible": False, "rule": "missing_value"}],
+             "sets": {"primary": [1]}}
+
+
+@pytest.mark.parametrize("source, kind", [
+    (_src("mpea", "searched"), None),                       # a record of it is in the primary set
+    (_src("tamu_fcc", "searched"), "missing_evidence"),     # searched, nothing of it in the primary set
+    (_src("tamu_fcc", "failed"), "failed_search"),          # never 'missing evidence' for a failed search
+    (_src("controlled_duplicates", "not_selected"), None),
+])
+def test_each_source_gets_its_kind_of_nothing_found_from_code(source, kind):
+    assert analysis.nothing_found_kind(source, DECISIONS) == kind
+
+
+@pytest.mark.parametrize("kinds, run_kind", [
+    ([None, "missing_evidence"], None), (["missing_evidence", "failed_search"], "missing_evidence"),
+    (["failed_search", "failed_search"], "failed_search"), (["missing_evidence"], "missing_evidence"),
+])
+def test_the_runs_kind_of_nothing_found(kinds, run_kind):
+    sources = [{"search_status": "failed" if k == "failed_search" else "searched", "kind": k} for k in kinds]
+    assert analysis.run_nothing_found_kind(sources) == run_kind
+    assert "reported_negative" not in {analysis.run_nothing_found_kind(sources)}

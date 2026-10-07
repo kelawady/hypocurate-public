@@ -393,9 +393,13 @@ def decisions(conn: Connection, ctx: Context) -> dict:
         sets.setdefault(key, [])
         if record_id is not None:
             sets[key].append(record_id)
-    return {"records": [{"record": rec, "eligible": eligible, "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
-                        for rec, eligible, rule in _rows(
-                conn, "SELECT record_id, eligible, rule FROM run_record WHERE run_id = :r ORDER BY record_id",
+    # Step 8b (owner, 2026-10-07): each record's source key, so code can tell which sources contributed.
+    return {"records": [{"record": rec, "source": vocab.code(source, vocab.SOURCE_KEYS), "eligible": eligible,
+                         "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
+                        for rec, source, eligible, rule in _rows(
+                conn, "SELECT rr.record_id, s.key, rr.eligible, rr.rule FROM run_record rr "
+                      "JOIN record rec ON rec.id = rr.record_id JOIN source_version sv ON sv.id = rec.source_version_id "
+                      "JOIN source s ON s.id = sv.source_id WHERE rr.run_id = :r ORDER BY rr.record_id",
                 r=ctx.run_id)],
             "sets": sets}
 
@@ -581,7 +585,7 @@ _FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "p_value", "p_value_descri
                   "estimated_power_estimated_noise")
 _DECISION_KEYS = ("state", "outcome", "outcome_wording", "verdict", "verdict_wording", "exploratory",
                   "evidence_level", "evidence_level_wording", "label")
-_GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources")
+_GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources", "kind")
 _NARROWING_KEYS = ("result", "reason", "claim_scope", "part_counts", "zero_parts", "narrower_scope", "decision")
 
 

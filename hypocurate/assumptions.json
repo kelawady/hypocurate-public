@@ -4010,7 +4010,7 @@
     "key": "pipeline_file_guard",
     "name": "Approved input files of pipeline code",
     "state": "in_force",
-    "statement": "A tripwire against accidental file access by trusted pipeline code, not a sandbox. Each pipeline run executes in a fresh process (python -m hypocurate.access.guarded) where a Python audit hook refuses reading or listing anything outside the Python installation and the package's code, writing outside a private scratch directory, relative paths, other programs and new native libraries; each refusal is logged (audit log as a failure, or the process log). It does not stop code that tries to get around it: Python warns that audit hooks are unsuitable for a sandbox, and open descriptors, the guard's own state, preloaded ctypes (direct memory access), sockets and the database are not restricted. The only construction-level guarantee is that the deployed image contains no tests/ or docs/.",
+    "statement": "A tripwire against accidental file access by trusted pipeline code, not a sandbox. Each pipeline run executes in a fresh process (python -m hypocurate.access.guarded) where a Python audit hook refuses reading or listing anything outside the Python installation and the package's code, writing outside a private scratch directory, relative paths, other programs and new native libraries; each refusal is logged (audit log as a failure, or the process log). It does not stop code that tries to get around it: Python warns that audit hooks are unsuitable for a sandbox, and open descriptors, the guard's own state, preloaded ctypes (direct memory access), sockets and the database are not restricted. The only construction-level guarantee is that the deployed image contains no tests/ or docs/. The modules imported before the guard is installed are psycopg and scipy (each makes a ctypes call when first imported); after installation every ctypes event is still refused.",
     "value": {
       "text": "tripwire: reads limited to the Python installation and package code; writes to a private scratch directory",
       "unit": null
@@ -4024,7 +4024,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4046,7 +4046,8 @@
         {
           "ref": "python:hypocurate.access.guarded:PRELOADED",
           "equals": [
-            "psycopg"
+            "psycopg",
+            "scipy"
           ]
         }
       ],
@@ -4058,6 +4059,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5 first build; changed after the second-model review."
+      },
+      {
+        "value": "A tripwire against accidental file access by trusted pipeline code, not a sandbox. Each pipeline run executes in a fresh process (python -m hypocurate.access.guarded) where a Python audit hook refuses reading or listing anything outside the Python installation and the package's code, writing outside a private scratch directory, relative paths, other programs and new native libraries; each refusal is logged (audit log as a failure, or the process log). It does not stop code that tries to get around it: Python warns that audit hooks are unsuitable for a sandbox, and open descriptors, the guard's own state, preloaded ctypes (direct memory access), sockets and the database are not restricted. The only construction-level guarantee is that the deployed image contains no tests/ or docs/.",
+        "from": "2026-10-05",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner, 2026-10-07): scipy preloaded with psycopg (importing it makes a ctypes foreign call at load time, which the guard refuses; the run's statistics import scipy.stats). Checked in the runtime image: refused without it, no refusal with it. No production module imports statsmodels (test-only) or pandas (in the runtime lock only as a dependency of dspy)."
       }
     ],
     "notes": [
@@ -4078,7 +4085,9 @@
       "tests/test_check_runtime_image.py::test_clean_image_passes",
       "tests/test_access_dispatch.py::test_a_refusal_followed_by_a_timeout_is_still_logged",
       "tests/test_agent_libraries.py::test_a_planted_env_file_read_by_a_library_is_still_refused_under_the_guard",
-      "tests/test_agent_libraries.py::test_missing_path_entries_are_dropped_and_the_others_kept"
+      "tests/test_agent_libraries.py::test_missing_path_entries_are_dropped_and_the_others_kept",
+      "tests/test_agent_libraries.py::test_the_statistics_libraries_import_under_the_guard_with_no_refusal",
+      "tests/test_agent_libraries.py::test_after_the_statistics_libraries_a_ctypes_call_and_a_planted_env_read_are_still_refused"
     ]
   },
   {
