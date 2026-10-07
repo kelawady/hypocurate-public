@@ -1,7 +1,7 @@
 # Build step 8b — fix packet, round 1
 
 Date: 2026-10-07. Branch: `step-08b-agents`. Reviewed head: `859e019` (ChatGPT: "not safe to merge",
-`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `b947828`. Generated from the files on disk by a script
+`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `1e515c4`. Generated from the files on disk by a script
 (`~/hc-work/step08b/fix/fixpacket.py`, quoted in the last section), so every diff and output below is quoted exactly.
 
 Sections: 1 the fix-round summary (the first section of `docs/reviews/step08b_summary.md`); 2 the code diff since the
@@ -84,13 +84,14 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
 - **Mutation checks:** 41 deliberate faults in the new safeguards and wording rules, plus a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
 - **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
-- **No live call was made in this round.** Live spending stays at $1.0278.
+- **One live Critic call** (owner's go; fresh scratch database; constructed data marked as such; ceiling $0.25): Haiku 4.5, 1,330 input and 833 output tokens, **$0.005495** (reserved maximum $0.045779). Two `invalid_value` flags were sent, each naming one record. The request held no compared value (code also checked it for each): only each flag's kind and category and its record's metadata (alloy, composition, paper DOI, categories, field statuses). Both entries were accepted (class 'different specimens or conditions'); none was refused; one attempt. A second run of the same version with no classes gave identical decisions, sets, freeze record and fingerprint, statistics and gap facts. Live spending is now $1.0333 (`docs/reviews/step08b_live_record.json`, `fix_round_1_critic_check`).
 
 ### Open
 
-- **One live Critic call** (≤ $0.25, constructed data with a small flagged batch). It waits for the owner's go. The local development database is still at the earlier 0006, so before that call it needs a backup and a migration back down and up to the amended 0006. Its run rows are kept.
+- The local development database is still at the earlier 0006 (the live Critic call ran on a fresh scratch database, by the owner's choice). Before it is used again it needs a backup and a migration back down and up to the amended 0006; its run rows are kept.
 - The confirmation of the question as tested by a person is step 10 (the website).
 - The Analyst's narrative is unverified by design; it is labelled as such.
+- **The Critic's reasoning is not checked either.** In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
 
 ## 2. Code diff (`859e019..HEAD`, the package; the register is in section 5)
 
@@ -4283,6 +4284,254 @@ for k in sorted(a):
         same = json.dumps(a[k][part], sort_keys=True) == json.dumps(b[k][part], sort_keys=True)
         print(f"{k:12} {part:13} {'IDENTICAL' if same else 'DIFFERS'}")
 ```
+## 8b. The live Critic call (`fix_round_1_critic_check` in `docs/reviews/step08b_live_record.json`)
+
+```json
+{
+ "note": "Fix round 1 (owner's go, 2026-10-07): one live Critic call on a fresh local scratch database (not the development database), constructed test data marked as such, fixed plan, no Planner and no Analyst; ceiling $0.25. 'stages[].input' is the request content code built from the Critic's access-layer input (with the instruction of settings version 1); 'decisions_unchanged' compares the run with a second run of the same version whose flags have no class (tests/test_critic.py::decided: decisions, sets, freeze record and fingerprint, statistics, gap facts). Harness: ~/hc-work/step08b/fix/live_critic.py (quoted in the fix packet).",
+ "database": "hc_live_critic_live_1791410589",
+ "run": 1,
+ "comparison_run": 2,
+ "ceiling": "0.25",
+ "critic_setting": {
+  "version": 1,
+  "model": "claude-haiku-4-5",
+  "limits": {
+   "max_tokens": 8000,
+   "max_output_chars": 30000,
+   "max_flags_per_call": 100
+  },
+  "settings": {
+   "reasoning_effort": "low"
+  }
+ },
+ "flags": [
+  {
+   "id": 1,
+   "kind": "invalid_value",
+   "category": "physically impossible"
+  },
+  {
+   "id": 2,
+   "kind": "invalid_value",
+   "category": "physically impossible"
+  }
+ ],
+ "result": {
+  "classified": 2,
+  "refused": {},
+  "failures": []
+ },
+ "stages": [
+  {
+   "id": 2,
+   "status": "done",
+   "input": {
+    "flags": "[{\"category\": \"physically impossible\", \"id\": \"1\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 7, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.001\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}, {\"category\": \"physically impossible\", \"id\": \"2\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 8, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.002\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}]",
+    "classes": "{\"cannot_tell\": \"cannot tell from the metadata\", \"different_specimens_or_conditions\": \"different specimens or conditions\", \"possible_transcription_or_unit_error\": \"possible transcription or unit error\", \"same_measurement\": \"same measurement reported twice\"}",
+    "sources": "[{\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"mpea\", \"licence\": \"Apache-2.0\", \"name\": \"MPEA dataset (Borg et al. 2020)\", \"source_type\": \"uploaded_table\"}]"
+   },
+   "output": {
+    "refused": {},
+    "attempts": [
+     "ok"
+    ],
+    "classified": {
+     "1": {
+      "class": "different_specimens_or_conditions",
+      "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+     },
+     "2": {
+      "class": "different_specimens_or_conditions",
+      "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+     }
+    }
+   }
+  }
+ ],
+ "model_calls": [
+  {
+   "id": 1,
+   "model": "claude-haiku-4-5",
+   "status": "succeeded",
+   "input_tokens": 1330,
+   "output_tokens": 833,
+   "cost": "0.005495",
+   "max_cost": "0.045779",
+   "cached_tokens": 0,
+   "error": null
+  }
+ ],
+ "classes": [
+  {
+   "id": 1,
+   "kind": "invalid_value",
+   "category": "physically impossible",
+   "critic_class": "different_specimens_or_conditions",
+   "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+  },
+  {
+   "id": 2,
+   "kind": "invalid_value",
+   "category": "physically impossible",
+   "critic_class": "different_specimens_or_conditions",
+   "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+  }
+ ],
+ "compared_numbers_in_request": [],
+ "decisions_unchanged": true,
+ "freeze_fingerprints": [
+  "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5",
+  "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5"
+ ]
+}
+```
+
+The harness:
+
+```python
+"""Step 8b fix round 1: one live Critic call (owner's go required; ceiling $0.25), on a fresh scratch database.
+
+Steps: create a scratch database (local server) and migrate it to head; register the constructed source used by
+tests/test_critic.py (three ordinary rows per paper plus two rows whose tensile strength is below their yield
+strength, which raise flags); create, submit and confirm a query; dispatch it as a fixed-plan run marked as
+constructed test data; lock, store the records, run Checks; run the Critic once (Haiku 4.5) under the ceiling. Then:
+- the Critic stage's stored input (the request's inputs, built from its access-layer input) and output, the model
+  call's tokens and costs, and each flag's class and reason;
+- the compared numbers of the flagged records are not in the request inputs;
+- the decisions are unchanged by the classes: a second run of the same version, through Checks with no Critic call,
+  gives the same eligibility decisions, sets, freeze record and fingerprint, statistics and gap facts
+  (tests/test_critic.py::decided).
+No Planner, no Analyst. The record goes to ~/hc-work/step08b/fix/live_critic_<mode>.json.
+
+    --rehearse   the same steps against the local stub provider (no cost), then the scratch database is dropped
+    --live       the real provider (ANTHROPIC_API_KEY exported from .env without printing it); the database is kept
+
+Scratch harness, not committed; quoted in the live record."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from decimal import Decimal
+from pathlib import Path
+
+REPO = Path("/workspaces/hypocurate")
+sys.path.insert(0, str(REPO / "tests"))
+sys.path.insert(0, str(REPO))
+
+from sqlalchemy import create_engine, text  # noqa: E402
+
+CEILING = Decimal("0.25")
+CLAIM = "In FCC multi-principal-element alloys, yield strength rises as grain size falls"
+BY = "Khalid El-Awady (live Critic check, run by Claude Code on the owner's go)"
+COMPARED = ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5")  # tests/test_critic.py::CONFLICT
+
+
+def main(mode: str) -> None:
+    import pipeline_world as pw
+    import stub_provider as sp
+    from hypocurate.db import migrate
+    from hypocurate.db.engine import make_engine
+    from hypocurate.pipeline import checkpoints, checks, extract, queries
+    from hypocurate.pipeline.agents import critic
+    from stats_world import plan_for, small_rows
+    from test_critic import CONFLICT, decided
+
+    base = os.environ["DATABASE_URL"]
+    name = f"hc_live_critic_{mode}_{int(time.time())}"
+    admin = create_engine(base.rsplit("/", 1)[0].replace("postgresql://", "postgresql+psycopg://", 1) + "/postgres",
+                          isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE DATABASE "{name}"'))
+    url = base.rsplit("/", 1)[0] + "/" + name
+    engine = make_engine(url)
+    stub = None
+    try:
+        migrate.upgrade(engine)
+        pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+        q = queries.create(engine, CLAIM, ("mpea",))
+        queries.submit(engine, q.version_id)
+        queries.confirm_domain(engine, q.version_id, by=BY)
+        rid = queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
+        queries.start(engine, rid)
+
+        def through_checks(run_id):
+            checkpoints.lock_rules(engine, run_id, plan_for(q.version_id))
+            extract.store_records(engine, run_id)
+            checks.run_checks(engine, run_id)
+
+        through_checks(rid)
+        with engine.connect() as conn:
+            flags = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT id, kind, category FROM flag WHERE run_id = :r ORDER BY id"), dict(r=rid))]
+        client_options = None
+        if mode == "rehearse":
+            stub = sp.StubProvider()
+            stub.respond(lambda raw: sp.reply(sp.fields(classification=json.dumps(
+                {str(f["id"]): {"class": "cannot_tell", "reason": "rehearsal"} for f in flags}))))
+            client_options = sp.client_options(stub)
+        result = critic.run_critic(engine, rid, ceiling=CEILING, client_options=client_options)
+
+        with engine.connect() as conn:
+            stage = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT id, status, input, output FROM stage_result WHERE run_id = :r AND stage = 'critic' ORDER BY id"),
+                dict(r=rid))]
+            calls = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT mc.id, mc.model, mc.status, mc.input_tokens, mc.output_tokens, mc.cost, mc.max_cost, mc.cached_tokens, "
+                "mc.error FROM model_call mc JOIN agent_invocation i ON i.id = mc.invocation_id "
+                "WHERE i.run_id = :r ORDER BY mc.id"), dict(r=rid))]
+            classes = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT id, kind, category, critic_class, critic_reason FROM flag WHERE run_id = :r ORDER BY id"),
+                dict(r=rid))]
+            setting = conn.execute(text(
+                "SELECT a.version, a.model, a.limits, a.settings FROM run_agent_setting ras JOIN agent_setting a "
+                "ON a.id = ras.agent_setting_id WHERE ras.run_id = :r AND ras.role = 'critic'"), dict(r=rid)).one()
+        inputs_text = json.dumps([s["input"] for s in stage], ensure_ascii=False)
+        leaked = [v for v in COMPARED if v in inputs_text]
+
+        # The decisions do not depend on the classes: the same version again, through Checks, no Critic call.
+        again = pw.run_of_version(engine, q.version_id, ("mpea",), marked=True, agents=("planner", "critic", "analyst"))
+        through_checks(again)
+        with_classes, without = decided(engine, rid), decided(engine, again)
+        same = with_classes == without
+
+        record = {"mode": mode, "database": name, "run": rid, "comparison_run": again, "ceiling": str(CEILING),
+                  "critic_setting": {"version": setting.version, "model": setting.model,
+                                     "limits": setting.limits, "settings": setting.settings},
+                  "flags": flags, "result": {"classified": result.classified, "refused": result.refused,
+                                              "failures": result.failures},
+                  "stages": stage, "model_calls": calls, "classes": classes,
+                  "compared_numbers_in_request": leaked,
+                  "decisions_unchanged": same,
+                  "freeze_fingerprints": [with_classes["freeze"]["fingerprint"], without["freeze"]["fingerprint"]]}
+        out = Path.home() / f"hc-work/step08b/fix/live_critic_{mode}.json"
+        out.write_text(json.dumps(record, indent=1, ensure_ascii=False, default=str))
+        cost = sum(Decimal(str(c["cost"])) for c in calls if c["cost"] is not None)
+        print(json.dumps({"mode": mode, "flags": len(flags), "classified": result.classified,
+                          "refused": result.refused, "failures": result.failures,
+                          "calls": [{k: str(v) for k, v in c.items()} for c in calls], "actual_cost": str(cost),
+                          "compared_numbers_in_request": leaked, "decisions_unchanged": same,
+                          "record": str(out)}, indent=1))
+    finally:
+        engine.dispose()
+        if stub is not None:
+            stub.close()
+        if mode == "rehearse":
+            with admin.connect() as conn:
+                conn.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+        admin.dispose()
+
+
+if __name__ == "__main__":
+    mode = {"--rehearse": "rehearse", "--live": "live"}.get(sys.argv[1] if len(sys.argv) > 1 else "")
+    if mode is None:
+        sys.exit("usage: live_critic.py --rehearse | --live")
+    if mode == "rehearse":
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+    main(mode)
+```
 ## 9. The review being answered
 
 # Step 8b — second-model review (ChatGPT), 2026-10-07
@@ -4706,6 +4955,15 @@ Stops: F-Q2 results-statement wording and cautions list (before building A); liv
   counts lacking a field. Partly: usable-record count per part, the narrower question's number, a person must
   dispatch it. "alloys" not "alloy"; the simulation-interval description once. The other four caution rules as
   drafted (calibration, sources and sensitivity sets only with a p-value, exploratory).
+- **Owner, 2026-10-07 (statement at display):** accepted with conditions: pure function of stored rows (tested: other
+  record ids, other order); FORMAT_VERSION in one named place, recorded on the run at completion (0006
+  run.statement_format_version) and shown; register entry; fix packet lists the design choice and every changed
+  expectation. Rule 13 added to CLAUDE.md (whole suite before every push).
+- [x] Fix round 1 built and pushed: e266234 (F1, F2), 423fd46 (F3), 740f044 (F5), 54d6aa1 (B), 395d948 (A + race test),
+  3e9749f (CLAUDE.md 13), e7f7c8b (statement purity/version), b947828 (f35), 5e5a0c5 (fix packet). Suite 1,829 local +
+  rebuilt test image; runtime guard checks pass; 41 mutations caught (f21, f35 after added tests); reference runs
+  byte-identical to main. Next: owner sends the fix packet to ChatGPT; live Critic call (≤ $0.25) needs the owner's go
+  and first a pg_dump + 0006 down/up of the local dev DB (still at the earlier 0006).
 ```
 ### `~/hc-work/step08b/fix/fixpacket.py`
 
@@ -4778,6 +5036,10 @@ parts.append("## 7. The suite, the images and GitHub\n\nThe whole suite on this 
              + fence(read(HOME / "fix/gh_runs.txt")))
 parts.append("## 8. Reference comparison with `main`\n\n" + fence(read(HOME / "fix/compare_output.txt"))
              + "\nThe comparison script:\n\n" + fence(read(HOME / "refdump/compare.py"), "python"))
+parts.append("## 8b. The live Critic call (`fix_round_1_critic_check` in `docs/reviews/step08b_live_record.json`)\n\n"
+             + fence(json.dumps(json.loads(read("docs/reviews/step08b_live_record.json"))["fix_round_1_critic_check"],
+                                indent=1, ensure_ascii=False), "json")
+             + "\nThe harness:\n\n" + fence(read(HOME / "fix/live_critic.py"), "python"))
 parts.append("## 9. The review being answered\n\n" + read("docs/reviews/step08b_review_chatgpt.md") + "\n")
 parts.append("## 10. The plan file and the scripts\n\n### The step 8b plan file (with the fix round's answers)\n\n"
              + fence(read(PLAN), "markdown") + "### `~/hc-work/step08b/fix/fixpacket.py`\n\n"
