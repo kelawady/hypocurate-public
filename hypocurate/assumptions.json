@@ -7317,7 +7317,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'.",
+    "statement": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'. Owner's additions (2026-10-07): always forbidden, even with a verdict: 'confirms the claim', 'confirms the hypothesis', 'causes', 'caused by', 'causal'; a sentence giving a p-value must contain 'approximate'; a sentence naming the effective number (by name or value) must not contain 'independent'; if the text gives the informative-paper count, it must also give the effective number, the largest share and the degrees of freedom of the same analysis.",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7353,6 +7353,9 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.text_checks:FORBIDDEN"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:ALWAYS_FORBIDDEN"
         }
       ],
       "note": null
@@ -7364,9 +7367,18 @@
       "tests/test_analyst.py::test_numbers_as_given_or_rounded_to_their_shown_precision_match",
       "tests/test_analyst.py::test_a_number_not_in_the_facts_is_caught",
       "tests/test_analyst.py::test_the_wording_rules",
-      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded"
+      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded",
+      "tests/test_analyst.py::test_a_text_following_every_rule_is_stored",
+      "tests/test_analyst.py::test_a_text_breaking_each_new_rule_is_refused"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner's additions before the live set (2026-10-07): always-forbidden causal and 'confirms' phrases; p-value with 'approximate'; effective number never 'independent'; informative-paper count with its three figures; the Analyst's instruction extended to match."
+      }
+    ]
   },
   {
     "key": "run_order_and_failures",

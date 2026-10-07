@@ -55,7 +55,7 @@ def make_check(analyst_input: Mapping[str, Any]):
             return "empty"
         if text_checks.unmatched_numbers(report, analyst_input):
             return "numbers_unmatched"
-        if text_checks.wording_problems(report, decision):
+        if text_checks.wording_problems(report, decision, analyst_input["analyst_facts"]):
             return "wording_refused"
         return None
 

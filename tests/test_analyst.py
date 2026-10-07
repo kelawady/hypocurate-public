@@ -143,3 +143,56 @@ def test_the_analyst_changes_no_stored_decision(engine, stub):
     analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
     assert one(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'statistics'", r=rid) == before
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
+
+
+# --- the owner's additions before the live set (2026-10-07): recorded responses through the stub -------------
+
+def exploratory(engine):
+    """A run above the validity checks under 'use what is available': its facts hold a p-value and the paper
+    figures (informative papers, effective number, largest share, degrees of freedom)."""
+    rid = run_on(engine, small_rows(3, papers=3), option="use_available", agents=("analyst",))
+    out = analysis.run_statistics(engine, rid)
+    pooled = out["analyses"][0]
+    c = pooled["counts"]
+    d = out["decision"]
+    return rid, {"outcome": d["outcome_wording"], "verdict": d["verdict_wording"], "estimate": repr(pooled["estimate"]),
+                 "p": repr(pooled["p_value"]), "informative": c["n_groups_informative"],
+                 "effective": repr(c["effective_papers"]), "share": repr(c["largest_paper_share"]), "df": pooled["df"]}
+
+
+def follows_all(f):
+    return (f"The data are {f['outcome']}, and the claim is {f['verdict']}. The pooled estimate is {f['estimate']}. "
+            f"The approximate, nominal, one-sided cluster-robust p-value is {f['p']}. It rests on {f['informative']} "
+            f"informative papers, an effective number of {f['effective']}, a largest share of {f['share']} and "
+            f"{f['df']} degrees of freedom.")
+
+
+BREAKS = {
+    "causes": lambda f: follows_all(f) + " Grain refinement causes the strengthening.",
+    "caused by": lambda f: follows_all(f) + " The rise is caused by smaller grains.",
+    "causal": lambda f: follows_all(f) + " The link is causal.",
+    "confirms the claim": lambda f: follows_all(f) + " This confirms the claim.",
+    "confirms the hypothesis": lambda f: follows_all(f) + " This confirms the hypothesis.",
+    "effective number as independent": lambda f: follows_all(f).replace(
+        f"an effective number of {f['effective']}", f"an effective number of {f['effective']} independent papers"),
+    "p-value without approximate": lambda f: follows_all(f).replace("approximate, nominal, ", "nominal, "),
+    "informative count alone": lambda f: (f"The data are {f['outcome']}, and the claim is {f['verdict']}. It rests on "
+                                          f"{f['informative']} informative papers."),
+}
+
+
+def test_a_text_following_every_rule_is_stored(engine, stub):
+    rid, f = exploratory(engine)
+    stub.queue(reply(follows_all(f)))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None and out.report == follows_all(f) and len(stub.requests) == 1
+
+
+@pytest.mark.parametrize("rule", sorted(BREAKS))
+def test_a_text_breaking_each_new_rule_is_refused(engine, stub, rule):
+    rid, f = exploratory(engine)
+    bad = BREAKS[rule](f)
+    assert bad != follows_all(f)
+    stub.queue(reply(bad), reply(bad))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert (out.report, out.failure) == (None, "wording_refused") and len(stub.requests) == 2

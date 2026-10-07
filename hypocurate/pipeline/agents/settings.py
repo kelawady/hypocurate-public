@@ -60,7 +60,13 @@ ANALYST_INSTRUCTION = (
     "round a number differently, and quote every number exactly as it appears in the facts. State the outcome as "
     "code stated it, always 'in the sources searched'. Never write that data do not exist; say what was not found "
     "in the sources searched. If there is no verdict, do not suggest one. Explain the checks, the minimums and "
-    "what would be needed for a test, in plain words, in at most a few short paragraphs.")
+    "what would be needed for a test, in plain words, in at most a few short paragraphs. "
+    # Owner's additions, 2026-10-07 (before the live set).
+    "When you give a p-value, describe it with the fixed description in the facts (approximate, nominal, "
+    "one-sided). When you mention how many papers support a result, give the four figures together as they appear "
+    "in the facts: informative papers, effective number, largest share, degrees of freedom. Never describe the "
+    "effective number as a number of independent papers. Do not use causal language, and do not say a result "
+    "proves or confirms the claim, even when there is a verdict.")
 
 SETTINGS = MappingProxyType({
     "planner": MappingProxyType({

@@ -10,10 +10,13 @@ equal a number of the facts the agent was given, at the precision the text shows
   (`FIXED_NUMBERS`: the model's exponent -1/2, the 95% interval, validity checks 1 and 2).
 It checks numerical consistency only: it does not check what the text says about the numbers.
 
-**Wording check** (CLAUDE.md, rule 13; register 'analyst_wording'): the text must contain code's outcome
+**Wording check** (CLAUDE.md, rule 13; register 'analyst_text_checks'): the text must contain code's outcome
 wording verbatim (it always says "in the sources searched"), and code's verdict wording verbatim when
-there is a verdict; it must not contain any phrase of `FORBIDDEN`, and with no verdict it must not state
-one (`NO_VERDICT_FORBIDDEN`).
+there is a verdict; it must not contain any phrase of `FORBIDDEN` or `ALWAYS_FORBIDDEN` (no causal language,
+never "confirms the claim"), and with no verdict it must not state one (`NO_VERDICT_FORBIDDEN`). Owner's
+additions (2026-10-07): a sentence giving a p-value must say "approximate"; a sentence naming the effective
+number must not call it "independent"; if the text gives the informative-paper count, it must also give the
+effective number, the largest share and the degrees of freedom of the same analysis.
 """
 from __future__ import annotations
 
@@ -31,6 +34,14 @@ _SUPER = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+")
 
 FORBIDDEN = ("do not exist", "does not exist", "don't exist", "doesn't exist", "no data exist", "data are absent",
              "proves", "proven", "prove that", "proof that")
+# Owner's additions (2026-10-07, before the live set): always forbidden, with or without a verdict.
+ALWAYS_FORBIDDEN = re.compile(r"\bconfirms\s+the\s+(claim|hypothesis)\b|\bcauses\b|\bcaused\s+by\b|\bcausal\b",
+                              re.IGNORECASE)
+_P_VALUE = re.compile(r"\bp[- ]?values?\b|(?<![\w])p\s*[=<>≈≤≥]", re.IGNORECASE)
+_EFFECTIVE = re.compile(r"\beffective\s+(number|papers)\b", re.IGNORECASE)
+_INDEPENDENT = re.compile(r"\bindependent\b", re.IGNORECASE)
+_INFORMATIVE = re.compile(r"\binformative\b", re.IGNORECASE)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 NO_VERDICT_FORBIDDEN = re.compile(r"\b(is|was|are|were|be)\s+(not\s+)?supported\b|\bsupports?\s+the\s+(claim|hypothesis)\b|"
                                   r"\bverdict\s*(is|:)\s*(not\s+)?supported\b|\bconfirm(s|ed)?\s+the\s+(claim|hypothesis)\b",
                                   re.IGNORECASE)
@@ -103,10 +114,49 @@ def unmatched_numbers(text: str, facts: Any) -> list[str]:
     return bad
 
 
-def wording_problems(text: str, decision: Mapping) -> list[str]:
-    """The wording rules the text breaks (empty when none)."""
+def _shown(value: float, text: str) -> bool:
+    """Does `value` appear among the numbers of `text`, at the precision shown (plain or as a percentage)?"""
+    body = _SCI.sub(" ", _EXPONENT.sub(" ", text))
+    for m in _NUMBER.finditer(body):
+        token, percent = m.group(1), m.group(2)
+        x, d = _num(token), _decimals(token.replace(",", ""))
+        if (_matches_percent if percent else _matches_plain)(x, d, [value]):
+            return True
+    return False
+
+
+def _paper_figures(facts: Mapping | None) -> list[list[float]]:
+    """Per analysis, the figures that go with the informative-paper count: effective number, largest share,
+    degrees of freedom (those the facts hold)."""
+    out = []
+    for e in (facts or {}).get("analyses") or []:
+        counts = e.get("counts") or {}
+        figures = [v for v in (counts.get("effective_papers"), counts.get("largest_paper_share"), e.get("df"))
+                   if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        if figures:
+            out.append(figures)
+    return out
+
+
+def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None) -> list[str]:
+    """The wording rules the text breaks (empty when none). `facts`: the Analyst's facts, for the rules on the
+    effective number and the paper figures."""
     lower = " ".join(text.lower().split())
     problems = [f"forbidden: {p}" for p in FORBIDDEN if p in lower]
+    problems += [f"forbidden: {m.group(0).lower()}" for m in ALWAYS_FORBIDDEN.finditer(text)]
+    effective_values = [f[0] for f in _paper_figures(facts)] if facts else []
+    for sentence in filter(None, (x.strip() for x in _SENTENCE.split(text))):
+        if _P_VALUE.search(sentence) and "approximate" not in sentence.lower():
+            problems.append("a p-value without 'approximate' in its sentence")
+        names_effective = _EFFECTIVE.search(sentence) or any(_shown(v, sentence) for v in effective_values
+                                                               if v not in (1.0, 2.0))
+        if names_effective and _INDEPENDENT.search(sentence):
+            problems.append("the effective number described as independent")
+    if _INFORMATIVE.search(text):
+        figures = _paper_figures(facts)
+        if not any(all(_shown(v, text) for v in f) for f in figures):
+            problems.append("the informative-paper count without the effective number, largest share and degrees "
+                            "of freedom")
     outcome = (decision.get("outcome_wording") or "").lower()
     if not outcome or outcome not in lower:
         problems.append("outcome wording missing")
