@@ -7604,7 +7604,7 @@
       "note": null
     },
     "notes": [
-      "The precisions not fixed by the register (other shares and rates, temperatures, scatter, shift, the fallback) are drafts by Claude Code for the owner's review."
+      "All the precisions, including those drafted by Claude Code where the register was silent (other shares and rates, temperatures, scatter, shift, the fallback), were approved by the owner on 2026-10-07."
     ],
     "tests": [
       "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
