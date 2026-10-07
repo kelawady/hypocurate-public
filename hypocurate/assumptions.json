@@ -7390,7 +7390,7 @@
     "key": "critic_classes",
     "name": "The Critic's classes and reason",
     "state": "in_force",
-    "statement": "The Critic classifies each flag code raised with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them.",
+    "statement": "The Critic classifies each flag code raised that names two or more records (register 'critic_scope') with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them. Owner, 2026-10-07 (fix round 1, after the first live call compared two single-record flags with each other): the instruction says each flag stands alone, to be judged only on the records it names, never by comparing records across flags (a new settings version), and the request renders each flag as its own separated block.",
     "value": {
       "text": "four classes; reason for people only; read by no decision",
       "unit": null
@@ -7426,6 +7426,9 @@
         },
         {
           "ref": "sql:ck_flag_critic_reason"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:CRITIC_INSTRUCTION"
         }
       ],
       "note": null
@@ -7441,9 +7444,69 @@
       "tests/test_migrations_step8b.py::test_each_critic_class_is_accepted",
       "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused",
       "tests/test_critic.py::test_a_class_of_the_wrong_type_leaves_that_entry_unclassified",
-      "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry"
+      "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry",
+      "tests/test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "The Critic classifies each flag code raised with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Fix round 1: scope to multi-record flags; each flag stands alone (new instruction)."
+      }
+    ]
+  },
+  {
+    "key": "critic_scope",
+    "name": "Which flags the Critic is asked about",
+    "state": "in_force",
+    "statement": "Only a flag that names two or more records is sent to the Critic (MIN_RECORDS = 2). A single-record flag (for example a physically impossible value within one record) is not sent: it keeps code's own kind and category, its class and reason stay empty, and it is shown as 'not classified: single-record flag'; it is not a refusal. If a run has no flag naming two or more records, no Critic call is made (the stage is skipped, reason 'no_multi_record_flags'). As before, no code decision reads the class.",
+    "value": {
+      "text": "flags naming at least 2 records",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Which flags get a Critic class and how many Critic calls a run makes.",
+    "reason": "The first live Critic call (fix round 1) was given two single-record flags and compared them with each other; the four classes describe relations between records, which a single-record flag does not have.",
+    "evidence": [
+      "Owner's decision, 2026-10-07, after the live Critic call recorded in docs/reviews/step08b_live_record.json (fix_round_1_critic_check)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.critic:MIN_RECORDS",
+          "equals": 2
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.critic:NOT_SENT",
+          "equals": "not classified: single-record flag"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.critic:sent"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_critic.py::test_only_flags_naming_two_or_more_records_are_batched",
+      "tests/test_critic.py::test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified",
+      "tests/test_critic.py::test_a_run_with_only_single_record_flags_makes_no_critic_call",
+      "tests/test_critic.py::test_the_critics_complete_request_holds_no_compared_number_or_outcome",
+      "tests/test_critic.py::test_the_request_on_the_controlled_duplicate_file_holds_no_answer_material"
+    ]
   },
   {
     "key": "analyst_facts_only",

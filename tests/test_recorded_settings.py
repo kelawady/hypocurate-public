@@ -84,13 +84,14 @@ def test_the_critic_uses_the_settings_recorded_at_dispatch(migrated_database, st
     import pipeline_world as pw
     from hypocurate.db.engine import make_engine
     from stats_world import small_rows
-    from test_critic import CONFLICT
+    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, multi_flag_ids
     engine = make_engine(migrated_database)
     try:
-        pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+        pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                                     "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
         rid = checked_run(engine, version(engine))
-        flags = flag_ids(engine, rid)
-        assert len(flags) >= 2  # version B's limit of one flag per call would make one call per flag
+        flags = multi_flag_ids(engine, rid)  # fix round 1: only these are sent
+        assert len(flags) == 2  # version B's limit of one flag per call would make one call per flag
         a = make_current(monkeypatch, engine, "critic")
         stub.respond(lambda raw: critic_reply({str(f): {"class": "cannot_tell", "reason": "same metadata"}
                                                for f in flags}))

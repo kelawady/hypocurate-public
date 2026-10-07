@@ -21,7 +21,7 @@ from hypocurate.pipeline import orchestrator, queries
 from hypocurate.pipeline.agents import settings as agent_settings
 from hypocurate.pipeline.agents import spend
 from stats_world import small_rows
-from test_critic import CONFLICT
+from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
 from test_orchestrator import responder
 
 CLAIM = "In FCC multi-principal-element alloys, yield strength rises as grain size falls"
@@ -36,8 +36,11 @@ def stub():
 
 @pytest.fixture
 def engine(migrated_database):
+    """Fix round 1 (owner, 2026-10-07): only flags naming two or more records reach the Critic, so the data hold two
+    pairs split between two sources (tests/test_critic.py), besides the single-record flags of CONFLICT."""
     e = make_engine(migrated_database)
-    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                            "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
     yield e
     e.dispose()
 
@@ -53,7 +56,7 @@ def dispatched(engine, flags_per_call=None, monkeypatch=None):
         c = agent_settings.SETTINGS["critic"]
         changed = MappingProxyType({**c, "limits": MappingProxyType({**c["limits"], "max_flags_per_call": flags_per_call})})
         monkeypatch.setattr(agent_settings, "SETTINGS", MappingProxyType({**agent_settings.SETTINGS, "critic": changed}))
-    q = queries.create(engine, CLAIM, ("mpea",))
+    q = queries.create(engine, CLAIM, SOURCES)
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
     return queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
@@ -81,8 +84,9 @@ def test_a_critic_failure_on_flagged_data_leaves_every_flag_unclassified_and_the
     stub.respond(respond)
     rid = dispatched(engine)
     report = run(engine, rid, stub)
-    flags = one(engine, "SELECT count(*) FROM flag WHERE run_id = :r", r=rid)
-    assert flags >= 2                                                     # the data raise flags
+    flags = one(engine, "SELECT count(*) FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM flag_record fr "
+                        "WHERE fr.flag_id = f.id) >= 2", r=rid)
+    assert flags == 2                                                     # the data raise two flags the Critic gets
     assert kinds(stub)[:2] == ["critic", "critic"]                        # the Critic was asked, and corrected once
     assert one(engine, "SELECT status FROM stage_result WHERE run_id = :r AND stage = 'critic'", r=rid) == "failed"
     assert one(engine, "SELECT count(*) FROM flag WHERE run_id = :r AND critic_class IS NOT NULL", r=rid) == 0
@@ -103,7 +107,8 @@ def test_an_accounting_failure_at_the_critic_stops_the_run_with_no_further_reque
     stub.respond(responder())
     monkeypatch.setattr(spend, "finish" if failure == "recording_failed" else "reserve", broken)
     report = run(engine, rid, stub)
-    assert one(engine, "SELECT count(*) FROM flag WHERE run_id = :r", r=rid) >= 2  # two batches were due
+    assert one(engine, "SELECT count(*) FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM flag_record fr "
+                       "WHERE fr.flag_id = f.id) >= 2", r=rid) == 2  # two batches were due
     assert attempts == [1]                                                # one reservation or one recording only
     assert kinds(stub) == (["critic"] if failure == "recording_failed" else [])  # no second batch, no Analyst
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'critic'", r=rid) == 1

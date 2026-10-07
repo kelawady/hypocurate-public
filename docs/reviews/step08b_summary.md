@@ -51,6 +51,48 @@ The statement is **not stored as text**. It is rendered from the stored results 
 - The wording follows the format version.
 - A run completed by code that did not record a version (the previous release's, or the 12 live runs in the development database) shows "not recorded".
 
+### Further change after the first live Critic call (owner's decision, 2026-10-07)
+
+The first live call (above) sent two single-record flags, and the Critic compared them with each other. The owner decided three changes, built on this branch with recorded-response tests, then one more live call:
+
+- **Scope** (register `critic_scope`, a safeguard change for the reviewer). Only a flag that names two or more records is sent (`critic.MIN_RECORDS = 2`).
+  - A single-record flag keeps code's own kind and category. Its class stays empty, and `show` lists it as "not classified: single-record flag" (not a refusal).
+  - A run with no multi-record flag makes no Critic call.
+  - The class is displayed through `critic.flag_display`, inside the Critic's module, so the source scan confirming that no decision reads the class is unchanged.
+- **Instruction** (a new settings version; register `critic_classes` reworded): "Each flag stands alone: judge it only on the records it names, and never compare records across flags." Each flag is rendered as its own block (`=== Flag N: judge this flag on its own === … === end of flag N ===`).
+- **Answer key, test side only:** `tests/fixtures/controlled_duplicates/critic_key.csv`, derived from how each pair was built (`truth.csv`) and approved by the owner before the call. Tests check that it is not in the package or `data/`, and that a request on the real file holds no answer material (no case name, explanation or key wording).
+
+| Extract rows | Case | Expected | Also acceptable |
+|---|---|---|---|
+| 1–4 | exact duplicate (verbatim; alloy renamed) | same measurement | — |
+| 5–6 | possible duplicate, paper unknown | cannot tell | same measurement |
+| 7–8 | conflict, yield ×1.3 | possible transcription or unit error | same measurement |
+| 13–14 | test temperature missing | cannot tell | same measurement |
+
+**The second live call:** Haiku 4.5, fresh scratch database, MPEA with the controlled duplicate extract, a marked test run, ceiling $0.25. It sent 10 flags, each naming two records, with no answer material and no compared value in the request. One attempt, none refused. 7,953 input and 1,954 output tokens, **$0.017723**. The live total is now $1.0510.
+
+| Flag | Kind | Extract row | Critic's class | Expected | Grade | Critic's reason |
+|---|---|---|---|---|---|---|
+| 1 | exact_duplicate | 1 | same measurement | same measurement | correct | Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources |
+| 2 | exact_duplicate | 2 | same measurement | same measurement | correct | (as flag 1) |
+| 3 | exact_duplicate | 3 | same measurement | same measurement | correct | (as flag 1) |
+| 4 | exact_duplicate | 4 | same measurement | same measurement | correct | (as flag 1) |
+| 5 | possible_duplicate | 5 | same measurement | cannot tell | acceptable | Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source |
+| 6 | possible_duplicate | 6 | same measurement | cannot tell | acceptable | Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record |
+| 7 | values_disagree | 7 | cannot tell | possible transcription or unit error | abstention | Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata |
+| 8 | values_disagree | 8 | cannot tell | possible transcription or unit error | abstention | (as flag 7) |
+| 9 | possible_duplicate | 13 | same measurement | cannot tell | acceptable | Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources |
+| 10 | possible_duplicate | 14 | same measurement | cannot tell | acceptable | (as flag 9) |
+
+**Totals:** 4 correct, 4 acceptable, 2 abstentions, 0 wrong. The run with the Critic's answers left out gave identical decisions, sets, freeze record and fingerprint (`e175c543…`), statistics and gap facts.
+
+**What the grades do not show:**
+- **Flags 9–10 misstate the request.** The reason says the test conditions are identical, but the request shows the extract record's test temperature as "not reported". The class is acceptable; the reason misstates the metadata.
+- **Flags 1–4 were given away.** Their kind ("exact_duplicate", "identical values") nearly states the answer. Code derives the alloy label from the composition, so the renamed alloys of rows 3–4 look identical.
+- **Flags 7–8:** the Critic abstained rather than naming a likely transcription error.
+
+The instruction was not adjusted after seeing the answers (owner's instruction).
+
 ### Safeguard changes in this round (second-model review before any merge)
 
 - Migration 0006, amended in place (unmerged; never applied to the live database):
@@ -60,6 +102,7 @@ The statement is **not stored as text**. It is rendered from the stored results 
 - **Recorded settings:** requests are built from the recorded settings version (all four roles).
 - **Accounting failures:** recording or reservation failures stop the run (`RUN_STOPS`).
 - **Answer checks:** the Critic and Planner check types before membership; the Planner's defaulted parts must hold the default.
+- **The Critic's scope and instruction:** only flags naming two or more records are sent; the new instruction says each flag stands alone (owner's further change, after the first live call).
 - **Analyst's facts:** the informative-group count is no longer a name of its own.
 - **Statement:** the results statement and the Analyst's label. The statement is outside the agents' path; it reads stored rows only.
 
@@ -85,6 +128,11 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 | `test_planner_narrowing.py::body`, `test_orchestrator.py::planner_body` (fixtures) | A scope part that differs from the default is marked as stated unless a test gives the marks | Decision B: a part marked defaulted must hold the default. |
 | `model_builder.World` (`run`, `lock`, `partly`), `access_world` (`planted_plan`) | `fixed_plan` derived for a narrower question; plan content as given; the original stores a narrower plan and its counted sources | Finding 1's backstop. |
 | `test_reading.py` (new this round) | Labels, "alloys" | The owner's F-Q2 changes after decision B. |
+| `test_critic.py` fixture (`engine`, `version`, `checked_run`) | Two pairs split between MPEA and a second source (constructed, so runs are marked as tests), besides the two single-record flags | The Critic's scope (owner's further change): only flags naming two or more records are sent; the single-record flags alone would make no call. |
+| `test_critic.py::test_the_critics_complete_request_holds_no_compared_number_or_outcome` | Asserts the multi-record kinds are told and `invalid_value` / "physically impossible" are **not** sent (was: they were told); the distinctive values of the pairs are also checked absent | The scope rule. |
+| `test_critic.py::test_each_valid_entry_is_written_once_and_an_invalid_one_is_left_unclassified` | Uses the multi-record flags | The scope rule. |
+| `test_critic.py::test_flags_are_sent_in_batches` | Its synthetic flags name two records each (were empty) | Flags with no records are no longer batched. |
+| `test_orchestrator_flagged.py` fixture, `test_recorded_settings.py::test_the_critic_uses_the_settings_recorded_at_dispatch`, `test_orchestrator.py::test_no_model_call_is_made_while_a_database_transaction_is_open`, `test_orchestrator.py::test_a_spending_refusal_at_the_critic_fails_the_run` | Data with the two cross-source pairs, runs marked as tests; the flag counts are of flags naming two or more records | The scope rule; each still makes the Critic calls it tests. No assertion was loosened. |
 
 ### Numbers
 
@@ -99,7 +147,7 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - The local development database is still at the earlier 0006 (the live Critic call ran on a fresh scratch database, by the owner's choice). Before it is used again it needs a backup and a migration back down and up to the amended 0006; its run rows are kept.
 - The confirmation of the question as tested by a person is step 10 (the website).
 - The Analyst's narrative is unverified by design; it is labelled as such.
-- **The Critic's reasoning is not checked either.** In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
+- **The Critic's reasoning is not checked either** (addressed in part by the owner's further change above; the second call's reasons for flags 9–10 still misstate the metadata). In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
 
 ## What the checks cover, and what they do not
 

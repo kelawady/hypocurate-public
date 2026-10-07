@@ -40,7 +40,8 @@ def signature(instruction: str):
 
     class CriticSignature(dspy.Signature):
         sources: str = dspy.InputField(desc="The chosen sources' descriptions, as JSON.")
-        flags: str = dspy.InputField(desc="The flags to classify, each with the metadata of the records it names.")
+        flags: str = dspy.InputField(desc="The flags to classify, each in its own block with the metadata of the "
+                                          "records it names; judge each flag on its own.")
         classes: str = dspy.InputField(desc="The allowed classes: code and meaning.")
         note: str = dspy.InputField(desc="'none', or a note about your previous answer.")
         classification: str = dspy.OutputField(desc=OUTPUT_DESCRIPTION)
@@ -48,19 +49,37 @@ def signature(instruction: str):
     return CriticSignature.with_instructions(instruction)
 
 
+# Owner, 2026-10-07 (fix round 1): only a flag that names at least this many records is sent to the Critic. A
+# single-record flag keeps code's own kind and category, its class stays empty, and it is shown as NOT_SENT.
+MIN_RECORDS = 2
+NOT_SENT = "not classified: single-record flag"
+
+
+def sent(critic_input: Mapping[str, Any]) -> list[Mapping]:
+    """The flags the Critic is asked about: those naming at least MIN_RECORDS records."""
+    return [f for f in critic_input["flags_kind"] if len(f["records"]) >= MIN_RECORDS]
+
+
 def batches(critic_input: Mapping[str, Any], size: int) -> list[list[Mapping]]:
-    flags = list(critic_input["flags_kind"])
+    flags = sent(critic_input)
     return [flags[i:i + size] for i in range(0, len(flags), size)]
 
 
 def render_inputs(critic_input: Mapping[str, Any], batch: list[Mapping]) -> dict[str, str]:
-    """The Critic's request inputs for one batch, built only from its access-layer input."""
+    """The Critic's request inputs for one batch, built only from its access-layer input. Each flag is its own
+    clearly separated block, to be judged on its own records only (owner, 2026-10-07)."""
     named = {r for f in batch for r in f["records"]}
     meta = {r["id"]: r for r in critic_input["record_metadata"] if r["id"] in named}
-    flags = [{"id": str(f["id"]), "kind": f["kind"], "category": f["category"],
-              "records": [meta[r] for r in f["records"] if r in meta]} for f in batch]
+    blocks = []
+    for f in batch:
+        records = [meta[r] for r in f["records"] if r in meta]
+        blocks.append("\n".join([f"=== Flag {f['id']}: judge this flag on its own ===",
+                                  f"kind: {f['kind']}", f"category: {f['category']}",
+                                  f"records named by this flag ({len(records)}):"]
+                                 + [json.dumps(m, sort_keys=True, ensure_ascii=False) for m in records]
+                                 + [f"=== end of flag {f['id']} ==="]))
     return {"sources": json.dumps(critic_input["sources_meta"], sort_keys=True, ensure_ascii=False),
-            "flags": json.dumps(flags, sort_keys=True, ensure_ascii=False),
+            "flags": "\n\n".join(blocks),
             "classes": json.dumps(dict(CRITIC_CLASSES), sort_keys=True, ensure_ascii=False)}
 
 
@@ -156,7 +175,9 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
             data, plan_batches = current, batches(current, s["limits"]["max_flags_per_call"])
         batch = plan_batches.pop(0) if plan_batches else []
         if not batch:
-            close_stage(engine, run_id, stage_id, "skipped", {"reason": "no_flags"})
+            single = [f["id"] for f in current["flags_kind"] if len(f["records"]) < MIN_RECORDS]
+            close_stage(engine, run_id, stage_id, "skipped",
+                        {"reason": "no_multi_record_flags" if single else "no_flags", "not_sent": single})
             break
         inputs = render_inputs(current, batch)
         result = call_agent(engine, invocation, signature(s["instruction"]), inputs, model=s["model"],
@@ -177,7 +198,29 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
             refused.update(got.refused)
             close_stage(engine, run_id, stage_id, "done", {
                 "classified": {str(k): {"class": c, "reason": r} for k, (c, r) in sorted(got.accepted.items())},
-                "refused": got.refused, "attempts": result.attempts}, input_=inputs)
+                "refused": got.refused, "attempts": result.attempts,
+                "not_sent": [f["id"] for f in data["flags_kind"] if len(f["records"]) < MIN_RECORDS]}, input_=inputs)
         if not plan_batches:
             break
     return CriticResult(classified, refused, failures, stages)
+
+
+def flag_display(engine: Engine, run_id: int) -> list[dict]:
+    """Each flag of a run as shown to people: code's kind and category, how many records it names, and the
+    Critic's class and reason, or NOT_SENT for a single-record flag, or 'not classified' (shown, never decided on)."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT f.id, f.kind, f.category, f.critic_class, f.critic_reason, "
+            "(SELECT count(*) FROM flag_record fr WHERE fr.flag_id = f.id) AS n FROM flag f WHERE f.run_id = :r "
+            "ORDER BY f.id"), dict(r=run_id)).all()
+    out = []
+    for r in rows:
+        if r.n < MIN_RECORDS:
+            critic_words = NOT_SENT
+        elif r.critic_class:
+            critic_words = f"{CRITIC_CLASSES[r.critic_class]}: {r.critic_reason}" if r.critic_reason else \
+                CRITIC_CLASSES[r.critic_class]
+        else:
+            critic_words = "not classified"
+        out.append({"flag": r.id, "kind": r.kind, "category": r.category, "records": r.n, "critic": critic_words})
+    return out

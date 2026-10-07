@@ -36,17 +36,30 @@ def stub():
     s.close()
 
 
+# Fix round 1 (owner, 2026-10-07): only a flag naming two or more records is sent to the Critic. Flags between
+# records are raised across sources only, so two pairs are split between MPEA and a second source in MPEA layout:
+# one the same values in both (an exact duplicate), one whose yield strength differs beyond the tolerance. The
+# CONFLICT rows above stay as single-record flags, which are not sent. Distinctive numbers, for the planted test.
+PAIR_SAME = pw.mpea_row("CoCrFeNi", 5.0, 5123.125, doi="10.1016/j.test.2026.102")
+PAIR_MPEA = pw.mpea_row("CoCrNi", 3.0, 6123.375, doi="10.1016/j.test.2026.101")
+PAIR_OTHER = pw.mpea_row("CoCrNi", 3.0, 7960.375, doi="10.1016/j.test.2026.101")
+SOURCES = ("mpea", "controlled_duplicates")
+NOT_SENT_VALUES = ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5",
+                   "6123.375", "7960.375", "5123.125", "6123.4", "7960.4", "5123.1")
+
+
 @pytest.fixture
 def engine(migrated_database):
     e = make_engine(migrated_database)
-    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                            "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
     yield e
     e.dispose()
 
 
-def version(engine):
+def version(engine, sources=SOURCES):
     q = queries.create(engine, "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
-                       ("mpea",))
+                       sources)
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
     return q.version_id
@@ -54,10 +67,11 @@ def version(engine):
 
 def checked_run(engine, vid):
     """A run of version `vid` through Checks: its flags are raised, nothing decided yet."""
+    # The second source is constructed test data: its runs are marked as tests (fix round 1).
     if not one(engine, "SELECT count(*) FROM run WHERE hypothesis_version_id = :v", v=vid):
-        rid = queries.dispatch(engine, vid)
+        rid = queries.dispatch(engine, vid, constructed_test_data=True)
     else:
-        rid = pw.run_of_version(engine, vid, ("mpea",), agents=("planner", "critic", "analyst"))
+        rid = pw.run_of_version(engine, vid, SOURCES, marked=True, agents=("planner", "critic", "analyst"))
     if one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "queued":
         queries.start(engine, rid)
     checkpoints.lock_rules(engine, rid, plan_for(vid))
@@ -90,24 +104,47 @@ def run_critic(engine, rid, stub):
 
 # --- the request and the answer --------------------------------------------------------------------------
 
+def multi_flag_ids(engine, rid):
+    """The flags naming two or more records: the only ones sent to the Critic (fix round 1)."""
+    return [r[0] for r in rows(engine, "SELECT f.id FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM "
+                                       "flag_record fr WHERE fr.flag_id = f.id) >= 2 ORDER BY f.id", r=rid)]
+
+
 def test_the_critics_complete_request_holds_no_compared_number_or_outcome(engine, stub):
     rid = checked_run(engine, version(engine))
-    flags = flag_ids(engine, rid)
-    assert flags  # the conflicting pair raised at least one flag
+    flags = multi_flag_ids(engine, rid)
+    assert len(flags) == 2  # the two pairs split between the sources
     stub.queue(reply({str(f): {"class": "cannot_tell", "reason": "the metadata are the same"} for f in flags}))
     run_critic(engine, rid, stub)
     raw = stub.requests[0]["raw"].decode()
-    for v in ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5"):
+    for v in NOT_SENT_VALUES:
         assert v not in raw, v
     assert "compared_values" not in raw and "tools" not in json.loads(raw)
     assert CRITIC_INSTRUCTION in json.dumps(json.loads(raw), ensure_ascii=False)
-    assert "physically impossible" in raw and "invalid_value" in raw  # the kind and category are told
+    # The kind and category of each flag sent are told; a single-record flag is not sent (fix round 1; was: the
+    # single-record 'invalid_value' flags were sent).
+    assert "differ beyond tolerance" in raw and "values_disagree" in raw and "exact_duplicate" in raw
+    assert "invalid_value" not in raw and "physically impossible" not in raw
+
+
+def test_each_flag_is_its_own_block_and_the_instruction_says_so(engine, stub):
+    """Owner, 2026-10-07: each flag stands alone; the request renders each as its own separated block."""
+    rid = checked_run(engine, version(engine))
+    flags = multi_flag_ids(engine, rid)
+    stub.queue(reply({str(f): {"class": "cannot_tell", "reason": "x"} for f in flags}))
+    run_critic(engine, rid, stub)
+    content = json.dumps(json.loads(stub.requests[0]["raw"]), ensure_ascii=False)
+    for f in flags:
+        assert f"=== Flag {f}: judge this flag on its own ===" in content and f"=== end of flag {f} ===" in content
+    assert "Each flag stands alone: judge it only on the records it names, and never compare records across flags." \
+        in CRITIC_INSTRUCTION
 
 
 def test_each_valid_entry_is_written_once_and_an_invalid_one_is_left_unclassified(engine, stub):
     rid = checked_run(engine, version(engine))
-    flags = flag_ids(engine, rid)
+    flags = multi_flag_ids(engine, rid)
     good, *rest = flags
+    assert rest
     answer = {str(good): {"class": "same_measurement", "reason": "same DOI, alloy and grain size"},
               "999999": {"class": "cannot_tell"}}
     for f in rest:
@@ -143,14 +180,60 @@ def test_a_malformed_answer_is_corrected_once_then_every_flag_stays_unclassified
 
 
 def test_flags_are_sent_in_batches():
-    data = {"flags_kind": [{"id": i, "records": []} for i in range(7)]}
+    data = {"flags_kind": [{"id": i, "records": [10 * i, 10 * i + 1]} for i in range(7)]}
     assert [len(b) for b in critic.batches(data, 3)] == [3, 3, 1]
+
+
+# --- scope: only flags naming two or more records are sent (owner, 2026-10-07, fix round 1) -------------------
+
+def test_only_flags_naming_two_or_more_records_are_batched():
+    data = {"flags_kind": [{"id": 1, "records": [5]}, {"id": 2, "records": [5, 6]}, {"id": 3, "records": [7, 8, 9]},
+                           {"id": 4, "records": []}]}
+    assert [[f["id"] for f in b] for b in critic.batches(data, 10)] == [[2, 3]]
+    assert critic.MIN_RECORDS == 2
+
+
+def test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified(engine, stub):
+    from hypocurate import cli_runs
+    rid = checked_run(engine, version(engine))
+    single = [f for f in flag_ids(engine, rid) if f not in multi_flag_ids(engine, rid)]
+    assert len(single) == 2
+    stub.respond(lambda raw: reply({str(f): {"class": "same_measurement", "reason": "same paper and alloy"}
+                                    for f in multi_flag_ids(engine, rid)}))
+    out = run_critic(engine, rid, stub)
+    assert len(stub.requests) == 1 and out.classified == 2
+    content = json.dumps(json.loads(stub.requests[0]["raw"]), ensure_ascii=False)
+    for f in single:
+        assert f"=== Flag {f}:" not in content
+        assert rows(engine, "SELECT critic_class, critic_reason FROM flag WHERE id = :f", f=f) == [(None, None)]
+        assert str(f) not in out.refused
+    stage = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stages[0])
+    assert sorted(stage["not_sent"]) == sorted(single)
+    shown = {x["flag"]: x for x in cli_runs.critic_flags(engine, rid)}
+    for f in single:
+        assert shown[f]["critic"] == "not classified: single-record flag" and shown[f]["records"] == 1
+        assert shown[f]["kind"] == "invalid_value" and shown[f]["category"] == "physically impossible"
+    for f in multi_flag_ids(engine, rid):
+        assert shown[f]["critic"] == "same measurement reported twice: same paper and alloy"
+
+
+def test_a_run_with_only_single_record_flags_makes_no_critic_call(migrated_database, stub):
+    engine = make_engine(migrated_database)
+    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    rid = checked_run(engine, version(engine, ("mpea",)))
+    assert len(flag_ids(engine, rid)) == 2 and multi_flag_ids(engine, rid) == []
+    out = run_critic(engine, rid, stub)
+    assert stub.requests == [] and out.classified == 0 and out.failures == []
+    assert one(engine, "SELECT status FROM stage_result WHERE id = :s", s=out.stages[0]) == "skipped"
+    assert one(engine, "SELECT output->>'reason' FROM stage_result WHERE id = :s", s=out.stages[0]) == \
+        "no_multi_record_flags"
+    assert one(engine, "SELECT count(*) FROM model_call") == 0
 
 
 def test_with_no_flag_nothing_is_sent(migrated_database, stub):
     engine = make_engine(migrated_database)
     pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3))})
-    rid = checked_run(engine, version(engine))
+    rid = checked_run(engine, version(engine, ("mpea",)))
     assert flag_ids(engine, rid) == []
     out = run_critic(engine, rid, stub)
     assert stub.requests == [] and out.classified == 0
@@ -255,3 +338,20 @@ def test_a_non_object_answer_is_malformed():
     for value in WRONG:
         if not isinstance(value, dict):
             assert critic.check({"classification": json.dumps(value)}) == "malformed"
+
+
+
+def test_the_request_on_the_controlled_duplicate_file_holds_no_answer_material(migrated_database, stub):
+    """The real controlled duplicate extract with MPEA: the flags sent name two records each, and the request holds
+    nothing of the answer files (truth.csv, the Critic's key): no case name, explanation or key wording."""
+    from test_controlled_duplicates import _row_specific_markers, key_markers
+    engine = make_engine(migrated_database)
+    pw.registered(engine, SOURCES)
+    rid = checked_run(engine, version(engine))
+    flags = multi_flag_ids(engine, rid)
+    assert len(flags) == 10 and flags == flag_ids(engine, rid)
+    stub.respond(lambda raw: reply({str(f): {"class": "cannot_tell", "reason": "x"} for f in flags}))
+    run_critic(engine, rid, stub)
+    content = json.dumps([json.loads(r["raw"]) for r in stub.requests], ensure_ascii=False)
+    leaked = [m for m in _row_specific_markers() | key_markers() if m and m in content]
+    assert leaked == []

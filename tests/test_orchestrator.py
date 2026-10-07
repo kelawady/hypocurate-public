@@ -409,12 +409,15 @@ def test_a_run_fails_before_the_lock_with_a_stated_reason(engine, stub, answer, 
 
 def test_no_model_call_is_made_while_a_database_transaction_is_open(migrated_database, stub):
     """For every role: while the stub serves a request, the run's connections hold no open transaction. (Small
-    data with invalid values, so the Critic has flags to classify; the reference data raise none.)"""
+    data with pairs split between two sources, so the Critic has flags naming two records to classify (fix round 1:
+    single-record flags are not sent); the reference data raise none. The second source is constructed test data, so
+    the run is marked as a test.)"""
     from stats_world import small_rows
-    from test_critic import CONFLICT
+    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
     engine = make_engine(migrated_database)
     engine.test_url = migrated_database
-    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                                 "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
     seen = []
 
     def check():
@@ -425,10 +428,10 @@ def test_no_model_call_is_made_while_a_database_transaction_is_open(migrated_dat
 
     stub.on_request(check)
     stub.respond(responder(planner_body()))
-    q = queries.create(engine, FCC_CLAIM, ("mpea",))
+    q = queries.create(engine, FCC_CLAIM, SOURCES)
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
-    rid = queries.dispatch(engine, q.version_id)
+    rid = queries.dispatch(engine, q.version_id, constructed_test_data=True)
     assert run(engine, rid, stub).status == "completed"
     asked = {field for r in stub.requests for field in ("plan", "classification", "report")
              if f"[[ ## {field} ## ]]" in r["raw"].decode()}
@@ -440,14 +443,16 @@ def test_a_spending_refusal_at_the_critic_fails_the_run(migrated_database, stub)
     """PRD 8, 14.4: before the freeze a cap or ceiling stops the run, marked failed with the reason."""
     from decimal import Decimal
     from stats_world import small_rows
-    from test_critic import CONFLICT
+    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
     engine = make_engine(migrated_database)
-    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    # Fix round 1: flags naming two records (single-record flags are not sent), a marked test run.
+    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                                 "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
     stub.respond(responder())
-    q = queries.create(engine, FCC_CLAIM, ("mpea",))
+    q = queries.create(engine, FCC_CLAIM, SOURCES)
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
-    rid = queries.dispatch(engine, q.version_id, fixed_plan=True)
+    rid = queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
     report = run(engine, rid, stub, ceiling=Decimal("0.001"))
     assert report.status == "failed" and report.failure.startswith("spending_refused:")
     assert stub.requests == []  # nothing was sent

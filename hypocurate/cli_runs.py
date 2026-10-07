@@ -105,6 +105,12 @@ def question_as_tested(engine: Engine, run_id: int) -> dict | None:
         return reading.stored(conn, run_id)
 
 
+def critic_flags(engine: Engine, run_id: int) -> list[dict]:
+    """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
+    from hypocurate.pipeline.agents import critic
+    return critic.flag_display(engine, run_id)
+
+
 def show(engine: Engine, run_id: int) -> dict | None:
     from hypocurate.pipeline import statement
     from hypocurate.pipeline import statistics as st
@@ -161,6 +167,7 @@ def show(engine: Engine, run_id: int) -> dict | None:
         "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
         "sources": (gap or {}).get("sources"),
         "statement": built["lines"] if built else None,
+        "flags": critic_flags(engine, run_id),
         # Owner, 2026-10-07: the statement is shown with its format version (rendered; recorded at completion).
         "statement_format_version": ({"rendered": built["format_version"], "recorded": built["recorded_format_version"]}
                                      if built else None),

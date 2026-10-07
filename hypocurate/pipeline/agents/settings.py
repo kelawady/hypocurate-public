@@ -54,7 +54,8 @@ CRITIC_INSTRUCTION = (
     "and category and the metadata of the records it names (source, alloy and composition, paper DOI, field "
     "statuses and conditions such as test type and phase); you are never told the numbers that were compared. "
     "Classify each flag with exactly one of the allowed classes and give a short reason based only on the "
-    "metadata shown. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
+    "metadata shown. Each flag stands alone: judge it only on the records it names, and never compare records "
+    "across flags. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
     "is used, and you never choose between values.")
 ANALYST_INSTRUCTION = (
     "You explain a result that code has already computed. Write no digits at all. Wherever you want a number, a "
