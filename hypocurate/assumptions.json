@@ -4569,9 +4569,9 @@
     "key": "accepted_disclosures",
     "name": "What the blinded views disclose by design",
     "state": "in_force",
-    "statement": "The blinding of the Planner, the Critic and the Analyst's facts without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; timing and the existence of refusals. Timing is not protected.",
+    "statement": "The blinding of the Planner, the Critic and the Analyst's facts without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; timing and the existence of refusals. Timing is not protected.",
     "value": {
-      "text": "the eight disclosures in ACCEPTED_DISCLOSURES",
+      "text": "the seven disclosures in ACCEPTED_DISCLOSURES",
       "unit": null
     },
     "category": "data_handling",
@@ -4605,6 +4605,12 @@
         "from": "2026-10-05",
         "to": "2026-10-07",
         "note": "Step 8b (owner, 2026-10-07): the item 'the Analyst's gap report passed to the Commentator' removed, since the Commentator reads nothing until step 12 (A6); step 12 decides it with the Commentator's lists."
+      },
+      {
+        "value": "The blinding of the Planner, the Critic and the Analyst's facts without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; timing and the existence of refusals. Timing is not protected.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner, 2026-10-07): the item on condition summaries removed, since no agent reads that field now (the Analyst receives stored facts only; the Commentator nothing until step 12); step 12 decides it with the Commentator's lists."
       }
     ],
     "notes": [],

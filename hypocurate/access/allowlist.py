@@ -272,7 +272,6 @@ POWER_SCHEMA = MappingProxyType({"method": POWER_METHODS, "within_paper_similari
 ACCEPTED_DISCLOSURES = (
     "counts by field status (for example how many yield strengths a source reports or cannot read)",
     "flag kinds and categories (for example that two values differ beyond the tolerance)",
-    "condition summaries, which reveal an exact grain size or temperature when a group has one record",
     "compositions and alloy labels derived from them",
     "DOIs with DOI syntax, which may contain digits",
     "text written or approved by people: the claim, the approved tag values, source names and licences in code",
