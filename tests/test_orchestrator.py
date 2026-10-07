@@ -300,10 +300,15 @@ def test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested(en
     assert (rest.status, rest.outcome) == ("completed", "sufficient") and rest.stages[0] == "rules lock"
 
 
-def test_proceed_builds_the_plan_only_after_a_narrowing_decision_to_proceed(engine, stub):
+@pytest.mark.parametrize("planner_done", [False, True])
+def test_proceed_builds_the_plan_only_after_a_narrowing_decision_to_proceed(engine, stub, planner_done):
+    """Without a stored Planner answer, or with one but no narrowing decision to proceed, `proceed` locks nothing."""
+    from hypocurate.pipeline.agents import planner
     stub.respond(responder(planner_body()))
     rid = dispatched(engine)
     queries.start(engine, rid)
+    if planner_done:
+        assert planner.run_planner(engine, rid, client_options=sp.client_options(stub)).failure is None
     out = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub))
     assert out.status == "failed" and out.failure.startswith("refused: ")
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0

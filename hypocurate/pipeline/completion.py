@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, Engine, text
 
+from hypocurate.pipeline.statement import FORMAT_VERSION as STATEMENT_FORMAT
 from hypocurate.pipeline.writes import Refused, write
+
+# Each completion records the format version of the results statement it will be shown with (fix round 1).
 
 ROLE = "completion"
 
@@ -39,9 +42,9 @@ def copy_decision(engine: Engine, run_id: int) -> dict:
         if decision.get("freeze_fingerprint") != snapshot:
             raise Refused("copy_decision", "decision_not_current")
         conn.execute(text("UPDATE run SET status = 'completed', completed_at = now(), outcome = :o, verdict = :v, "
-                          "exploratory = :x, evidence_level = :e WHERE id = :r"),
+                          "exploratory = :x, evidence_level = :e, statement_format_version = :f WHERE id = :r"),
                      dict(o=decision["outcome"], v=decision["verdict"], x=decision["exploratory"],
-                          e=decision["evidence_level"], r=run_id))
+                          e=decision["evidence_level"], f=STATEMENT_FORMAT, r=run_id))
         return decision
 
     return write(engine, run_id, ROLE, "copy_decision", body)
@@ -69,8 +72,9 @@ def copy_partly_sufficient(engine: Engine, run_id: int) -> dict:
         if stored != [tuple(c) for c in current]:
             raise Refused("copy_partly_sufficient", "decision_not_current")
         conn.execute(text("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
-                          "verdict = NULL, exploratory = false, evidence_level = :e WHERE id = :r"),
-                     dict(e=decision["evidence_level"], r=run_id))
+                          "verdict = NULL, exploratory = false, evidence_level = :e, statement_format_version = :f "
+                          "WHERE id = :r"),
+                     dict(e=decision["evidence_level"], f=STATEMENT_FORMAT, r=run_id))
         return decision
 
     return write(engine, run_id, ROLE, "copy_partly_sufficient", body)

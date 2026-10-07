@@ -17,13 +17,20 @@ Below the minimums, and when nothing was frozen, each count is shown against its
 per source and how many lack the predictor or the outcome. A partly-sufficient original shows its candidate counts
 per part of the question and the narrower question, which a person must dispatch.
 
-The statement is built from the stored rows whenever it is shown (`build`): it is present for every completed run,
-whatever happened to the Analyst, and it holds nothing a model wrote. The Analyst's explanation is stored and shown
+The statement is rendered from the stored rows whenever it is shown (owner, 2026-10-07): `facts` reads them into a
+plain dictionary with no record identity, and `render` is a pure function of that dictionary, ordering sources and
+sensitivity sets itself, so the same stored rows always give the same text whatever the record ids or the order the
+rows come in. Its numbers come only from stored results and cannot change; its wording follows `FORMAT_VERSION`,
+which the completing code records on the run and which is shown with the statement; a change of wording is a new
+version (tests/test_statement.py pins the rendered text of each version). It is present for every completed run,
+whatever happened to the Analyst, and holds nothing a model wrote. The Analyst's explanation is stored and shown
 separately, under its own label (`agents.analyst.LABEL`).
 """
 from __future__ import annotations
 
 from typing import Any, Mapping
+
+import json
 
 from sqlalchemy import Connection, Engine, text
 
@@ -31,6 +38,8 @@ from hypocurate.pipeline import analyst_names as an
 from hypocurate.pipeline import display, queries, reading
 from hypocurate.pipeline import statistics as st
 
+# The statement's format: change it with any change of wording (owner, 2026-10-07; register 'results_statement').
+FORMAT_VERSION = 1
 ASSOCIATION = "The result is an association under the stated model in the sources searched; it does not show cause."
 OVER_CONFIDENT = ("The simulation check found the method over-confident on data with this structure; that describes "
                   "the method on data like these, not the error of this particular p-value.")
@@ -58,6 +67,48 @@ def _output(conn: Connection, run_id: int, stage: str) -> Any:
                              "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
 
 
+# --- reading the stored rows -----------------------------------------------------------------------------------
+
+IDENTITY_KEYS = ("records_found",)  # stored lists of record ids: never part of the facts
+
+
+def _without_identity(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _without_identity(v) for k, v in value.items() if k not in IDENTITY_KEYS}
+    if isinstance(value, list):
+        return [_without_identity(v) for v in value]
+    return value
+
+
+def facts(conn: Connection, run_id: int) -> dict | None:
+    """What the statement is rendered from, as plain JSON values with no record identity; None unless completed."""
+    run = conn.execute(text(
+        "SELECT r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.statement_format_version, hv.text "
+        "FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id WHERE r.id = :r"),
+        dict(r=run_id)).one()
+    if run.status != "completed":
+        return None
+    out = {"claim": run.text, "tested": reading.stored(conn, run_id), "outcome": run.outcome,
+           "verdict": run.verdict, "exploratory": run.exploratory, "evidence_level": run.evidence_level,
+           "recorded_format_version": run.statement_format_version}
+    if run.outcome == "partly_sufficient":
+        out["narrowing"] = _output(conn, run_id, "narrowing") or {}
+        out["narrower_number"] = conn.execute(text("SELECT number FROM hypothesis WHERE narrower_of_run_id = :r "
+                                                   "ORDER BY id LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+        return _without_identity(json.loads(json.dumps(out, default=str)))
+    plan = conn.execute(text("SELECT content FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one()
+    model = plan.get("model") or {}
+    out.update(statistics=_output(conn, run_id, "statistics") or {}, gap=_output(conn, run_id, "gap_facts") or {},
+               alpha=model.get("alpha"), alternative=model.get("alternative"),
+               found=dict(conn.execute(text(
+                   "SELECT s.key, count(*) FROM record r JOIN source_version sv ON sv.id = r.source_version_id "
+                   "JOIN source s ON s.id = sv.source_id WHERE r.extraction_run_id = :r GROUP BY s.key"),
+                   dict(r=run_id)).all()))
+    return _without_identity(json.loads(json.dumps(out, default=str)))
+
+
+# --- the pure rendering ------------------------------------------------------------------------------------------
+
 def counts_against_minimums(minimums: Mapping[str, Mapping]) -> str:
     parts = []
     for key in MINIMUM_ORDER:
@@ -71,13 +122,10 @@ def counts_against_minimums(minimums: Mapping[str, Mapping]) -> str:
     return "Counts against the minimums: " + "; ".join(parts) + "."
 
 
-def _found_lines(conn: Connection, run_id: int, gap: Mapping) -> list[str]:
-    found = dict(conn.execute(text(
-        "SELECT s.key, count(*) FROM record r JOIN source_version sv ON sv.id = r.source_version_id "
-        "JOIN source s ON s.id = sv.source_id WHERE r.extraction_run_id = :r GROUP BY s.key"), dict(r=run_id)).all())
+def _found_lines(found: Mapping[str, int], gap: Mapping) -> list[str]:
     lacking = gap.get("records_lacking_fields") or {}
     lines = []
-    for s in gap.get("sources") or []:
+    for s in sorted(gap.get("sources") or [], key=lambda s: s["source"]):
         key = s["source"]
         parts = [f"{found.get(key, 0):,} records found"]
         for field in LACKING:
@@ -93,8 +141,14 @@ def _over_confident(calibration: Mapping) -> bool:
                for c in calibration.values())
 
 
-def _sensitivity_line(analyses: list[Mapping], pooled: Mapping, alpha: float) -> str | None:
-    sets = [e for e in analyses if e.get("scope") == "sensitivity"]
+def _ordered(analyses: list) -> list[Mapping]:
+    """Pooled first, then the sources by key, then the sensitivity sets by key: never the stored order."""
+    rank = {"pooled": 0, "per_source": 1, "sensitivity": 2}
+    return sorted((e for e in analyses if isinstance(e, Mapping)),
+                  key=lambda e: (rank.get(e.get("scope"), 3), str(e.get("source") or ""), str(e.get("set") or "")))
+
+
+def _sensitivity_line(sets: list[Mapping], pooled: Mapping, alpha: float) -> str | None:
     estimated = [e["estimate"] for e in sets if e.get("estimate") is not None]
     if not sets or not estimated:
         return None
@@ -103,68 +157,71 @@ def _sensitivity_line(analyses: list[Mapping], pooled: Mapping, alpha: float) ->
             f"{display.coefficient(min(estimated))} to {display.coefficient(max(estimated))}.")
 
 
-def _analysis_lines(conn: Connection, run_id: int, run, stats: Mapping, gap: Mapping, alpha: float,
-                    alternative: str | None) -> list[str]:
-    analyses = [e for e in stats.get("analyses") or [] if isinstance(e, Mapping)]
+def _analysis_lines(f: Mapping) -> list[str]:
+    stats, gap, alpha = f["statistics"], f["gap"], f["alpha"]
+    analyses = _ordered(stats.get("analyses") or [])
     withheld = bool(stats.get("withheld"))
-    frozen = bool(analyses)
     lines: list[str] = []
     cautions: list[str] = []
-    if run.verdict:
+    if f["verdict"]:
         cautions.append(ASSOCIATION)
-    if not frozen:
+    if not analyses:
         lines.append(f"Nothing was tested: no dataset was frozen ({str(gap.get('kind') or 'no record').replace('_', ' ')}).")
         lines.append(counts_against_minimums(gap.get("minimums") or {}))
-        lines += _found_lines(conn, run_id, gap)
+        lines += _found_lines(f["found"], gap)
     elif withheld:
-        pooled = analyses[0]
         lines.append("No estimate is shown: the minimums were not met.")
-        lines.append(counts_against_minimums(pooled.get("minimums") or {}))
-        lines += _found_lines(conn, run_id, gap)
+        lines.append(counts_against_minimums(analyses[0].get("minimums") or {}))
+        lines += _found_lines(f["found"], gap)
     else:
         pooled = analyses[0]
+        sets = [e for e in analyses if e.get("scope") == "sensitivity"]
         c = pooled.get("counts") or {}
+        inference = pooled.get("p_value") is not None
         lines.append(an.MODEL_SENTENCE)
         where = f"{c.get('n_records')} records on {c.get('n_alloys')} alloys"
-        if pooled.get("p_value") is not None:
+        if inference:
+            figures = display.figures_phrase(c["n_groups_informative"], c["effective_papers"], c["largest_paper_share"],
+                                             pooled["df"])
             lines.append(f"Pooled estimate: {display.coefficient(pooled['estimate'])}, standard error "
                          f"{display.coefficient(pooled['std_error'])}; {display.p_phrase(pooled['p_value'])}; {where}; "
-                         f"from {display.figures_phrase(c['n_groups_informative'], c['effective_papers'], c['largest_paper_share'], pooled['df'])}.")
+                         f"from {figures}.")
         else:
             reason = str(pooled.get("inference_reason") or "no valid inference").replace("_", " ")
             lines.append(f"Pooled estimate: {display.coefficient(pooled['estimate'])}, the coefficient only ({reason}): "
                          f"no uncertainty, no p-value and no verdict; {where}.")
-        note = an.direction_note(pooled.get("estimate"), alternative)
+        note = an.direction_note(pooled.get("estimate"), f["alternative"])
         if note:
             lines.append(_cap(note) + ".")
-        if pooled.get("p_value") is not None:
+        if inference:
             lines.append(f"Spread of the slope information: an effective number of groups of "
                          f"{display.two_decimals(c['effective_papers'])} out of {c['n_groups_informative']} informative "
                          f"groups; largest share {display.percent(c['largest_paper_share'])}.")
         lines.append(an.GROUP_DEFINITION)
-        if pooled.get("p_value") is not None:
-            sensitivity = _sensitivity_line(analyses, pooled, alpha)
+        if inference:
+            sensitivity = _sensitivity_line(sets, pooled, alpha)
             if sensitivity:
                 lines.append(sensitivity)
         calibration = pooled.get("calibration") or {}
         lines.append(an.calibration_summary(calibration, alpha).strip())
         if _over_confident(calibration):
             cautions.append(OVER_CONFIDENT)
-        if pooled.get("p_value") is not None:
+        if inference:
             for e in analyses:
                 if e.get("scope") == "per_source" and e.get("label") and e["label"] != "agrees":
                     cautions.append(f"{_source_name(e['source'])}: {an.label_words(e)}.")
             others = an.sensitivity_summary(analyses, pooled, alpha, withheld)["sensitivity_not_agreeing"]
             if others != "none":
                 cautions.append(f"Sensitivity sets not in agreement with the pooled result: {others}.")
-    if run.exploratory:
+    if f["exploratory"]:
         cautions.append(EXPLORATORY)
     lines.append("Main cautions:" if cautions else NONE)
     lines += [f"  - {x}" for x in cautions]
     return lines
 
 
-def _partly_lines(conn: Connection, run_id: int, narrowing: Mapping) -> list[str]:
+def _partly_lines(f: Mapping) -> list[str]:
+    narrowing = f["narrowing"]
     names = an.narrowing_names(narrowing)
     counts = []
     for letter in an.LETTERS:
@@ -173,42 +230,37 @@ def _partly_lines(conn: Connection, run_id: int, narrowing: Mapping) -> list[str
         counts.append(f"{names[f'part_{letter}']}: {names[f'part_{letter}_records']}")
     lines = ["Records with a grain size and the outcome, per part of the question (candidates before any "
              "eligibility decision): " + "; ".join(counts) + "."]
-    number = conn.execute(text("SELECT h.number FROM hypothesis h WHERE h.narrower_of_run_id = :r ORDER BY h.id "
-                               "LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
-    scope = narrowing.get("narrower_scope") or {}
-    if number is not None:
-        lines.append(f"Narrower question {number}: {queries.scope_in_words(scope)}. {DISPATCH}")
+    if f.get("narrower_number") is not None:
+        lines.append(f"Narrower question {f['narrower_number']}: "
+                     f"{queries.scope_in_words(narrowing.get('narrower_scope') or {})}. {DISPATCH}")
     return lines
 
 
+def render(f: Mapping) -> list[str]:
+    """The statement's lines: a pure function of `facts` (same facts, same text)."""
+    lines = [f"Question as asked: {f['claim']}"]
+    if f.get("tested"):
+        lines.append(f"Question as tested ({f['tested']['label']}): {f['tested']['text']}.")
+    if f["outcome"] == "partly_sufficient":
+        d = f["narrowing"].get("decision") or {}
+        lines.append(f"Outcome: {d.get('outcome_wording')}. The original question was not tested and has no verdict.")
+        lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
+        return lines + _partly_lines(f)
+    d = f["statistics"].get("decision") or {}
+    label = f" ({d['label']})" if d.get("label") else ""
+    verdict = f"Verdict: {d['verdict_wording']}." if f["verdict"] else "No verdict."
+    lines.append(f"Outcome: {d.get('outcome_wording')}{label}. {verdict}")
+    lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
+    return lines + _analysis_lines(f)
+
+
 def build(engine: Engine, run_id: int) -> dict | None:
-    """The statement of a completed run ({"lines", "text"}), or None for a run that is not completed."""
+    """The statement of a completed run, or None for a run that is not completed: its lines and text, the format
+    version it is rendered in, and the version recorded on the run when it completed (None if not recorded)."""
     with engine.connect() as conn:
-        run = conn.execute(text(
-            "SELECT r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, hv.text FROM run r "
-            "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id WHERE r.id = :r"), dict(r=run_id)).one()
-        if run.status != "completed":
-            return None
-        tested = reading.stored(conn, run_id)
-        lines = [f"Question as asked: {run.text}"]
-        if tested:
-            lines.append(f"Question as tested ({tested['label']}): {tested['text']}.")
-        if run.outcome == "partly_sufficient":
-            narrowing = _output(conn, run_id, "narrowing") or {}
-            d = narrowing.get("decision") or {}
-            lines.append(f"Outcome: {d.get('outcome_wording')}. The original question was not tested and has no "
-                         "verdict.")
-            lines.append(f"Evidence level: {run.evidence_level} ({d.get('evidence_level_wording')}).")
-            lines += _partly_lines(conn, run_id, narrowing)
-        else:
-            stats = _output(conn, run_id, "statistics") or {}
-            gap = _output(conn, run_id, "gap_facts") or {}
-            d = stats.get("decision") or {}
-            plan = conn.execute(text("SELECT content FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one()
-            model = plan.get("model") or {}
-            label = f" ({d['label']})" if d.get("label") else ""
-            verdict = f"Verdict: {d['verdict_wording']}." if run.verdict else "No verdict."
-            lines.append(f"Outcome: {d.get('outcome_wording')}{label}. {verdict}")
-            lines.append(f"Evidence level: {run.evidence_level} ({d.get('evidence_level_wording')}).")
-            lines += _analysis_lines(conn, run_id, run, stats, gap, model.get("alpha"), model.get("alternative"))
-    return {"lines": lines, "text": "\n".join(lines)}
+        f = facts(conn, run_id)
+    if f is None:
+        return None
+    lines = render(f)
+    return {"lines": lines, "text": "\n".join(lines), "format_version": FORMAT_VERSION,
+            "recorded_format_version": f["recorded_format_version"]}

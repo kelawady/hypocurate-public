@@ -47,3 +47,11 @@ def test_the_reference_plans_reading():
 
 def test_a_band_at_one_temperature_names_it_once():
     assert reading.band_words({"band": "elevated", "min": 1000.0, "max": 1000.0}) == "elevated, 1000 °C"
+
+
+def test_two_bands_are_joined_so_that_one_mark_covers_both():
+    scope = {"alloy_class": [MPEA], "phase_class": ["FCC"], "test_type": ["tension"],
+             "temperature_band": [{"band": "room temperature"}, {"band": "cryogenic", "min": -200.0, "max": -150.0}]}
+    stated = {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": True}
+    q = reading.question_as_tested(scope, "yield_strength", [], stated, "planner")
+    assert "room temperature, 20 to 25 °C and cryogenic, -200 to -150 °C (as the claim states)" in q["text"]

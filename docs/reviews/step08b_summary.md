@@ -33,7 +33,7 @@ From the first accepted live explanation (run 9), before the owner's last round 
 
 The last live explanation (run 12, after those changes, passed on its first attempt) still contains two conclusions of its own, which the checks do not catch:
 
-- "So the nominal p-value should be read as more favourable than it really is" is drawn from the calibration flag.
+- "So the nominal p-value should be read as more favourable than it really is" is drawn from the calibration flag. *Correction (fix round 1):* the calibration describes how the method behaves on simulated data like these; it does not measure the error of this particular p-value. No fact or instruction says otherwise, and the statement code now writes says so explicitly.
 - "the information then becomes even more concentrated in one remaining group" is drawn from the 52.1% largest share.
 
 Neither changes a number or a decision.
@@ -64,7 +64,7 @@ All the decisions of the step 8 plan (Q1–Q10 and the owner's additions of 2026
   - **B3:** the drafts were shown before the live set.
   - **B4:** run A's plan was compared field by field with the reference plan.
 - **After the live set:**
-  - Code builds the narrower scope (the Planner cannot see which part has no usable record).
+  - Code builds the narrower scope (the Planner cannot see which part has no candidate record).
   - Failure facts are stored as counts or rule names, never text, also for attempts later corrected.
   - **Rounding and phrasing by code:** display precision is defined in one place (approved). The Analyst writes `{name}` placeholders and no digits. It receives fewer facts, built by code, including a summary of the sensitivity sets classified with the per-source labels and function.
   - The Planner marks each scope part as stated by the claim or defaulted.
@@ -116,21 +116,21 @@ Planner → narrowing decision (code) → either [partly sufficient: Analyst (na
 | Planner: another domain | Run fails (`domain_mismatch`) |
 | Claim not one plan, with no part lacking records | Run fails (`claim_not_one_plan`, with the reason) |
 | Spending cap at the Planner or the Critic | Nothing sent; run fails (`spending_refused`) |
-| Spending cap or any other failure at the Analyst | Run completes with code's decision; "explanation unavailable (<code>)"; on the partly path the narrower question is still created (B2) |
+| Spending cap or any other failure at the Analyst, except a recording or reservation failure | Run completes with code's decision; "explanation unavailable (<code>)"; on the partly path the narrower question is still created (B2) |
 | Critic answer off-form for a flag / whole call failed | That flag, or the batch's flags, left unclassified; run goes on |
 | Narrower question on other source versions (B1) | Refused before the lock (`narrowing_sources_changed`) |
 | A refused checkpoint or write | Run fails with the code |
-| A call whose recording failed | Stays open; the database refuses to end the run; recovery is step 9 |
+| A recording or reservation failure at any agent (fix round 1, finding 3) | The run stops at once: no further model request (no further Critic batch, no Analyst), no copy of the decision, no narrower question; the run stays running (a call whose recording failed stays started) for step 9's recovery |
 
 ## The agents
 
 **Planner** (Opus 5.5):
 - **Receives** the claim, domain, sources, approved tag values and record counts. Never an outcome value: the planted-value test runs on the raw request.
 - **Answers** in a fixed form: domain match, claim scope, a stated/defaulted mark per scope part, outcome, exclusion rules from the menu, and a narrower scope that should be null.
-- **Code** builds the plan from the profile's defaults and these parameters only. Live run A's plan equals the reference plan in every field (B4).
+- **Code** builds the plan from the profile's defaults and these parameters only. *Correction (fix round 1):* the Planner's temperature bounds do enter a rule: for a band other than room temperature they become the plan's temperature-range rule. Its scope and exclusion rules decide which records are eligible. The model, the eligibility rules, the calibration and the sufficiency option never come from it. Live run A's plan equals the reference plan in every field (B4).
 
 **Narrowing** (code):
-- Counts records per claim part with a grain size and the outcome at an accepted status. The counts come from the sealed versions, structure only.
+- Counts records per claim part with a grain size and the outcome at an accepted status. The counts come from the sealed versions, structure only. *Correction (fix round 1):* these are candidate records; they do not show that records will survive eligibility under the locked rules, nor that a narrower question will meet the minimums.
 - Decides proceed, partly sufficient (code builds the narrower scope) or not one plan.
 - Stores the decision, the counts' fingerprint, the source versions' fingerprints and the stated marks.
 
@@ -165,7 +165,7 @@ All records are in `docs/reviews/step08b_live_record.json`: 12 runs, 21 model ca
 
 ## Tests
 
-- **The whole suite passes:** 1,728 locally. The test image (rebuilt at M8) ran 1,679, all passing.
+- **The whole suite passes:** 1,728 locally at M10. The test image was then rebuilt on the final M10 code (859e019) and ran 1,728, all passing; the runtime image's guard checks passed on the same code. The first rebuild failed on a corrupted Docker build cache ("parent snapshot … does not exist"); `docker builder prune -af` cleared it before the rebuild. (Fix round 1's numbers are in its own section.)
 - **New test files:**
   - `test_migrations_step8b.py`
   - `test_access_step8b.py`

@@ -344,6 +344,8 @@ class Run(Base):
     # Step 7 (migration 0004; register 'evidence_level_scale'): 1 to 6, written by the copy path;
     # required on every completed run.
     evidence_level: Mapped[int | None] = mapped_column(SmallInteger)
+    # Step 8b fix round 1 (migration 0006): the results statement's format version, recorded when the run completes.
+    statement_format_version: Mapped[int | None] = mapped_column(SmallInteger)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     agent_mode: Mapped[str] = mapped_column(Text, server_default=sql("'four_roles'"))
     fixed_plan: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
@@ -366,6 +368,8 @@ class Run(Base):
                         "AND (evidence_level = 6) = (verdict IS NOT NULL AND NOT exploratory) "
                         "AND (evidence_level = 5) = (verdict IS NOT NULL AND exploratory))", name="evidence_level"),
         CheckConstraint("(evidence_level IS NOT NULL) = (status = 'completed')", name="evidence_level_iff_completed"),
+        CheckConstraint("statement_format_version IS NULL OR statement_format_version >= 1",
+                        name="statement_format_version"),
         CheckConstraint("status = 'queued' OR started_at IS NOT NULL OR status = 'failed'", name="started_time"),
         CheckConstraint("status <> 'completed' OR completed_at IS NOT NULL", name="completed_time"),
         CheckConstraint("(status = 'failed') = (failure_reason IS NOT NULL)", name="failed_has_reason"),

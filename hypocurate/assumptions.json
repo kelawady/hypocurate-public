@@ -7669,7 +7669,7 @@
     "key": "results_statement",
     "name": "The results statement written by code",
     "state": "in_force",
-    "statement": "Every completed run has a short statement written by code from what code stored, built whenever it is shown (`show`), so it is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+    "statement": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change; its wording follows the statement's format version (FORMAT_VERSION, one named place), which the completing code records on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it) and which is shown with the statement. A change of wording is a new format version: a test pins the rendered text of every outcome kind for each version. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
     "value": {
       "text": "code-written from stored facts; always present on a completed run",
       "unit": null
@@ -7705,11 +7705,31 @@
         },
         {
           "ref": "python:hypocurate.pipeline.statement:EXPLORATORY"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:FORMAT_VERSION",
+          "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:render"
+        },
+        {
+          "ref": "sql:hc_run_statement_version"
+        },
+        {
+          "ref": "sql:ck_run_statement_format_version"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Every completed run has a short statement written by code from what code stored, built whenever it is shown (`show`), so it is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07: rendered at display from stored results as a pure function; format version recorded on the run and shown; wording follows the version."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_statement.py::test_the_reference_run_s_statement",
@@ -7718,7 +7738,15 @@
       "tests/test_statement.py::test_nothing_frozen_shows_each_count_against_its_minimum_and_the_records_found_per_source",
       "tests/test_statement.py::test_partly_sufficient_shows_the_counts_per_part_and_the_narrower_question_to_dispatch",
       "tests/test_statement.py::test_the_other_kinds",
-      "tests/test_statement.py::test_a_failed_run_has_no_statement"
+      "tests/test_statement.py::test_a_failed_run_has_no_statement",
+      "tests/test_statement.py::test_the_same_stored_rows_give_the_same_text_whatever_the_record_ids",
+      "tests/test_statement.py::test_the_order_of_the_stored_results_does_not_change_the_text",
+      "tests/test_statement.py::test_the_facts_never_hold_the_stored_lists_of_record_ids",
+      "tests/test_statement.py::test_each_completion_records_the_format_version_and_show_gives_it",
+      "tests/test_statement.py::test_the_wording_of_each_format_version_is_pinned",
+      "tests/test_migrations_step8b.py::test_the_format_version_is_recorded_only_in_the_update_that_completes_the_run",
+      "tests/test_migrations_step8b.py::test_a_run_completed_without_a_format_version_keeps_none",
+      "tests/test_migrations_step8b.py::test_a_failed_run_never_gets_a_format_version"
     ]
   },
   {

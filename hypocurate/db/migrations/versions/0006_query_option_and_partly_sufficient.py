@@ -25,6 +25,9 @@ run (A5):
   an evidence level consistent with it.)
 - a narrower question's run has `fixed_plan` true (it never goes through the Planner; fix round,
   finding 1). 0001 already keeps `fixed_plan` from changing.
+- `statement_format_version` (fix round 1, owner 2026-10-07): the format version of the results statement, set
+  only in the update that completes the run and never changed after; null when the completing code did not set
+  it (the previous release's code, and runs completed before it existed).
 flag (A7):
 - `critic_class` is one of the Critic's fixed codes; `critic_reason` is at most 300 characters, not
   blank, and only with a class.
@@ -162,9 +165,21 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # The results statement's format version: recorded by the update that completes the run, then fixed (fix round 1).
+    """
+    CREATE FUNCTION hc_run_statement_version() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NEW.statement_format_version IS DISTINCT FROM OLD.statement_format_version
+           AND NOT (OLD.status <> 'completed' AND NEW.status = 'completed'
+                    AND OLD.statement_format_version IS NULL) THEN
+            PERFORM hc_reject('the statement format version is recorded when the run completes, and never changed');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
 ]
 FUNCTION_NAMES = ["hc_version_option()", "hc_plan_query()", "hc_run_partly_sufficient()", "hc_run_narrower()",
-                  "hc_plan_narrower()"]
+                  "hc_plan_narrower()", "hc_run_statement_version()"]
 
 # (table, event, trigger, function). Each trigger's name sorts after the earlier trigger it follows.
 CHECKED = [
@@ -174,6 +189,7 @@ CHECKED = [
     ("run", "UPDATE", "hc_run_update_partly_sufficient", "hc_run_partly_sufficient"),
     ("run", "INSERT", "hc_run_insert_narrower", "hc_run_narrower"),
     ("plan", "INSERT", "hc_plan_insert_narrower", "hc_plan_narrower"),
+    ("run", "UPDATE", "hc_run_update_statement_version", "hc_run_statement_version"),
 ]
 TRIGGERS = [f"CREATE TRIGGER {t} BEFORE {event} ON {table} FOR EACH ROW EXECUTE FUNCTION {f}()"
             for table, event, t, f in CHECKED]
@@ -184,6 +200,9 @@ def upgrade() -> None:
                                                   server_default=sa.text("'fixed_minimum'"), nullable=False))
     op.create_check_constraint(op.f('ck_hypothesis_version_sufficiency_option'), 'hypothesis_version',
                                _in('sufficiency_option', OPTIONS))
+    op.add_column('run', sa.Column('statement_format_version', sa.SmallInteger(), nullable=True))
+    op.create_check_constraint(op.f('ck_run_statement_format_version'), 'run',
+                               'statement_format_version IS NULL OR statement_format_version >= 1')
     op.create_check_constraint(op.f('ck_flag_critic_class'), 'flag',
                                f"critic_class IS NULL OR {_in('critic_class', CRITIC_CLASSES)}")
     op.create_check_constraint(op.f('ck_flag_critic_reason'), 'flag',
@@ -211,6 +230,8 @@ def downgrade() -> None:
         op.execute(f"DROP TRIGGER {t} ON {table}")
     for f in FUNCTION_NAMES:
         op.execute(f"DROP FUNCTION {f}")
+    op.drop_constraint(op.f('ck_run_statement_format_version'), 'run', type_='check')
+    op.drop_column('run', 'statement_format_version')
     op.drop_constraint(op.f('ck_flag_critic_reason'), 'flag', type_='check')
     op.drop_constraint(op.f('ck_flag_critic_class'), 'flag', type_='check')
     op.drop_constraint(op.f('ck_hypothesis_version_sufficiency_option'), 'hypothesis_version', type_='check')

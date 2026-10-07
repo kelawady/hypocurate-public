@@ -9,6 +9,11 @@ Every model call goes to the local stub provider.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import random
+from pathlib import Path
+
 import pytest
 from sqlalchemy import text
 
@@ -174,3 +179,83 @@ def test_the_other_kinds(bare, case):
 def test_a_failed_run_has_no_statement(engine, stub):
     report = run_claim(engine, stub, planner_answer=planner_body(domain_matches=False))
     assert report.status == "failed" and statement.build(engine, report.run_id) is None
+
+
+# --- a pure function of the stored rows, with a format version (owner, 2026-10-07) ------------------------------
+
+FIXTURE = Path(__file__).parent / "fixtures" / "statement_facts.json"
+# The rendered text of every case in FIXTURE, per format version: a change of wording changes this fingerprint, so it
+# must come with a new FORMAT_VERSION (and a new entry here; the old ones stay).
+RENDERED = {1: "6b667638eb8a8db4d19476b0b40a09e87df994df080811dc69d6fbfbac2bf596"}
+
+
+def facts_of(engine, rid):
+    with engine.connect() as conn:
+        return statement.facts(conn, rid)
+
+
+def test_the_same_stored_rows_give_the_same_text_whatever_the_record_ids(engine, stub):
+    report = run_claim(engine, stub, fixed_plan=True)
+    vid = pw.version_of(engine, report.run_id)
+    again = pw.run_of_version(engine, vid, ("mpea", "tamu_fcc"), agents=("planner", "critic", "analyst"))
+    assert orchestrator.run(engine, again, client_options=sp.client_options(stub)).outcome == "sufficient"
+    with engine.connect() as conn:
+        ids = [set(conn.execute(text("SELECT id FROM record WHERE extraction_run_id = :r"), dict(r=r)).scalars())
+               for r in (report.run_id, again)]
+    assert ids[0] and not ids[0] & ids[1]                                   # other records, other ids
+    assert statement.build(engine, again)["text"] == statement.build(engine, report.run_id)["text"]
+    f = facts_of(engine, again)
+    assert not [i for i in ids[1] if f'"id": {i}' in json.dumps(f)]          # no record identity in the facts
+    assert not set(statement.IDENTITY_KEYS) & set(json.dumps(f).replace('"', " ").split())
+
+
+def test_the_facts_never_hold_the_stored_lists_of_record_ids(bare):
+    rid = run_on(bare, small_rows(3, papers=3, base=7311.0), agents=("analyst",))
+    out = analysis.run_statistics(bare, rid)
+    completion.copy_decision(bare, rid)
+    assert [i for e in out["analyses"] for i in e.get("records_found") or []]   # stored with the statistics
+    assert "records_found" not in json.dumps(facts_of(bare, rid))
+
+
+def test_the_order_of_the_stored_results_does_not_change_the_text(engine, stub):
+    report = run_claim(engine, stub, fixed_plan=True)
+    f = facts_of(engine, report.run_id)
+    expected = statement.render(f)
+    rng = random.Random(3)
+    for _ in range(5):
+        shuffled = json.loads(json.dumps(f))
+        rng.shuffle(shuffled["statistics"]["analyses"])
+        rng.shuffle(shuffled["gap"]["sources"])
+        shuffled["found"] = dict(reversed(list(shuffled["found"].items())))
+        assert statement.render(shuffled) == expected
+
+
+def test_each_completion_records_the_format_version_and_show_gives_it(engine, stub):
+    from hypocurate import cli_runs
+    for report in (run_claim(engine, stub, fixed_plan=True),
+                   run_claim(engine, stub, claim=PARTLY_CLAIM, planner_answer=PARTLY)):
+        with engine.connect() as conn:
+            recorded = conn.execute(text("SELECT statement_format_version FROM run WHERE id = :r"),
+                                    dict(r=report.run_id)).scalar()
+        assert recorded == statement.FORMAT_VERSION
+        shown = cli_runs.show(engine, report.run_id)
+        assert shown["statement_format_version"] == {"rendered": statement.FORMAT_VERSION,
+                                                     "recorded": statement.FORMAT_VERSION}
+        assert shown["statement"] == statement.build(engine, report.run_id)["lines"]
+
+
+def rendered_fingerprint() -> str:
+    cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    text_ = "\n\n".join(f"{name}\n" + "\n".join(statement.render(f)) for name, f in sorted(cases.items()))
+    return hashlib.sha256(text_.encode("utf-8")).hexdigest()
+
+
+def test_the_wording_of_each_format_version_is_pinned():
+    """Every case of the fixture (each kind of outcome, from stored facts) rendered with the current code: its
+    fingerprint is the one recorded for the current FORMAT_VERSION. Changing any wording fails this test until the
+    version is raised and its fingerprint added."""
+    cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert set(cases) >= {"sufficient", "planner", "exploratory", "coefficient_only", "below_minimums",
+                          "nothing_frozen", "partly_sufficient"}
+    assert "records_found" not in FIXTURE.read_text(encoding="utf-8")
+    assert statement.FORMAT_VERSION in RENDERED and rendered_fingerprint() == RENDERED[statement.FORMAT_VERSION]

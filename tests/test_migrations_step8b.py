@@ -62,6 +62,7 @@ def test_0006_replaces_no_earlier_function():
                                             ("hypothesis_version", "hc_version_update"),
                                             ("plan", "hc_plan_insert"), ("run", "hc_run_update"),
                                             ("run", "hc_run_insert")])
+# (run UPDATE also covers hc_run_update_statement_version, fix round 1)
 def test_each_new_trigger_fires_after_the_earlier_one_on_its_table(table, earlier):
     """PostgreSQL fires BEFORE triggers in name order: 0001's messages keep their priority."""
     names = [t for tb, _, t, _ in m0006().CHECKED if tb == table and t.startswith(earlier)]
@@ -362,3 +363,39 @@ def test_an_ordinary_runs_plan_is_unaffected_by_the_narrower_rule(w):
     assert w.val("SELECT fixed_plan FROM run WHERE id = :r", r=rid) is False
     w.lock(rid, content={"anything": 1})
     assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
+
+
+# --- the statement's format version on the run (fix round 1, owner 2026-10-07) -----------------------------------
+
+def test_the_format_version_is_recorded_only_in_the_update_that_completes_the_run(w):
+    rid = w.running()
+    w.rejected("UPDATE run SET statement_format_version = 1 WHERE id = :r",
+               "the statement format version is recorded when the run completes", r=rid)
+    w.narrowing(rid)
+    w.run_sql("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
+              "evidence_level = 1, statement_format_version = 1 WHERE id = :r", r=rid)
+    assert w.val("SELECT statement_format_version FROM run WHERE id = :r", r=rid) == 1
+    w.rejected("UPDATE run SET statement_format_version = 2 WHERE id = :r", "a completed run is final", r=rid)  # 0001
+
+
+def test_a_run_completed_without_a_format_version_keeps_none(w):
+    """The previous release's code completes runs without it (0006 keeps working with it): the statement then says
+    the version was not recorded."""
+    rid = w.running()
+    w.partly(rid)
+    assert w.val("SELECT statement_format_version FROM run WHERE id = :r", r=rid) is None
+    w.rejected("UPDATE run SET statement_format_version = 1 WHERE id = :r", "a completed run is final", r=rid)  # 0001
+
+
+def test_a_failed_run_never_gets_a_format_version(w):
+    rid = w.running()
+    w.rejected("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = 'x', statement_format_version = 1 "
+               "WHERE id = :r", "the statement format version is recorded when the run completes", r=rid)
+
+
+def test_the_format_version_is_positive(w):
+    rid = w.running()
+    w.narrowing(rid)
+    with pytest.raises(IntegrityError, match="ck_run_statement_format_version"):
+        w.run_sql("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
+                  "evidence_level = 1, statement_format_version = 0 WHERE id = :r", r=rid)

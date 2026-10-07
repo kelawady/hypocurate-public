@@ -161,6 +161,9 @@ def show(engine: Engine, run_id: int) -> dict | None:
         "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
         "sources": (gap or {}).get("sources"),
         "statement": built["lines"] if built else None,
+        # Owner, 2026-10-07: the statement is shown with its format version (rendered; recorded at completion).
+        "statement_format_version": ({"rendered": built["format_version"], "recorded": built["recorded_format_version"]}
+                                     if built else None),
         "explanation": explanation, "explanation_label": analyst.LABEL
         if isinstance(explained, dict) and explained.get("report") else None,
         "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,

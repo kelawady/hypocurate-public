@@ -79,7 +79,7 @@ def question_as_tested(scope: Mapping, outcome: str, exclusion_rules: list, stat
     parts = [mark("alloy_class", ", ".join(plural(a) for a in scope["alloy_class"]))]
     for part in ("phase_class", "test_type"):
         parts.append(mark(part, f"{PART_LABELS[part]} {', '.join(scope[part])}"))
-    parts.append(mark("temperature_band", "; ".join(band_words(b) for b in scope["temperature_band"])))
+    parts.append(mark("temperature_band", " and ".join(band_words(b) for b in scope["temperature_band"])))
     parts += [exclusion_words(r) for r in exclusion_rules]
     head = f"{outcome.replace('_', ' ')} against grain size, in "
     return {"text": head + "; ".join(parts), "label": LABELS[source], "source": source}
