@@ -7746,7 +7746,8 @@
       "tests/test_statement.py::test_the_wording_of_each_format_version_is_pinned",
       "tests/test_migrations_step8b.py::test_the_format_version_is_recorded_only_in_the_update_that_completes_the_run",
       "tests/test_migrations_step8b.py::test_a_run_completed_without_a_format_version_keeps_none",
-      "tests/test_migrations_step8b.py::test_a_failed_run_never_gets_a_format_version"
+      "tests/test_migrations_step8b.py::test_a_failed_run_never_gets_a_format_version",
+      "tests/test_statement.py::test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists"
     ]
   },
   {

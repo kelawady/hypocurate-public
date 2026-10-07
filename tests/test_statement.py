@@ -259,3 +259,23 @@ def test_the_wording_of_each_format_version_is_pinned():
                           "nothing_frozen", "partly_sufficient"}
     assert "records_found" not in FIXTURE.read_text(encoding="utf-8")
     assert statement.FORMAT_VERSION in RENDERED and rendered_fingerprint() == RENDERED[statement.FORMAT_VERSION]
+
+
+@pytest.mark.parametrize("case", ["sufficient", "planner", "exploratory", "coefficient_only", "below_minimums",
+                                  "nothing_frozen", "partly_sufficient"])
+def test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists(case):
+    """Mutation f35 (fix round 1): the order test above uses a run with an estimate, which lists no sources' records;
+    here every kind, the nothing-frozen one with two sources, has each stored list reversed."""
+    f = json.loads(FIXTURE.read_text(encoding="utf-8"))[case]
+    expected = statement.render(f)
+    flipped = json.loads(json.dumps(f))
+    for path in (("statistics", "analyses"), ("gap", "sources")):
+        node = flipped
+        for k in path[:-1]:
+            node = node.get(k) or {}
+        if isinstance(node.get(path[-1]), list):
+            node[path[-1]] = list(reversed(node[path[-1]]))
+    flipped["found"] = dict(reversed(list((flipped.get("found") or {}).items())))
+    if case == "nothing_frozen":
+        assert len(f["gap"]["sources"]) == 2 and flipped["gap"]["sources"] != f["gap"]["sources"]
+    assert statement.render(flipped) == expected

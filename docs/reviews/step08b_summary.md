@@ -1,6 +1,6 @@
 # Build step 8b — summary for review
 
-Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: built; the whole suite passes (1,728 locally); pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
+Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: second-model review "not safe to merge"; fix round 1 built (next section); whole suite 1,829 locally and in the rebuilt test image; pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
 
 PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decision and the partly-sufficient path, the Critic, the Analyst, the orchestrator, and the command line's `run`, `dispatch` and `show`, with criteria 14.1 and 14.3 passing from the command line. Part 8a (merged and live, schema 0005) built the agent core, the Curator, the spending caps and the temperature bands.
 
@@ -16,6 +16,89 @@ PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decis
 8. The gap facts: the kind of "nothing found" classified by code.
 
 **Not changed:** `render.yaml`, `.github/workflows/`, the Dockerfile, Compose, and the dependency locks (checked with `git diff --name-only d76c86a..HEAD`). No PRD document is changed; corrections are listed at the end.
+
+## Fix round 1 (2026-10-07)
+
+**Update.** ChatGPT reviewed the packet at `859e019` and found the step **not safe to merge**, with five findings (`docs/reviews/step08b_review_chatgpt.md`). This round fixes all five and applies the owner's two decisions (A: a results statement written by code; B: the Planner's reading). It also makes the owner's wording corrections and additions. Every change came with tests that failed on the code before it. The step is still **not merged**.
+
+### What changed, by finding and decision
+
+| Item | What was wrong | What changed | Commit |
+|---|---|---|---|
+| Finding 1 (high) | A narrower question dispatched with default arguments went through the Planner. It skipped the stored plan and the source-version check. | `dispatch` and the orchestrator take the narrower path from the question's link to its original (`narrower_of_run_id`), never from a flag. **Database backstop in 0006** (owner's answer F-Q1: amend 0006, which is unmerged): a narrower question's run must have `fixed_plan`, and its plan must equal the stored narrower plan on the source versions the counts were taken on. | `e266234` |
+| Finding 2 (high) | Requests used the current settings, while the audit record named the settings recorded at dispatch. | `settings.recorded(engine, invocation)`. The Planner, the Critic (per batch), the Analyst and the Curator build their requests from the invocation's recorded version. | `e266234` |
+| Finding 3 (high) | After a recording or reservation failure, the Critic sent its next batch and the orchestrator went on to the Analyst. | `lm.RUN_STOPS`. Either failure at any agent stops the run: no further request, nothing more written, no narrower question. The run stays running for step 9's recovery. | `423fd46` |
+| "Tests" point | The Critic-failure test used data with no flags, so it never reached the Critic. | Replaced by a test on constructed data that raises flags (`tests/test_orchestrator_flagged.py`). | `423fd46` |
+| Finding 5 (medium) | A list or object as the Critic's class (or as the Planner's rule name) raised `TypeError`. | Type is checked before membership. Wrong-type shapes at every position are tested for the Critic, Planner, Curator and Analyst (`tests/answer_shapes.py`). | `740f044` |
+| Decision B | Claim interpretation was unchecked (review, "Claim interpretation"). | A part marked as defaulted must hold the profile's default (`DEFAULT_SCOPE`). Code writes "the question as tested", labelled "the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a person", and stores it with the Planner's stage. `run`/`dispatch` print it beside the claim before the rules lock (prepare, then proceed). `show` prints it. | `54d6aa1` |
+| Finding 4 (medium) and decision A | The Analyst's numerical guarantees were stronger than its checks: numbers written in words passed, and the informative-group count was exposed on its own. | **A results statement written by code** for every completed run (`pipeline/statement.py`, wording approved by the owner with changes, F-Q2). The Analyst's text is labelled "written by a language model; values inserted from the run record; narrative not verified". No rules about number words. `count_groups`/`met_groups` removed. | `395d948`, `e7f7c8b` |
+| Owner's wording fixes | — | The p-value phrase reads "an approximate, nominal, one-sided p ≈ X" (no double brackets). "Not testable alone (too few groups)". The simulation interval is described once. "Alloys". The unused unitless `display.display()` is deleted. | `395d948` |
+| Corrections | — | The Planner's temperature bounds do enter a rule. The narrowing counts are candidate records. Calibration describes the method, not this p-value's error. All three are corrected in this summary and the register. | `54d6aa1`, `395d948`, `e7f7c8b` |
+
+### A design choice for the reviewer: the statement is rendered at display
+
+The statement is **not stored as text**. It is rendered from the stored results whenever it is shown.
+
+**Why:** a partly-sufficient statement names its narrower question. The database lets that question be created only after the original run is completed, and it accepts no new stage result on a completed run.
+
+**The owner's conditions, all built and tested:**
+- **Pure function:** `statement.facts` reads the stored rows into plain values. It strips the stored lists of record ids. `statement.render` is a pure function of those values and orders sources and sensitivity sets itself. Two runs of one version, with other records and other ids, give the same text, and shuffled stored lists give the same text.
+- **Format version:** the format has a version, `statement.FORMAT_VERSION` (1), in one named place. The completing code records it on the run (`run.statement_format_version`, 0006). It can be set only in the update that completes the run, and never changed after. `show` gives the rendered and recorded versions.
+- **Wording pinned:** a fixture of stored facts for each outcome kind (`tests/fixtures/statement_facts.json`) has its rendered text pinned per version. A wording change fails until the version is raised.
+
+**What follows:**
+- The numbers cannot change, because they come only from stored results.
+- The wording follows the format version.
+- A run completed by code that did not record a version (the previous release's, or the 12 live runs in the development database) shows "not recorded".
+
+### Safeguard changes in this round (second-model review before any merge)
+
+- Migration 0006, amended in place (unmerged; never applied to the live database):
+  - `hc_run_narrower` and `hc_plan_narrower` (finding 1);
+  - `run.statement_format_version` with `hc_run_statement_version`.
+- **Narrower path:** `queries.dispatch` and the orchestrator recognise a narrower question by its link.
+- **Recorded settings:** requests are built from the recorded settings version (all four roles).
+- **Accounting failures:** recording or reservation failures stop the run (`RUN_STOPS`).
+- **Answer checks:** the Critic and Planner check types before membership; the Planner's defaulted parts must hold the default.
+- **Analyst's facts:** the informative-group count is no longer a name of its own.
+- **Statement:** the results statement and the Analyst's label. The statement is outside the agents' path; it reads stored rows only.
+
+### Tests whose expectation changed in this round, and why
+
+No test was weakened, skipped or deleted except the one replaced, as listed. Fixture data changes are listed too.
+
+| Test or helper | Change | Reason |
+|---|---|---|
+| `test_orchestrator.py::test_a_critic_failure_leaves_flags_unclassified_and_the_run_goes_on` | **Removed, replaced** by `test_orchestrator_flagged.py::test_a_critic_failure_on_flagged_data_leaves_every_flag_unclassified_and_the_run_completes` | On the reference data (no flags) it could pass without any Critic request (review, "Tests"). The replacement checks the Critic was asked, its stage failed, no flag is classified, and the run froze and completed. |
+| `test_access_projected.py::test_the_planted_values_are_stored_everywhere_they_should_be` | The planted plan is now counted 2 times, plus exactly once for the main run (was 1) | The fixture's earlier run of the same narrower question must lock the same stored narrower plan (finding 1's backstop). |
+| `test_access_layer.py::test_experiment_flags_relax_nothing` | Its extra run is inserted with `fixed_plan = true` | It is a narrower question's run; the database requires the flag (finding 1). No assertion changed. |
+| `test_access_dispatch.py::test_a_rules_lock_committed_while_a_read_waits_closes_the_planner` | Its lock inserts the stored narrower plan (was `{}`). Parametrized with an ordinary run. | The new rule refused `{}`. This failed on GitHub for `423fd46` and `54d6aa1` because it was not in the files run before those pushes; the owner's rule 13 (whole suite before every push) followed. The ordinary-run case keeps the common path covered. |
+| `test_cli_runs.py::test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line` | Plan label "from the narrowing decision" (was "fixed") | The wording of the owner's answer A8. |
+| `test_cli_runs.py::report_of` (helper) | Reads the new line with the claim and the question as tested | Decision B prints it before the run goes on. |
+| `test_cli_runs.py::test_14_1a_run_with_the_fixed_plan_and_show_it` | Explanation label is the new one | Decision A. |
+| `test_analyst.py::test_the_facts_carry_display_strings_and_phrases` | **Renamed** `test_the_named_formatting_functions_give_the_display_strings_and_phrases`. Same values, built by the named functions. New p-value phrase. | The function it tested (`display.display`) is deleted by the owner's instruction. |
+| `test_analyst.py::test_numbers_exactly_as_given_match`, `::test_the_sensitivity_sets_are_labelled_with_the_per_source_function` | New p-value phrase | Owner's wording fix (no double brackets). |
+| `test_analyst.py::test_the_plain_label_for_a_single_group_source` | "not testable alone (too few groups)" | Owner's wording fix. |
+| `test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure` | Also asserts no name carries the informative-group count | It missed `count_groups` (finding 4). |
+| `test_assumptions.py` `PARTLY` | Adds `question_as_tested` | Its confirmation by a person is step 10. |
+| `test_migrations_step8b.py` trigger order | Adds the run-insert trigger | The new trigger must fire after 0001's. |
+| `test_planner_narrowing.py::body`, `test_orchestrator.py::planner_body` (fixtures) | A scope part that differs from the default is marked as stated unless a test gives the marks | Decision B: a part marked defaulted must hold the default. |
+| `model_builder.World` (`run`, `lock`, `partly`), `access_world` (`planted_plan`) | `fixed_plan` derived for a narrower question; plan content as given; the original stores a narrower plan and its counted sources | Finding 1's backstop. |
+| `test_reading.py` (new this round) | Labels, "alloys" | The owner's F-Q2 changes after decision B. |
+
+### Numbers
+
+- **The whole suite** passes on the final code of this round: 1,829 tests (up from 1,728), locally and in the test image rebuilt on the same code (its package and `tests/` byte-identical to the repository's).
+- **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
+- **Mutation checks:** 41 deliberate faults in the new safeguards and wording rules, plus a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
+- **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
+- **No live call was made in this round.** Live spending stays at $1.0278.
+
+### Open
+
+- **One live Critic call** (≤ $0.25, constructed data with a small flagged batch). It waits for the owner's go. The local development database is still at the earlier 0006, so before that call it needs a backup and a migration back down and up to the amended 0006. Its run rows are kept.
+- The confirmation of the question as tested by a person is step 10 (the website).
+- The Analyst's narrative is unverified by design; it is labelled as such.
 
 ## What the checks cover, and what they do not
 
