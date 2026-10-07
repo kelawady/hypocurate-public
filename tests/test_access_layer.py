@@ -238,7 +238,7 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
     aw.stored_facts(w, world.run, frozen=True)  # step 8b: the Analyst reads code's stored facts
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         critic.get("flags_kind")
-    assert analyst.get("analyst_facts")["analyses"][0]["estimate"] == "424.9"  # step 8b: display string
+    assert analyst.get("analyst_facts")["names"]["pooled_estimate"] == "424.9"  # step 8b: a named display string
 
 
 def test_ending_without_a_freeze_opens_only_the_gap_report_input(engine):
@@ -251,7 +251,7 @@ def test_ending_without_a_freeze_opens_only_the_gap_report_input(engine):
     aw.sql(world.w, "INSERT INTO calibration_result (run_id, status, reason) "
                     "VALUES (:r, 'unavailable', 'no_dataset_frozen')", r=world.run)
     aw.stored_facts(world.w, world.run, frozen=False)  # step 8b: the Analyst reads code's stored facts
-    assert gap.get("analyst_facts")["decision"]["state"] == "no_dataset_frozen"
+    assert gap.get("analyst_facts")["kind"] == "no_dataset_frozen"
     # Step 8b (Q6): the step-5 gap-report fields are no longer on the Analyst's list.
     for field in ("records_full", "flags_full", "results", "stage_outputs", "condition_summaries", "plan",
                   "decisions", "flags_kind", "stored_record_counts"):

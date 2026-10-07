@@ -101,26 +101,38 @@ def reply(report):
     return sp.reply(sp.fields(report=report))
 
 
+def one(engine, sql, **params):
+    with engine.connect() as conn:
+        return conn.execute(text(sql), params).scalar()
+
+
+def names_of(engine, rid):
+    """The named facts the Analyst is given for the run (through its access object)."""
+    from hypocurate.access import bind, role_input
+    setting = one(engine, "SELECT agent_setting_id FROM run_agent_setting WHERE run_id = :r AND role = 'analyst'",
+                  r=rid)
+    return role_input(bind(engine, rid, setting))["analyst_facts"]["names"]
+
+
 def below_minimums(engine):
     rid = run_on(engine, small_rows(3, papers=3, base=7311.0), agents=("analyst",))
     analysis.run_statistics(engine, rid)
     return rid
 
 
-BELOW = ("The data are insufficient in the sources searched: the pooled set has 6 records, below the minimum of 30, "
-         "so no test was run and no estimate is shown.")
-
-
-def one(engine, sql, **params):
-    with engine.connect() as conn:
-        return conn.execute(text(sql), params).scalar()
+# Step 8b (owner, 2026-10-07): the Analyst writes no digits; it refers to facts by name, and code renders the text.
+BELOW = ("The outcome is {outcome_wording}: the pooled set has {pooled_records} records, below the minimum of "
+         "{minimum_records}, so no test was run and no estimate is shown.")
 
 
 def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, stub):
     rid = below_minimums(engine)
     stub.queue(reply(BELOW))
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert out.failure is None and out.report == BELOW
+    names = names_of(engine, rid)
+    expected = text_checks.render(BELOW, names)
+    assert out.failure is None and out.report == expected
+    assert expected.startswith("The outcome is insufficient in the sources searched: the pooled set has 6 records")
     raw = stub.requests[0]["raw"].decode()
     with engine.connect() as conn:
         values = [float(v) for v in conn.execute(text("SELECT harmonized->'yield_strength'->>'value' FROM record "
@@ -129,13 +141,23 @@ def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, 
         assert repr(v) not in raw and f"{v:g}" not in raw, v
     sent = json.loads(raw)
     assert "tools" not in sent and ANALYST_INSTRUCTION in json.dumps(sent, ensure_ascii=False)
-    assert one(engine, "SELECT output->>'report' FROM stage_result WHERE id = :s", s=out.stage_id) == BELOW
+    stored = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id)
+    assert stored["report"] == expected and stored["template"] == BELOW
+
+
+def test_a_run_below_the_minimums_offers_no_estimate_names(engine):
+    names = names_of(engine, below_minimums(engine))
+    assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
+    assert "pooled_records" in names and "minimum_records" in names
 
 
 @pytest.mark.parametrize("bad, code", [
-    ("The data are insufficient in the sources searched: 31 records were found.", "numbers_unmatched"),
-    ("The data are insufficient in the sources searched: grain sizes do not exist.", "wording_refused"),
-    ("The data are insufficient in the sources searched, but the claim is supported.", "wording_refused"),
+    ("The outcome is {outcome_wording}: 31 records were found.", "digit_outside_placeholder"),
+    ("The outcome is {outcome_wording}: the estimate is {pooled_estimate}.", "unknown_name"),  # withheld: no such name
+    ("The outcome is {outcome_wording}, with {pooled_recordz} records.", "unknown_name"),
+    ("The outcome is {outcome_wording}: grain sizes do not exist.", "wording_refused"),
+    ("The outcome is {outcome_wording}, but the claim is supported.", "wording_refused"),
+    ("The data were insufficient in the sources searched.", "wording_refused"),  # {outcome_wording} not used
 ])
 def test_a_text_failing_a_check_twice_is_discarded(engine, stub, bad, code):
     rid = below_minimums(engine)
@@ -152,9 +174,9 @@ def test_a_text_failing_a_check_twice_is_discarded(engine, stub, bad, code):
 
 def test_a_corrected_text_is_stored(engine, stub):
     rid = below_minimums(engine)
-    stub.queue(reply("The data are insufficient: 31 records."), reply(BELOW))
+    stub.queue(reply("The outcome is {outcome_wording}: 31 records."), reply(BELOW))
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert out.report == BELOW and len(stub.requests) == 2
+    assert out.report == text_checks.render(BELOW, names_of(engine, rid)) and len(stub.requests) == 2
 
 
 def test_the_analyst_changes_no_stored_decision(engine, stub):
@@ -166,85 +188,79 @@ def test_the_analyst_changes_no_stored_decision(engine, stub):
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
 
 
-# --- the owner's additions before the live set (2026-10-07): recorded responses through the stub -------------
+# --- above the minimums: the phrases, the owner's rules and the shape of the live diagnostic answer -------------
 
 def exploratory(engine):
-    """A run above the validity checks under 'use what is available': its facts hold a p-value phrase and a paper
-    figures phrase. Returns the run and the display strings and phrases the Analyst is given."""
+    """A run above the validity checks under 'use what is available': its facts hold the pooled estimate, its
+    p-value phrase and its paper figures phrase."""
     rid = run_on(engine, small_rows(3, papers=3), option="use_available", agents=("analyst",))
     out = analysis.run_statistics(engine, rid)
-    pooled = out["analyses"][0]
+    return rid, out["analyses"][0]
+
+
+FOLLOWS_ALL = ("The data are {outcome_wording}, and the claim is {verdict_wording}. The pooled estimate is "
+               "{pooled_estimate} ± {pooled_std_error}, with {pooled_p_phrase}. It rests on {pooled_figures_phrase}.")
+
+
+def test_a_correct_text_is_accepted_and_rendered_with_the_exact_strings(engine, stub):
+    rid, pooled = exploratory(engine)
+    stub.queue(reply(FOLLOWS_ALL))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None and len(stub.requests) == 1
     c = pooled["counts"]
-    d = out["decision"]
-    return rid, {"outcome": d["outcome_wording"], "verdict": d["verdict_wording"],
-                 "estimate": display.one_decimal(pooled["estimate"]), "p": display.p_value(pooled["p_value"]),
-                 "p_phrase": display.p_phrase(pooled["p_value"]), "informative": c["n_groups_informative"],
-                 "figures": display.figures_phrase(c["n_groups_informative"], c["effective_papers"],
-                                                   c["largest_paper_share"], pooled["df"]),
-                 "raw": pooled}
+    assert f"The pooled estimate is {display.one_decimal(pooled['estimate'])} ± {display.one_decimal(pooled['std_error'])}, " \
+           f"with {display.p_phrase(pooled['p_value'])}. It rests on " \
+           f"{display.figures_phrase(c['n_groups_informative'], c['effective_papers'], c['largest_paper_share'], pooled['df'])}." \
+           in out.report
+    assert "{" not in out.report and "}" not in out.report
 
 
-def follows_all(f):
-    return (f"The data are {f['outcome']}, and the claim is {f['verdict']}. The pooled estimate is {f['estimate']}, "
-            f"with {f['p_phrase']}. It rests on {f['figures']}.")
+def diagnostic_shape(pooled):
+    """The shape of the live diagnostic answer (2026-10-07): numbers written out at full precision."""
+    c = pooled["counts"]
+    return ("The data are {outcome_wording}, and the claim is {verdict_wording}. The estimated coefficient is "
+            f"{pooled['estimate']!r}. The p-value is {pooled['p_value']!r}, an approximate, nominal, one-sided "
+            f"cluster-robust p-value under the locked method. The support comes from {c['n_groups_informative']} "
+            "informative papers.")
 
 
-def diagnostic_shape(f):
-    """The shape of the live diagnostic answer (2026-10-07): full float precision, the description written out once
-    and then referred to, the figures given one by one."""
-    r = f["raw"]
-    c = r["counts"]
-    return (f"The data are {f['outcome']}, and the claim is {f['verdict']}. The estimated coefficient is "
-            f"{r['estimate']!r}. The p-value is {r['p_value']!r}, an approximate, nominal, one-sided cluster-robust "
-            f"p-value under the locked method. A sensitivity estimate has a p-value of {r['p_value']!r} (same "
-            f"description as above). The support comes from {c['n_groups_informative']} informative papers, an "
-            f"effective number of {c['effective_papers']!r}, a largest share of {c['largest_paper_share']!r}, and "
-            f"{r['df']} degrees of freedom.")
+def test_the_diagnostic_answers_shape_is_refused_and_the_same_with_placeholders_is_stored(engine, stub):
+    rid, pooled = exploratory(engine)
+    old = diagnostic_shape(pooled)
+    stub.queue(reply(old), reply(FOLLOWS_ALL))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert json.loads(stub.requests[1]["raw"])  # corrected once
+    assert "digit_outside_placeholder" in stub.requests[1]["raw"].decode()
+    assert out.failure is None and out.report == text_checks.render(FOLLOWS_ALL, names_of(engine, rid))
 
 
 BREAKS = {
-    "causes": lambda f: follows_all(f) + " Grain refinement causes the strengthening.",
-    "caused by": lambda f: follows_all(f) + " The rise is caused by smaller grains.",
-    "causal": lambda f: follows_all(f) + " The link is causal.",
-    "confirms the claim": lambda f: follows_all(f) + " This confirms the claim.",
-    "confirms the hypothesis": lambda f: follows_all(f) + " This confirms the hypothesis.",
-    "effective number as independent": lambda f: follows_all(f) + " The effective number counts independent papers.",
-    "p-value outside its phrase": lambda f: follows_all(f) + f" The p-value is {f['p']}.",
-    "figures outside their phrase": lambda f: (f"The data are {f['outcome']}, and the claim is {f['verdict']}. It rests "
-                                              f"on {f['informative']} informative papers."),
+    "causes": (FOLLOWS_ALL + " Grain refinement causes the strengthening.", "wording_refused"),
+    "caused by": (FOLLOWS_ALL + " The rise is caused by smaller grains.", "wording_refused"),
+    "causal": (FOLLOWS_ALL + " The link is causal.", "wording_refused"),
+    "confirms the claim": (FOLLOWS_ALL + " This confirms the claim.", "wording_refused"),
+    "confirms the hypothesis": (FOLLOWS_ALL + " This confirms the hypothesis.", "wording_refused"),
+    "effective number as independent": (FOLLOWS_ALL + " The effective number counts independent papers.",
+                                        "wording_refused"),
+    "p-value outside its phrase": (FOLLOWS_ALL + " The p-value is small.", "wording_refused"),
+    "figures outside their phrase": (FOLLOWS_ALL + " It rests on {pooled_groups} informative papers.",
+                                     "wording_refused"),
+    "verdict not used": ("The data are {outcome_wording}.", "wording_refused"),
+    "a digit": (FOLLOWS_ALL + " It used 97 records.", "digit_outside_placeholder"),
+    "an unknown name": (FOLLOWS_ALL.replace("{pooled_estimate}", "{pooled_estimat}"), "unknown_name"),
 }
 
 
-def test_a_text_following_every_rule_is_stored(engine, stub):
-    rid, f = exploratory(engine)
-    stub.queue(reply(follows_all(f)))
-    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert out.failure is None and out.report == follows_all(f) and len(stub.requests) == 1
-
-
-def test_the_diagnostic_answers_shape_is_refused_and_the_same_with_the_phrases_is_stored(engine, stub):
-    """Owner, 2026-10-07: from the shape of the live diagnostic answer."""
-    rid, f = exploratory(engine)
-    old = diagnostic_shape(f)
-    stub.queue(reply(old), reply(old))
-    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert out.failure == "numbers_unmatched"  # full float precision is not what the facts give
-    stub.queue(reply(follows_all(f)))  # the same run's Analyst stage again (attempt 2)
-    out2 = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert out2.failure is None and out2.report == follows_all(f)
-
-
 @pytest.mark.parametrize("rule", sorted(BREAKS))
-def test_a_text_breaking_each_new_rule_is_refused(engine, stub, rule):
-    rid, f = exploratory(engine)
-    bad = BREAKS[rule](f)
-    assert bad != follows_all(f)
+def test_a_text_breaking_each_rule_is_refused(engine, stub, rule):
+    rid, _ = exploratory(engine)
+    bad, code = BREAKS[rule]
     stub.queue(reply(bad), reply(bad))
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
-    assert (out.report, out.failure) == (None, "wording_refused") and len(stub.requests) == 2
+    assert (out.report, out.failure) == (None, code) and len(stub.requests) == 2
 
 
-# --- failure facts (owner, 2026-10-07, after the live set): fixed facts only, never the answer's text ---------
+# --- failure facts: counts or rule names only, never the answer's text ----------------------------------------
 
 def details_of(engine, stage_id):
     return one(engine, "SELECT output->'failure_details' FROM stage_result WHERE id = :s", s=stage_id)
@@ -259,15 +275,63 @@ def test_an_unparsable_answer_stores_its_form_facts_and_no_text(engine, stub):
     details = details_of(engine, out.stage_id)
     assert details == [{"attempt": n, "parse": {"output_headers_present": {"report": False}, "completed_marker": False,
                                                 "header_count": 0, "answer_empty": False}} for n in (1, 2)]
-    stored = json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
-    assert "ZQPROSE" not in stored
+    assert "ZQPROSE" not in json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
 
 
-def test_a_refused_text_stores_the_names_of_the_rules_it_broke_and_no_text(engine, stub):
+def test_a_refused_text_stores_counts_or_rule_names_and_no_text(engine, stub):
     rid = below_minimums(engine)
-    bad = "ZQBAD The data are insufficient in the sources searched; grain refinement causes strength."
-    stub.queue(reply(bad), reply(bad))
+    digits = "ZQDIG The outcome is {outcome_wording}; 12 and 34 records, {nosuch}."
+    bad = "ZQBAD The outcome is {outcome_wording}; grain refinement causes strength."
+    stub.queue(reply(digits), reply(bad))
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
     assert out.failure == "wording_refused"
-    assert details_of(engine, out.stage_id) == [{"attempt": n, "problems": ["forbidden: causes"]} for n in (1, 2)]
-    assert "ZQBAD" not in json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
+    assert details_of(engine, out.stage_id) == [
+        {"attempt": 1, "problems": [{"unknown_names": 1, "digits_outside_placeholders": 4, "required_missing": 0}]},
+        {"attempt": 2, "problems": ["forbidden: causes"]}]
+    stored = json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
+    assert "ZQDIG" not in stored and "ZQBAD" not in stored
+
+
+# --- the named facts built by code (owner, 2026-10-07) ----------------------------------------------------------
+
+from hypocurate.pipeline import analyst_names
+
+
+def entry(key, estimate, p, scope="sensitivity", valid=True):
+    return {"scope": scope, "set": key, "source": None, "estimate": estimate, "std_error": 10.0 if p else None,
+            "p_value": p, "df": 9 if p else None, "checks": {"coefficient_fitted": estimate is not None,
+                                                            "inference_valid": valid and p is not None},
+            "counts": {"n_records": 30, "n_alloys": 5, "n_groups": 10, "n_groups_informative": 10,
+                       "effective_papers": 6.5, "largest_paper_share": 0.2}, "withheld": False}
+
+
+POOLED = entry("primary", 400.0, 1e-6, scope="pooled")
+
+
+def test_the_sensitivity_sets_are_labelled_with_the_per_source_function():
+    sets = [entry("no_exclusions", 410.0, 2e-6),                      # agrees
+            entry("tension_and_compression", 120.0, 0.2),             # same direction, different decision
+            entry("same_alloy_1_at_pct", -50.0, 0.9),                 # conflicts
+            entry("six_batches_as_groups", 380.0, None, valid=False),  # not enough data
+            entry("without_most_influential_paper", 390.0, 3e-5)]     # agrees
+    out = analyst_names.sensitivity_summary([POOLED] + sets, POOLED, 0.05, withheld=False)
+    assert (out["sensitivity_sets"], out["sensitivity_agrees"], out["sensitivity_same_direction_different_decision"],
+            out["sensitivity_conflicts"], out["sensitivity_not_enough_data"]) == ("5", "2", "1", "1", "1")
+    assert out["sensitivity_not_agreeing"] == ("tension and compression (same direction, different decision); "
+                                               "same alloy 1 at pct (conflicts); six batches as groups (not enough data)")
+    assert (out["sensitivity_smallest_estimate"], out["sensitivity_smallest_set"]) == ("-50.0", "same alloy 1 at pct")
+    assert (out["sensitivity_largest_estimate"], out["sensitivity_largest_set"]) == ("410.0", "no exclusions")
+    assert out["without_largest_share_estimate"] == "390.0" and out["without_largest_share_label"] == "agrees"
+    assert out["without_largest_share_p_phrase"] == "p ≈ 3.0e-5 (approximate, nominal, one-sided)"
+
+
+def test_a_withheld_result_gives_no_estimate_name_even_if_numbers_were_stored():
+    """Behind the statistics (which store no number for a withheld result) the name builder refuses them too."""
+    stats = {"decision": {"outcome_wording": "insufficient in the sources searched", "evidence_level": 3,
+                          "evidence_level_wording": "below the minimums under the fixed option"},
+             "withheld": True, "analyses": [POOLED, entry("per", 410.0, 2e-6, scope="per_source") | {"source": "mpea"},
+                                            entry("no_exclusions", 410.0, 2e-6)]}
+    plan = {"alpha": 0.05, "sufficiency_option": "fixed_minimum", "minimums": {"records": 30}}
+    names = analyst_names.analysis_names(stats, {}, plan, {})
+    assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
+    assert "pooled_records" in names and "mpea_records" in names

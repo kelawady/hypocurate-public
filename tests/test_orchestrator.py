@@ -29,6 +29,8 @@ def planner_body(**over):
     b = {"domain_matches": True,
          "claim_scope": {"alloy_class": [MPEA_CLASS], "phase_class": ["FCC"], "test_type": ["tension"],
                          "temperature_band": [RT]},
+         # Step 8b (owner, 2026-10-07): each scope part marked stated by the claim or defaulted by the Planner.
+         "stated": {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": False},
          "outcome": "yield_strength", "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}], "narrower": None}
     b.update(over)
     return b
@@ -42,13 +44,11 @@ PARTLY = planner_body(claim_scope={"alloy_class": [MPEA_CLASS], "phase_class": [
 
 
 def analyst_text(raw: str) -> str:
-    """A text that passes the Analyst's checks: code's wordings verbatim, no number."""
-    if "partly sufficient in the sources searched" in raw:
-        return "The original question is partly sufficient in the sources searched; a narrower question was proposed."
-    if "insufficient in the sources searched" in raw:
-        return "The data are insufficient in the sources searched, so no test was run."
-    verdict = re.search(r"((?:not )?supported under the stated model, in the sources searched)", raw).group(1)
-    return f"The data are sufficient in the sources searched, and the claim is {verdict}."
+    """A text that passes the Analyst's checks (step 8b, owner 2026-10-07): placeholders only, no digit; the outcome
+    and, when there is one, the verdict by name."""
+    if '\\"verdict_wording\\": ' in raw:  # a key of the facts (the instruction itself names the placeholder)
+        return "The data are {outcome_wording}, and the claim is {verdict_wording}."
+    return "The outcome is {outcome_wording}."
 
 
 def responder(planner_answer=None, critic_answer=None, analyst=analyst_text):
@@ -345,3 +345,19 @@ def test_live_run_c_the_planner_gives_no_narrower_scope_and_code_builds_it(engin
     rid = dispatched(engine, claim=PARTLY_CLAIM)
     report = run(engine, rid, stub)
     assert (report.status, report.outcome) == ("completed", "partly_sufficient") and report.narrower_question
+
+
+def test_the_analyst_is_told_which_scope_parts_the_claim_stated_and_which_were_assumed(engine, stub):
+    """Owner, 2026-10-07 (after live run B tested an unstated test type as 'tension'): the Planner marks each scope
+    part; the Analyst's facts carry the notes, so an explanation can say what was assumed."""
+    stub.respond(responder(planner_body()))  # test type and temperature band marked as defaulted
+    rid = dispatched(engine)
+    run(engine, rid, stub)
+    facts = json.loads(one(engine, "SELECT input->>'facts' FROM stage_result WHERE run_id = :r AND stage = 'analyst'",
+                           r=rid))
+    assert facts["scope_test_type"] == "the claim did not state a test type; tension was assumed"
+    assert facts["scope_temperature_band"] == "the claim did not state a temperature; room temperature was assumed"
+    assert facts["scope_phase_class"] == "phase class FCC, as the claim states"
+    narrowing = one(engine, "SELECT output->'scope_stated' FROM stage_result WHERE run_id = :r AND stage = 'narrowing'",
+                    r=rid)
+    assert narrowing == {"alloy_class": True, "phase_class": True, "temperature_band": False, "test_type": False}

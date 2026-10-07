@@ -31,6 +31,8 @@ def body(**over):
     b = {"domain_matches": True,
          "claim_scope": {"alloy_class": [MPEA_CLASS], "phase_class": ["FCC"], "test_type": ["tension"],
                          "temperature_band": [RT]},
+         # Step 8b (owner, 2026-10-07): each scope part marked stated by the claim or defaulted by the Planner.
+         "stated": {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": False},
          "outcome": "yield_strength", "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}], "narrower": None}
     b.update(over)
     return b
@@ -130,6 +132,9 @@ def test_a_valid_answer_is_stored_and_its_plan_is_the_reference_plan(engine, stu
     {"exclusion_rules": [{"rule": "yield_strength_range", "min": 100}]},  # not on the menu
     {"exclusion_rules": [{"rule": "phase", "values": ["HCP"]}]},
     {"domain_matches": "yes"},
+    # Owner, 2026-10-07: the stated/defaulted mark is required for every scope part, as true or false.
+    {"stated": {"alloy_class": True, "phase_class": True, "test_type": False}},
+    {"stated": {"alloy_class": True, "phase_class": True, "test_type": "no", "temperature_band": False}},
     # The shape is right but the plan is not valid (plan.validate): an elevated range inside room temperature.
     {"claim_scope": {"alloy_class": [MPEA_CLASS], "phase_class": ["FCC"], "test_type": ["tension"],
                      "temperature_band": [{"band": "elevated", "min": 15.0, "max": 22.0}]}},
@@ -327,3 +332,15 @@ def test_the_copy_refuses_a_decision_taken_on_other_source_versions(engine):
     with pytest.raises(Refused) as refused:
         completion.copy_partly_sufficient(engine, rid)
     assert refused.value.code == "decision_not_current"
+
+
+def test_the_stated_marks_are_kept_with_the_answer_and_the_narrowing_decision():
+    d = narrowing.decide(answer_of(), counts(cell(n=5)), 1, "fixed_minimum")
+    assert d["scope_stated"] == {"alloy_class": True, "phase_class": True, "temperature_band": False, "test_type": False}
+
+
+def test_an_answer_without_the_stated_marks_is_invalid():
+    b = body()
+    del b["stated"]
+    with pytest.raises(planner.AnswerInvalid):
+        planner.read_answer(b)

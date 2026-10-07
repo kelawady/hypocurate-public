@@ -33,7 +33,6 @@ from hypocurate.access.allowlist import (BATCH_COLUMNS, CATEGORY_FIELDS, CONDITI
                                          CONDITION_RANGE_FIELDS, OUTCOME_FIELDS, PLAN_SCHEMA, POWER_SCHEMA,
                                          SOURCE_META_FIELDS)
 from hypocurate.access.context import AccessContext as Context
-from hypocurate.pipeline import display
 from hypocurate.pipeline.binding import binding, record_identity
 from hypocurate.sources import adapters
 from hypocurate.sources.normalize import alloy_label, doi_group_key, identity_hash, same_alloy_key
@@ -575,60 +574,6 @@ def candidate_counts(conn: Connection, ctx: Context) -> list[dict]:
     return out
 
 
-# What the Analyst may see of a stored analysis entry (statistics stage output), by named key.
-_ENTRY_KEYS = ("analysis", "scope", "set", "source", "checks", "inference_reason", "minimums", "minimums_met",
-               "withheld", "alpha", "label", "label_reason", "label_text", "power_label", "detection_note")
-_COUNT_KEYS = ("n_records_in_set", "n_records", "n_records_not_used", "n_alloys", "n_alloys_not_used", "n_groups",
-               "n_groups_informative", "resid_df", "effective_papers", "largest_paper_share")
-# Computed from outcome values: never present for a withheld result (owner, 2026-10-07: below the minimums
-# the Analyst receives no estimate and nothing computed from outcome values). A p-value reaches the Analyst only as
-# its ready-made phrase, and the paper figures with it (owner, 2026-10-07; `pipeline.display`).
-_FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "significant", "estimated_power_estimated_noise")
-_DECISION_KEYS = ("state", "outcome", "outcome_wording", "verdict", "verdict_wording", "exploratory",
-                  "evidence_level", "evidence_level_wording", "label")
-_GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources", "kind")
-_NARROWING_KEYS = ("result", "reason", "claim_scope", "part_counts", "zero_parts", "narrower_scope", "decision")
-
-
-def _calibration(c: Any) -> dict | None:
-    if not isinstance(c, Mapping):
-        return None
-    out = {"status": c.get("status"), "reason": c.get("reason")}
-    if c.get("status") == "computed":
-        for world in ("null", "effect"):
-            w = c.get(world) or {}
-            out[world] = {k: w.get(k) for k in ("share", "ci_low", "ci_high")}
-        a = c.get("assumptions") or {}
-        out["assumptions"] = {k: a.get(k) for k in ("scatter", "shift") if k in a}
-        out["n_simulations"], out["confidence_flag"] = c.get("n_simulations"), c.get("confidence_flag")
-    return out
-
-
-def _analysis_entry(e: Mapping) -> dict:
-    out = {k: e.get(k) for k in _ENTRY_KEYS}
-    out["counts"] = {k: (e.get("counts") or {}).get(k) for k in _COUNT_KEYS}
-    withheld = e.get("withheld") is not False
-    if not withheld:
-        out.update({k: e.get(k) for k in _FROM_OUTCOMES})
-        c = e.get("counts") or {}
-        if isinstance(e.get("p_value"), (int, float)):
-            out["p_value_phrase"] = display.p_phrase(e["p_value"])
-        if all(isinstance(x, (int, float)) for x in (c.get("n_groups_informative"), c.get("effective_papers"),
-                                                     c.get("largest_paper_share"), e.get("df"))):
-            out["paper_figures_phrase"] = display.figures_phrase(c["n_groups_informative"], c["effective_papers"],
-                                                                 c["largest_paper_share"], e["df"])
-        cal = e.get("calibration") or {}
-        out["calibration"] = {m: _calibration(cal.get(m)) for m in ("fixed", "estimated")}
-    # The fixed-noise detection rate uses no outcome value (structure only), so it stays below the
-    # minimums (owner, 2026-10-07); the estimated one is withheld there.
-    out["estimated_power"] = e.get("estimated_power")
-    fixed = ((e.get("detection") or {}).get("fixed")) if isinstance(e.get("detection"), Mapping) else None
-    out["detection_fixed"] = {k: fixed.get(k) for k in ("detection", "detection_ci", "false_positive",
-                                                        "false_positive_ci", "scatter", "shift", "unavailable")
-                              if k in fixed} if isinstance(fixed, Mapping) else None
-    return out
-
-
 def _done_output(conn: Connection, run_id: int, stage: str) -> Mapping | None:
     out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s AND status = 'done' "
                             "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
@@ -636,39 +581,41 @@ def _done_output(conn: Connection, run_id: int, stage: str) -> Mapping | None:
 
 
 def analyst_facts(conn: Connection, ctx: Context) -> dict:
-    """The Analyst's facts (step 8b, owner Q6): what code stored for the run, by named keys only (see
-    FIELDS). Refused when the stored facts its stage needs are missing."""
+    """The Analyst's facts (step 8b; owner, Q6 and 2026-10-07): named facts built by code from what it stored
+    (`pipeline.analyst_names`), each a finished display string or phrase the Analyst refers to as {name}. Refused
+    when the stored facts its stage needs are missing."""
+    from hypocurate.pipeline import analyst_names as an
+    number = conn.execute(text("SELECT h.number, r.fixed_plan, h.narrower_of_run_id FROM run r JOIN hypothesis_version hv "
+                               "ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
+                               "WHERE r.id = :r"), dict(r=ctx.run_id)).one()
     if ctx.stage == "narrowed":
         n = _done_output(conn, ctx.run_id, "narrowing")
         if n is None or n.get("result") != "partly_sufficient":
             raise Refused("facts_missing")
-        facts = {k: n.get(k) for k in _NARROWING_KEYS if k != "decision"}
-        d = n.get("decision") if isinstance(n.get("decision"), Mapping) else {}
-        return display.display({"kind": "narrowing", "decision": {k: d.get(k) for k in _DECISION_KEYS},
-                                "narrowing": facts})
-    stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
-    if stats is None or gap is None:
-        raise Refused("facts_missing")
-    p = _rows(conn, "SELECT content, sufficiency_option, min_records, min_alloys, min_groups, min_resid_df "
-                    "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
-    content = project(p.content, PLAN_SCHEMA) or {}
-    decision = stats.get("decision") if isinstance(stats.get("decision"), Mapping) else {}
-    return display.display({
-        "kind": "analysis" if ctx.stage == "analysis" else "no_dataset_frozen",
-        "decision": {k: decision.get(k) for k in _DECISION_KEYS},
-        "plan": {"scope": content.get("scope"), "variables": content.get("variables"),
-                 "model": (content.get("model") or {}).get("name"), "alpha": (content.get("model") or {}).get("alpha"),
-                 "sufficiency_option": p.sufficiency_option,
-                 "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
-                              "resid_df": p.min_resid_df},
-                 "sensitivity_analyses": content.get("sensitivity_analyses")},
-        "withheld": stats.get("withheld"),
-        "analyses": [_analysis_entry(e) for e in stats.get("analyses") or [] if isinstance(e, Mapping)],
-        "not_analysed": [{k: e.get(k) for k in ("analysis", "scope", "source", "reason", "n_records_without_group",
-                                                "n_records_in_set")}
-                         for e in stats.get("not_analysed") or [] if isinstance(e, Mapping)],
-        "gap": {k: gap.get(k) for k in _GAP_KEYS},
-    })
+        names = an.narrowing_names(n)
+        kind = "narrowing"
+    else:
+        stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
+        if stats is None or gap is None:
+            raise Refused("facts_missing")
+        p = _rows(conn, "SELECT content, sufficiency_option, min_records, min_alloys, min_groups, min_resid_df "
+                        "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
+        content = project(p.content, PLAN_SCHEMA) or {}
+        plan_facts = {"alpha": (content.get("model") or {}).get("alpha"), "sufficiency_option": p.sufficiency_option,
+                      "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
+                                   "resid_df": p.min_resid_df}}
+        if number.fixed_plan:
+            note = {"scope_source": "the narrower plan stored by the original question's narrowing decision"
+                    if number.narrower_of_run_id else "the fixed reference plan; the scope was not read from the claim"}
+        else:
+            planner = _done_output(conn, ctx.run_id, "planner") or {}
+            answer = planner.get("answer") or {}
+            note = an.scope_notes(answer.get("claim_scope"), answer.get("stated"))
+        names = an.analysis_names(stats, gap, plan_facts, note)
+        kind = "analysis" if ctx.stage == "analysis" else "no_dataset_frozen"
+    names["query_number"] = str(number.number)
+    an.check_names(names)
+    return {"kind": kind, "names": dict(sorted(names.items()))}
 
 
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {

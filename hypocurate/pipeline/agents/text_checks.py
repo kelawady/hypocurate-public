@@ -4,6 +4,12 @@ Owner, 2026-10-07 (after the live set): rounding and phrasing are done by code. 
 number as its display string (`pipeline.display`) and a ready-made phrase for each p-value and for each set of
 paper figures; the Analyst quotes numbers exactly as given and never rounds.
 
+**Placeholders** (owner, 2026-10-07, after the live checks): the Analyst writes no digits; it refers to each
+number, phrase and wording by its fact's name in braces, and code renders the finished text (`render`). Before
+rendering: every name must be one of the facts given, no digit may appear outside a placeholder, and
+{outcome_wording} (and {verdict_wording} when there is a verdict) must be used (`placeholder_problems`, counts
+only). The rules below then run on the finished text.
+
 **Number check** (written for reuse by the Commentator, step 12; PRD 5.9): every number in the text must be, as a
 token, one of the numbers the facts give (their display strings, counts and the numbers in the given text such as
 the claim), apart from a few numbers of the method's own wording (`FIXED_NUMBERS`: validity checks 1 and 2, the 95%
@@ -80,11 +86,12 @@ def unmatched_numbers(text: str, facts: Any) -> list[str]:
 
 
 def phrases(facts: Any) -> list[str]:
-    """The ready-made phrases of the facts (`PHRASE_KEYS`), longest first."""
+    """The ready-made phrases of the facts (`PHRASE_KEYS`, or a name ending in '_p_phrase' or '_figures_phrase'),
+    longest first."""
     found: list[str] = []
     if isinstance(facts, Mapping):
         for k, v in facts.items():
-            if k in PHRASE_KEYS and isinstance(v, str):
+            if isinstance(v, str) and (k in PHRASE_KEYS or k.endswith(("_p_phrase", "_figures_phrase"))):
                 found.append(v)
             else:
                 found += phrases(v)
@@ -122,3 +129,25 @@ def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None)
         if _EFFECTIVE.search(sentence) and _INDEPENDENT.search(sentence):
             problems.append("the effective number described as independent")
     return problems
+
+
+# --- Placeholders (owner, 2026-10-07): the Analyst writes {name}; code writes the numbers -----------------------
+
+PLACEHOLDER = re.compile(r"\{([^{}\n]{1,80})\}")
+REQUIRED = ("outcome_wording",)  # and 'verdict_wording' whenever the facts give one
+
+
+def placeholder_problems(template: str, names: Mapping[str, str]) -> dict[str, int]:
+    """Counts only, never text: names not among the facts, digits outside a placeholder, required placeholders
+    missing."""
+    used = PLACEHOLDER.findall(template)
+    rest = PLACEHOLDER.sub(" ", template)
+    required = list(REQUIRED) + (["verdict_wording"] if "verdict_wording" in names else [])
+    return {"unknown_names": sum(1 for u in used if u not in names),
+            "digits_outside_placeholders": len(re.findall(r"\d", rest)),
+            "required_missing": sum(1 for r in required if r not in used)}
+
+
+def render(template: str, names: Mapping[str, str]) -> str:
+    """The finished text: each {name} replaced by its display string or ready-made phrase."""
+    return PLACEHOLDER.sub(lambda m: names[m.group(1)], template)

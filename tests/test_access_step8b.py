@@ -131,16 +131,15 @@ def test_below_the_minimums_the_analysts_facts_hold_nothing_computed_from_outcom
     assert out["withheld"] and out["decision"]["state"] == "below_minimums"
     got = analyst_input(engine, rid)
     facts = got["analyst_facts"]
-    assert facts["kind"] == "analysis" and facts["withheld"] is True
-    assert facts["decision"]["evidence_level"] == 3 and facts["decision"]["verdict"] is None
-    for e in facts["analyses"]:
-        assert e["withheld"] is True
-        assert not set(FROM_OUTCOMES) & set(e) and "calibration" not in e and "records_found" not in e
-        # The fixed-noise detection rate uses no outcome value: it stays (owner, 2026-10-07), wherever the
-        # counts allow inference; where they do not, there is none to show.
-        shown = e["checks"]["inference_valid"]
-        assert (e["detection_fixed"] is not None) == shown and (e["estimated_power"] is not None) == shown
-    assert any(e["detection_fixed"] for e in facts["analyses"])
+    names = facts["names"]
+    assert facts["kind"] == "analysis" and names["evidence_level"] == "3" and "verdict_wording" not in names
+    # Owner, 2026-10-07: a run below the minimums offers no estimate names (no estimate, standard error, p-value or
+    # paper figures under any name), and no calibration from estimated noise.
+    assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
+    assert not [k for k in names if k.startswith("estimated_")]
+    # The fixed-noise detection and false-positive shares use no outcome value: they stay (owner, 2026-10-07).
+    assert names["fixed_detection"].endswith("%") and names["fixed_false_positive"].endswith("%")
+    assert names["result_label"] == "data found; not enough to test"
     text_of = json.dumps(got)
     values = stored_outcomes(engine, rid)
     assert len(values) == len(rows)
@@ -152,14 +151,16 @@ def test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate(engine)
     """Positive control for the test above: the same path, not withheld, carries the numbers."""
     rid = run_on(engine, small_rows(3, papers=3), option="use_available", agents=("analyst",))
     out = analysis.run_statistics(engine, rid)
-    facts = analyst_input(engine, rid)["analyst_facts"]
-    pooled, stored = facts["analyses"][0], out["analyses"][0]
-    # Step 8b (owner, 2026-10-07): display strings and the ready-made p-value phrase, rounded by code.
+    names = analyst_input(engine, rid)["analyst_facts"]["names"]
+    stored = out["analyses"][0]
+    # Step 8b (owner, 2026-10-07): named display strings and ready-made phrases, rounded by code.
     from hypocurate.pipeline import display
-    assert pooled["estimate"] == display.one_decimal(stored["estimate"]) and "p_value" not in pooled
-    assert pooled["p_value_phrase"] == display.p_phrase(stored["p_value"])
-    assert facts["decision"]["state"] == "exploratory" and facts["decision"]["verdict"] in ("supported",
-                                                                                           "not_supported")
+    assert names["pooled_estimate"] == display.one_decimal(stored["estimate"])
+    assert names["pooled_p_phrase"] == display.p_phrase(stored["p_value"])
+    assert names["result_label"] == "exploratory" and names["verdict_wording"].endswith("in the sources searched")
+    assert names["fixed_false_positive"].endswith("%")
+    assert names.get("estimated_false_positive", "%").endswith("%") and ("estimated_false_positive" in names
+                                                                         or "estimated_unavailable" in names)
 
 
 def test_the_analysts_facts_are_refused_until_code_has_stored_them(engine):

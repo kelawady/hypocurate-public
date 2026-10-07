@@ -7,6 +7,7 @@ record counts (its access list at 'before_lock'; never an outcome value). It ans
      "claim_scope": {"alloy_class": [...], "phase_class": [...], "test_type": [...],
                      "temperature_band": [{"band": "room temperature"} | {"band": "elevated" | "cryogenic",
                                                                           "min": <°C>, "max": <°C>}, ...]},
+     "stated": {"alloy_class": true | false, "phase_class": ..., "test_type": ..., "temperature_band": ...},
      "outcome": "yield_strength",
      "exclusion_rules": [{"rule": <menu>, "min": <n>, "max": <n>, "values": [...]}, ...],
      "narrower": null | {"phase_class": [...], "test_type": [...], "temperature_band": [...]}}
@@ -36,7 +37,7 @@ from hypocurate.pipeline import profile as p
 from hypocurate.pipeline.agents import libraries
 from hypocurate.pipeline.eligibility import SUPPORTED_OUTCOMES
 
-KEYS = {"domain_matches", "claim_scope", "outcome", "exclusion_rules", "narrower"}
+KEYS = {"domain_matches", "claim_scope", "stated", "outcome", "exclusion_rules", "narrower"}
 SCOPE_KEYS = {"alloy_class", "phase_class", "test_type", "temperature_band"}
 NARROWER_KEYS = {"phase_class", "test_type", "temperature_band"}  # alloy class is not countable (Q5)
 BANDS = tuple(p.SUPPORTED_BANDS)
@@ -70,6 +71,9 @@ def allowed_values(tag_values: list[Mapping]) -> dict:
         "form": {"domain_matches": "true or false",
                  "claim_scope": {"alloy_class": "list", "phase_class": "list", "test_type": "list",
                                  "temperature_band": "list of {band} or {band, min, max} in °C"},
+                 "stated": {"alloy_class": "true if the claim states it, false if you used the default",
+                            "phase_class": "true or false", "test_type": "true or false",
+                            "temperature_band": "true or false"},
                  "outcome": "one value", "exclusion_rules": "list of {rule, min?, max?, values?}",
                  "narrower": "null (code decides any narrower scope from its own counts)"},
         "alloy_class": [a for a in approved if a in ALLOY_CLASSES],
@@ -184,6 +188,7 @@ class Answer:
     outcome: str
     exclusion_rules: list
     narrower: dict | None
+    stated: dict  # owner, 2026-10-07: per scope part, stated by the claim (True) or the Planner's default (False)
 
 
 def read_answer(data: Mapping) -> Answer:
@@ -194,8 +199,11 @@ def read_answer(data: Mapping) -> Answer:
     if data["outcome"] not in SUPPORTED_OUTCOMES:
         raise AnswerInvalid("the outcome comes from the list")
     narrower = None if data["narrower"] is None else _scope(data["narrower"], NARROWER_KEYS)
+    stated = data["stated"]
+    if not isinstance(stated, dict) or set(stated) != SCOPE_KEYS or not all(isinstance(v, bool) for v in stated.values()):
+        raise AnswerInvalid("'stated' marks each scope part true (stated by the claim) or false (defaulted)")
     return Answer(data["domain_matches"], _scope(data["claim_scope"], SCOPE_KEYS), data["outcome"],
-                  _exclusions(data["exclusion_rules"]), narrower)
+                  _exclusions(data["exclusion_rules"]), narrower, dict(sorted(stated.items())))
 
 
 # --- The plan, built by code -------------------------------------------------------------------------

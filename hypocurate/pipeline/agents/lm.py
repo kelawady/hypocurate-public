@@ -61,6 +61,9 @@ FAILURES: Mapping[str, tuple[str, str]] = {
     "invalid_plan": ("the plan is not valid for the supported template or does not match the claim's scope", "correct"),
     "numbers_unmatched": ("a number in the text is not one of the facts given, as given", "correct"),
     "wording_refused": ("the text uses wording that is not allowed", "correct"),
+    # Owner, 2026-10-07: the Analyst's placeholders.
+    "unknown_name": ("a placeholder names no fact given", "correct"),
+    "digit_outside_placeholder": ("a digit was written outside a placeholder; every number is a placeholder", "correct"),
 }
 
 

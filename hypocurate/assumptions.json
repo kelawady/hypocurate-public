@@ -6725,7 +6725,7 @@
     "key": "request_failure_policy",
     "name": "What happens when an agent request fails",
     "state": "in_force",
-    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst).",
+    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst). The Analyst's 'unknown_name' and 'digit_outside_placeholder' are corrected once the same way.",
     "value": {
       "text": "2 requests at most; retry / correct / stop by code",
       "unit": null
@@ -6771,6 +6771,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Step 8b: the roles' check codes added."
+      },
+      {
+        "value": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
       }
     ],
     "notes": [
@@ -7072,7 +7078,7 @@
     "key": "narrowing_decision",
     "name": "The narrowing decision counts structure only",
     "state": "in_force",
-    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C).",
+    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C). The decision also stores the Planner's mark of each scope part (stated by the claim or defaulted), which the Analyst's facts carry as notes.",
     "value": {
       "text": "counts per claim part; zero parts; exact narrower scope",
       "unit": null
@@ -7125,7 +7131,8 @@
       "tests/test_access_step8b.py::test_candidate_counts_are_counts_of_structure_only",
       "tests/test_orchestrator.py::test_a_run_fails_before_the_lock_with_a_stated_reason",
       "tests/test_planner_narrowing.py::test_a_one_plan_claim_with_a_part_without_records_is_narrowed_by_code",
-      "tests/test_planner_narrowing.py::test_a_narrower_scope_that_is_not_one_plan_is_not_used"
+      "tests/test_planner_narrowing.py::test_a_narrower_scope_that_is_not_one_plan_is_not_used",
+      "tests/test_planner_narrowing.py::test_the_stated_marks_are_kept_with_the_answer_and_the_narrowing_decision"
     ],
     "history": [
       {
@@ -7133,6 +7140,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      },
+      {
+        "value": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
       }
     ]
   },
@@ -7186,7 +7199,7 @@
     "key": "planner_answer",
     "name": "What the Planner may answer and what code does with it",
     "state": "in_force",
-    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires, the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
     "value": {
       "text": "fixed form; plan built by code",
       "unit": null
@@ -7226,7 +7239,8 @@
       "tests/test_planner_narrowing.py::test_the_planners_complete_request_holds_no_outcome_value",
       "tests/test_planner_narrowing.py::test_a_valid_answer_is_stored_and_its_plan_is_the_reference_plan",
       "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
-      "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer"
+      "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer",
+      "tests/test_planner_narrowing.py::test_an_answer_without_the_stated_marks_is_invalid"
     ],
     "history": [
       {
@@ -7234,6 +7248,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      },
+      {
+        "value": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
       }
     ]
   },
@@ -7298,7 +7318,7 @@
     "key": "analyst_facts_only",
     "name": "The Analyst receives stored facts only",
     "state": "in_force",
-    "statement": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level. Every number reaches it as a display string rounded by code; a p-value only inside its ready-made phrase, with its fixed description; the paper figures only together, in their phrase.",
+    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level.",
     "value": {
       "text": "named stored facts; nothing outcome-derived below the minimums",
       "unit": null
@@ -7324,6 +7344,15 @@
       "settings": [
         {
           "ref": "python:hypocurate.access.fields:analyst_facts"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:analysis_names"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:sensitivity_summary"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:LABEL_WORDS"
         }
       ],
       "note": null
@@ -7334,6 +7363,8 @@
       "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate",
       "tests/test_analyst.py::test_below_the_minimums_the_analysts_request_holds_no_outcome_value",
       "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision",
+      "tests/test_analyst.py::test_a_run_below_the_minimums_offers_no_estimate_names",
+      "tests/test_orchestrator.py::test_the_analyst_is_told_which_scope_parts_the_claim_stated_and_which_were_assumed",
       "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases"
     ],
     "history": [
@@ -7342,6 +7373,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the live set and the diagnostic call: rounding and phrasing are done by code; the Analyst quotes display strings and ready-made phrases."
+      },
+      {
+        "value": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level. Every number reaches it as a display string rounded by code; a p-value only inside its ready-made phrase, with its fixed description; the paper figures only together, in their phrase.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
       }
     ]
   },
@@ -7349,7 +7386,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst's facts carry every number as its display string, rounded by code (register 'display_precision'), and one ready-made phrase per p-value (the value and 'approximate, nominal, one-sided') and per set of paper figures (informative papers, effective number, largest share, degrees of freedom). Every number in the text must be, as a token, a number the facts give, apart from the method's own numbers (validity checks 1 and 2, the 95% interval, the exponent -1/2); thousands separators are ignored; this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, and no verdict where there is none. A p-value may appear only inside its ready-made phrase, the paper figures only inside theirs, and a sentence naming the effective number must not call it 'independent'. A text failing a check is corrected once, naming only the code; failing twice it is discarded, the run shows 'explanation unavailable', and the stage keeps fixed facts about the failure (which rules failed; for an unparsable answer which headers were present), never the text.",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), and a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the words 'p-value' and the paper figures only inside their ready-made phrases, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7396,6 +7433,12 @@
             "p_value_phrase",
             "paper_figures_phrase"
           ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:REQUIRED",
+          "equals": [
+            "outcome_wording"
+          ]
         }
       ],
       "note": null
@@ -7408,11 +7451,11 @@
       "tests/test_analyst.py::test_a_number_not_given_as_shown_is_caught",
       "tests/test_analyst.py::test_the_wording_rules",
       "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded",
-      "tests/test_analyst.py::test_a_text_following_every_rule_is_stored",
-      "tests/test_analyst.py::test_a_text_breaking_each_new_rule_is_refused",
-      "tests/test_analyst.py::test_the_diagnostic_answers_shape_is_refused_and_the_same_with_the_phrases_is_stored",
       "tests/test_analyst.py::test_an_unparsable_answer_stores_its_form_facts_and_no_text",
-      "tests/test_analyst.py::test_a_refused_text_stores_the_names_of_the_rules_it_broke_and_no_text"
+      "tests/test_analyst.py::test_a_correct_text_is_accepted_and_rendered_with_the_exact_strings",
+      "tests/test_analyst.py::test_the_diagnostic_answers_shape_is_refused_and_the_same_with_placeholders_is_stored",
+      "tests/test_analyst.py::test_a_text_breaking_each_rule_is_refused",
+      "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text"
     ],
     "history": [
       {
@@ -7426,6 +7469,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the live set and the diagnostic call: rounding and phrasing are done by code; the Analyst quotes display strings and ready-made phrases."
+      },
+      {
+        "value": "The Analyst's facts carry every number as its display string, rounded by code (register 'display_precision'), and one ready-made phrase per p-value (the value and 'approximate, nominal, one-sided') and per set of paper figures (informative papers, effective number, largest share, degrees of freedom). Every number in the text must be, as a token, a number the facts give, apart from the method's own numbers (validity checks 1 and 2, the 95% interval, the exponent -1/2); thousands separators are ignored; this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, and no verdict where there is none. A p-value may appear only inside its ready-made phrase, the paper figures only inside theirs, and a sentence naming the effective number must not call it 'independent'. A text failing a check is corrected once, naming only the code; failing twice it is discarded, the run shows 'explanation unavailable', and the stage keeps fixed facts about the failure (which rules failed; for an unparsable answer which headers were present), never the text.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
       }
     ]
   },

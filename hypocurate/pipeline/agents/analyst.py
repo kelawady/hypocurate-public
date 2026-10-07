@@ -5,9 +5,12 @@ sources_meta, coverage, analyst_facts) at 'analysis', 'closed_without_freeze' or
 facts only, and below the minimums nothing computed from outcome values. It answers plain text, at most
 the role's character limit.
 
-Code checks the text (`text_checks`): every number must be one of the facts given, as given
-(`numbers_unmatched`), and the wording must follow the rules (`wording_refused`); each is corrected once
-with a note naming only the code. A text that fails twice is discarded (never stored as the report). The
+The Analyst writes no digits (owner, 2026-10-07): every number, p-value, set of paper figures, the outcome and the
+verdict are {name} placeholders of its named facts (`pipeline.analyst_names`), and code renders the finished text
+(`text_checks.render`). Code checks the template (every name given, no digit outside a placeholder, the outcome and
+verdict wordings used) and then the finished text (the wording rules; every number is one of the facts); each
+failure is corrected once with a note naming only the code. A text that fails twice is discarded (never stored as
+the report); the stage keeps counts or rule names, never text. The finished text and its template are stored. The
 Analyst never sets the outcome, the verdict, the label or the level: the copy paths copy code's stored
 decision. If the Analyst fails for any reason (its checks, the provider, a spending refusal), the run still
 completes with code's decision and shows "explanation unavailable" (A3, B2).
@@ -21,16 +24,17 @@ from typing import Any, Mapping
 from hypocurate.pipeline.agents import libraries, text_checks
 
 UNAVAILABLE = "explanation unavailable"
-OUTPUT_DESCRIPTION = "The explanation, in plain text: a few short paragraphs, every number exactly as in the facts."
+OUTPUT_DESCRIPTION = ("The explanation, in plain text, a few short paragraphs. No digits: every number, p-value, set of "
+                      "paper figures, the outcome and the verdict are written as {name} placeholders from 'facts'.")
 
 
 def signature(instruction: str):
     _, dspy = libraries.load()
 
     class AnalystSignature(dspy.Signature):
-        claim: str = dspy.InputField(desc="The claim in words, with its query number.")
-        facts: str = dspy.InputField(desc="The facts code stored for the run, as JSON: the only source of numbers.")
-        context: str = dspy.InputField(desc="The domain, the chosen sources and what was searched, as JSON.")
+        claim: str = dspy.InputField(desc="The claim in words (its numbers are given as facts too, by name).")
+        facts: str = dspy.InputField(desc="The named facts, as JSON {name: value}: refer to each as {name}.")
+        context: str = dspy.InputField(desc="The domain and the chosen sources, as JSON.")
         note: str = dspy.InputField(desc="'none', or a note about your previous answer.")
         report: str = dspy.OutputField(desc=OUTPUT_DESCRIPTION)
 
@@ -38,32 +42,52 @@ def signature(instruction: str):
 
 
 def render_inputs(analyst_input: Mapping[str, Any]) -> dict[str, str]:
-    """The Analyst's request inputs, built only from its complete access-layer input."""
-    return {"claim": json.dumps(analyst_input["claim"], sort_keys=True, ensure_ascii=False),
-            "facts": json.dumps(analyst_input["analyst_facts"], sort_keys=True, ensure_ascii=False),
-            "context": json.dumps({"domain": analyst_input["domain"], "sources": analyst_input["sources_meta"],
-                                   "coverage": analyst_input["coverage"]}, sort_keys=True, ensure_ascii=False)}
+    """The Analyst's request inputs, built only from its complete access-layer input: the claim, the named facts,
+    and the domain and sources (the coverage's numbers reach it as named facts only)."""
+    claim = {k: v for k, v in analyst_input["claim"].items() if k in ("text", "narrower_question")}
+    return {"claim": json.dumps(claim, sort_keys=True, ensure_ascii=False),
+            "facts": json.dumps(analyst_input["analyst_facts"]["names"], sort_keys=True, ensure_ascii=False),
+            "context": json.dumps({"domain": analyst_input["domain"],
+                                   "sources": [{k: s.get(k) for k in ("key", "name", "grouping_unit")}
+                                               for s in analyst_input["sources_meta"]]},
+                                  sort_keys=True, ensure_ascii=False)}
 
 
 def make_check(analyst_input: Mapping[str, Any]):
-    """The common interface's check: None, 'empty', 'numbers_unmatched' or 'wording_refused'."""
-    decision = analyst_input["analyst_facts"].get("decision") or {}
+    """The common interface's check: None, 'empty', 'unknown_name', 'digit_outside_placeholder', 'wording_refused'
+    or 'numbers_unmatched'. `check.last_problems` holds counts or rule names, never text; `check.rendered` the
+    finished text of an accepted answer."""
+    names = analyst_input["analyst_facts"]["names"]
+    decision = {"outcome_wording": names.get("outcome_wording"), "verdict": "verdict_wording" in names,
+                "verdict_wording": names.get("verdict_wording")}
 
     def check(outputs: Mapping[str, str]) -> str | None:
-        check.last_problems = []
-        report = outputs["report"].strip()
-        if not report:
+        check.last_problems, check.rendered = [], None
+        template = outputs["report"].strip()
+        if not template:
             return "empty"
-        if text_checks.unmatched_numbers(report, analyst_input):
-            check.last_problems = ["numbers_unmatched"]  # the code only: the numbers are the model's text
-            return "numbers_unmatched"
-        problems = text_checks.wording_problems(report, decision, analyst_input["analyst_facts"])
+        counts = text_checks.placeholder_problems(template, names)
+        if counts["unknown_names"]:
+            check.last_problems = [counts]
+            return "unknown_name"
+        if counts["digits_outside_placeholders"]:
+            check.last_problems = [counts]
+            return "digit_outside_placeholder"
+        if counts["required_missing"]:
+            check.last_problems = [counts]
+            return "wording_refused"
+        report = text_checks.render(template, names)
+        problems = text_checks.wording_problems(report, decision, names)
         if problems:
             check.last_problems = problems  # the names of the rules (fixed wording, or a listed phrase)
             return "wording_refused"
+        if text_checks.unmatched_numbers(report, names):  # a safeguard: every number came from a name
+            check.last_problems = ["numbers_unmatched"]
+            return "numbers_unmatched"
+        check.rendered = report
         return None
 
-    check.last_problems = []
+    check.last_problems, check.rendered = [], None
     return check
 
 
@@ -87,16 +111,19 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     data = role_input(bind_invocation(engine, invocation))
     s = SETTINGS["analyst"]
     inputs = render_inputs(data)
+    check = make_check(data)
     result = call_agent(engine, invocation, signature(s["instruction"]), inputs, model=s["model"],
                         max_tokens=s["limits"]["max_tokens"], max_output_chars=s["limits"]["max_output_chars"],
                         ceiling=ceiling, lm_options=dict(s["settings"]), client_options=client_options,
-                        check=make_check(data))
+                        check=check)
     if result.failure is not None:
         close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
                                                          "failure_details": result.details,
                                                          "shown": f"{UNAVAILABLE} ({result.failure})"}, input_=inputs)
         return AnalystResult(None, result.failure, stage_id, result.calls)
-    report = result.outputs["report"].strip()
-    close_stage(engine, run_id, stage_id, "done", {"report": report, "attempts": result.attempts,
-                                                   "check": "numbers checked against the run record"}, input_=inputs)
+    report = check.rendered
+    close_stage(engine, run_id, stage_id, "done", {"report": report, "template": result.outputs["report"].strip(),
+                                                   "attempts": result.attempts,
+                                                   "check": "numbers written by code from the run record"},
+                input_=inputs)
     return AnalystResult(report, None, stage_id, result.calls)

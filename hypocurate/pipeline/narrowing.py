@@ -98,8 +98,8 @@ def decide(answer: Answer, counts: list[Mapping], hypothesis_version_id: int, su
     parts = part_counts(counts, scope, answer.outcome)
     zero = [{"part": x["part"], "value": x["value"]} for x in parts if x["n"] == 0]
     fallback = "proceed" if is_one else "claim_not_one_plan"
-    out = {"claim_scope": scope, "part_counts": parts, "zero_parts": zero, "narrower_scope": None,
-           "proposed_narrower": answer.narrower}
+    out = {"claim_scope": scope, "scope_stated": dict(answer.stated), "part_counts": parts, "zero_parts": zero,
+           "narrower_scope": None, "proposed_narrower": answer.narrower}
     if not zero:
         return {**out, "result": fallback, "reason": "no_part_without_records"}
     narrower = {d: [v for v in scope[d] if not any(z["part"] == d and z["value"] == v for z in zero)] for d in DIMENSIONS}

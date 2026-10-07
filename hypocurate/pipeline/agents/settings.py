@@ -44,7 +44,8 @@ PLANNER_INSTRUCTION = (
     "see measured values. Say whether the claim belongs to the domain. Give the claim's scope exactly as the claim "
     "states it, using only the allowed values: its alloy classes, phase classes, test types and temperature bands "
     "(room temperature, elevated or cryogenic; for elevated or cryogenic, the range in degrees Celsius that the "
-    "claim names). Where the claim does not state a part of the scope, use the default given. Choose the outcome "
+    "claim names). Where the claim does not state a part of the scope, use the default given, and in 'stated' "
+    "mark each part true if the claim states it and false if you used the default. Choose the outcome "
     "field from the allowed list and exclusion rules only from the menu. Give null for 'narrower': code decides "
     "any narrower scope from its own counts. Do not judge whether the claim is true.")
 CRITIC_INSTRUCTION = (
@@ -55,15 +56,16 @@ CRITIC_INSTRUCTION = (
     "metadata shown. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
     "is used, and you never choose between values.")
 ANALYST_INSTRUCTION = (
-    "You explain a result that code has already computed. Use only the facts given. Quote every number exactly as "
-    "it appears in the facts: code has already rounded each one for display, so never round, compute or estimate "
-    "a number yourself. Whenever you give a p-value, use its ready-made phrase (p_value_phrase) whole and give it "
-    "nowhere else; whenever you give the paper figures (informative papers, effective number, largest share, "
-    "degrees of freedom), use their ready-made phrase (paper_figures_phrase) whole and give them nowhere else. "
-    "Never describe the effective number as a number of independent papers. State the outcome as code stated it, "
-    "always 'in the sources searched'. Never write that data do not exist; say what was not found in the sources "
-    "searched. If there is no verdict, do not suggest one. Do not use causal language, and do not say a result "
-    "proves or confirms the claim, even when there is a verdict. Explain the checks, the minimums and what would be "
+    "You explain a result that code has already computed. Write no digits at all. Wherever you want a number, a "
+    "p-value, the paper figures, the outcome or the verdict, write the name of the fact in braces exactly as it is "
+    "listed in 'facts', for example {pooled_estimate} or {pooled_p_phrase}; code replaces each name with its value. "
+    "Always use {outcome_wording} to state the outcome, and {verdict_wording} to state the verdict when it is "
+    "listed. Use a p-value phrase or a figures phrase whole, and do not write the words 'p-value', 'informative "
+    "papers', 'effective number' or 'largest share' outside them. Use only the facts given and compute nothing. "
+    "Never describe the effective number as a number of independent papers. Never write that data do not exist; "
+    "say what was not found in the sources searched. If there is no verdict, do not suggest one. Do not use causal "
+    "language, and do not say a result proves or confirms the claim, even when there is a verdict. When the facts "
+    "say the claim did not state part of the scope, say so. Explain the checks, the minimums and what would be "
     "needed for a test, in plain words, in at most a few short paragraphs.")
 
 SETTINGS = MappingProxyType({

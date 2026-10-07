@@ -117,13 +117,15 @@ FIELDS = MappingProxyType({
                         "test type and temperature band (from their vocabularies), reported test temperature, the "
                         "status of each of those fields, of grain size and of each outcome field, and whether a grain "
                         "size is present. Counts and statuses only: no outcome value, no composition, no free text.",
-    "analyst_facts": "For the Analyst (step 8b, owner Q6): facts code stored for the run, by named keys only. "
-                     "After a freeze or with no dataset frozen: the stored decision and its wordings, per "
-                     "analysis its counts, checks, minimums and (unless withheld) estimate, standard error, "
-                     "degrees of freedom, p-value, label and calibration shares, the gap facts, and the plan's "
-                     "scope, option, minimums and threshold. At 'narrowed': the narrowing decision's claim "
-                     "scope, counts per part, the parts with none, and the narrower scope. Never a record-level "
-                     "value or identity, a Critic's class or reason, or a stage's text.",
+    "analyst_facts": "For the Analyst (step 8b, owner Q6 and 2026-10-07): named facts built by code from what it "
+                     "stored (pipeline.analyst_names), each a finished display string or ready-made phrase the "
+                     "Analyst refers to as {name}: the decision and its wordings; the plan's threshold, option and "
+                     "minimums, and per scope part whether the claim stated it or the Planner assumed it; the pooled "
+                     "result and its counts against each minimum; per source its result and label; both "
+                     "calibrations; a summary of the sensitivity sets built by code; the gap facts; at 'narrowed' "
+                     "the claim's parts, their counts and the narrower scope. Below the minimums no estimate, "
+                     "standard error, p-value or paper figures. Never a record-level value or identity, a Critic's "
+                     "class or reason, or a stage's text.",
     "frozen_analysis_data": "For Statistics (code; step 7), once the dataset is frozen: the freeze's "
                             "fingerprint; the frozen sets (keys from the vocabulary, record ids); and per "
                             "record in any frozen set, and only those: id, source, stable identity "

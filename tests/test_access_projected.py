@@ -126,9 +126,9 @@ def test_the_analysts_facts_carry_the_stored_results_by_named_keys_only(engine):
     world = aw.build(engine, "analysis")
     got = inputs_of(engine, world, "analyst", "analysis")
     assert set(got) == allowed("analyst", "analysis")
-    pooled = got["analyst_facts"]["analyses"][0]
-    assert pooled["estimate"] == "424.9" and pooled["std_error"] == "64.4"  # step 8b: display strings
-    assert "records_found" not in pooled and "hidden" not in json.dumps(got)
+    names = got["analyst_facts"]["names"]
+    assert names["pooled_estimate"] == "424.9" and names["pooled_std_error"] == "64.4"  # step 8b: named display strings
+    assert "records_found" not in json.dumps(got["analyst_facts"]) and "hidden" not in json.dumps(got)
     assert leaks(got, aw.PLANTED.values()) == []
 
 
@@ -186,7 +186,8 @@ def test_no_projected_planted_value_in_the_gap_report_input(engine):
     got = inputs_of(engine, world, "analyst", "closed_without_freeze")
     assert set(got) == allowed("analyst", "closed_without_freeze")
     # Step 8b (Q6): code's stored facts (the planted value sits in keys they do not name).
-    assert got["analyst_facts"]["decision"]["state"] == "no_dataset_frozen"
+    assert got["analyst_facts"]["kind"] == "no_dataset_frozen"
+    assert got["analyst_facts"]["names"]["outcome_wording"] == "insufficient in the sources searched"
     assert leaks(got, aw.PLANTED.values()) == []
 
 
@@ -196,8 +197,7 @@ def test_no_projected_planted_value_in_the_analysts_input_at_narrowed(engine):
     got = inputs_of(engine, world, "analyst", "narrowed")
     assert set(got) == allowed("analyst", "narrowed")
     facts = got["analyst_facts"]
-    assert facts["kind"] == "narrowing" and facts["narrowing"]["zero_parts"] == [
-        {"part": "temperature_band", "value": "cryogenic"}]
+    assert facts["kind"] == "narrowing" and facts["names"]["parts_without_records"] == "temperature cryogenic"
     assert leaks(got, aw.PLANTED.values()) == [] and "hidden" not in json.dumps(got)
 
 

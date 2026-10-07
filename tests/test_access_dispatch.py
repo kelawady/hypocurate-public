@@ -302,8 +302,8 @@ def test_the_gap_report_input_has_codes_not_failure_text(engine):
     # Step 8b (Q6): eligibility decisions no longer reach the Analyst directly; the rule codes reach it only
     # as the gap facts code stored (counts per rule code, from the `decisions` field read by the code role
     # gap_facts, whose codes are tested in test_access_statistics.py).
-    assert "decisions" not in got and set(got["analyst_facts"]["gap"]) == {
-        "minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources", "kind"}
+    assert "decisions" not in got and set(got["analyst_facts"]) == {"kind", "names"}
+    assert got["analyst_facts"]["names"]["minimums_missed"] == "none"  # the world's stored gap facts
     assert set(allowed("analyst", "closed_without_freeze")) == set(got)
 
 
