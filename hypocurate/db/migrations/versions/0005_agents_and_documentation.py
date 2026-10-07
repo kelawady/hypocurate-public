@@ -40,7 +40,8 @@ curator_proposal, curator_decision (owner, Q2):
   boundary; it is 30 to 600 characters; the value has the field's type and is in its vocabulary;
   the stored term is a listed term of that value (of every part of a microstructure, each of which
   must occur) and occurs in the quote as a whole word; a test condition's quote holds a testing word;
-  a test temperature's term is a complete number equal to the value, followed by a Celsius unit;
+  a test temperature's term is a complete number equal to the value, followed by a Celsius unit,
+  never part of a larger number or an end of a range;
   nothing it needs is NULL, and no value is JSON null) or 'refused' with a code. Append-only. The
   database does not check the line number (code computes it; a curation file is checked again,
   line included, before it is sealed or applied).
@@ -116,7 +117,7 @@ CURATOR_TERMS = (
     ('microstructure', 'Laves', 'Laves'),
 )
 CASE_SENSITIVE_TERMS = ('B2', 'L12')
-TESTING_WORDS = ('test', 'tests', 'tested', 'testing', 'loaded', 'loading', 'strained', 'deformed', 'strain rate')
+TESTING_WORDS = ('test', 'tests', 'tested', 'testing', 'loaded', 'loading', 'strain rate')
 EXCLUDED_PHRASES = ('ultimate tensile strength', 'ultimate tensile strengths')
 # Every listed text is letters, digits, spaces and hyphens, so it is used in a regular expression as it is.
 assert all(re.fullmatch(r"[A-Za-z0-9 -]+", t) for t in
@@ -163,6 +164,8 @@ TERM_OK = r"""
     CREATE FUNCTION hc_curator_term_ok(p_field text, p_value jsonb, p_quote text, p_term text)
     RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
     DECLARE q text; collapsed text; v text; n numeric; part text; phrase text; pattern text;
+            range_left constant text := '(?<![0-9](?:[ ~]*°C|[}][{]\\degreeCelsius[}])? ?(?:[Tt]o|[-−–]+) ?)';
+            range_right constant text := '(?! ?(?:[-−–]|[Tt]o ) ?[-+−–]?(?:[0-9]|\\SI))';
     BEGIN
         IF p_field IS NULL OR p_value IS NULL OR p_quote IS NULL OR p_term IS NULL THEN
             RETURN false;
@@ -181,13 +184,17 @@ TERM_OK = r"""
                 RETURN false;
             END IF;
             n := (p_value #>> '{}')::numeric;
-            IF n < -273.15 OR n > 3000 OR p_term !~ '^[-+−–]?[0-9]+([.][0-9]+)?$'
+            IF n < -273.15 OR n > 3000 OR p_term !~ '^[-+−–]?(0|[1-9][0-9]*)([.][0-9]+)?$'
                OR translate(p_term, '−–', '--')::numeric <> n THEN
                 RETURN false;
             END IF;
             pattern := replace(replace(p_term, '.', '[.]'), '+', '[+]');
-            RETURN q ~ ('(?<![A-Za-z0-9_.+−–-])' || pattern || '(?![.]?[0-9])[ ~]*°C')
-                OR q ~ ('\\SI[{]' || pattern || '[}][{]\\degreeCelsius[}]');
+            -- Never the tail of a larger number ('1,025', '1 025') or an end of a range ('20 - 25',
+            -- '20–25', '20 to 25', '20 °C to 25 °C'), as the code's quotes._PLAIN, _LATEX and _RANGE_LEFT.
+            RETURN q ~ ('(?<![A-Za-z0-9_.+−–-])(?<![0-9],)' || range_left || pattern
+                        || '(?![.,]?[0-9])[ ~]*°C' || range_right)
+                OR q ~ ('(?<![0-9],)' || range_left || '\\SI[{]' || pattern || '[}][{]\\degreeCelsius[}]'
+                        || range_right);
         END IF;
         IF jsonb_typeof(p_value) <> 'string' THEN
             RETURN false;

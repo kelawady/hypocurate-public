@@ -83,7 +83,11 @@ def test_whitespace_is_collapsed_for_terms_as_for_locating_the_quote():
     ("test_temperature_band", "room temperature",
      "The plates were cold rolled at room temperature to a 60% reduction in thickness.", "testing_word_missing"),
     ("test_temperature_band", "room temperature",
-     "The plates were deformed at room temperature to a 60% reduction in thickness.", None),
+     "The plates were deformed at room temperature to a 60% reduction in thickness.", "testing_word_missing"),
+    # Owner, 2026-10-07 (after the re-check): "deformed" and "strained" are not testing words; they
+    # often describe processing.
+    ("test_temperature_band", "room temperature",
+     "The plates were deformed by cold rolling at room temperature to a 60% reduction.", "testing_word_missing"),
     ("test_type", "tension", "Dog-bone tensile specimens were cut from each plate by machining.", "testing_word_missing"),
     ("test_type", "tension", "Dog-bone specimens were loaded in tension until they broke.", None),
     ("test_type", "tension", "Dog-bone specimens were attested to be tensile by the supplier, sure.",
@@ -91,7 +95,8 @@ def test_whitespace_is_collapsed_for_terms_as_for_locating_the_quote():
     ("test_type", "tension", "Specimens were pulled in tension at a strain rate of 0.001 per second.", None),
     ("test_temperature", 25, "Plates were annealed and then cooled to 25 °C in still laboratory air.",
      "testing_word_missing"),
-    ("test_temperature", 25, "All the specimens were strained at 25 °C in still laboratory air.", None),
+    ("test_temperature", 25, "All the specimens were strained at 25 °C in still laboratory air.", "testing_word_missing"),
+    ("test_temperature", 25, "All the specimens were loaded at 25 °C in still laboratory air.", None),
     ("phase_class", "FCC", "The dataset contains 94 FCC alloy conditions in one alloy system.", None),  # not needed
 ])
 def test_test_conditions_need_a_testing_word(field, value, quote, code):
@@ -110,6 +115,9 @@ def test_test_conditions_need_a_testing_word(field, value, quote, code):
     (-196, "All the specimens were tested at −196 °C in liquid nitrogen.", "−196"),
     (-196, "All the specimens were tested at -196 °C in liquid nitrogen.", "-196"),
     (25, "Tested at 300 °C, and also tested at 25 °C in laboratory air.", "25"),
+    # Guards (owner's fix after the re-check): a temperature beside a larger number or a word "to" still counts.
+    (25, "All the specimens were tested at 25 °C after annealing at 1,025 °C.", "25"),
+    (25, "All the specimens were tested at 25 °C, close to room temperature.", "25"),
 ])
 def test_a_temperature_is_the_whole_number_with_its_unit(value, quote, term):
     result = checked("test_temperature", value, quote)
@@ -129,6 +137,22 @@ def test_a_temperature_is_the_whole_number_with_its_unit(value, quote, term):
     (25, "All the specimens were tested at 25 $^\\circ$C in laboratory air."),  # a form not in the documents
     (25, "All the specimens were tested at \\SI{125}{\\degreeCelsius} in laboratory air."),
     (-196, "All the specimens were tested at 196 °C in laboratory air, as usual."),
+    # ChatGPT's re-check and the owner (2026-10-07): part of a larger number, and ranges.
+    (25, "All specimens were tested at 1,025 °C in laboratory air."),
+    (25, "All specimens were tested at 1 025 °C in laboratory air."),
+    (25, "All specimens were tested between 20 - 25 °C in laboratory air."),
+    (20, "All specimens were tested between 20 - 25 °C in laboratory air."),
+    (25, "All specimens were tested between 20 – 25 °C in laboratory air."),
+    (25, "All specimens were tested between 20–25 °C in laboratory air."),
+    (20, "All specimens were tested between 20–25 °C in laboratory air."),
+    (25, "All specimens were tested from 20 to 25 °C in laboratory air."),
+    (20, "All specimens were tested from 20 to 25 °C in laboratory air."),
+    (20, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    (25, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    (20, "All specimens were tested from 20 °C – 25 °C in laboratory air."),
+    (25, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in laboratory air."),
+    (20, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in laboratory air."),
+    (20, "Tested from \\SI{20}{\\degreeCelsius}--\\SI{25}{\\degreeCelsius} in laboratory air."),
 ])
 def test_another_number_or_no_celsius_unit_is_refused(value, quote):
     assert checked("test_temperature", value, quote).code == "term_missing"

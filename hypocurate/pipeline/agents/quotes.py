@@ -15,9 +15,10 @@
    whitespace and setting aside `EXCLUDED_PHRASES` ("tensile" in "ultimate tensile strength" alone is
    not a test type). Terms are case-insensitive except `CASE_SENSITIVE_TERMS` (B2, L12). A
    microstructure joined by '+' needs every part. A test temperature is a complete signed number
-   (sign and decimals included, so 25 never matches -25, 25.5 or 125) equal to the value and followed
-   by a Celsius unit in a form found in the frozen documents: "°C" (after spaces or LaTeX "~"), or
-   LaTeX "\\SI{<number>}{\\degreeCelsius}".
+   (sign and decimals included, so 25 never matches -25, 25.5 or 125; never part of a larger number
+   such as "1,025" or "1 025"; never an end of a range such as "20 - 25", "20–25", "20 to 25" or
+   "20 °C to 25 °C") equal to the value and followed by a Celsius unit in a form found in the frozen
+   documents: "°C" (after spaces or LaTeX "~"), or LaTeX "\\SI{<number>}{\\degreeCelsius}".
 5. **For a test condition** (test type, temperature band, test temperature) the quote also holds a
    testing word (`TESTING_WORDS`, whole words): a processing sentence such as "cold rolled at room
    temperature" is refused.
@@ -64,14 +65,24 @@ TERMS: Mapping[str, Mapping[str, tuple[str, ...]]] = MappingProxyType({
 })
 CASE_SENSITIVE_TERMS = frozenset({"B2", "L12"})
 EXCLUDED_PHRASES = ("ultimate tensile strength", "ultimate tensile strengths")
-TESTING_WORDS = ("test", "tests", "tested", "testing", "loaded", "loading", "strained", "deformed", "strain rate")
+# Owner, 2026-10-07: "deformed" and "strained" removed after the re-check (they often describe processing).
+TESTING_WORDS = ("test", "tests", "tested", "testing", "loaded", "loading", "strain rate")
 TESTING_FIELDS = frozenset({"test_type", "test_temperature_band", "test_temperature"})
 TEMPERATURE_RANGE = (-273.15, 3000.0)  # °C, the value check of a test temperature
 
 _SIGNS = "\\-+\u2212\u2013"  # hyphen-minus (escaped for a character class), plus, minus sign, en dash
-_NUMBER = rf"[{_SIGNS}]?[0-9]+(?:\.[0-9]+)?"
-_PLAIN = re.compile(rf"(?<![{_W}.{_SIGNS}])({_NUMBER})(?!\.?[0-9])[ ~]*\u00b0C")
-_LATEX = re.compile(rf"\\SI\{{({_NUMBER})\}}\{{\\degreeCelsius\}}")
+_DASHES = "\\-\u2212\u2013"
+# A number: no leading zero before another digit, so no part of "1 025" or "1,025" is read as 25.
+_NUMBER = rf"[{_SIGNS}]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?"
+# Not the tail of a larger number: not after "<digit>," (owner, 2026-10-07, after the re-check).
+_NOT_AFTER = r"(?<![0-9],)"
+# Not the end of a range: the text before the number (or before "\SI") does not end in a number, with
+# or without its unit, then a dash or "to" ("20 - 25", "20–25", "20 to 25", "20 °C to 25 °C").
+_RANGE_LEFT = re.compile(rf"[0-9](?:[ ~]*\u00b0C|\}}\{{\\degreeCelsius\}})? ?(?:[Tt]o|[{_DASHES}]+) ?$")
+# Not the start of a range: the unit is not followed by a dash or "to" and another number.
+_NOT_BEFORE = rf"(?! ?(?:[{_DASHES}]|[Tt]o ) ?[{_SIGNS}]?(?:[0-9]|\\SI))"
+_PLAIN = re.compile(rf"(?<![{_W}.{_SIGNS}]){_NOT_AFTER}({_NUMBER})(?![.,]?[0-9])[ ~]*\u00b0C{_NOT_BEFORE}")
+_LATEX = re.compile(rf"{_NOT_AFTER}\\SI\{{({_NUMBER})\}}\{{\\degreeCelsius\}}{_NOT_BEFORE}")
 
 
 def collapse(text: str) -> str:
@@ -150,6 +161,8 @@ def term_for(field: str, value, quote: str) -> str | None:
             return None
         wanted = Decimal(str(value))
         for match in sorted([*_PLAIN.finditer(text), *_LATEX.finditer(text)], key=lambda m: m.start()):
+            if _RANGE_LEFT.search(text, 0, match.start()):
+                continue
             if _as_decimal(match.group(1)) == wanted:
                 return match.group(1)
         return None

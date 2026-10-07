@@ -1,8 +1,23 @@
 # Build step 8a — summary for review
 
-> **After ChatGPT's review (2026-10-07):** six findings and the owner's term-check changes were fixed; see `step08a_review_chatgpt.md` and `step08a_fix_packet.md`. This summary is kept as it was reviewed, with two overclaims corrected in place (marked *Corrected*). Where it gives the quote bounds as 30–1500 characters, the database checks as occurrence and term only, or the Curator invocation as allowed in a run, the fix packet supersedes it.
+> **Update, 2026-10-07: review rounds and the owner's merge decision.**
+>
+> 1. **ChatGPT's review** (`step08a_review_chatgpt.md`): not safe to merge, six findings. Fixed with the owner's term-check changes a–h and the session time zone in `057732a`; `step08a_fix_packet.md` (`b920118`) gives the details, the tests that failed before (117 of 129), 23 mutations (all caught) and the reference comparison (unchanged). The live curation's records were saved in `step08a_live_curation_record.json` (`c218416`) before the local database was rebuilt at the amended 0005. The curated version's fingerprint was the same afterwards (`2fad3ccb…`).
+> 2. **ChatGPT's re-check** (`step08a_recheck_chatgpt.md`): not safe to merge. One item stayed open: the temperature matcher accepted part of a larger number ("1,025 °C" for 25) and a range end ("20 - 25 °C" for 25). The re-check found every other fix closed, within the stated import and logging trust boundaries.
+> 3. **The owner's decision (Khalid El-Awady, 2026-10-07):** "fix the item below and then merge 8a. This is my decision, taken without a further review round, on the strength of the regression tests and a green run." The fixes, in `quotes.py` and in migration 0005's pattern alike:
+>    - a number is never part of a larger number ("1,025 °C", "1 025 °C": no leading zero, not after "<digit>,");
+>    - never an end of a range: "20 - 25 °C", "20 – 25 °C", "20–25 °C", "20 to 25 °C", "20 °C to 25 °C" and the LaTeX forms match neither 20 nor 25. "to" or a dash counts only after a number, so "cooled to 25 °C" still matches;
+>    - "deformed" and "strained" are removed from the testing words, so "deformed by cold rolling at room temperature" is refused.
+>
+>    The new cases are in `test_quote_checks.py`, the SQL agreement cases, and a new `test_the_database_refuses_larger_numbers_and_ranges`. On the code before this fix, 14 Python cases and the database test failed. Two existing expectations changed by the owner's decision: "deformed at room temperature" and "strained at 25 °C" now give `testing_word_missing`. Six mutations (g01–g06) are all caught.
+>
+>    Re-checked under the final rules: the owner's accepted proposals 5 (tension, line 177) and 2 (FCC, line 173) still pass in code and in the database; `curation.json` is byte-for-byte unchanged (SHA-256 `2a6cbf01…`); the reference runs' output is byte-identical to the output before the review fixes; and the comparison with `main` is unchanged.
+>
+>    One sentence was corrected per the re-check (register `curation_acceptance`, `sources/curated.py`, README): the validator does not prove that an approval is authentic; exact approved bytes are protected by the manifest fingerprint.
+>
+> This summary is otherwise kept as first reviewed. Two overclaims are corrected in place (marked *Corrected*). Where it gives the quote bounds as 30–1500 characters, the database checks as occurrence and term only, or the Curator invocation as allowed in a run, the fix packet supersedes it.
 
-Date: 2026-10-06. Branch: `step-08a-curator` (from `main` at `cd2b3be`). **Status: built; the whole suite passes (1,342 locally and 1,342 in the rebuilt test image); pushed; not merged** (owner's instruction: "When 8a is built: full suite, summary, review packet, push, and stop. Do not merge."). Part 8b (Planner, partly sufficient, Critic, Analyst, orchestration, command-line runs) waits for the owner's separate approval after 8a is merged.
+Date: 2026-10-06; updated 2026-10-07. Branch: `step-08a-curator` (from `main` at `cd2b3be`). **Status: review fixes and the owner's last fix done; the whole suite passes (1,491 locally); merged to `main` by the owner's decision of 2026-10-07 (see the update note above).** First built with 1,342 tests. Part 8b (Planner, partly sufficient, Critic, Analyst, orchestration, command-line runs) waits for the owner's separate approval after 8a is merged.
 
 PRD Section 15, step 8 ("Agents"), split by the owner into 8a and 8b because it held six safeguard changes and a migration. **8a: the foundation and the Curator.** It contains these **safeguard changes, which need the second model's review before any merge** (CLAUDE.md, "How we work" item 5): migration 0005; the Curator's registration binding and fields, and the removal of its run-stage field; the spending caps; plan validation and eligibility rule 3 (temperature bands); the guarded runner's handling of missing import-path entries.
 

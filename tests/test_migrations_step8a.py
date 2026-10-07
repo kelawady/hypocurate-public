@@ -506,6 +506,22 @@ AGREEMENT = [
     ("test_temperature", 25, "All the plates were annealed and cooled to 25 °C in still air."),
     ("test_temperature", -196, "All the specimens were tested at −196 °C in liquid nitrogen."),
     ("test_temperature", 25.5, "All the specimens were tested at 25.5 °C in laboratory air."),
+    # ChatGPT's re-check and the owner (2026-10-07): larger numbers, ranges, and two testing words removed.
+    ("test_temperature", 25, "All specimens were tested at 1,025 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested at 1 025 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested between 20 - 25 °C in laboratory air."),
+    ("test_temperature", 20, "All specimens were tested between 20 - 25 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested between 20 – 25 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested between 20–25 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested from 20 to 25 °C in laboratory air."),
+    ("test_temperature", 20, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    ("test_temperature", 25, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    ("test_temperature", 25, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in air."),
+    ("test_temperature", 20, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in air."),
+    ("test_temperature", 25, "All the specimens were tested at 25 °C after annealing at 1,025 °C."),
+    ("test_temperature", 25, "All the specimens were tested at 25 °C, close to room temperature."),
+    ("test_temperature", 25, "All the specimens were strained at 25 °C in still laboratory air."),
+    ("test_temperature_band", "room temperature", "The plates were deformed by cold rolling at room temperature."),
 ]
 
 
@@ -545,3 +561,32 @@ def test_the_database_and_the_code_agree_on_every_case(w):
         for term in listed + numbers + [str(value)]:
             assert not _stored(w.e, {**base, "t": term}), (field, value, quote, term)
     assert 0 < passed < len(AGREEMENT)
+
+
+# ChatGPT's re-check (2026-10-07): the database refuses a temperature that is part of a larger number or
+# an end of a range, whichever number-shaped term it is given (the code's refusals are in test_quote_checks).
+RANGES_AND_LARGER_NUMBERS = [
+    (25, "All specimens were tested at 1,025 °C in laboratory air."),
+    (25, "All specimens were tested at 1 025 °C in laboratory air."),
+    (25, "All specimens were tested between 20 - 25 °C in laboratory air."),
+    (25, "All specimens were tested between 20 – 25 °C in laboratory air."),
+    (25, "All specimens were tested from 20 to 25 °C in laboratory air."),
+    (20, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    (25, "All specimens were tested from 20 °C to 25 °C in laboratory air."),
+    (25, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in laboratory air."),
+    (20, "Tested from \\SI{20}{\\degreeCelsius} to \\SI{25}{\\degreeCelsius} in laboratory air."),
+]
+
+
+def test_the_database_refuses_larger_numbers_and_ranges(w):
+    import json
+    document = "\n".join(q for _, q in RANGES_AND_LARGER_NUMBERS) + "\n"
+    v = w.new_version("tamu_fcc", "ranges")
+    w.add_file(v, "table.csv", b"a,b,ranges\n")
+    w.add_file(v, "documentation/cases.md", document.encode(), role="documentation")
+    w.seal(v)
+    inv = w.val(REGISTRATION, v=v, o="curator", a=curator_setting(w))
+    for line, (value, quote) in enumerate(RANGES_AND_LARGER_NUMBERS, start=1):
+        for term in (str(value), f"0{value}", "025", "25", "20"):
+            assert not _stored(w.e, dict(i=inv, v=v, f="test_temperature", st="proposed", val=json.dumps(value),
+                                         q=quote, d="documentation/cases.md", l=line, t=term, rc=None)), (quote, term)

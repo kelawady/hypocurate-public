@@ -22,10 +22,11 @@ and again before it is applied (`curated_values`):
   or none (at most 2,000 characters).
 Anything else refuses the whole version, like any malformed file (register 'malformed_files_refused').
 
-What this cannot show: that a person really accepted the values. That is recorded in the database
-where the curation happened (`curator_decision`). **The one trusted import is the exact approved
-export replayed on the same base**: the file the owner approved and froze in `data/` (pinned by its
-manifest fingerprint), registered with the base version's own files (register 'curation_acceptance').
+The validator does not prove that an approval is authentic: a well-formed file naming another acceptor
+passes it. The exact approved bytes are protected by the manifest fingerprint (the file the owner
+approved and froze in `data/`, registered with its own base files), and a newly sealed export rests on
+the accepted decisions recorded in the database where the curation happened (`curator_decision`)
+(register 'curation_acceptance').
 """
 from __future__ import annotations
 
