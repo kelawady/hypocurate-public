@@ -5617,12 +5617,19 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Every run's statistics result stores an evidence level from 1 to 6, derived by one tested function from the result state, never by an agent: 6 sufficient with a verdict; 5 use what is available with a minimum missed (exploratory); 4 inference invalid, coefficient only; 3 below the minimums under the fixed option; 2 coefficient cannot be fitted; 1 no dataset frozen. Precedence: no freeze; below the minimums (fixed option); not fitted; coefficient only; exploratory; sufficient. Descriptive only; it never affects the outcome or the verdict. A marked test run keeps its level beside its test label. A partly sufficient original question keeps the level of its own pooled result state.",
+        "from": "2026-10-05",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner's addition 1 of 2026-10-06, built 2026-10-07): the partly-sufficient original is at level 1 with its own wording."
+      }
+    ],
     "notes": [],
     "key": "evidence_level_scale",
     "name": "Evidence level",
     "state": "in_force",
-    "statement": "Every run's statistics result stores an evidence level from 1 to 6, derived by one tested function from the result state, never by an agent: 6 sufficient with a verdict; 5 use what is available with a minimum missed (exploratory); 4 inference invalid, coefficient only; 3 below the minimums under the fixed option; 2 coefficient cannot be fitted; 1 no dataset frozen. Precedence: no freeze; below the minimums (fixed option); not fitted; coefficient only; exploratory; sufficient. Descriptive only; it never affects the outcome or the verdict. A marked test run keeps its level beside its test label. A partly sufficient original question keeps the level of its own pooled result state.",
+    "statement": "Every run's statistics result stores an evidence level from 1 to 6, derived by one tested function from the result state, never by an agent: 6 sufficient with a verdict; 5 use what is available with a minimum missed (exploratory); 4 inference invalid, coefficient only; 3 below the minimums under the fixed option; 2 coefficient cannot be fitted; 1 no dataset frozen. Precedence: no freeze; below the minimums (fixed option); not fitted; coefficient only; exploratory; sufficient. Descriptive only; it never affects the outcome or the verdict. A marked test run keeps its level beside its test label. A partly sufficient original question, never tested, is at level 1, shown as 'original question not tested; a narrower question was proposed'.",
     "value": {
       "text": "1 to 6",
       "unit": null
@@ -5635,7 +5642,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "applied": {
       "status": "yes",
@@ -5651,6 +5658,10 @@
         },
         {
           "ref": "sql:ck_run_evidence_level_iff_completed"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:PARTLY_SUFFICIENT_WORDING",
+          "equals": "original question not tested; a narrower question was proposed"
         }
       ],
       "note": "Copied onto the run by the copy path; required on every completed run and only on one, and checked against the outcome, verdict and exploratory label by the database (review, smaller point, 2026-10-06)."
@@ -5661,7 +5672,9 @@
       "tests/test_completion.py::test_a_completed_run_needs_its_evidence_level",
       "tests/test_statistics.py::test_every_result_state_has_its_evidence_level",
       "tests/test_statistics.py::test_the_evidence_scale_is_the_owners",
-      "tests/test_statistics.py::test_the_level_never_feeds_back_into_the_outcome_or_verdict"
+      "tests/test_statistics.py::test_the_level_never_feeds_back_into_the_outcome_or_verdict",
+      "tests/test_planner_narrowing.py::test_a_part_with_none_and_the_exact_narrower_scope_is_partly_sufficient",
+      "tests/test_cli_runs.py::test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line"
     ]
   },
   {
@@ -5795,12 +5808,19 @@
       "name": null,
       "date": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The analysis stage stores the run's decision (outcome, verdict, exploratory label, evidence level) with the freeze fingerprint it belongs to; it does not complete the run. A separate function copies the stored decision onto the run, unchanged, and completes it; it refuses, and logs the refusal, when the decision is missing or belongs to a different freeze. 'Partly sufficient' is not set by it (a step 8 decision).",
+        "from": "2026-10-05",
+        "to": "2026-10-07",
+        "note": "Step 8b: how partly sufficient reaches the run."
+      }
+    ],
     "notes": [],
     "key": "copy_decision_only_copies",
     "name": "The decision is copied, not recomputed",
     "state": "in_force",
-    "statement": "The analysis stage stores the run's decision (outcome, verdict, exploratory label, evidence level) with the freeze fingerprint it belongs to; it does not complete the run. A separate function copies the stored decision onto the run, unchanged, and completes it; it refuses, and logs the refusal, when the decision is missing or belongs to a different freeze. 'Partly sufficient' is not set by it (a step 8 decision).",
+    "statement": "The analysis stage stores the run's decision (outcome, verdict, exploratory label, evidence level) with the freeze fingerprint it belongs to; it does not complete the run. A separate function copies the stored decision onto the run, unchanged, and completes it; it refuses, and logs the refusal, when the decision is missing or belongs to a different freeze. 'Partly sufficient' is copied by its own function from code's stored narrowing decision, after checking the source versions the counts were taken on (step 8b).",
     "value": {
       "text": "store, then copy unchanged",
       "unit": null
@@ -5813,13 +5833,16 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "applied": {
       "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.completion:copy_decision"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.completion:copy_partly_sufficient"
         }
       ],
       "note": null
@@ -5829,7 +5852,9 @@
       "tests/test_completion.py::test_it_refuses_a_missing_decision_and_logs_it",
       "tests/test_completion.py::test_it_refuses_a_decision_of_another_freeze_and_logs_it",
       "tests/test_completion.py::test_it_copies_what_is_stored_and_never_recomputes",
-      "tests/test_completion.py::test_the_database_checks_the_copy_again"
+      "tests/test_completion.py::test_the_database_checks_the_copy_again",
+      "tests/test_planner_narrowing.py::test_the_copy_refuses_a_run_that_is_not_narrowed",
+      "tests/test_planner_narrowing.py::test_the_copy_refuses_a_decision_taken_on_other_source_versions"
     ]
   },
   {
@@ -6562,7 +6587,7 @@
     "key": "agent_models",
     "name": "The model of each agent role",
     "state": "in_force",
-    "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium.",
+    "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium. The Planner and the Analyst: at most 8000 output tokens, 6000 characters, effort medium. The Critic: at most 8000 output tokens, 30000 characters, at most 100 flags per call, effort low.",
     "value": {
       "text": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5",
       "unit": null
@@ -6575,7 +6600,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-06"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -6584,7 +6609,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.agents.settings:MODELS",
@@ -6601,18 +6626,47 @@
             "max_tokens": 8000,
             "max_output_chars": 20000
           }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:SETTINGS.planner.limits",
+          "equals": {
+            "max_tokens": 8000,
+            "max_output_chars": 6000
+          }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:SETTINGS.critic.limits",
+          "equals": {
+            "max_tokens": 8000,
+            "max_output_chars": 30000,
+            "max_flags_per_call": 100
+          }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:SETTINGS.analyst.limits",
+          "equals": {
+            "max_tokens": 8000,
+            "max_output_chars": 6000
+          }
         }
       ],
-      "done": "The Curator's settings (step 8a).",
-      "pending": "The Planner's, the Critic's and the Analyst's settings (step 8b).",
-      "step": 8,
       "note": null
     },
-    "history": [],
-    "notes": [],
+    "history": [
+      {
+        "value": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8b: the Planner's, the Critic's and the Analyst's settings added (drafts for the owner's review, B3)."
+      }
+    ],
+    "notes": [
+      "The Planner's, the Critic's and the Analyst's instruction texts and limits are drafts by Claude Code for the owner's review before the live set (B3)."
+    ],
     "tests": [
       "tests/test_agent_core.py::test_the_price_table_names_the_owners_models",
-      "tests/test_curator.py::test_the_curators_complete_request_is_the_instruction_the_documentation_and_the_targets"
+      "tests/test_curator.py::test_the_curators_complete_request_is_the_instruction_the_documentation_and_the_targets",
+      "tests/test_queries.py::test_dispatch_records_the_settings_version_of_each_run_role"
     ]
   },
   {
@@ -6671,7 +6725,7 @@
     "key": "request_failure_policy",
     "name": "What happens when an agent request fails",
     "state": "in_force",
-    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off.",
+    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst).",
     "value": {
       "text": "2 requests at most; retry / correct / stop by code",
       "unit": null
@@ -6711,6 +6765,12 @@
         "from": "2026-10-06",
         "to": "2026-10-07",
         "note": "Step 8a as built: a failed recording after a provider failure or a reply without usage escaped unclassified and was retried as malformed (ChatGPT's review of step 8a, finding 4); the process log held the exception's full text. Fixed 2026-10-07."
+      },
+      {
+        "value": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b: the roles' check codes added."
       }
     ],
     "notes": [
@@ -6728,7 +6788,9 @@
       "tests/test_agent_core.py::test_a_recording_failure_on_any_branch_stops_and_keeps_the_maximum",
       "tests/test_agent_core.py::test_a_reservation_that_cannot_be_written_sends_nothing",
       "tests/test_agent_core.py::test_provider_error_text_never_reaches_the_process_log",
-      "tests/test_agent_core.py::test_the_request_headers_carry_nothing_of_the_input"
+      "tests/test_agent_core.py::test_the_request_headers_carry_nothing_of_the_input",
+      "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
+      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded"
     ]
   },
   {
@@ -6887,5 +6949,559 @@
     "tests": [
       "tests/test_access_files.py::test_a_guarded_timestamp_read_needs_no_zone_file"
     ]
+  },
+  {
+    "key": "query_sufficiency_option",
+    "name": "The data-sufficiency option is the query's",
+    "state": "in_force",
+    "statement": "The data-sufficiency option (fixed minimum or use what is available) is a parameter of the query, chosen before dispatch: it is stored on the hypothesis version (default 'fixed_minimum'), can change only while the version is a draft, a narrower question has its original's, and the locked plan's option must equal it (checked by code and by the database). No model sets it.",
+    "value": {
+      "text": "on the hypothesis version; the plan's must equal it",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Which sufficiency rule a run's plan locks (PRD 5.8).",
+    "reason": "CLAUDE.md rule 7 calls it a query parameter; before step 8b it existed only in the plan, which the Planner fills.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer A2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:SUFFICIENCY_OPTIONS",
+          "equals": [
+            "fixed_minimum",
+            "use_available"
+          ]
+        },
+        {
+          "ref": "sql:hc_plan_query"
+        },
+        {
+          "ref": "sql:hc_version_option"
+        },
+        {
+          "ref": "sql:ck_hypothesis_version_sufficiency_option"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_migrations_step8b.py::test_a_version_without_an_option_uses_the_default",
+      "tests/test_migrations_step8b.py::test_the_option_can_change_while_a_draft_and_never_after",
+      "tests/test_migrations_step8b.py::test_a_narrower_question_has_its_originals_option",
+      "tests/test_migrations_step8b.py::test_the_plans_option_is_the_querys",
+      "tests/test_queries.py::test_the_querys_option_is_chosen_before_dispatch",
+      "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails"
+    ],
+    "history": []
+  },
+  {
+    "key": "partly_sufficient_rules",
+    "name": "Partly sufficient: before the lock, on counts, never tested",
+    "state": "in_force",
+    "statement": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the Planner proposed exactly the narrower scope of the parts that have such records, which makes a valid plan. The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
+    "value": {
+      "text": "no plan, no record, code's decision copied, level 1",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Which runs are partly sufficient (PRD 3.1, 5.4).",
+    "reason": "PRD 5.4: the narrowing is decided on record counts, never on outcomes; the original receives no verdict.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q5, A1, A4, A5, B2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "sql:hc_run_partly_sufficient"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.completion:copy_partly_sufficient"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:STAGES"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_migrations_step8b.py::test_a_run_completes_as_partly_sufficient_with_its_narrowing_decision_and_no_plan",
+      "tests/test_migrations_step8b.py::test_partly_sufficient_needs_a_done_narrowing_decision_of_partly_sufficient",
+      "tests/test_migrations_step8b.py::test_partly_sufficient_is_refused_for_a_run_with_a_plan",
+      "tests/test_migrations_step8b.py::test_no_plan_is_locked_after_a_narrowing_decision_of_partly_sufficient",
+      "tests/test_access_step8b.py::test_no_plan_is_locked_at_narrowed_by_code_or_by_the_database",
+      "tests/test_orchestrator.py::test_14_3_a_partly_sufficient_original_and_its_narrower_question",
+      "tests/test_orchestrator.py::test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_the_narrower_question"
+    ],
+    "history": []
+  },
+  {
+    "key": "narrowing_decision",
+    "name": "The narrowing decision counts structure only",
+    "state": "in_force",
+    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint.",
+    "value": {
+      "text": "counts per claim part; zero parts; exact narrower scope",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "Partly sufficient and 'claim not one plan' (PRD 5.4).",
+    "reason": "Owner's Q5; A11 for two bands; Claude Code extended A11 to test types and alloy classes, since a plan's tags allow one of each (stated to the owner).",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q5, A11."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.narrowing:DIMENSIONS",
+          "equals": [
+            "phase_class",
+            "test_type",
+            "temperature_band"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.narrowing:decide"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:one_plan"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_planner_narrowing.py::test_every_part_with_records_proceeds",
+      "tests/test_planner_narrowing.py::test_a_part_with_none_and_the_exact_narrower_scope_is_partly_sufficient",
+      "tests/test_planner_narrowing.py::test_a_narrower_scope_that_is_not_exactly_the_parts_with_records_is_declined",
+      "tests/test_planner_narrowing.py::test_two_bands_each_with_records_are_not_one_plan",
+      "tests/test_planner_narrowing.py::test_no_part_with_records_proceeds_to_an_insufficient_run",
+      "tests/test_planner_narrowing.py::test_a_record_counts_only_with_a_grain_size_the_outcome_and_a_known_condition",
+      "tests/test_planner_narrowing.py::test_the_frozen_sources_make_the_cryogenic_claim_partly_sufficient",
+      "tests/test_access_step8b.py::test_candidate_counts_are_counts_of_structure_only",
+      "tests/test_orchestrator.py::test_a_run_fails_before_the_lock_with_a_stated_reason"
+    ],
+    "history": []
+  },
+  {
+    "key": "narrower_question",
+    "name": "The narrower question and its plan",
+    "state": "in_force",
+    "statement": "A narrower question is a separate query linked to its original run, created as submitted with the original's domain, sources and sufficiency option, and a text built by code (NARROWER_TEXT: the original claim and the narrower scope in words). It is dispatched by its number after a named person confirms its domain; its run locks exactly the narrower plan the original's narrowing decision stored (the Planner bypassed), and is refused before the lock, with a stated reason, if any of its source versions differs from those the counts were taken on.",
+    "value": {
+      "text": "code-built text; the stored plan; same source versions",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "How a narrower question is created and run (PRD 5.4).",
+    "reason": "The narrower plan is the one the counts were taken on; a fresh Planner could widen it again.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q10, A8, B1."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:NARROWER_TEXT",
+          "equals": "{original} (narrower question: {scope})"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:create_narrower"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_queries.py::test_the_narrower_question_is_a_separate_linked_submitted_query",
+      "tests/test_orchestrator.py::test_14_3_a_partly_sufficient_original_and_its_narrower_question",
+      "tests/test_orchestrator.py::test_b1_a_narrower_question_on_other_source_versions_is_refused_with_a_reason"
+    ],
+    "history": []
+  },
+  {
+    "key": "planner_answer",
+    "name": "What the Planner may answer and what code does with it",
+    "state": "in_force",
+    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and optionally a narrower scope; values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+    "value": {
+      "text": "fixed form; plan built by code",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every plan a live Planner contributes to.",
+    "reason": "CLAUDE.md rule 1: code decides; agents advise. PRD 5.2: exclusion rules from a menu.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:build_plan"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:make_check"
+        }
+      ],
+      "note": null
+    },
+    "notes": [
+      "The Planner's instruction text and limits are drafts by Claude Code for the owner's review before the live set (B3)."
+    ],
+    "tests": [
+      "tests/test_planner_narrowing.py::test_the_planners_complete_request_holds_no_outcome_value",
+      "tests/test_planner_narrowing.py::test_a_valid_answer_is_stored_and_its_plan_is_the_reference_plan",
+      "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
+      "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer"
+    ],
+    "history": []
+  },
+  {
+    "key": "critic_classes",
+    "name": "The Critic's classes and reason",
+    "state": "in_force",
+    "statement": "The Critic classifies each flag code raised with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them.",
+    "value": {
+      "text": "four classes; reason for people only; read by no decision",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Flags' classification shown to people (PRD 3 step 6).",
+    "reason": "PRD 4: the Critic never chooses between values; owner's standing requirement that no code decision reads the class.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer A7."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.vocabulary:CRITIC_CLASSES"
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:CRITIC_REASON_MAX",
+          "equals": 300
+        },
+        {
+          "ref": "sql:ck_flag_critic_class"
+        },
+        {
+          "ref": "sql:ck_flag_critic_reason"
+        }
+      ],
+      "note": null
+    },
+    "notes": [
+      "The Critic's instruction text and limits are drafts by Claude Code for the owner's review before the live set (B3)."
+    ],
+    "tests": [
+      "tests/test_critic.py::test_the_critics_complete_request_holds_no_compared_number_or_outcome",
+      "tests/test_critic.py::test_each_valid_entry_is_written_once_and_an_invalid_one_is_left_unclassified",
+      "tests/test_critic.py::test_changing_every_class_changes_no_decision_set_fingerprint_or_result",
+      "tests/test_critic.py::test_no_decision_path_reads_the_critics_class",
+      "tests/test_migrations_step8b.py::test_each_critic_class_is_accepted",
+      "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused"
+    ],
+    "history": []
+  },
+  {
+    "key": "analyst_facts_only",
+    "name": "The Analyst receives stored facts only",
+    "state": "in_force",
+    "statement": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level.",
+    "value": {
+      "text": "named stored facts; nothing outcome-derived below the minimums",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What the Analyst can say (PRD 3 step 8).",
+    "reason": "Owner's Q6 and standing requirement.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q6."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.fields:analyst_facts"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_access_step8b.py::test_below_the_minimums_the_analysts_facts_hold_nothing_computed_from_outcomes",
+      "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate",
+      "tests/test_analyst.py::test_below_the_minimums_the_analysts_request_holds_no_outcome_value",
+      "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision"
+    ],
+    "history": []
+  },
+  {
+    "key": "analyst_text_checks",
+    "name": "The Analyst's number and wording checks",
+    "state": "in_force",
+    "statement": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'.",
+    "value": {
+      "text": "numbers as given; wording rules",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The Analyst's text (CLAUDE.md rule 13; PRD 5.9 for the Commentator later).",
+    "reason": "Owner's Q8: the number check is written for reuse by the Commentator.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:FIXED_NUMBERS",
+          "equals": [
+            1.0,
+            2.0,
+            95.0,
+            0.5,
+            -0.5
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:FORBIDDEN"
+        }
+      ],
+      "note": null
+    },
+    "notes": [
+      "The wording list (FORBIDDEN, NO_VERDICT_FORBIDDEN) and FIXED_NUMBERS are drafts by Claude Code for the owner's review before the live set (B3)."
+    ],
+    "tests": [
+      "tests/test_analyst.py::test_numbers_as_given_or_rounded_to_their_shown_precision_match",
+      "tests/test_analyst.py::test_a_number_not_in_the_facts_is_caught",
+      "tests/test_analyst.py::test_the_wording_rules",
+      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded"
+    ],
+    "history": []
+  },
+  {
+    "key": "run_order_and_failures",
+    "name": "The run order and what a failure does to a run",
+    "state": "in_force",
+    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a, or a narrower question's stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A call whose recording failed stays open, so the run stays running until step 9's recovery. No model call runs inside a database transaction.",
+    "value": {
+      "text": "the step 8b run order and failure table",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run's stages and endings (PRD 3, 8, 14.4).",
+    "reason": "The step 8 plan's run order, corrected by the owner (A1); the failure table approved with the plan.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers A1, A3, A11, B1, B2."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.orchestrator:run"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.orchestrator:REASONS"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_orchestrator.py::test_14_1a_the_fixed_plan_run_reproduces_the_reference_and_repeats_identically",
+      "tests/test_orchestrator.py::test_14_1b_the_planners_plan_is_locked_and_the_run_completes",
+      "tests/test_orchestrator.py::test_a3_a_spending_refusal_at_the_analyst_leaves_codes_decision_standing",
+      "tests/test_orchestrator.py::test_a_spending_refusal_at_the_planner_fails_the_run",
+      "tests/test_orchestrator.py::test_a_spending_refusal_at_the_critic_fails_the_run",
+      "tests/test_orchestrator.py::test_a_critic_failure_leaves_flags_unclassified_and_the_run_goes_on",
+      "tests/test_orchestrator.py::test_no_model_call_is_made_while_a_database_transaction_is_open"
+    ],
+    "history": []
+  },
+  {
+    "key": "nothing_found_kinds",
+    "name": "The kind of 'nothing found' is decided by code",
+    "state": "in_force",
+    "statement": "Code classifies, in the gap facts, each chosen source and the run: 'failed_search' when the search failed; 'missing_evidence' when the source was searched but none of its records entered the primary set; none when records entered it. The run is 'failed_search' only when every chosen source failed, otherwise 'missing_evidence' when no source contributed. Code never sets 'reported_negative' in sprint 1 (no source states a negative result).",
+    "value": {
+      "text": "failed search / missing evidence; never reported negative",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The gap report (PRD 3.1, 14.3).",
+    "reason": "A source's search result is final once it is searched, before eligibility is decided, so 'missing evidence' in 14.3's sense is classified later from stored facts.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.analysis:nothing_found_kind"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analysis:run_nothing_found_kind"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_analysis_stage.py::test_each_source_gets_its_kind_of_nothing_found_from_code",
+      "tests/test_analysis_stage.py::test_the_runs_kind_of_nothing_found",
+      "tests/test_orchestrator.py::test_14_3_the_bcc_claim_ends_insufficient_as_missing_evidence_with_no_verdict",
+      "tests/test_cli_runs.py::test_14_3_a_source_that_cannot_be_read_is_a_failed_search_not_missing_evidence"
+    ],
+    "history": []
+  },
+  {
+    "key": "no_live_calls_in_suite",
+    "name": "The regression suite makes no live model call",
+    "state": "in_force",
+    "statement": "The test process and every guarded child it starts have no provider credential, and the provider's address is a closed local port, so a request that does not name the local stub cannot leave the machine; agent tests answer through the stub, which records the raw request bytes. Live tests are separate, marked, and run only with the owner's go.",
+    "value": {
+      "text": "no credential; provider address 127.0.0.1:9",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Cost and reproducibility of the suite (PRD 13.1).",
+    "reason": "Owner's standing requirement for step 8b.",
+    "evidence": [
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.lm:FAILURES"
+        }
+      ],
+      "note": null
+    },
+    "notes": [],
+    "tests": [
+      "tests/test_no_live_calls.py::test_the_test_process_has_no_provider_credential_and_a_closed_local_address",
+      "tests/test_no_live_calls.py::test_an_agent_call_without_the_stub_never_reaches_a_provider"
+    ],
+    "history": []
   }
 ]
