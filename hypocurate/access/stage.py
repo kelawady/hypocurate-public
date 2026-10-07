@@ -17,12 +17,15 @@ def actual_stage(conn: Connection, run_id: int, status: str) -> str:
     if status != "running":  # queued, failed
         return "none"
     row = conn.execute(text(
-        "SELECT EXISTS (SELECT 1 FROM plan WHERE run_id = :r) AS locked, "
+        "SELECT EXISTS (SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'narrowing' AND status = 'done' "
+        "AND output->>'result' = 'partly_sufficient') AS narrowed, "
+        "EXISTS (SELECT 1 FROM plan WHERE run_id = :r) AS locked, "
         "EXISTS (SELECT 1 FROM run_snapshot WHERE run_id = :r) AS frozen, "
         "EXISTS (SELECT 1 FROM calibration_result WHERE run_id = :r AND analysis_result_id IS NULL "
         "AND reason = 'no_dataset_frozen') AS closed"), dict(r=run_id)).one()
     if not row.locked:
-        return "before_lock"
+        # Step 8b (A4): after code's narrowing decision of partly sufficient, no plan is ever locked.
+        return "narrowed" if row.narrowed else "before_lock"
     if row.frozen:
         return "analysis"
     if row.closed:

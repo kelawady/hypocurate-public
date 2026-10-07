@@ -107,7 +107,8 @@ def _val(engine, sql, **params):
         return result.scalar() if result.returns_rows else None
 
 
-def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False, sufficiency="fixed_minimum") -> int:
+def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False, sufficiency="fixed_minimum",
+                   agents=()) -> int:
     """A running run of the reference claim that chose `sources`. Step 8b (0006): `sufficiency` is the
     query's option, chosen before dispatch; the plan locked for the run must have the same."""
     with engine.connect() as conn:
@@ -127,11 +128,12 @@ def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False, sufficien
     _val(engine, "UPDATE hypothesis_version SET confirmed_domain_id = :d, domain_confirmed_at = now() WHERE id = :v",
          v=vid, d=domain)
     _val(engine, "UPDATE hypothesis_version SET status = 'dispatched', dispatched_at = now() WHERE id = :v", v=vid)
-    return run_of_version(engine, vid, sources, marked)
+    return run_of_version(engine, vid, sources, marked, agents)
 
 
-def run_of_version(engine, vid, sources=("mpea", "tamu_fcc"), marked=False) -> int:
-    """Another running run of an already dispatched hypothesis version."""
+def run_of_version(engine, vid, sources=("mpea", "tamu_fcc"), marked=False, agents=()) -> int:
+    """Another running run of an already dispatched hypothesis version. Step 8b: `agents`, the roles whose
+    (test) settings versions are recorded at dispatch, as the database requires."""
     with engine.connect() as conn:
         registry = dict(conn.execute(text(
             "SELECT s.key, (SELECT sv.id FROM source_version sv WHERE sv.source_id = s.id AND sv.sealed_at IS NOT NULL "
@@ -147,6 +149,11 @@ def run_of_version(engine, vid, sources=("mpea", "tamu_fcc"), marked=False) -> i
         else:
             _val(engine, "INSERT INTO run_source (run_id, source_id, search_status) VALUES (:r, :s, 'not_selected')",
                  r=rid, s=ids[key])
+    for role in agents:
+        setting = _val(engine, "INSERT INTO agent_setting (role, version, instruction, model) VALUES (:o, "
+                               "(SELECT coalesce(max(version), 0) + 1 FROM agent_setting WHERE role = :o), 'test', "
+                               "'model-a') RETURNING id", o=role)
+        _val(engine, "INSERT INTO run_agent_setting VALUES (:r, :o, :s)", r=rid, o=role, s=setting)
     _val(engine, "UPDATE run SET status = 'running', started_at = now() WHERE id = :r", r=rid)
     return rid
 

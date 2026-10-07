@@ -52,6 +52,8 @@ def lock_rules(engine: Engine, run_id: int, content: Mapping[str, Any]) -> str:
     fp = fingerprint(plan)
 
     def body(conn: Connection, stage: str):
+        if stage == "narrowed":  # step 8b (A4): the partly-sufficient original never locks a plan
+            raise Refused("lock_rules", "narrowed")
         if stage != "before_lock":
             raise Refused("lock_rules", "already_done" if stage != "none" else "stage_mismatch")
         version = conn.execute(text("SELECT hypothesis_version_id FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()

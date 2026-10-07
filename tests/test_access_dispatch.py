@@ -246,8 +246,9 @@ def test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_ana
 
     assert _race(engine, engine.test_url, lambda: critic.get("flags_kind"), freeze) == ("denied", "stage_mismatch")
     analyst = access_for(engine, world.run, "analyst", "analysis")
-    kind, got = _outcome(lambda: analyst.get("records_full"))
-    assert kind == "allowed" and len(got) == len(world.records)
+    # Step 8b (Q6): the Analyst's list no longer holds records_full; coverage is on it at every stage.
+    kind, got = _outcome(lambda: analyst.get("coverage"))
+    assert kind == "allowed" and [s["source"] for s in got["sources"]] == ["mpea", "tamu_fcc"]
 
 
 # --- Vocabularies and unrecognized counts -------------------------------------------------------
@@ -298,8 +299,11 @@ def test_the_gap_report_input_has_codes_not_failure_text(engine):
     got = role_input(bind(engine, world.run, world.settings["analyst"]))
     assert got["coverage"]["sources"][1]["search_status"] == "failed"
     assert set(got["coverage"]["sources"][1]) == {"source", "search_status", "nothing_found", "unrecognized"}
-    rules = {d["rule"] for d in got["decisions"]["records"]}
-    assert rules == {"in_scope", "unrecognized"}
+    # Step 8b (Q6): eligibility decisions no longer reach the Analyst directly; the rule codes reach it only
+    # as the gap facts code stored (counts per rule code, from the `decisions` field read by the code role
+    # gap_facts, whose codes are tested in test_access_statistics.py).
+    assert "decisions" not in got and set(got["analyst_facts"]["gap"]) == {
+        "minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources"}
     assert set(allowed("analyst", "closed_without_freeze")) == set(got)
 
 

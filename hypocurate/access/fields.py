@@ -533,6 +533,129 @@ def frozen_analysis_data(conn: Connection, ctx: Context) -> dict:
             else None, "sets": sets, "records": records}
 
 
+# --- Step 8b: the narrowing decision's counts and the Analyst's facts ---------------------------
+
+# The fields a candidate-count cell names (owner, Q5): the claim's countable parts and what makes a
+# record usable (grain size and the outcome at an accepted status). Alloy class is not countable.
+CANDIDATE_CATEGORIES = ("phase_class", "test_type", "test_temperature_band")
+CANDIDATE_STATUS_FIELDS = CANDIDATE_CATEGORIES + ("test_temperature", "grain_size") + tuple(sorted(OUTCOME_FIELDS))
+
+
+def candidate_counts(conn: Connection, ctx: Context) -> list[dict]:
+    """For the narrowing decision (code; step 8b), before the lock: per chosen source, read through its
+    adapter from the sealed version recorded at dispatch (records are stored only after the lock),
+    counts of records per cell. A cell is the categories (through their vocabularies), the reported
+    test temperature, the status of each field in CANDIDATE_STATUS_FIELDS, and whether a grain size is
+    present. Counts and statuses only: no outcome value, no composition, no free text."""
+    out = []
+    for row in _chosen_sources(conn, ctx):
+        version = load_sealed_version(conn, row.source_version_id)
+        try:
+            result = adapters.read(version)
+        except (AdapterError, UnsealedVersion):
+            out.append({"source": row.key, "version_fingerprint": version.fingerprint, "readable": False})
+            continue
+        cells: Counter = Counter()
+        for r in result.records:
+            h = {f: v.to_json() for f, v in r.harmonized.items()}
+            cells[json.dumps({
+                "categories": {f: _category(f, h.get(f)) for f in CANDIDATE_CATEGORIES},
+                "test_temperature": _number(h.get("test_temperature")),
+                "status": {f: _status(h.get(f)) for f in CANDIDATE_STATUS_FIELDS},
+                "grain_size_present": _number(h.get("grain_size")) is not None,
+            }, sort_keys=True)] += 1
+        out.append({"source": row.key, "version_fingerprint": version.fingerprint, "readable": True,
+                    "n_records": len(result.records),
+                    "cells": [{**json.loads(cell), "n": n} for cell, n in sorted(cells.items())]})
+    return out
+
+
+# What the Analyst may see of a stored analysis entry (statistics stage output), by named key.
+_ENTRY_KEYS = ("analysis", "scope", "set", "source", "checks", "inference_reason", "minimums", "minimums_met",
+               "withheld", "alpha", "label", "label_reason", "label_text", "power_label", "detection_note")
+_COUNT_KEYS = ("n_records_in_set", "n_records", "n_records_not_used", "n_alloys", "n_alloys_not_used", "n_groups",
+               "n_groups_informative", "resid_df", "effective_papers", "largest_paper_share")
+# Computed from outcome values: never present for a withheld result (owner, 2026-10-07: below the minimums
+# the Analyst receives no estimate and nothing computed from outcome values).
+_FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "p_value", "p_value_description", "significant",
+                  "estimated_power_estimated_noise")
+_DECISION_KEYS = ("state", "outcome", "outcome_wording", "verdict", "verdict_wording", "exploratory",
+                  "evidence_level", "evidence_level_wording", "label")
+_GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources")
+_NARROWING_KEYS = ("result", "reason", "claim_scope", "part_counts", "zero_parts", "narrower_scope")
+
+
+def _calibration(c: Any) -> dict | None:
+    if not isinstance(c, Mapping):
+        return None
+    out = {"status": c.get("status"), "reason": c.get("reason")}
+    if c.get("status") == "computed":
+        for world in ("null", "effect"):
+            w = c.get(world) or {}
+            out[world] = {k: w.get(k) for k in ("share", "ci_low", "ci_high")}
+        a = c.get("assumptions") or {}
+        out["assumptions"] = {k: a.get(k) for k in ("scatter", "shift") if k in a}
+        out["n_simulations"], out["confidence_flag"] = c.get("n_simulations"), c.get("confidence_flag")
+    return out
+
+
+def _analysis_entry(e: Mapping) -> dict:
+    out = {k: e.get(k) for k in _ENTRY_KEYS}
+    out["counts"] = {k: (e.get("counts") or {}).get(k) for k in _COUNT_KEYS}
+    withheld = e.get("withheld") is not False
+    if not withheld:
+        out.update({k: e.get(k) for k in _FROM_OUTCOMES})
+        cal = e.get("calibration") or {}
+        out["calibration"] = {m: _calibration(cal.get(m)) for m in ("fixed", "estimated")}
+    # The fixed-noise detection rate uses no outcome value (structure only), so it stays below the
+    # minimums (owner, 2026-10-07); the estimated one is withheld there.
+    out["estimated_power"] = e.get("estimated_power")
+    fixed = ((e.get("detection") or {}).get("fixed")) if isinstance(e.get("detection"), Mapping) else None
+    out["detection_fixed"] = {k: fixed.get(k) for k in ("detection", "detection_ci", "false_positive",
+                                                        "false_positive_ci", "scatter", "shift", "unavailable")
+                              if k in fixed} if isinstance(fixed, Mapping) else None
+    return out
+
+
+def _done_output(conn: Connection, run_id: int, stage: str) -> Mapping | None:
+    out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s AND status = 'done' "
+                            "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
+    return out if isinstance(out, Mapping) else None
+
+
+def analyst_facts(conn: Connection, ctx: Context) -> dict:
+    """The Analyst's facts (step 8b, owner Q6): what code stored for the run, by named keys only (see
+    FIELDS). Refused when the stored facts its stage needs are missing."""
+    if ctx.stage == "narrowed":
+        n = _done_output(conn, ctx.run_id, "narrowing")
+        if n is None or n.get("result") != "partly_sufficient":
+            raise Refused("facts_missing")
+        return {"kind": "narrowing", "narrowing": {k: n.get(k) for k in _NARROWING_KEYS}}
+    stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
+    if stats is None or gap is None:
+        raise Refused("facts_missing")
+    p = _rows(conn, "SELECT content, sufficiency_option, min_records, min_alloys, min_groups, min_resid_df "
+                    "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
+    content = project(p.content, PLAN_SCHEMA) or {}
+    decision = stats.get("decision") if isinstance(stats.get("decision"), Mapping) else {}
+    return {
+        "kind": "analysis" if ctx.stage == "analysis" else "no_dataset_frozen",
+        "decision": {k: decision.get(k) for k in _DECISION_KEYS},
+        "plan": {"scope": content.get("scope"), "variables": content.get("variables"),
+                 "model": (content.get("model") or {}).get("name"), "alpha": (content.get("model") or {}).get("alpha"),
+                 "sufficiency_option": p.sufficiency_option,
+                 "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
+                              "resid_df": p.min_resid_df},
+                 "sensitivity_analyses": content.get("sensitivity_analyses")},
+        "withheld": stats.get("withheld"),
+        "analyses": [_analysis_entry(e) for e in stats.get("analyses") or [] if isinstance(e, Mapping)],
+        "not_analysed": [{k: e.get(k) for k in ("analysis", "scope", "source", "reason", "n_records_without_group",
+                                                "n_records_in_set")}
+                         for e in stats.get("not_analysed") or [] if isinstance(e, Mapping)],
+        "gap": {k: gap.get(k) for k in _GAP_KEYS},
+    }
+
+
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "claim": claim, "domain": domain, "sources_meta": sources_meta, "tag_values": tag_values,
     "record_counts": record_counts, "source_documentation": source_documentation,
@@ -541,5 +664,6 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
     "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
-    "frozen_analysis_data": frozen_analysis_data,
+    "frozen_analysis_data": frozen_analysis_data, "candidate_counts": candidate_counts,
+    "analyst_facts": analyst_facts,
 }

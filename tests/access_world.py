@@ -214,6 +214,31 @@ def original_run(w: World) -> tuple[int, int]:
     return rid, tested
 
 
+def code_output(w: World, run: int, name: str, output: dict, attempt: int = 1) -> int:
+    """A done code stage result (role NULL) with `output`, as `writes.code_stage` writes it."""
+    sid = w.stage(run, stage=name, role=None, attempt=attempt)
+    sql(w, "UPDATE stage_result SET status = 'done', finished_at = now(), output = :j_o WHERE id = :s",
+        j_o=output, s=sid)
+    return sid
+
+
+def stored_facts(w: World, run: int, frozen: bool) -> None:
+    """Step 8b: the statistics and gap-facts outputs code stores (step 7), with a planted value in keys
+    the Analyst's facts do not name (and, without a freeze, nowhere it may see)."""
+    hidden = {"yield_strength": PLANTED["yield_strength"]}
+    decision = {"state": "sufficient" if frozen else "no_dataset_frozen", "outcome": "insufficient",
+                "outcome_wording": "insufficient in the sources searched", "verdict": None, "verdict_wording": None,
+                "exploratory": False, "evidence_level": 1, "evidence_level_wording": "no dataset frozen",
+                "label": None, "freeze_fingerprint": None, "hidden": hidden}
+    analyses = [{"analysis": "pooled", "scope": "pooled", "set": "primary", "source": None, "withheld": False,
+                 "counts": {"n_records": 3, "n_alloys": 1, "hidden": hidden}, "estimate": 424.9, "std_error": 64.4,
+                 "records_found": [f"{PLANTED['yield_strength']}"], "hidden": hidden}] if frozen else []
+    code_output(w, run, "statistics", {"decision": decision, "analyses": analyses, "not_analysed": [],
+                                       "withheld": False, "hidden": hidden})
+    code_output(w, run, "gap_facts", {"minimums": None, "minimums_missed": [], "records_lacking_fields": {},
+                                      "eligibility_rules": {}, "sources": [], "hidden": hidden})
+
+
 def build(engine, stage_name: str) -> AccessWorld:
     """A main run at `stage_name` (one of the access stages, or 'queued' / 'failed')."""
     w = World(engine)
@@ -264,6 +289,21 @@ def build(engine, stage_name: str) -> AccessWorld:
         return world
     if stage_name == "before_lock":
         return world
+    if stage_name == "narrowed":
+        # Step 8b (A4): code's narrowing decision of partly sufficient, stored with named keys; a planted
+        # value in a key that is not named must never reach a role.
+        code_output(w, rid, "narrowing", {
+            "result": "partly_sufficient", "reason": "zero_parts_and_narrower_plan",
+            "claim_scope": {"phase_class": ["FCC"], "temperature_band": [{"band": "room temperature"},
+                                                                         {"band": "cryogenic", "min": -200.0,
+                                                                          "max": -150.0}],
+                            "test_type": ["tension"]},
+            "part_counts": [{"part": "phase_class", "value": "FCC", "n": 3}],
+            "zero_parts": [{"part": "temperature_band", "value": "cryogenic"}],
+            "narrower_scope": {"phase_class": ["FCC"], "temperature_band": ["room temperature"],
+                               "test_type": ["tension"]},
+            "hidden": {"yield_strength": PLANTED["yield_strength"]}})
+        return world
     lock(w, rid)
     w.search(rid, "mpea")
     w.search(rid, "tamu_fcc", status="failed", nothing_found="failed_search",
@@ -288,6 +328,7 @@ def build(engine, stage_name: str) -> AccessWorld:
     if stage_name in ("closed_without_freeze", "final_without_freeze"):
         sql(w, "INSERT INTO calibration_result (run_id, status, reason) VALUES (:r, 'unavailable', 'no_dataset_frozen')",
             r=rid)
+        stored_facts(w, rid, frozen=False)
         # The Analyst's gap report (it never saw an outcome value, so it holds none).
         stage(w, rid, "analyst", "analyst", GAP_REPORT)
         if stage_name == "final_without_freeze":
@@ -298,6 +339,7 @@ def build(engine, stage_name: str) -> AccessWorld:
         for rec in world.records:
             w.add(primary, rec)
         w.freeze(rid, len(world.records))
+        stored_facts(w, rid, frozen=True)
         if stage_name == "final":
             # Step 8b (0006; owner, A5): a run with a plan never completes as partly sufficient.
             w.complete(rid, "insufficient", level=4)

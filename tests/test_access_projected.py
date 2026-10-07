@@ -48,7 +48,9 @@ import pytest
 from sqlalchemy import text
 
 import access_world as aw
-from hypocurate.access import bind, role_input
+from hypocurate.access import AccessDenied, bind, role_input
+from hypocurate.access.allowlist import CODE_ROLES
+from hypocurate.access.dispatch import bind_code
 from hypocurate.access.allowlist import ROLES, allowed
 from hypocurate.db.engine import make_engine
 
@@ -101,21 +103,33 @@ def engine(migrated_database):
 def inputs_of(engine, world, role, stage=None):
     """The role's projected input, through the real dispatcher (role from the run's agent
     settings, stage from the database). `stage` is only checked."""
-    access = bind(engine, world.run, world.settings[role])
+    access = bind_code(engine, world.run, role) if role in CODE_ROLES else bind(engine, world.run, world.settings[role])
     assert stage is None or access.context.stage == stage
     return role_input(access)
 
 
 def test_the_encodings_catch_the_value_where_it_is_allowed(engine):
-    """Positive control: after the freeze the Analyst does receive the outcome values, and the
-    detector finds them in its input."""
-    world = aw.build(engine, "analysis")
-    got = inputs_of(engine, world, "analyst", "analysis")
+    """Positive control: Checks (code), which compares all values, does receive the outcome values, and
+    the detector finds them in its input. (Step 8b, Q6: was the Analyst after the freeze, whose list now
+    holds only code's stored facts.)"""
+    world = aw.build(engine, "curation")
+    got = inputs_of(engine, world, "checks", "curation")
     found = leaks(got, aw.PLANTED.values())
     for v in aw.PLANTED.values():
         assert any(f.startswith(f"{v}:") for f in found), v
-    assert repr(aw.PLANTED["yield_strength"]) in json.dumps(got["flags_full"])
-    assert repr(aw.PLANTED["yield_strength"]) in json.dumps(got["stage_outputs"])
+    assert repr(aw.PLANTED["yield_strength"]) in json.dumps(got["records_full"])
+
+
+def test_the_analysts_facts_carry_the_stored_results_by_named_keys_only(engine):
+    """Step 8b (Q6): after the freeze the Analyst receives the stored estimate; keys the facts do not name
+    (a planted value in them, a record list) never pass."""
+    world = aw.build(engine, "analysis")
+    got = inputs_of(engine, world, "analyst", "analysis")
+    assert set(got) == allowed("analyst", "analysis")
+    pooled = got["analyst_facts"]["analyses"][0]
+    assert pooled["estimate"] == 424.9 and pooled["std_error"] == 64.4
+    assert "records_found" not in pooled and "hidden" not in json.dumps(got)
+    assert leaks(got, aw.PLANTED.values()) == []
 
 
 def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
@@ -171,20 +185,30 @@ def test_no_projected_planted_value_in_the_gap_report_input(engine):
     world = aw.build(engine, "closed_without_freeze")
     got = inputs_of(engine, world, "analyst", "closed_without_freeze")
     assert set(got) == allowed("analyst", "closed_without_freeze")
-    assert got["condition_summaries"]["overall"]["n_records"] == 8
+    # Step 8b (Q6): code's stored facts (the planted value sits in keys they do not name).
+    assert got["analyst_facts"]["decision"]["state"] == "no_dataset_frozen"
     assert leaks(got, aw.PLANTED.values()) == []
 
 
-def test_no_projected_planted_value_in_the_commentators_input_without_a_freeze(engine):
-    """Owner, 2026-10-05: on a run that ended with no dataset frozen, the Commentator gets only the
-    gap-report input, the Analyst's gap report and the run's outcome."""
+def test_no_projected_planted_value_in_the_analysts_input_at_narrowed(engine):
+    """Step 8b (A4, Q6): the partly-sufficient original before any lock: the narrowing facts only."""
+    world = aw.build(engine, "narrowed")
+    got = inputs_of(engine, world, "analyst", "narrowed")
+    assert set(got) == allowed("analyst", "narrowed")
+    facts = got["analyst_facts"]
+    assert facts["kind"] == "narrowing" and facts["narrowing"]["zero_parts"] == [
+        {"part": "temperature_band", "value": "cryogenic"}]
+    assert leaks(got, aw.PLANTED.values()) == [] and "hidden" not in json.dumps(got)
+
+
+def test_the_commentator_receives_no_input_without_a_freeze(engine):
+    """Owner, 2026-10-07 (A6; was test_no_projected_planted_value_in_the_commentators_input_without_a_freeze):
+    until step 12 the Commentator's complete input is refused, so no planted value can reach it."""
     world = aw.build(engine, "final_without_freeze")
-    got = inputs_of(engine, world, "commentator", "final_without_freeze")
-    assert set(got) == allowed("commentator", "final_without_freeze")
-    assert aw.GAP_REPORT in json.dumps(got["gap_report"]) and got["outcome"]["outcome"] == "insufficient"
-    assert got["condition_summaries"]["overall"]["n_records"] == 8
-    assert leaks(got, aw.PLANTED.values()) == []
-    assert "extracted yield strength" not in json.dumps(got)  # the Curator's stage output stays out
+    assert allowed("commentator", "final_without_freeze") == frozenset()
+    with pytest.raises(AccessDenied) as denied:
+        inputs_of(engine, world, "commentator", "final_without_freeze")
+    assert denied.value.code == "empty_list"
 
 
 def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engine):
@@ -198,7 +222,7 @@ def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engi
 
 
 @pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final",
-                                         "final_without_freeze"])
+                                         "final_without_freeze", "narrowed"])
 def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
     """Owner's addition A: the original run of the narrower question, an earlier run of the original
     query and an earlier run of the same hypothesis hold OTHER in records, coefficient, stage outputs
@@ -223,6 +247,8 @@ def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
             got = inputs_of(engine, world, role, world_stage)
             assert leaks(got, [aw.OTHER]) == [], role
             checked += 1
-    assert checked >= 1
+    # Step 8b (A6): after completion no role reads anything until step 12 (the Commentator's lists are
+    # empty), so nothing can reach a role there; at every other stage at least one role is checked.
+    assert checked >= 1 if world_stage not in ("final", "final_without_freeze") else checked == 0
     if world_stage == "before_lock":
         assert inputs_of(engine, world, "planner", "before_lock")["claim"]["narrower_question"] is True

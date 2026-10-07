@@ -3492,7 +3492,7 @@
     "key": "access_allow_lists",
     "name": "Allowed fields per role and stage",
     "state": "in_force",
-    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. The Curator receives nothing at any run stage: it reads one sealed source version when that version is registered (stage 'registration', no run), and then only that version's documentation and the fields it may propose values for (step 8a). On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope), or for the Curator only its invocation's source version. Every read and every refusal is logged.",
+    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Critic between the lock and the freeze; the Analyst after the freeze, after a run ended without a freeze, and at 'narrowed' (a running run with no plan and code's narrowing decision of partly sufficient, where no plan can be locked), each time the same five fields: the claim, the domain, the source facts, the coverage and the Analyst's facts (code's stored results by named keys only; at 'narrowed', the narrowing facts only; below the minimums, nothing computed from outcome values). The Commentator receives nothing at any stage until step 12, when its lists are decided and reviewed (its earlier lists are in this entry's history). The Curator receives nothing at any run stage: it reads one sealed source version when that version is registered (stage 'registration', no run), and then only that version's documentation and the fields it may propose values for (step 8a). Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope), or for the Curator only its invocation's source version. Every read and every refusal is logged.",
     "value": {
       "text": "the table in hypocurate/access/allowlist.py (ALLOWED)",
       "unit": null
@@ -3506,7 +3506,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-06"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3540,7 +3540,8 @@
             "closed_without_freeze",
             "final",
             "final_without_freeze",
-            "registration"
+            "registration",
+            "narrowed"
           ]
         }
       ],
@@ -3558,6 +3559,12 @@
         "from": "2026-10-05",
         "to": "2026-10-06",
         "note": "Step 8a (owner, 2026-10-06, Q2): the Curator moved from the curation stage (its own source's data files and the fields to extract) to registration."
+      },
+      {
+        "value": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. The Curator receives nothing at any run stage: it reads one sealed source version when that version is registered (stage 'registration', no run), and then only that version's documentation and the fields it may propose values for (step 8a). On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope), or for the Curator only its invocation's source version. Every read and every refusal is logged.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner, 2026-10-07): the Analyst's lists (Q6), the stage 'narrowed' (A4) and the Commentator's empty lists (A6). Starting point for step 12, the Commentator's lists before this change: at 'final', claim, domain, sources_meta, plan, records_full, decisions, flags_full, results, coverage, stage_outputs, run_cost; at 'final_without_freeze', claim, domain, sources_meta, plan, coverage, stored_record_counts, decisions, flags_kind, condition_summaries, gap_report, outcome. The Analyst's lists before this change: at 'analysis', the first of these; at 'closed_without_freeze', the second without gap_report and outcome."
       }
     ],
     "notes": [
@@ -3567,9 +3574,14 @@
       "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
       "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
       "tests/test_access_projected.py::test_nothing_from_another_run_reaches_any_role",
-      "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
-      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze",
-      "tests/test_access_layer.py::test_the_curator_has_nothing_in_any_run"
+      "tests/test_access_layer.py::test_a_commentator_binding_reads_nothing_at_any_stage",
+      "tests/test_access_projected.py::test_the_commentator_receives_no_input_without_a_freeze",
+      "tests/test_access_layer.py::test_the_curator_has_nothing_in_any_run",
+      "tests/test_access_step8b.py::test_at_narrowed_only_the_analyst_reads",
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_analysts_input_at_narrowed",
+      "tests/test_access_projected.py::test_the_analysts_facts_carry_the_stored_results_by_named_keys_only",
+      "tests/test_access_step8b.py::test_below_the_minimums_the_analysts_facts_hold_nothing_computed_from_outcomes",
+      "tests/test_access_step8b.py::test_no_plan_is_locked_at_narrowed_by_code_or_by_the_database"
     ]
   },
   {
@@ -3907,8 +3919,8 @@
       "tests/test_access_layer.py::test_a_declared_stage_is_checked_against_the_database",
       "tests/test_access_layer.py::test_the_rules_lock_changes_what_each_role_may_see",
       "tests/test_access_layer.py::test_the_dataset_freeze_changes_what_each_role_may_see",
-      "tests/test_access_layer.py::test_completion_without_a_freeze_moves_access_to_the_commentator_only",
-      "tests/test_access_layer.py::test_completion_after_a_freeze_moves_access_to_the_commentator_only"
+      "tests/test_access_layer.py::test_completion_without_a_freeze_closes_the_analyst_and_gives_the_commentator_nothing",
+      "tests/test_access_layer.py::test_completion_after_a_freeze_closes_the_analyst_and_gives_the_commentator_nothing"
     ]
   },
   {
@@ -4557,9 +4569,9 @@
     "key": "accepted_disclosures",
     "name": "What the blinded views disclose by design",
     "state": "in_force",
-    "statement": "The blinding of the Planner, the Critic, the gap report and the Commentator without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; the Analyst's gap report passed to the Commentator; timing and the existence of refusals. Timing is not protected.",
+    "statement": "The blinding of the Planner, the Critic and the Analyst's facts without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; timing and the existence of refusals. Timing is not protected.",
     "value": {
-      "text": "the nine disclosures in ACCEPTED_DISCLOSURES",
+      "text": "the eight disclosures in ACCEPTED_DISCLOSURES",
       "unit": null
     },
     "category": "data_handling",
@@ -4570,7 +4582,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4587,7 +4599,14 @@
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The blinding of the Planner, the Critic, the gap report and the Commentator without a freeze is limited to: no outcome value is copied into their views from a stored outcome field, a value as reported, a flag's numbers, a stage's text, or text outside a vocabulary. They still disclose, by design: counts by field status; flag kinds and categories; condition summaries, which reveal an exact grain size or temperature when a group has one record; compositions and alloy labels; DOIs with DOI syntax (which may contain digits); text written or approved by people (the claim, approved tag values, source names and licences in code); numbers in the locked plan; the Analyst's gap report passed to the Commentator; timing and the existence of refusals. Timing is not protected.",
+        "from": "2026-10-05",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner, 2026-10-07): the item 'the Analyst's gap report passed to the Commentator' removed, since the Commentator reads nothing until step 12 (A6); step 12 decides it with the Commentator's lists."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_projected.py::test_no_projected_planted_value_in_the_critics_complete_input",
@@ -4782,7 +4801,7 @@
     "key": "code_role_access",
     "name": "Inclusion and Checks read through access objects",
     "state": "in_force",
-    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds. Step 7 (owner, 2026-10-05; a safeguard change): Statistics binds only at the analysis stage and receives exactly the locked plan and the frozen data (the frozen sets and, for their records only, what the model needs, outcome included); the gap facts bind at the analysis stage and when a run closed without a freeze, and receive no outcome value.",
+    "statement": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds. Step 7 (owner, 2026-10-05; a safeguard change): Statistics binds only at the analysis stage and receives exactly the locked plan and the frozen data (the frozen sets and, for their records only, what the model needs, outcome included); the gap facts bind at the analysis stage and when a run closed without a freeze, and receive no outcome value. Step 8b (owner, 2026-10-07; a safeguard change): the narrowing decision binds only before the rules lock and receives only counts of structure per chosen source, read from its sealed version (records per combination of phase class, test type, temperature band and reported temperature, with field statuses and whether a grain size is present): no outcome value and no composition.",
     "value": {
       "text": "Inclusion: plan, record conditions, flag kinds; Checks: plan, all values",
       "unit": null
@@ -4795,7 +4814,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4821,6 +4840,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 7 (owner, 2026-10-05)."
+      },
+      {
+        "value": "Inclusion and Checks are code and read through their own access objects, bound by the trusted dispatcher at the curation stage only, every bind and read logged. Checks sees every value. Inclusion receives no outcome value, so no eligibility decision can depend on a record's outcome directly or on its position relative to the tested relationship. Not claimed: that outcomes play no part at all, since Checks compares values (pairwise comparisons that feed a whole-group classification) to classify duplicates, conflicts and physically invalid records, and Inclusion acts on those flag kinds. Step 7 (owner, 2026-10-05; a safeguard change): Statistics binds only at the analysis stage and receives exactly the locked plan and the frozen data (the frozen sets and, for their records only, what the model needs, outcome included); the gap facts bind at the analysis stage and when a run closed without a freeze, and receive no outcome value.",
+        "from": "2026-10-05",
+        "to": "2026-10-07",
+        "note": "Step 8b (owner, 2026-10-07, Q5): the code role 'narrowing' added."
       }
     ],
     "notes": [
@@ -4836,7 +4861,9 @@
       "tests/test_access_statistics.py::test_the_complete_input_of_statistics",
       "tests/test_access_statistics.py::test_the_gap_facts_receive_no_outcome_value",
       "tests/test_access_statistics.py::test_the_lists_are_the_owners_decision",
-      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification"
+      "tests/test_flags.py::test_flags_come_from_pairwise_comparisons_and_group_classification",
+      "tests/test_access_step8b.py::test_candidate_counts_are_counts_of_structure_only",
+      "tests/test_access_step8b.py::test_the_narrowing_role_binds_only_before_the_lock"
     ]
   },
   {
