@@ -33,6 +33,12 @@ def planner_body(**over):
          "stated": {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": False},
          "outcome": "yield_strength", "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}], "narrower": None}
     b.update(over)
+    # Fix round 1 (owner's decision B): a part marked defaulted must hold the default, so a scope part that differs
+    # from the default is marked as stated by the claim (unless a test gives the marks).
+    if "stated" not in over:
+        from hypocurate.pipeline.agents.planner import DEFAULT_SCOPE
+        b["stated"] = {k: v or sorted(map(str, b["claim_scope"][k])) != sorted(map(str, DEFAULT_SCOPE[k]))
+                       for k, v in b["stated"].items()}
     return b
 
 
@@ -280,6 +286,27 @@ def test_finding_1_the_orchestrator_reads_the_narrower_link_not_the_runs_flag(en
     out = run(engine, narrower, stub)
     assert out.status == "failed" and out.failure.startswith("narrowing_sources_changed:")
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=narrower) == 0
+
+
+def test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested(engine, stub):
+    """What the command line prints between its two calls: the run is prepared and nothing is locked yet."""
+    stub.respond(responder(planner_body()))
+    rid = dispatched(engine)
+    prepared = orchestrator.prepare(engine, rid, client_options=sp.client_options(stub))
+    assert prepared.ready and prepared.status == "running"
+    assert prepared.question_as_tested["source"] == "planner"
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
+    rest = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub))
+    assert (rest.status, rest.outcome) == ("completed", "sufficient") and rest.stages[0] == "rules lock"
+
+
+def test_proceed_builds_the_plan_only_after_a_narrowing_decision_to_proceed(engine, stub):
+    stub.respond(responder(planner_body()))
+    rid = dispatched(engine)
+    queries.start(engine, rid)
+    out = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub))
+    assert out.status == "failed" and out.failure.startswith("refused: ")
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
 
 
 # --- the failure table ----------------------------------------------------------------------------------

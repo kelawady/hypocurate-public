@@ -7242,7 +7242,7 @@
     "key": "planner_answer",
     "name": "What the Planner may answer and what code does with it",
     "state": "in_force",
-    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires, the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires (a part marked as the default must hold the profile's default, else the answer is an invalid plan; the marks are otherwise the Planner's reading, not verified by code), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the eligibility rules, the calibration and the sufficiency option never come from the model, and of the rules only one does: for a band other than room temperature, the Planner's temperature range becomes the plan's temperature-range rule. The Planner's scope and exclusion rules decide which records are eligible. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
     "value": {
       "text": "fixed form; plan built by code",
       "unit": null
@@ -7251,7 +7251,8 @@
     "affects": "Every plan a live Planner contributes to.",
     "reason": "CLAUDE.md rule 1: code decides; agents advise. PRD 5.2: exclusion rules from a menu.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md.",
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md, 'Code decides'); owner's decision B and wording corrections (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7271,6 +7272,9 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.planner:make_check"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:DEFAULT_SCOPE"
         }
       ],
       "note": null
@@ -7285,7 +7289,9 @@
       "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer",
       "tests/test_planner_narrowing.py::test_an_answer_without_the_stated_marks_is_invalid",
       "tests/test_planner_narrowing.py::test_every_wrong_type_at_every_position_is_refused_by_the_planners_check",
-      "tests/test_planner_narrowing.py::test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan"
+      "tests/test_planner_narrowing.py::test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan",
+      "tests/test_planner_narrowing.py::test_a_part_marked_defaulted_must_hold_the_default",
+      "tests/test_planner_narrowing.py::test_parts_marked_defaulted_that_hold_the_defaults_are_accepted"
     ],
     "history": [
       {
@@ -7299,7 +7305,71 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
+      },
+      {
+        "value": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires, the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1: a part marked as the default must hold it (owner's decision B); wording corrected (second-model review: the Planner's temperature bounds enter a rule)."
       }
+    ]
+  },
+  {
+    "key": "question_as_tested",
+    "name": "The question as tested, beside the claim",
+    "state": "in_force",
+    "statement": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code; a person confirms it at the rules lock on the website (step 10)'. Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
+    "value": {
+      "text": "code-written; labelled the Planner's reading; confirmed by a person in step 10",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "What a reader is told the run tested; how a wrong reading of the claim can be noticed.",
+    "reason": "The second-model review found that claim interpretation is unchecked: a valid plan and a verdict could be attached to the wrong scientific question. Showing the reading prominently, and checking the defaulted marks, is the owner's response for sprint 1; the confirmation by a person comes with the website's rules lock.",
+    "evidence": [
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md, 'Claim interpretation'); owner's decision B (2026-10-07)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.reading:LABELS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reading:question_as_tested"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:DEFAULT_SCOPE"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.orchestrator:prepare"
+        }
+      ],
+      "done": "Step 8b fix round 1: the text and label written by code, stored with the Planner's stage output, the defaulted-mark check, printed by `run`/`dispatch` before the rules lock and by `show`.",
+      "pending": "A person confirms the reading at the rules lock on the website (step 10).",
+      "step": 10,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_reading.py::test_the_label_says_whose_reading_it_is_and_that_a_person_confirms_it",
+      "tests/test_reading.py::test_each_exclusion_rule_in_words",
+      "tests/test_planner_narrowing.py::test_the_planners_stage_stores_the_question_as_tested_labelled_as_its_reading",
+      "tests/test_planner_narrowing.py::test_a_part_marked_defaulted_must_hold_the_default",
+      "tests/test_orchestrator.py::test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested",
+      "tests/test_cli_runs.py::test_run_prints_the_claim_and_the_planners_reading_before_the_report_and_show_keeps_it",
+      "tests/test_cli_runs.py::test_a_fixed_plan_runs_reading_is_the_reference_plans"
     ]
   },
   {

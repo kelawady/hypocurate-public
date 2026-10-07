@@ -71,17 +71,49 @@ def _ceiling(value: str | None) -> Decimal | None:
 
 
 def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
+    """Two guarded calls: up to the rules lock, then on to the end. Between them the original claim and the
+    question as tested are printed (owner's decision B), before the run goes on."""
     from hypocurate.access.guarded import GuardedRunError, run_guarded
+    payload = {"run_id": run_id, "ceiling": str(ceiling) if ceiling is not None else None}
     try:
-        report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded",
-                             {"run_id": run_id, "ceiling": str(ceiling) if ceiling is not None else None},
+        report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "prepare"},
                              timeout=3600, audit=(engine, run_id))
+        print(json.dumps({"claim": _claim(engine, run_id), "question_as_tested": report.get("question_as_tested")},
+                         ensure_ascii=False), flush=True)
+        if report.get("ready"):
+            rest = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "proceed"},
+                               timeout=3600, audit=(engine, run_id))
+            report = {**rest, "stages": report["stages"] + rest["stages"],
+                      "question_as_tested": report.get("question_as_tested")}
     except GuardedRunError:
         print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
               f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0 if report.get("status") in ("completed", "failed") else 1
+
+
+def _claim(engine: Engine, run_id: int) -> str:
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT hv.text FROM run r JOIN hypothesis_version hv ON hv.id = "
+                                 "r.hypothesis_version_id WHERE r.id = :r"), dict(r=run_id)).scalar_one()
+
+
+def question_as_tested(engine: Engine, run_id: int) -> dict | None:
+    """The Planner's stored reading, else the reading of the locked plan (fixed or narrower), else none."""
+    from hypocurate.pipeline import reading
+    with engine.connect() as conn:
+        stored = conn.execute(text("SELECT output->'question_as_tested' FROM stage_result WHERE run_id = :r AND "
+                                   "stage = 'planner' AND status = 'done' ORDER BY id DESC LIMIT 1"),
+                              dict(r=run_id)).scalar_one_or_none()
+        if stored:
+            return stored
+        row = conn.execute(text("SELECT p.content, h.narrower_of_run_id FROM plan p JOIN run r ON r.id = p.run_id "
+                                "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h "
+                                "ON h.id = hv.hypothesis_id WHERE p.run_id = :r"), dict(r=run_id)).one_or_none()
+    if row is None:
+        return None
+    return reading.from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed")
 
 
 def show(engine: Engine, run_id: int) -> dict | None:
@@ -119,7 +151,8 @@ def show(engine: Engine, run_id: int) -> dict | None:
     else:
         explanation = None
     return {
-        "run": run.id, "query": run.number, "claim": run.text, "status": run.status,
+        "run": run.id, "query": run.number, "claim": run.text,
+        "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
         "narrower_question_of": original, "narrower_question": narrower,
         # A8: a narrower question's plan is shown as coming from its original's narrowing decision.
         "plan": ("from the narrowing decision" if original is not None else "fixed") if run.fixed_plan

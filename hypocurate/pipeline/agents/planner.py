@@ -28,12 +28,14 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Mapping
 
 from hypocurate.access.allowlist import ALLOY_CLASSES, EXCLUSION_RULES
 from hypocurate.access.vocabulary import PHASE_CLASSES, TEST_TYPES
 from hypocurate.pipeline import plan as plans
 from hypocurate.pipeline import profile as p
+from hypocurate.pipeline import reading
 from hypocurate.pipeline.agents import libraries
 from hypocurate.pipeline.eligibility import SUPPORTED_OUTCOMES
 
@@ -63,6 +65,14 @@ def signature(instruction: str):
     return PlannerSignature.with_instructions(instruction)
 
 
+# The profile's default of each scope part: what the Planner must give for a part it marks as not stated by the
+# claim (owner's decision B, fix round 1; register 'question_as_tested'). One named place: also the defaults the
+# Planner is shown.
+DEFAULT_SCOPE: Mapping[str, list] = MappingProxyType({
+    "alloy_class": list(p.ALLOY_CLASSES), "phase_class": list(p.PHASE_CLASSES),
+    "test_type": list(p.PERMITTED_TEST_TYPES), "temperature_band": [{"band": plans.ROOM_TEMPERATURE}]})
+
+
 def allowed_values(tag_values: list[Mapping]) -> dict:
     """The answer's form and allowed values, built by code from the vocabularies, the approved tag values
     and the profile's defaults (no run data)."""
@@ -84,8 +94,7 @@ def allowed_values(tag_values: list[Mapping]) -> dict:
         "outcome": list(SUPPORTED_OUTCOMES),
         "exclusion_rule_menu": {"grain_size_range": "min and/or max in µm", "temperature_range": "min and/or max in °C",
                                 "phase": CATEGORY_RULE_VALUES["phase"], "test_type": CATEGORY_RULE_VALUES["test_type"]},
-        "defaults": {"alloy_class": list(p.ALLOY_CLASSES), "phase_class": list(p.PHASE_CLASSES),
-                     "test_type": list(p.PERMITTED_TEST_TYPES), "temperature_band": [{"band": "room temperature"}],
+        "defaults": {**{k: list(v) for k, v in DEFAULT_SCOPE.items()},
                      "outcome": p.OUTCOME[0],
                      "exclusion_rules": [{"rule": "grain_size_range", "min": float(p.GRAIN_SIZE_FLOOR_UM)}]},
     }
@@ -208,8 +217,16 @@ def read_answer(data: Mapping) -> Answer:
     stated = data["stated"]
     if not isinstance(stated, dict) or set(stated) != SCOPE_KEYS or not all(isinstance(v, bool) for v in stated.values()):
         raise AnswerInvalid("'stated' marks each scope part true (stated by the claim) or false (defaulted)")
-    return Answer(data["domain_matches"], _scope(data["claim_scope"], SCOPE_KEYS), data["outcome"],
-                  _exclusions(data["exclusion_rules"]), narrower, dict(sorted(stated.items())))
+    scope = _scope(data["claim_scope"], SCOPE_KEYS)
+    for part, is_stated in stated.items():
+        if not is_stated and _sorted(scope[part]) != _sorted(DEFAULT_SCOPE[part]):
+            raise AnswerInvalid(f"{part} is marked as not stated by the claim but is not the default")
+    return Answer(data["domain_matches"], scope, data["outcome"], _exclusions(data["exclusion_rules"]), narrower,
+                  dict(sorted(stated.items())))
+
+
+def _sorted(values: list) -> list:
+    return sorted(values, key=lambda v: json.dumps(v, sort_keys=True))
 
 
 # --- The plan, built by code -------------------------------------------------------------------------
@@ -306,7 +323,10 @@ def run_planner(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                     input_=inputs)
         return PlannerResult(None, result.failure, stage_id, invocation, result.calls)
     answer = read_answer(parse(result.outputs["plan"]))
-    close_stage(engine, run_id, stage_id, "done", {"answer": answer.__dict__, "attempts": result.attempts},
-                input_=inputs)
+    # Decision B: the question as tested, in code's words, labelled as the Planner's reading.
+    tested = reading.question_as_tested(answer.claim_scope, answer.outcome, answer.exclusion_rules, answer.stated,
+                                        "planner")
+    close_stage(engine, run_id, stage_id, "done", {"answer": answer.__dict__, "attempts": result.attempts,
+                                                   "question_as_tested": tested}, input_=inputs)
     return PlannerResult(answer, None, stage_id, invocation, result.calls)
 

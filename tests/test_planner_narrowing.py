@@ -36,6 +36,12 @@ def body(**over):
          "stated": {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": False},
          "outcome": "yield_strength", "exclusion_rules": [{"rule": "grain_size_range", "min": 0.1}], "narrower": None}
     b.update(over)
+    # Fix round 1 (owner's decision B): a part marked defaulted must hold the default, so a scope part that differs
+    # from the default is marked as stated by the claim (unless a test gives the marks).
+    if "stated" not in over:
+        from hypocurate.pipeline.agents.planner import DEFAULT_SCOPE
+        b["stated"] = {k: v or sorted(map(str, b["claim_scope"][k])) != sorted(map(str, DEFAULT_SCOPE[k]))
+                       for k, v in b["stated"].items()}
     return b
 
 
@@ -369,3 +375,42 @@ def test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan(value):
     check = planner.make_check(1, "fixed_minimum", {MPEA_CLASS})
     answer = body(exclusion_rules=[{"rule": value, "min": 0.1}])
     assert check({"plan": json.dumps(answer)}) == "invalid_plan"
+
+
+# --- decision B (owner, fix round 1): the Planner's reading ---------------------------------------------------
+
+@pytest.mark.parametrize("part, value", [("test_type", ["compression"]), ("phase_class", ["BCC"]),
+                                         ("temperature_band", [{"band": "cryogenic", "min": -200.0, "max": -150.0}])])
+def test_a_part_marked_defaulted_must_hold_the_default(part, value):
+    """A part the Planner marks as not stated by the claim must be the profile's default; else the answer is an
+    invalid plan (corrected once)."""
+    check = planner.make_check(1, "fixed_minimum", {MPEA_CLASS})
+    stated = {"alloy_class": True, "phase_class": True, "test_type": True, "temperature_band": True, part: False}
+    answer = body(claim_scope={**body()["claim_scope"], part: value}, stated=stated)
+    assert check({"plan": json.dumps(answer)}) == "invalid_plan"
+    marked_stated = body(claim_scope={**body()["claim_scope"], part: value}, stated={**stated, part: True})
+    assert check({"plan": json.dumps(marked_stated)}) in (None, "invalid_plan")  # judged on its other merits only
+    with pytest.raises(planner.AnswerInvalid, match="marked as not stated"):
+        planner.read_answer(json.loads(json.dumps(answer)))
+
+
+def test_parts_marked_defaulted_that_hold_the_defaults_are_accepted():
+    check = planner.make_check(1, "fixed_minimum", {MPEA_CLASS})
+    stated = {"alloy_class": False, "phase_class": False, "test_type": False, "temperature_band": False}
+    assert check({"plan": json.dumps(body(stated=stated))}) is None
+    assert planner.DEFAULT_SCOPE == {"alloy_class": [MPEA_CLASS], "phase_class": ["FCC"], "test_type": ["tension"],
+                                     "temperature_band": [RT]}
+
+
+def test_the_planners_stage_stores_the_question_as_tested_labelled_as_its_reading(engine, stub):
+    from hypocurate.pipeline import reading
+    rid = running(engine)
+    stub.queue(sp.reply(answer()))
+    plan_run(engine, rid, stub)
+    out = one(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=rid)
+    q = out["question_as_tested"]
+    assert q["label"] == reading.LABELS["planner"]
+    assert q["text"] == ("yield strength against grain size, in multi-principal-element (high-entropy) alloy "
+                         "(as the claim states); phase class FCC (as the claim states); test type tension (assumed: "
+                         "the claim does not state it); room temperature, 20 to 25 °C (assumed: the claim does not "
+                         "state it); excluding records with a grain size below 0.1 µm")

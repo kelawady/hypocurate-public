@@ -35,6 +35,7 @@ from typing import Any, Mapping
 from sqlalchemy import Connection, Engine, text
 
 from hypocurate.pipeline import analysis, checkpoints, checks, completion, extract, inclusion, narrowing, queries
+from hypocurate.pipeline import reading
 from hypocurate.pipeline import plan as plans
 from hypocurate.pipeline.agents import analyst, critic, planner
 from hypocurate.pipeline.agents.lm import RUN_STOPS
@@ -66,6 +67,8 @@ class RunReport:
     narrower_question: str | None = None
     explanation: str | None = None
     explanation_failure: str | None = None
+    question_as_tested: dict | None = None
+    ready: bool = False  # prepared: the run goes on to the rules lock (`proceed`)
 
 
 def fail_run(engine: Engine, run_id: int, code: str, detail: str | None = None) -> str:
@@ -110,7 +113,21 @@ def _narrower_plan(engine: Engine, run_id: int, original: int, version_id: int) 
 
 
 def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
-    """Runs the run to its end (completed or failed), or leaves it running if a call stayed open."""
+    """Runs the run to its end (completed or failed), or leaves it running if a call stayed open: `prepare`, then,
+    unless the run ended there, `proceed`."""
+    report = prepare(engine, run_id, ceiling=ceiling, client_options=client_options)
+    if not report.ready:
+        return report
+    rest = proceed(engine, run_id, ceiling=ceiling, client_options=client_options)
+    rest.stages = report.stages + rest.stages
+    rest.question_as_tested = report.question_as_tested
+    return rest
+
+
+def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
+    """Up to the rules lock: start; the narrower question's or the fixed plan, or the Planner and the narrowing
+    decision (the partly-sufficient path ends here). `ready` when the run goes on to `proceed`; the question as
+    tested is in the report (owner's decision B: the command line prints it before the run goes on)."""
     report = RunReport(run_id)
     agent_kw = dict(ceiling=ceiling, client_options=client_options)
     row = _row(engine, run_id)
@@ -124,10 +141,10 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
             if code:
                 return _failed(engine, report, code)
             report.stages.append("fixed plan")
+            report.question_as_tested = reading.from_plan(plan, "narrower")
         elif row.fixed_plan:
-            plan = plans.reference_plan(row.hypothesis_version_id)
-            plan["sufficiency"]["option"] = row.sufficiency_option
             report.stages.append("fixed plan")
+            report.question_as_tested = reading.from_plan(_reference_plan(row), "fixed")
         else:
             result = planner.run_planner(engine, run_id, **agent_kw)
             report.stages.append("planner")
@@ -136,6 +153,7 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
             if result.failure is not None:
                 return _failed(engine, report, "spending_refused" if result.failure in SPENDING else "planner_failed",
                                result.failure)
+            report.question_as_tested = _stored_reading(engine, result.stage_id)
             answer = result.answer
             if not answer.domain_matches:
                 return _failed(engine, report, "domain_mismatch")
@@ -150,8 +168,30 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                 q = queries.create_narrower(engine, run_id, decision["narrower_scope"])
                 report.narrower_question = q.number
                 return _done(engine, report)
-            plan = planner.build_plan(row.hypothesis_version_id, answer.claim_scope, answer.outcome,
-                                      answer.exclusion_rules, row.sufficiency_option)
+        report.ready = True
+        return _done(engine, report)
+    except Refused as refused:
+        return _failed(engine, report, "refused", refused.code)
+
+
+def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
+    """From the rules lock to the end, for a run `prepare` left ready. The plan is built again from what is stored
+    (the narrower question's stored plan with its checks, the reference plan, or the Planner's stored answer after
+    a narrowing decision to proceed), so nothing is carried between the two in memory."""
+    report = RunReport(run_id)
+    agent_kw = dict(ceiling=ceiling, client_options=client_options)
+    row = _row(engine, run_id)
+    try:
+        if row.status != "running":
+            raise Refused("proceed", "stage_mismatch", "the run is not running")
+        if row.narrower_of_run_id is not None:
+            plan, code = _narrower_plan(engine, run_id, row.narrower_of_run_id, row.hypothesis_version_id)
+            if code:
+                return _failed(engine, report, code)
+        elif row.fixed_plan:
+            plan = _reference_plan(row)
+        else:
+            plan = _planner_plan(engine, run_id, row)
         checkpoints.lock_rules(engine, run_id, plan)
         report.stages.append("rules lock")
         extract.store_records(engine, run_id)
@@ -175,6 +215,33 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
         return _done(engine, report)
     except Refused as refused:
         return _failed(engine, report, "refused", refused.code)
+
+
+def _reference_plan(row) -> dict:
+    plan = plans.reference_plan(row.hypothesis_version_id)
+    plan["sufficiency"]["option"] = row.sufficiency_option
+    return plan
+
+
+def _stored_reading(engine: Engine, stage_id: int) -> dict | None:
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT output->'question_as_tested' FROM stage_result WHERE id = :s"),
+                            dict(s=stage_id)).scalar_one()
+
+
+def _planner_plan(engine: Engine, run_id: int, row) -> dict:
+    """The plan from the Planner's stored answer, only after a stored narrowing decision to proceed."""
+    with engine.connect() as conn:
+        stored = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner' AND "
+                                   "status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+        decided = conn.execute(text("SELECT output->>'result' FROM stage_result WHERE run_id = :r AND stage = "
+                                    "'narrowing' AND status = 'done' ORDER BY id DESC LIMIT 1"),
+                               dict(r=run_id)).scalar_one_or_none()
+    if not isinstance(stored, dict) or decided != "proceed":
+        raise Refused("proceed", "stage_mismatch", "no Planner answer with a narrowing decision to proceed")
+    a = stored["answer"]
+    return planner.build_plan(row.hypothesis_version_id, a["claim_scope"], a["outcome"], a["exclusion_rules"],
+                              row.sufficiency_option)
 
 
 def _explain(engine: Engine, report: RunReport, agent_kw: Mapping) -> str | None:
@@ -216,7 +283,8 @@ def run_guarded(payload: dict) -> dict:
     engine = make_engine(load_settings(web=False).database_url)
     try:
         ceiling = Decimal(payload["ceiling"]) if payload.get("ceiling") is not None else None
-        r = run(engine, int(payload["run_id"]), ceiling=ceiling, client_options=payload.get("client_options"))
+        phase = {"prepare": prepare, "proceed": proceed}.get(payload.get("phase"), run)
+        r = phase(engine, int(payload["run_id"]), ceiling=ceiling, client_options=payload.get("client_options"))
         return json.loads(json.dumps(r.__dict__, default=str))
     finally:
         engine.dispose()

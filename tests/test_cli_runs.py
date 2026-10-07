@@ -41,9 +41,10 @@ def hc(capsys, *argv):
 
 
 def report_of(out: str) -> dict:
-    """The run's report: the JSON after the dispatch line."""
-    first, rest = out.split("\n", 1)
-    return {**json.loads(first), "report": json.loads(rest)}
+    """The run's report: the dispatch line, then (fix round 1, decision B) the claim and the question as tested,
+    printed before the run goes on to the rules lock, then the report."""
+    first, reading, rest = out.split("\n", 2)
+    return {**json.loads(first), "reading": json.loads(reading), "report": json.loads(rest)}
 
 
 def guard_refusals(engine, run_id):
@@ -204,3 +205,29 @@ def test_14_1_the_controlled_duplicates_in_a_marked_test_run(engine, stub, capsy
     assert once > 0 and stored > once  # kept in the store, counted once
     assert label == ["test run: includes constructed data"]
     assert any("[[ ## classification ## ]]" in r["raw"].decode() for r in stub.requests)  # the Critic was asked
+
+
+# --- decision B (owner, fix round 1): the question as tested beside the claim -----------------------------------
+
+def test_run_prints_the_claim_and_the_planners_reading_before_the_report_and_show_keeps_it(engine, stub, capsys):
+    from hypocurate.pipeline import reading
+    stub.respond(responder(planner_body()))
+    code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+    assert code == 0, err
+    r = report_of(out)
+    assert r["reading"]["claim"] == FCC_CLAIM
+    q = r["reading"]["question_as_tested"]
+    assert q["label"] == reading.LABELS["planner"] and "test type tension (assumed" in q["text"]
+    code, out, err = hc(capsys, "show", str(r["run"]))
+    shown = json.loads(out)
+    assert shown["claim"] == FCC_CLAIM and shown["question_as_tested"] == q
+
+
+def test_a_fixed_plan_runs_reading_is_the_reference_plans(engine, stub, capsys):
+    from hypocurate.pipeline import reading
+    stub.respond(responder())
+    code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer")
+    r = report_of(out)
+    assert r["reading"]["question_as_tested"]["label"] == reading.LABELS["fixed"]
+    code, out, err = hc(capsys, "show", str(r["run"]))
+    assert json.loads(out)["question_as_tested"] == r["reading"]["question_as_tested"]
