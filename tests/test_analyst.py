@@ -196,3 +196,32 @@ def test_a_text_breaking_each_new_rule_is_refused(engine, stub, rule):
     stub.queue(reply(bad), reply(bad))
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
     assert (out.report, out.failure) == (None, "wording_refused") and len(stub.requests) == 2
+
+
+# --- failure facts (owner, 2026-10-07, after the live set): fixed facts only, never the answer's text ---------
+
+def details_of(engine, stage_id):
+    return one(engine, "SELECT output->'failure_details' FROM stage_result WHERE id = :s", s=stage_id)
+
+
+def test_an_unparsable_answer_stores_its_form_facts_and_no_text(engine, stub):
+    rid = below_minimums(engine)
+    prose = "ZQPROSE an explanation written without the field markers"
+    stub.queue(sp.reply(prose), sp.reply(prose))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure == "malformed"
+    details = details_of(engine, out.stage_id)
+    assert details == [{"attempt": n, "parse": {"output_headers_present": {"report": False}, "completed_marker": False,
+                                                "header_count": 0, "answer_empty": False}} for n in (1, 2)]
+    stored = json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
+    assert "ZQPROSE" not in stored
+
+
+def test_a_refused_text_stores_the_names_of_the_rules_it_broke_and_no_text(engine, stub):
+    rid = below_minimums(engine)
+    bad = "ZQBAD The data are insufficient in the sources searched; grain refinement causes strength."
+    stub.queue(reply(bad), reply(bad))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure == "wording_refused"
+    assert details_of(engine, out.stage_id) == [{"attempt": n, "problems": ["forbidden: causes"]} for n in (1, 2)]
+    assert "ZQBAD" not in json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))

@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Mapping
@@ -37,6 +38,20 @@ class AgentResult:
     failure: str | None
     attempts: list[str] = field(default_factory=list)  # one entry per request: "ok" or a failure code
     calls: list[int] = field(default_factory=list)       # the recorded model calls
+    # Step 8b (owner, 2026-10-07): per failed attempt, fixed facts about the answer's form, never its text.
+    details: list[dict] = field(default_factory=list)
+
+
+def parse_failure_facts(error: BaseException, signature) -> dict | None:
+    """For an answer DSPy could not parse: whether each output field's header and the closing marker were present,
+    and how many field headers there were. Booleans and a count only: none of the answer's text."""
+    response = getattr(error, "lm_response", None)
+    if not isinstance(response, str):
+        return None
+    headers = re.findall(r"\[\[ ## (\w+) ## \]\]", response)
+    return {"output_headers_present": {name: name in headers for name in signature.output_fields},
+            "completed_marker": "completed" in headers, "header_count": len(headers),
+            "answer_empty": not response.strip()}
 
 
 def call_agent(db, invocation_id: int, signature, inputs: Mapping[str, str], *, model: str, max_tokens: int,
@@ -59,11 +74,16 @@ def call_agent(db, invocation_id: int, signature, inputs: Mapping[str, str], *, 
             try:
                 with dspy.context(lm=lm, adapter=adapter):
                     prediction = dspy.Predict(signature)(**inputs, note=note)
-            except Exception:  # noqa: BLE001 (classified by code; nothing of it is kept here)
+            except Exception as error:  # noqa: BLE001 (classified by code; nothing of its text is kept here)
                 code = engine.last_failure or "malformed"
+                facts = parse_failure_facts(error, signature) if code == "malformed" else None
+                if facts is not None:
+                    result.details.append({"attempt": len(result.attempts) + 1, "parse": facts})
             else:
                 outputs = {name: str(getattr(prediction, name)) for name in signature.output_fields}
                 code = check(outputs) if check is not None else None
+                if code is not None and getattr(check, "last_problems", None):
+                    result.details.append({"attempt": len(result.attempts) + 1, "problems": list(check.last_problems)})
                 if code is None:
                     result.attempts.append("ok")
                     result.outputs, result.failure = outputs, None

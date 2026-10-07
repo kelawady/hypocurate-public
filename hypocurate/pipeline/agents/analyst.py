@@ -50,15 +50,20 @@ def make_check(analyst_input: Mapping[str, Any]):
     decision = analyst_input["analyst_facts"].get("decision") or {}
 
     def check(outputs: Mapping[str, str]) -> str | None:
+        check.last_problems = []
         report = outputs["report"].strip()
         if not report:
             return "empty"
         if text_checks.unmatched_numbers(report, analyst_input):
+            check.last_problems = ["numbers_unmatched"]  # the code only: the numbers are the model's text
             return "numbers_unmatched"
-        if text_checks.wording_problems(report, decision, analyst_input["analyst_facts"]):
+        problems = text_checks.wording_problems(report, decision, analyst_input["analyst_facts"])
+        if problems:
+            check.last_problems = problems  # the names of the rules (fixed wording, or a listed phrase)
             return "wording_refused"
         return None
 
+    check.last_problems = []
     return check
 
 
@@ -88,6 +93,7 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                         check=make_check(data))
     if result.failure is not None:
         close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
+                                                         "failure_details": result.details,
                                                          "shown": f"{UNAVAILABLE} ({result.failure})"}, input_=inputs)
         return AnalystResult(None, result.failure, stage_id, result.calls)
     report = result.outputs["report"].strip()
