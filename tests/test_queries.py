@@ -149,6 +149,20 @@ def test_the_narrower_question_is_a_separate_linked_submitted_query(engine):
     assert one(engine, "SELECT fixed_plan FROM run WHERE id = :r", r=rid) is True
 
 
+@pytest.mark.parametrize("kw", [{}, {"fixed_plan": False}])
+def test_a_narrower_question_is_dispatched_to_its_stored_plan_whatever_the_callers_flag(engine, kw):
+    """Fix round 1, finding 1: dispatch derives it from the narrower link, never from a caller's flag."""
+    q = queries.create_narrower(engine, partly(engine), NARROWER)
+    queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+    rid = queries.dispatch(engine, q.version_id, **kw)
+    assert one(engine, "SELECT fixed_plan FROM run WHERE id = :r", r=rid) is True
+
+
+def test_an_ordinary_query_is_dispatched_to_the_planner_by_default(engine):
+    _, rid = dispatched(engine)
+    assert one(engine, "SELECT fixed_plan FROM run WHERE id = :r", r=rid) is False
+
+
 def test_a_narrower_question_needs_a_partly_sufficient_original(engine):
     _, rid = dispatched(engine)
     with pytest.raises(IntegrityError, match="partly_sufficient"):

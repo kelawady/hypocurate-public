@@ -42,11 +42,7 @@ def command(args, engine: Engine) -> int:
         else:
             vid = queries.submitted_version(engine, args.number)
             queries.confirm_domain(engine, vid, by=args.by)
-            with engine.connect() as conn:
-                narrower = conn.execute(text("SELECT h.narrower_of_run_id IS NOT NULL FROM hypothesis h "
-                                             "JOIN hypothesis_version hv ON hv.hypothesis_id = h.id WHERE hv.id = :v"),
-                                        dict(v=vid)).scalar_one()
-            run_id = queries.dispatch(engine, vid, fixed_plan=narrower)
+            run_id = queries.dispatch(engine, vid)  # a narrower question's plan follows from its link (finding 1)
             number = args.number
     except queries.QueryRefused as refused:
         print(f"error: {refused.code}: {refused.reason}", file=sys.stderr)
@@ -125,7 +121,10 @@ def show(engine: Engine, run_id: int) -> dict | None:
     return {
         "run": run.id, "query": run.number, "claim": run.text, "status": run.status,
         "narrower_question_of": original, "narrower_question": narrower,
-        "plan": "fixed" if run.fixed_plan else "the Planner's", "sufficiency_option": run.sufficiency_option,
+        # A8: a narrower question's plan is shown as coming from its original's narrowing decision.
+        "plan": ("from the narrowing decision" if original is not None else "fixed") if run.fixed_plan
+                else "the Planner's",
+        "sufficiency_option": run.sufficiency_option,
         "outcome": decision.get("outcome_wording") if run.status == "completed" else None,
         "verdict": decision.get("verdict_wording") if run.verdict else None,
         "exploratory": run.exploratory, "evidence_level": run.evidence_level,

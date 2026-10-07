@@ -231,6 +231,57 @@ def test_b1_a_narrower_question_on_other_source_versions_is_refused_with_a_reaso
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=narrower) == 0
 
 
+def narrower_version(engine, stub):
+    """A partly-sufficient original run through the orchestrator, and its narrower question's version (confirmed)."""
+    stub.respond(responder(PARTLY))
+    report = run(engine, dispatched(engine, claim=PARTLY_CLAIM), stub)
+    vid = queries.submitted_version(engine, report.narrower_question)
+    queries.confirm_domain(engine, vid, by="Ada Reviewer")
+    return report.run_id, vid
+
+
+def test_finding_1_a_narrower_question_dispatched_with_default_arguments_locks_its_stored_plan(engine, stub):
+    original, vid = narrower_version(engine, stub)
+    narrower = queries.dispatch(engine, vid)
+    out = run(engine, narrower, stub)
+    assert (out.status, out.outcome) == ("completed", "sufficient")
+    stored = one(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'narrowing'", r=original)
+    assert one(engine, "SELECT content FROM plan WHERE run_id = :r", r=narrower) == {"hypothesis_version": vid,
+                                                                                   **stored["narrower_plan"]}
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=narrower) == 0
+
+
+def test_finding_1_default_dispatch_after_a_newer_source_version_is_refused_with_a_reason(engine, stub):
+    _, vid = narrower_version(engine, stub)
+    seal_new_version(engine, "mpea")
+    narrower = queries.dispatch(engine, vid)
+    out = run(engine, narrower, stub)
+    assert out.status == "failed" and out.failure.startswith("narrowing_sources_changed:")
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=narrower) == 0
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=narrower) == 0
+
+
+def test_finding_1_the_orchestrator_reads_the_narrower_link_not_the_runs_flag(engine, stub):
+    """Code alone, with the database's rule switched off for this test: a narrower question's run recorded
+    without the flag still never reaches the Planner, and still gets the source-version check (B1)."""
+    _, vid = narrower_version(engine, stub)
+    seal_new_version(engine, "mpea")
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE run DISABLE TRIGGER hc_run_insert_narrower"))
+    try:
+        narrower = queries.dispatch(engine, vid)
+        with engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(text("UPDATE run SET fixed_plan = false WHERE id = :r"), dict(r=narrower))
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE run ENABLE TRIGGER hc_run_insert_narrower"))
+    assert one(engine, "SELECT fixed_plan FROM run WHERE id = :r", r=narrower) is False
+    out = run(engine, narrower, stub)
+    assert out.status == "failed" and out.failure.startswith("narrowing_sources_changed:")
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=narrower) == 0
+
+
 # --- the failure table ----------------------------------------------------------------------------------
 
 def test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_the_narrower_question(engine, stub):

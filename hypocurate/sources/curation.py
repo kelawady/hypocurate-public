@@ -67,7 +67,7 @@ def curate(engine: Engine, key: str, *, ceiling: Decimal | None = None,
     from hypocurate.access.inputs import role_input
     from hypocurate.pipeline.agents import curator
     from hypocurate.pipeline.agents.interface import call_agent
-    from hypocurate.pipeline.agents.settings import SETTINGS, ensure_setting
+    from hypocurate.pipeline.agents.settings import ensure_setting, recorded
 
     version = _version(engine, key)
     if version.grouping_unit != "dataset":
@@ -81,7 +81,7 @@ def curate(engine: Engine, key: str, *, ceiling: Decimal | None = None,
         "INSERT INTO agent_invocation (scope, source_version_id, role, agent_setting_id) "
         "VALUES ('registration', :v, 'curator', :a) RETURNING id"), dict(v=version.id, a=setting)).scalar_one())
     data = role_input(bind_invocation(engine, invocation))
-    s = SETTINGS["curator"]
+    s = recorded(engine, invocation)  # finding 2: the recorded version, never the current one
     result = call_agent(engine, invocation, curator.signature(s["instruction"]), curator.render_inputs(data),
                         model=s["model"], max_tokens=s["limits"]["max_tokens"],
                         max_output_chars=s["limits"]["max_output_chars"], ceiling=ceiling,

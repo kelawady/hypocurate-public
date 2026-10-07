@@ -160,11 +160,13 @@ def stage(w: World, run: int, name: str, role: str, payload: str, attempt=1) -> 
     return sid
 
 
-def lock(w: World, run: int) -> None:
+def planted_plan() -> dict:
+    """The plan the main run locks. Step 8b fix round 1 (finding 1): the main run is a narrower question's, so its
+    plan must be the narrower plan its original's narrowing decision stored (0006); the original stores this one."""
     ys = PLANTED["yield_strength"]
     # Planted in every kind of plan leaf; the projection keeps only named keys, vocabulary
     # values (else the marker), numbers and field names.
-    content = {"claim": DIRECTION,
+    return {"claim": DIRECTION,
                "variables": {"outcome": {"field": "yield_strength", "unit": f"{ys} MPa", "note": f"{ys}"},
                              "predictor": {"field": "grain_size", "unit": "µm", "transformation": f"x^{ys}"}},
                "model": {"name": "hall_petch_alloy_intercepts", "null": "k <= 0",
@@ -177,6 +179,11 @@ def lock(w: World, run: int) -> None:
                "verdict_statement": f"supported if {ys}",
                "sensitivity_analyses": ["tension_and_compression", f"drop {ys}"],
                "unnamed_key": {"planted": ys}}
+
+
+def lock(w: World, run: int) -> None:
+    ys = PLANTED["yield_strength"]
+    content = planted_plan()
     sql(w, "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
            "min_groups, min_resid_df, power_assumptions) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1, :j_p)",
         r=run, j_c=content, fp=FP, j_p={"method": "information_only", "scatter": 60.0, "note": f"{ys}",
@@ -207,7 +214,7 @@ def original_run(w: World) -> tuple[int, int]:
     w.complete(tested, "insufficient", level=4)
     rid = w.running(vid=vid, sources=("mpea",))
     stage(w, rid, "analyst", "analyst", f"k = {OTHER}")
-    w.partly(rid)
+    w.partly(rid, narrower_plan=planted_plan())
     cid = stage(w, rid, "commentator", "commentator", f"the coefficient {OTHER}")
     sql(w, "INSERT INTO commentary (run_id, stage_result_id, status, text, model, number_check) "
            "VALUES (:r, :s, 'written', :t2, 'model-b', 'all_match')", r=rid, s=cid, t2=f"k was {OTHER}")
@@ -263,7 +270,7 @@ def build(engine, stage_name: str) -> AccessWorld:
     w.confirm(vid)
     w.dispatch_version(vid)
     earlier = w.running(vid=vid, sources=("mpea", "tamu_fcc"))
-    w.lock(earlier)
+    w.lock(earlier, content=planted_plan())
     store_value_records(w, earlier, OTHER)
     stage(w, earlier, "curator", "curator", f"saw {OTHER}")
     w.fail(earlier)

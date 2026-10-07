@@ -121,17 +121,23 @@ def confirm_domain(engine: Engine, version_id: int, by: str, domain: str | None 
 
 
 def dispatch(engine: Engine, version_id: int, *, fixed_plan: bool = False, constructed_test_data: bool = False) -> int:
-    """Dispatches the version; returns the queued run's id."""
+    """Dispatches the version; returns the queued run's id. `fixed_plan` asks for the reference plan (14.1a). A
+    narrower question's run always uses the plan its original's narrowing decision stored: that comes from the
+    question's link to its original, never from the caller's flag (step 8b fix round, finding 1; the database
+    refuses such a run without the flag, migration 0006)."""
     setting_ids = {role: agent_settings.ensure_setting(engine, role) for role in agent_settings.RUN_ROLES}
 
     def body(conn: Connection):
         _lock_version(conn, version_id)
+        narrower = conn.execute(text("SELECT h.narrower_of_run_id IS NOT NULL FROM hypothesis_version hv JOIN "
+                                     "hypothesis h ON h.id = hv.hypothesis_id WHERE hv.id = :v"),
+                                dict(v=version_id)).scalar_one()
         conn.execute(text("UPDATE hypothesis_version SET status = 'dispatched', dispatched_at = now() WHERE id = :v"),
                      dict(v=version_id))
         flags = json.dumps({CONSTRUCTED_MARK: True} if constructed_test_data else {})
         rid = conn.execute(text("INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags) "
                                 "VALUES (:v, :f, CAST(:x AS jsonb)) RETURNING id"),
-                           dict(v=version_id, f=fixed_plan, x=flags)).scalar_one()
+                           dict(v=version_id, f=fixed_plan or narrower, x=flags)).scalar_one()
         chosen = set(conn.execute(text("SELECT source_id FROM hypothesis_version_source WHERE hypothesis_version_id = :v"),
                                   dict(v=version_id)).scalars())
         for sid, key, latest in conn.execute(text(

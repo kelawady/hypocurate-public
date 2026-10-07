@@ -7,9 +7,11 @@ owner's answer A1; register 'run_order').
     -> rules lock -> store records -> Checks -> Critic -> Inclusion -> dataset freeze -> statistics
     -> Analyst -> completion (copy_decision)
 
-A fixed-plan run bypasses the Planner (and the narrowing): the reference plan of criterion 14.1a, or, for a
-narrower question, exactly the narrower plan its original's narrowing decision stored (A8), after checking
-that the run's source versions are those the counts were taken on (B1).
+A narrower question's run bypasses the Planner (and the narrowing): it locks exactly the narrower plan its
+original's narrowing decision stored (A8), after checking that the run's source versions are those the counts
+were taken on (B1). It is recognised by the question's link to its original, never by a flag (fix round,
+finding 1); the database refuses its plan otherwise (0006). A fixed-plan run of an ordinary question uses the
+reference plan of criterion 14.1a.
 
 **Code decides everything** (CLAUDE.md, rule 1); each agent's answer is checked by code before it is used.
 **No model call runs inside a database transaction**: every step below uses its own short transactions, and
@@ -111,14 +113,16 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     if row.status == "queued":
         queries.start(engine, run_id)
     try:
-        if row.fixed_plan:
-            if row.narrower_of_run_id is not None:
-                plan, code = _narrower_plan(engine, run_id, row.narrower_of_run_id, row.hypothesis_version_id)
-                if code:
-                    return _failed(engine, report, code)
-            else:
-                plan = plans.reference_plan(row.hypothesis_version_id)
-                plan["sufficiency"]["option"] = row.sufficiency_option
+        # A narrower question is recognised by its link to its original, never by the run's flag (fix round,
+        # finding 1): it always locks the stored narrower plan, after the source-version check (A8, B1).
+        if row.narrower_of_run_id is not None:
+            plan, code = _narrower_plan(engine, run_id, row.narrower_of_run_id, row.hypothesis_version_id)
+            if code:
+                return _failed(engine, report, code)
+            report.stages.append("fixed plan")
+        elif row.fixed_plan:
+            plan = plans.reference_plan(row.hypothesis_version_id)
+            plan["sufficiency"]["option"] = row.sufficiency_option
             report.stages.append("fixed plan")
         else:
             result = planner.run_planner(engine, run_id, **agent_kw)

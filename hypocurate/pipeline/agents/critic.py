@@ -140,15 +140,15 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
     from hypocurate.access.inputs import role_input
     from hypocurate.pipeline.agents.interface import call_agent
     from hypocurate.pipeline.agents.runstage import close_stage, open_stage
-    from hypocurate.pipeline.agents.settings import SETTINGS
+    from hypocurate.pipeline.agents.settings import recorded
 
-    s = SETTINGS["critic"]
     classified, refused, failures, stages = 0, {}, [], []
     data = None
     plan_batches = None
     while True:
         stage_id, invocation = open_stage(engine, run_id, "critic", "critic")
         stages.append(stage_id)
+        s = recorded(engine, invocation)  # finding 2: the recorded version, never the current one
         current = role_input(bind_invocation(engine, invocation))
         if plan_batches is None:
             data, plan_batches = current, batches(current, s["limits"]["max_flags_per_call"])

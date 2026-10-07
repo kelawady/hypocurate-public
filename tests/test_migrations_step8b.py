@@ -60,7 +60,8 @@ def test_0006_replaces_no_earlier_function():
 
 @pytest.mark.parametrize("table, earlier", [("hypothesis_version", "hc_version_insert"),
                                             ("hypothesis_version", "hc_version_update"),
-                                            ("plan", "hc_plan_insert"), ("run", "hc_run_update")])
+                                            ("plan", "hc_plan_insert"), ("run", "hc_run_update"),
+                                            ("run", "hc_run_insert")])
 def test_each_new_trigger_fires_after_the_earlier_one_on_its_table(table, earlier):
     """PostgreSQL fires BEFORE triggers in name order: 0001's messages keep their priority."""
     names = [t for tb, _, t, _ in m0006().CHECKED if tb == table and t.startswith(earlier)]
@@ -277,3 +278,87 @@ def test_a_reason_needs_a_class(w):
 def test_a_class_without_a_reason_is_allowed(w):
     _, fid = a_flag(w)
     w.run_sql("UPDATE flag SET critic_class = 'cannot_tell', classified_at = now() WHERE id = :f", f=fid)
+
+
+# --- a narrower question's run (fix round 1, finding 1; owner F-Q1: the backstop is in 0006) -------------------
+
+BODY = {"model": "hall_petch", "scope": {"phase_class": ["FCC"]}, "alpha": 0.05}
+
+
+def narrower_version(w, original):
+    """A dispatched version of a narrower question of `original` (same sources as the world's runs)."""
+    return w.dispatched(hypothesis=w.hypothesis(narrower_of=original), number=1)
+
+
+def partly_original(w, body=BODY, sources=("mpea", "tamu_fcc")):
+    rid = w.running()
+    w.partly(rid, narrower_plan=body, sources=sources)
+    return rid
+
+
+def test_a_narrower_questions_run_must_use_the_stored_plan(w):
+    vid = narrower_version(w, partly_original(w))
+    w.rejected("INSERT INTO run (hypothesis_version_id, fixed_plan) VALUES (:v, false)",
+               "a narrower question's run uses the plan stored by its original's narrowing decision", v=vid)
+    rid = w.run(vid=vid)
+    assert w.val("SELECT fixed_plan FROM run WHERE id = :r", r=rid) is True
+
+
+def test_a_narrower_questions_plan_equal_to_the_stored_narrower_plan_is_locked(w):
+    vid = narrower_version(w, partly_original(w))
+    rid = w.running(vid=vid)
+    w.lock(rid, content={"hypothesis_version": vid, **BODY})
+    assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
+
+
+@pytest.mark.parametrize("content", [{}, {"model": "hall_petch", "scope": {"phase_class": ["BCC"]}, "alpha": 0.05},
+                                     {"hypothesis_version": 0, **BODY, "alpha": 0.1}])
+def test_a_narrower_questions_plan_other_than_the_stored_one_is_refused(w, content):
+    vid = narrower_version(w, partly_original(w))
+    rid = w.running(vid=vid)
+    with pytest.raises(IntegrityError, match="is the narrower plan stored by its original's narrowing decision"):
+        w.lock(rid, content=content)
+
+
+def test_a_narrower_questions_plan_is_refused_when_the_original_stored_no_narrower_plan(w):
+    original = w.running()
+    w.narrowing(original, output={"sources": w.counted(("mpea", "tamu_fcc"))})
+    w.complete(original, "partly_sufficient", level=1)
+    vid = narrower_version(w, original)
+    rid = w.running(vid=vid)
+    with pytest.raises(IntegrityError, match="is the narrower plan stored by its original's narrowing decision"):
+        w.lock(rid, content={"hypothesis_version": vid, **BODY})
+
+
+@pytest.mark.parametrize("counted", ["other_fingerprint", "fewer_sources"])
+def test_a_narrower_questions_plan_is_refused_on_other_source_versions(w, counted):
+    """B1 at the database: the run's source versions are those the original's narrowing counts were taken on."""
+    original = w.running()
+    sources = w.counted(("mpea", "tamu_fcc"))
+    if counted == "other_fingerprint":
+        sources[0]["version_fingerprint"] = "f" * 64
+    else:
+        sources = sources[:1]
+    w.narrowing(original, output={"narrower_plan": BODY, "sources": sources})
+    w.complete(original, "partly_sufficient", level=1)
+    vid = narrower_version(w, original)
+    rid = w.running(vid=vid)
+    with pytest.raises(IntegrityError, match="the source versions its original's narrowing counts were taken on"):
+        w.lock(rid, content={"hypothesis_version": vid, **BODY})
+
+
+def test_the_source_versions_are_compared_whatever_their_stored_order(w):
+    original = w.running()
+    w.narrowing(original, output={"narrower_plan": BODY, "sources": w.counted(("tamu_fcc", "mpea"))})
+    w.complete(original, "partly_sufficient", level=1)
+    vid = narrower_version(w, original)
+    rid = w.running(vid=vid)
+    w.lock(rid, content={"hypothesis_version": vid, **BODY})
+    assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
+
+
+def test_an_ordinary_runs_plan_is_unaffected_by_the_narrower_rule(w):
+    rid = w.running()
+    assert w.val("SELECT fixed_plan FROM run WHERE id = :r", r=rid) is False
+    w.lock(rid, content={"anything": 1})
+    assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1

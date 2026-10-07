@@ -280,7 +280,7 @@ def run_planner(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     from hypocurate.access.inputs import role_input
     from hypocurate.pipeline.agents.interface import call_agent
     from hypocurate.pipeline.agents.runstage import close_stage, open_stage
-    from hypocurate.pipeline.agents.settings import SETTINGS
+    from hypocurate.pipeline.agents.settings import recorded
 
     stage_id, invocation = open_stage(engine, run_id, "planner", "planner")
     data = role_input(bind_invocation(engine, invocation))
@@ -289,7 +289,7 @@ def run_planner(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                                 "hypothesis_version hv ON hv.id = r.hypothesis_version_id WHERE r.id = :r"),
                            dict(r=run_id)).one()
     approved = {t["value"] for t in data["tag_values"] if t.get("kind") == "alloy_class"}
-    s = SETTINGS["planner"]
+    s = recorded(engine, invocation)  # finding 2: the recorded version, never the current one
     inputs = render_inputs(data)
     result = call_agent(engine, invocation, signature(s["instruction"]), inputs, model=s["model"],
                         max_tokens=s["limits"]["max_tokens"], max_output_chars=s["limits"]["max_output_chars"],

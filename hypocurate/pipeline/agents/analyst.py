@@ -108,11 +108,11 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     from hypocurate.access.inputs import role_input
     from hypocurate.pipeline.agents.interface import call_agent
     from hypocurate.pipeline.agents.runstage import close_stage, open_stage
-    from hypocurate.pipeline.agents.settings import SETTINGS
+    from hypocurate.pipeline.agents.settings import recorded
 
     stage_id, invocation = open_stage(engine, run_id, "analyst", "analyst")
     data = role_input(bind_invocation(engine, invocation))
-    s = SETTINGS["analyst"]
+    s = recorded(engine, invocation)  # finding 2: the recorded version, never the current one
     inputs = render_inputs(data)
     check = make_check(data)
     result = call_agent(engine, invocation, signature(s["instruction"]), inputs, model=s["model"],

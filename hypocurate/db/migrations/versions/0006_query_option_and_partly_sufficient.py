@@ -15,11 +15,16 @@ hypothesis_version (A2: the data-sufficiency option is a parameter of the query,
   version is a draft; a narrower question has its original's option.
 plan:
 - the locked plan's `sufficiency_option` must equal its run's query's option;
-- no plan is inserted for a run with a done narrowing decision of partly sufficient (A5).
+- no plan is inserted for a run with a done narrowing decision of partly sufficient (A5);
+- a narrower question's plan is exactly the narrower plan its original's narrowing decision stored (its
+  content less `hypothesis_version`, compared as JSON), and its run's source versions are those the
+  narrowing counts were taken on (A8, B1; added in the step 8b fix round, finding 1, owner's answer F-Q1).
 run (A5):
 - a run completes as 'partly_sufficient' only with no plan, no stored record, and a done 'narrowing'
   stage result whose output's result is 'partly_sufficient'. (0001 already requires no verdict, and 0004
   an evidence level consistent with it.)
+- a narrower question's run has `fixed_plan` true (it never goes through the Planner; fix round,
+  finding 1). 0001 already keeps `fixed_plan` from changing.
 flag (A7):
 - `critic_class` is one of the Critic's fixed codes; `critic_reason` is at most 300 characters, not
   blank, and only with a class.
@@ -109,8 +114,57 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # A narrower question's run uses the narrower plan stored by its original's narrowing decision (fix round 1).
+    """
+    CREATE FUNCTION hc_run_narrower() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NOT NEW.fixed_plan AND EXISTS (
+                SELECT 1 FROM hypothesis_version hv JOIN hypothesis h ON h.id = hv.hypothesis_id
+                WHERE hv.id = NEW.hypothesis_version_id AND h.narrower_of_run_id IS NOT NULL) THEN
+            PERFORM hc_reject('a narrower question''s run uses the plan stored by its original''s narrowing decision '
+                              '(fixed_plan)');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    # Its plan is that stored plan, on the source versions the counts were taken on (A8, B1; fix round 1).
+    """
+    CREATE FUNCTION hc_plan_narrower() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE original bigint; decision jsonb; stored text[]; current text[];
+    BEGIN
+        SELECT h.narrower_of_run_id INTO original
+        FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id
+        JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE r.id = NEW.run_id;
+        IF original IS NULL THEN
+            RETURN NEW;
+        END IF;
+        SELECT output INTO decision FROM stage_result
+        WHERE run_id = original AND stage = 'narrowing' AND status = 'done'
+          AND output->>'result' = 'partly_sufficient'
+        ORDER BY id DESC LIMIT 1;
+        IF decision IS NULL OR jsonb_typeof(decision->'narrower_plan') IS DISTINCT FROM 'object'
+           OR (NEW.content - 'hypothesis_version') IS DISTINCT FROM decision->'narrower_plan' THEN
+            PERFORM hc_reject('a narrower question''s plan is the narrower plan stored by its original''s '
+                              'narrowing decision');
+        END IF;
+        SELECT coalesce(array_agg((e->>'source') || ' ' || (e->>'version_fingerprint') ORDER BY (e->>'source') || ' ' || (e->>'version_fingerprint')), '{}')
+        INTO stored
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(decision->'sources') = 'array'
+                                       THEN decision->'sources' ELSE '[]'::jsonb END) e;
+        SELECT coalesce(array_agg(s.key || ' ' || sv.fingerprint ORDER BY s.key || ' ' || sv.fingerprint), '{}') INTO current
+        FROM run_source rs JOIN source s ON s.id = rs.source_id
+        JOIN source_version sv ON sv.id = rs.source_version_id
+        WHERE rs.run_id = NEW.run_id;
+        IF stored IS DISTINCT FROM current THEN
+            PERFORM hc_reject('a narrower question runs on the source versions its original''s narrowing counts '
+                              'were taken on');
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
 ]
-FUNCTION_NAMES = ["hc_version_option()", "hc_plan_query()", "hc_run_partly_sufficient()"]
+FUNCTION_NAMES = ["hc_version_option()", "hc_plan_query()", "hc_run_partly_sufficient()", "hc_run_narrower()",
+                  "hc_plan_narrower()"]
 
 # (table, event, trigger, function). Each trigger's name sorts after the earlier trigger it follows.
 CHECKED = [
@@ -118,6 +172,8 @@ CHECKED = [
     ("hypothesis_version", "UPDATE", "hc_version_update_option", "hc_version_option"),
     ("plan", "INSERT", "hc_plan_insert_query", "hc_plan_query"),
     ("run", "UPDATE", "hc_run_update_partly_sufficient", "hc_run_partly_sufficient"),
+    ("run", "INSERT", "hc_run_insert_narrower", "hc_run_narrower"),
+    ("plan", "INSERT", "hc_plan_insert_narrower", "hc_plan_narrower"),
 ]
 TRIGGERS = [f"CREATE TRIGGER {t} BEFORE {event} ON {table} FOR EACH ROW EXECUTE FUNCTION {f}()"
             for table, event, t, f in CHECKED]

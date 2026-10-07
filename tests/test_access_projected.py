@@ -162,7 +162,10 @@ def test_the_planted_values_are_stored_everywhere_they_should_be(engine):
         assert count("SELECT count(*) FROM tag_value WHERE value LIKE :v AND status = 'proposed'") == 1
         assert count("SELECT count(*) FROM source WHERE address LIKE :v") == 1
         assert count("SELECT count(*) FROM source_version WHERE label LIKE :v") == 1
-        assert count("SELECT count(*) FROM plan WHERE content::text LIKE :v") == 1
+        # Step 8b fix round 1 (0006): the earlier run of the same narrower question locks the same stored plan.
+        assert count("SELECT count(*) FROM plan WHERE content::text LIKE :v") == 2
+        assert conn.execute(text("SELECT count(*) FROM plan WHERE content::text LIKE :v AND run_id = :r"),
+                            dict(v=f"%{ys}%", r=world.run)).scalar() == 1
 
 
 def test_no_projected_planted_value_in_the_planners_complete_input(engine):

@@ -6587,7 +6587,7 @@
     "key": "agent_models",
     "name": "The model of each agent role",
     "state": "in_force",
-    "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium. The Planner and the Analyst: at most 8000 output tokens, 6000 characters, effort medium. The Critic: at most 8000 output tokens, 30000 characters, at most 100 flags per call, effort low.",
+    "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium. The Planner and the Analyst: at most 8000 output tokens, 6000 characters, effort medium. The Critic: at most 8000 output tokens, 30000 characters, at most 100 flags per call, effort low. Each role builds its request from the settings version recorded for its invocation (instruction, model, limits and options), never from the settings current when the request is made.",
     "value": {
       "text": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5",
       "unit": null
@@ -6648,6 +6648,9 @@
             "max_tokens": 8000,
             "max_output_chars": 6000
           }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:recorded"
         }
       ],
       "note": null
@@ -6658,6 +6661,12 @@
         "from": "2026-10-06",
         "to": "2026-10-07",
         "note": "Step 8b: the Planner's, the Critic's and the Analyst's settings added (drafts for the owner's review, B3)."
+      },
+      {
+        "value": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium. The Planner and the Analyst: at most 8000 output tokens, 6000 characters, effort medium. The Critic: at most 8000 output tokens, 30000 characters, at most 100 flags per call, effort low.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (ChatGPT review, finding 2): requests are built from the recorded settings version."
       }
     ],
     "notes": [
@@ -6666,7 +6675,11 @@
     "tests": [
       "tests/test_agent_core.py::test_the_price_table_names_the_owners_models",
       "tests/test_curator.py::test_the_curators_complete_request_is_the_instruction_the_documentation_and_the_targets",
-      "tests/test_queries.py::test_dispatch_records_the_settings_version_of_each_run_role"
+      "tests/test_queries.py::test_dispatch_records_the_settings_version_of_each_run_role",
+      "tests/test_recorded_settings.py::test_the_planner_uses_the_settings_recorded_at_dispatch",
+      "tests/test_recorded_settings.py::test_the_critic_uses_the_settings_recorded_at_dispatch",
+      "tests/test_recorded_settings.py::test_the_analyst_uses_the_settings_recorded_at_dispatch",
+      "tests/test_recorded_settings.py::test_the_curators_request_follows_the_setting_its_invocation_records"
     ]
   },
   {
@@ -7153,7 +7166,7 @@
     "key": "narrower_question",
     "name": "The narrower question and its plan",
     "state": "in_force",
-    "statement": "A narrower question is a separate query linked to its original run, created as submitted with the original's domain, sources and sufficiency option, and a text built by code (NARROWER_TEXT: the original claim and the narrower scope in words). It is dispatched by its number after a named person confirms its domain; its run locks exactly the narrower plan the original's narrowing decision stored (the Planner bypassed), and is refused before the lock, with a stated reason, if any of its source versions differs from those the counts were taken on.",
+    "statement": "A narrower question is a separate query linked to its original run, created as submitted with the original's domain, sources and sufficiency option, and a text built by code (NARROWER_TEXT: the original claim and the narrower scope in words). It is dispatched by its number after a named person confirms its domain; its run locks exactly the narrower plan the original's narrowing decision stored (the Planner bypassed), and is refused before the lock, with a stated reason, if any of its source versions differs from those the counts were taken on. Dispatch and the orchestrator recognise a narrower question by its link to its original (narrower_of_run_id), never by a caller's flag; the database refuses a narrower question's run without the fixed-plan flag, and refuses its plan unless it equals the stored narrower plan (less its version key) on the source versions the counts were taken on (migration 0006).",
     "value": {
       "text": "code-built text; the stored plan; same source versions",
       "unit": null
@@ -7162,7 +7175,8 @@
     "affects": "How a narrower question is created and run (PRD 5.4).",
     "reason": "The narrower plan is the one the counts were taken on; a fresh Planner could widen it again.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q10, A8, B1."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q10, A8, B1.",
+      "Step 8b second-model review, finding 1 (docs/reviews/step08b_review_chatgpt.md); owner's answer F-Q1 (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7183,6 +7197,15 @@
         },
         {
           "ref": "python:hypocurate.pipeline.queries:create_narrower"
+        },
+        {
+          "ref": "sql:hc_run_narrower"
+        },
+        {
+          "ref": "sql:hc_plan_narrower"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:dispatch"
         }
       ],
       "note": null
@@ -7191,9 +7214,22 @@
     "tests": [
       "tests/test_queries.py::test_the_narrower_question_is_a_separate_linked_submitted_query",
       "tests/test_orchestrator.py::test_14_3_a_partly_sufficient_original_and_its_narrower_question",
-      "tests/test_orchestrator.py::test_b1_a_narrower_question_on_other_source_versions_is_refused_with_a_reason"
+      "tests/test_orchestrator.py::test_b1_a_narrower_question_on_other_source_versions_is_refused_with_a_reason",
+      "tests/test_migrations_step8b.py::test_a_narrower_questions_run_must_use_the_stored_plan",
+      "tests/test_migrations_step8b.py::test_a_narrower_questions_plan_other_than_the_stored_one_is_refused",
+      "tests/test_migrations_step8b.py::test_a_narrower_questions_plan_is_refused_on_other_source_versions",
+      "tests/test_queries.py::test_a_narrower_question_is_dispatched_to_its_stored_plan_whatever_the_callers_flag",
+      "tests/test_orchestrator.py::test_finding_1_default_dispatch_after_a_newer_source_version_is_refused_with_a_reason",
+      "tests/test_orchestrator.py::test_finding_1_the_orchestrator_reads_the_narrower_link_not_the_runs_flag"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "A narrower question is a separate query linked to its original run, created as submitted with the original's domain, sources and sufficiency option, and a text built by code (NARROWER_TEXT: the original claim and the narrower scope in words). It is dispatched by its number after a named person confirms its domain; its run locks exactly the narrower plan the original's narrowing decision stored (the Planner bypassed), and is refused before the lock, with a stated reason, if any of its source versions differs from those the counts were taken on.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (ChatGPT review, finding 1): the narrower path is derived from the question's link, not a flag, with a database backstop (owner's answer F-Q1: in migration 0006)."
+      }
+    ]
   },
   {
     "key": "planner_answer",

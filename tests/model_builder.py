@@ -2,6 +2,8 @@
 so the step 3 tests exercise the database rules exactly as later code will meet them."""
 from __future__ import annotations
 
+import json
+
 import hashlib
 
 import pytest
@@ -133,12 +135,17 @@ class World:
         return vid
 
     # --- runs -------------------------------------------------------------------------
-    def run(self, vid=None, sources=("mpea", "tamu_fcc"), agents=False, sufficiency="fixed_minimum"):
+    def run(self, vid=None, sources=("mpea", "tamu_fcc"), agents=False, sufficiency="fixed_minimum", fixed_plan=None):
         """Dispatch: a queued run with a run_source row for every registered source; with `agents`,
         the world's settings version of every role recorded too (needed for model calls, step 8a).
-        `sufficiency`: the new query's option (step 8b), when no version is given."""
+        `sufficiency`: the new query's option (step 8b), when no version is given. `fixed_plan`: by default
+        true exactly for a narrower question, as `queries.dispatch` derives it (step 8b fix round 1)."""
         vid = vid or self.dispatched(sufficiency=sufficiency)
-        rid = self.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
+        if fixed_plan is None:
+            fixed_plan = self.val("SELECT h.narrower_of_run_id IS NOT NULL FROM hypothesis_version hv "
+                                  "JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE hv.id = :v", v=vid)
+        rid = self.val("INSERT INTO run (hypothesis_version_id, fixed_plan) VALUES (:v, :f) RETURNING id",
+                       v=vid, f=fixed_plan)
         if agents:
             for role in ("planner", "curator", "critic", "analyst", "commentator"):
                 self.run_sql("INSERT INTO run_agent_setting VALUES (:r, :o, :s)", r=rid, o=role,
@@ -166,17 +173,19 @@ class World:
         self.lock(rid)
         return rid
 
-    def lock(self, rid, option=None, keys=(), mins=(4, 1, 2, 1), tags=()):
+    def lock(self, rid, option=None, keys=(), mins=(4, 1, 2, 1), tags=(), content=None):
         """The rules lock, in one transaction with its tags. Step 8b (0006): the plan's option is the
-        query's unless a test gives another (which the database refuses)."""
+        query's unless a test gives another (which the database refuses). `content`: the plan's content
+        (default empty; a narrower question's must be its original's stored narrower plan, fix round 1)."""
         option = option or self.val("SELECT hv.sufficiency_option FROM run r JOIN hypothesis_version hv "
                                     "ON hv.id = r.hypothesis_version_id WHERE r.id = :r", r=rid)
         with self.e.begin() as conn:
             pid = conn.execute(text(
                 "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
                 "min_groups, min_resid_df, sensitivity_analysis_keys) "
-                "VALUES (:r, '{}', :fp, :o, :a, :b, :c, :d, :k) RETURNING id"),
-                dict(r=rid, fp=FP, o=option, a=mins[0], b=mins[1], c=mins[2], d=mins[3], k=list(keys))).scalar()
+                "VALUES (:r, CAST(:j AS jsonb), :fp, :o, :a, :b, :c, :d, :k) RETURNING id"),
+                dict(r=rid, j=json.dumps(content or {}), fp=FP, o=option, a=mins[0], b=mins[1], c=mins[2], d=mins[3],
+                     k=list(keys))).scalar()
             for tag in tags:
                 conn.execute(text("INSERT INTO run_tag VALUES (:r, :t)"), dict(r=rid, t=tag))
         return pid
@@ -268,17 +277,25 @@ class World:
                      "exploratory = :x, evidence_level = :e WHERE id = :r", o=outcome, v=verdict, x=exploratory,
                      e=level, r=rid)
 
-    def partly(self, rid):
+    def partly(self, rid, narrower_plan=None, sources=("mpea", "tamu_fcc")):
         """Step 8b (0006; owner, A5): a run completes as partly sufficient only with no plan, no record and
-        code's narrowing decision of partly sufficient stored (a done 'narrowing' stage result); level 1."""
-        self.narrowing(rid)
+        code's narrowing decision of partly sufficient stored (a done 'narrowing' stage result); level 1.
+        The decision stores a narrower plan (default empty) and the source versions its counts were taken
+        on (default this world's of `sources`), which a narrower question's plan must match (fix round 1)."""
+        self.narrowing(rid, output={"narrower_plan": narrower_plan or {}, "sources": self.counted(sources)})
         self.complete(rid, "partly_sufficient", level=1)
 
-    def narrowing(self, rid, result="partly_sufficient"):
+    def counted(self, sources):
+        """The narrowing decision's 'sources': each source key with its version's fingerprint."""
+        return [{"source": k, "version_fingerprint": self.val("SELECT fingerprint FROM source_version WHERE id = :v",
+                                                              v=self.version[k])} for k in sources]
+
+    def narrowing(self, rid, result="partly_sufficient", output=None):
         """Code's narrowing decision (step 8b): a done 'narrowing' stage result with its result."""
         sid = self.stage(rid, "narrowing", None)
         self.run_sql("UPDATE stage_result SET status = 'done', finished_at = now(), "
-                     "output = CAST(:o AS jsonb) WHERE id = :s", o=f'{{"result": "{result}"}}', s=sid)
+                     "output = CAST(:o AS jsonb) WHERE id = :s", o=json.dumps({"result": result, **(output or {})}),
+                     s=sid)
         return sid
 
     def fail(self, rid, reason="worker stopped"):

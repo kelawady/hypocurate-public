@@ -102,7 +102,7 @@ def test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line(
     n = report_of(out)
     assert code == 0 and n["report"]["outcome"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
     narrower = json.loads(hc(capsys, "show", str(n["run"]))[1])
-    assert narrower["narrower_question_of"] == r["query"] and narrower["plan"] == "fixed"
+    assert narrower["narrower_question_of"] == r["query"] and narrower["plan"] == "from the narrowing decision"
 
 
 @pytest.fixture

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from types import MappingProxyType
+from typing import Any, Mapping
 
 from sqlalchemy import Engine, text
 
@@ -120,3 +121,16 @@ def ensure_setting(engine: Engine, role: str) -> int:
             dict(r=role, i=s["instruction"], m=s["model"], l=json.dumps(limits), s=json.dumps(extra))).scalar_one()
 
     return run_transaction(engine, transaction)
+
+
+def recorded(engine: Engine, invocation: int) -> Mapping[str, Any]:
+    """The settings version recorded for the invocation (its instruction, model, limits and options), from which
+    every role builds its request: never the settings current when the request is made (step 8b fix round,
+    finding 2), so the audit record and the request cannot differ."""
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT a.instruction, a.model, a.limits, a.settings FROM agent_invocation i "
+                                "JOIN agent_setting a ON a.id = i.agent_setting_id WHERE i.id = :i"),
+                           dict(i=invocation)).one()
+    return MappingProxyType({"instruction": row.instruction, "model": row.model,
+                             "limits": MappingProxyType(dict(row.limits)),
+                             "settings": MappingProxyType(dict(row.settings))})

@@ -323,7 +323,8 @@ def test_experiment_flags_relax_nothing(engine):
     world = aw.build(engine, "queued")
     w = world.w
     vid = w.val("SELECT hypothesis_version_id FROM run WHERE id = :r", r=world.run)
-    flagged = aw.val(w, "INSERT INTO run (hypothesis_version_id, experiment_flags) VALUES (:v, :j_f) RETURNING id",
+    flagged = aw.val(w, "INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags) "
+                              "VALUES (:v, true, :j_f) RETURNING id",  # a narrower question's run (0006)
                      v=vid, j_f={"relax_access": True, "access": "all", "unlock": ["planner", "critic"]})
     w.run_sql("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
               "VALUES (:r, :s, :sv, 'pending')", r=flagged, s=w.source["mpea"], sv=w.version["mpea"])
