@@ -19,9 +19,10 @@ does not check what the text says about the numbers.
 **Wording check** (CLAUDE.md, rule 13): the text must contain code's outcome wording verbatim (so it always says
 "in the sources searched"), and code's verdict wording verbatim when there is a verdict; it must not contain any
 phrase of `FORBIDDEN` or `ALWAYS_FORBIDDEN` (no causal language, never "confirms the claim", even with a verdict),
-and with no verdict it must not state one (`NO_VERDICT_FORBIDDEN`). Owner's rules of 2026-10-07: a p-value may
-appear only inside its ready-made phrase; the paper figures (informative papers, effective number, largest share)
-only inside theirs; and a sentence naming the effective number must not call it "independent".
+and with no verdict it must not state one (`NO_VERDICT_FORBIDDEN`); a sentence naming the effective number must not
+call it "independent". (Owner, 2026-10-07: the two word-based rules on p-values and paper figures were removed. With
+placeholders, a p-value and the paper figures exist only inside their phrase names, which no other name exposes
+(tested); with a verdict, the pooled result's two phrases are required placeholders.)
 """
 from __future__ import annotations
 
@@ -29,7 +30,6 @@ import re
 from typing import Any, Iterable, Mapping
 
 FIXED_NUMBERS = ("1", "2", "95", "95%", "0.5", "-0.5")
-PHRASE_KEYS = ("p_value_phrase", "paper_figures_phrase")
 # The model's exponent, written in any of its usual forms, is removed before numbers are read.
 _EXPONENT = re.compile(r"\^\s*\(?\s*[-−]\s*1\s*/\s*2\s*\)?|\^\s*[-−]?\s*0\.5|[-−]½|⁻¹ᐟ²|\^\{-1/2\}")
 # A number token: scientific notation (2.5e-7), or a plain number with an optional percent sign.
@@ -41,9 +41,6 @@ FORBIDDEN = ("do not exist", "does not exist", "don't exist", "doesn't exist", "
 # Owner's additions (2026-10-07, before the live set): always forbidden, with or without a verdict.
 ALWAYS_FORBIDDEN = re.compile(r"\bconfirms\s+the\s+(claim|hypothesis)\b|\bcauses\b|\bcaused\s+by\b|\bcausal\b",
                               re.IGNORECASE)
-_P_VALUE = re.compile(r"\bp[- ]?values?\b|(?<![\w])p\s*[=<>≈≤≥]", re.IGNORECASE)
-_FIGURE_WORDS = re.compile(r"\binformative\s+(papers?|groups?)\b|\beffective\s+number\b|\blargest\s+share\b",
-                           re.IGNORECASE)
 _EFFECTIVE = re.compile(r"\beffective\s+(number|papers)\b", re.IGNORECASE)
 _INDEPENDENT = re.compile(r"\bindependent\b", re.IGNORECASE)
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
@@ -85,22 +82,6 @@ def unmatched_numbers(text: str, facts: Any) -> list[str]:
     return [t for t in tokens(text) if t not in known]
 
 
-def phrases(facts: Any) -> list[str]:
-    """The ready-made phrases of the facts (`PHRASE_KEYS`, or a name ending in '_p_phrase' or '_figures_phrase'),
-    longest first."""
-    found: list[str] = []
-    if isinstance(facts, Mapping):
-        for k, v in facts.items():
-            if isinstance(v, str) and (k in PHRASE_KEYS or k.endswith(("_p_phrase", "_figures_phrase"))):
-                found.append(v)
-            else:
-                found += phrases(v)
-    elif isinstance(facts, (list, tuple)):
-        for v in facts:
-            found += phrases(v)
-    return sorted(set(found), key=len, reverse=True)
-
-
 def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None) -> list[str]:
     """The wording rules the text breaks (empty when none). `facts`: the Analyst's facts, for its phrases."""
     lower = " ".join(text.lower().split())
@@ -115,17 +96,7 @@ def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None)
             problems.append("verdict wording missing")
     elif NO_VERDICT_FORBIDDEN.search(text):
         problems.append("a verdict is stated where there is none")
-    rest = text
-    found = phrases(facts or {})
-    for phrase in found:
-        rest = rest.replace(phrase, " ")
-    # A p-value's display string anywhere outside its phrase counts as a p-value outside it.
-    p_tokens = {t for phrase in found if phrase.startswith("p ") for t in tokens(phrase)}
-    for sentence in filter(None, (x.strip() for x in _SENTENCE.split(rest))):
-        if _P_VALUE.search(sentence) or p_tokens & set(tokens(sentence)):
-            problems.append("a p-value outside its ready-made phrase")
-        if _FIGURE_WORDS.search(sentence) and tokens(sentence):
-            problems.append("paper figures outside their ready-made phrase")
+    for sentence in filter(None, (x.strip() for x in _SENTENCE.split(text))):
         if _EFFECTIVE.search(sentence) and _INDEPENDENT.search(sentence):
             problems.append("the effective number described as independent")
     return problems
@@ -135,6 +106,8 @@ def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None)
 
 PLACEHOLDER = re.compile(r"\{([^{}\n]{1,80})\}")
 REQUIRED = ("outcome_wording",)  # and 'verdict_wording' whenever the facts give one
+# Owner, 2026-10-07: with a verdict, the pooled result's p-value phrase and paper-figures phrase must be used too.
+REQUIRED_WITH_VERDICT = ("pooled_p_phrase", "pooled_figures_phrase")
 
 
 def placeholder_problems(template: str, names: Mapping[str, str]) -> dict[str, int]:
@@ -143,9 +116,11 @@ def placeholder_problems(template: str, names: Mapping[str, str]) -> dict[str, i
     used = PLACEHOLDER.findall(template)
     rest = PLACEHOLDER.sub(" ", template)
     required = list(REQUIRED) + (["verdict_wording"] if "verdict_wording" in names else [])
+    phrases_required = [r for r in REQUIRED_WITH_VERDICT if "verdict_wording" in names and r in names]
     return {"unknown_names": sum(1 for u in used if u not in names),
             "digits_outside_placeholders": len(re.findall(r"\d", rest)),
-            "required_missing": sum(1 for r in required if r not in used)}
+            "required_missing": sum(1 for r in required if r not in used),
+            "result_phrases_missing": sum(1 for r in phrases_required if r not in used)}
 
 
 def render(template: str, names: Mapping[str, str]) -> str:

@@ -47,7 +47,9 @@ def analyst_text(raw: str) -> str:
     """A text that passes the Analyst's checks (step 8b, owner 2026-10-07): placeholders only, no digit; the outcome
     and, when there is one, the verdict by name."""
     if '\\"verdict_wording\\": ' in raw:  # a key of the facts (the instruction itself names the placeholder)
-        return "The data are {outcome_wording}, and the claim is {verdict_wording}."
+        # With a verdict the pooled phrases are required too (owner, 2026-10-07).
+        return ("The data are {outcome_wording}, and the claim is {verdict_wording}, with {pooled_p_phrase}, from "
+                "{pooled_figures_phrase}.")
     return "The outcome is {outcome_wording}."
 
 

@@ -69,11 +69,12 @@ NONE = {"outcome_wording": "insufficient in the sources searched", "verdict": No
     ("Insufficient in the sources searched; this proves nothing either way.", NONE, ["forbidden: proves"]),
     ("Insufficient in the sources searched. The supported model needs grain sizes.", NONE, []),
     (GOOD + " The pooled p ≈ 1.3e-6 (approximate, nominal, one-sided).", FACTS["decision"], []),
-    (GOOD + " The p-value is 1.3e-6.", FACTS["decision"], ["a p-value outside its ready-made phrase"]),
-    (GOOD + " The value 1.3e-6 is small.", FACTS["decision"], ["a p-value outside its ready-made phrase"]),
+    # Owner, 2026-10-07: the word-based p-value and figures rules were removed (placeholders guarantee them).
+    (GOOD + " The p-value is 1.3e-6.", FACTS["decision"], []),
+    (GOOD + " The value 1.3e-6 is small.", FACTS["decision"], []),
     (GOOD + " It rests on 20 informative papers, an effective number of papers of 3.94, a largest share of 38.7% and "
             "19 degrees of freedom.", FACTS["decision"], []),
-    (GOOD + " It rests on 20 informative papers.", FACTS["decision"], ["paper figures outside their ready-made phrase"]),
+    (GOOD + " It rests on 20 informative papers.", FACTS["decision"], []),
     (GOOD + " The effective number is not a count of independent papers.", FACTS["decision"],
      ["the effective number described as independent"]),
 ])
@@ -242,9 +243,9 @@ BREAKS = {
     "confirms the hypothesis": (FOLLOWS_ALL + " This confirms the hypothesis.", "wording_refused"),
     "effective number as independent": (FOLLOWS_ALL + " The effective number counts independent papers.",
                                         "wording_refused"),
-    "p-value outside its phrase": (FOLLOWS_ALL + " The p-value is small.", "wording_refused"),
-    "figures outside their phrase": (FOLLOWS_ALL + " It rests on {pooled_groups} informative papers.",
-                                     "wording_refused"),
+    # Owner, 2026-10-07: with a verdict the pooled phrases are required (was: the word-based p-value and figures rules).
+    "p-value phrase missing": (FOLLOWS_ALL.replace(", with {pooled_p_phrase}", ""), "result_phrases_missing"),
+    "figures phrase missing": (FOLLOWS_ALL.replace(" It rests on {pooled_figures_phrase}.", ""), "result_phrases_missing"),
     "verdict not used": ("The data are {outcome_wording}.", "wording_refused"),
     "a digit": (FOLLOWS_ALL + " It used 97 records.", "digit_outside_placeholder"),
     "an unknown name": (FOLLOWS_ALL.replace("{pooled_estimate}", "{pooled_estimat}"), "unknown_name"),
@@ -286,7 +287,8 @@ def test_a_refused_text_stores_counts_or_rule_names_and_no_text(engine, stub):
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
     assert out.failure == "wording_refused"
     assert details_of(engine, out.stage_id) == [
-        {"attempt": 1, "problems": [{"unknown_names": 1, "digits_outside_placeholders": 4, "required_missing": 0}]},
+        {"attempt": 1, "problems": [{"unknown_names": 1, "digits_outside_placeholders": 4, "required_missing": 0,
+                                     "result_phrases_missing": 0}]},
         {"attempt": 2, "problems": ["forbidden: causes"]}]
     stored = json.dumps(one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id))
     assert "ZQDIG" not in stored and "ZQBAD" not in stored
@@ -335,3 +337,69 @@ def test_a_withheld_result_gives_no_estimate_name_even_if_numbers_were_stored():
     names = analyst_names.analysis_names(stats, {}, plan, {})
     assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
     assert "pooled_records" in names and "mpea_records" in names
+
+
+
+def test_the_words_p_value_and_paper_figures_are_allowed_now(engine, stub):
+    """Owner, 2026-10-07: the two word-based rules are gone; the phrases carry the numbers."""
+    rid, _ = exploratory(engine)
+    text_ = FOLLOWS_ALL + " The p-value and the largest share above come from {pooled_groups} groups."
+    stub.queue(reply(text_))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None and len(stub.requests) == 1
+
+
+def test_without_a_verdict_the_pooled_phrases_are_not_required(engine, stub):
+    rid = below_minimums(engine)
+    stub.queue(reply(BELOW))
+    assert analyst.run_analyst(engine, rid, client_options=sp.client_options(stub)).failure is None
+
+
+def test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure(engine):
+    """Owner, 2026-10-07: a p-value and the paper figures (informative papers, effective number, largest share, degrees
+    of freedom) exist only inside the phrase names."""
+    rid, pooled = exploratory(engine)
+    names = names_of(engine, rid)
+    phrase_names = {k for k in names if k.endswith(("_p_phrase", "_figures_phrase"))}
+    assert {"pooled_p_phrase", "pooled_figures_phrase"} <= phrase_names
+    # No name for a figure on its own (the 'without_largest_share_' names are the set's own results, and resid_df the
+    # residual degrees of freedom of the minimums, not the test's).
+    assert not [k for k in names if k not in phrase_names and ("informative" in k or "effective" in k or "p_value" in k
+                                                               or k.endswith(("_share", "_t_df")))]
+    c = pooled["counts"]
+    bare = {display.p_value(pooled["p_value"]), display.two_decimals(c["effective_papers"]),
+            display.percent(c["largest_paper_share"])}
+    for k, v in names.items():
+        if k not in phrase_names:
+            assert not set(text_checks.tokens(v)) & bare, (k, v)
+
+
+@pytest.mark.parametrize("kind", ["exploratory", "withheld", "narrowed", "fixed wordings"])
+def test_no_remaining_rule_fires_on_text_the_facts_supply(engine, kind):
+    """Owner's review question, 2026-10-07: every code-built value, of each kind of run, and every fixed wording the
+    facts can carry, passes the remaining wording rules when written into a text that uses the outcome (and verdict)."""
+    from hypocurate.pipeline import calibration, narrowing
+    from hypocurate.pipeline import statistics as st
+    from hypocurate.pipeline.eligibility import INFLUENCE_DISPLAY_NAME
+    from test_planner_narrowing import TWO_BANDS, NARROWER, answer_of, cell, counts
+    if kind == "exploratory":
+        names = names_of(engine, exploratory(engine)[0])
+    elif kind == "withheld":
+        names = names_of(engine, below_minimums(engine))
+    elif kind == "narrowed":
+        d = narrowing.decide(answer_of(claim_scope=TWO_BANDS, narrower=NARROWER),
+                             counts(cell(n=5), cell(t=-196.0, gs=False)), 1, "fixed_minimum")
+        names = analyst_names.narrowing_names(d)
+    else:
+        fixed = (list(calibration.FLAG_WORDING.values()) + list(st.EVIDENCE_LEVELS.values()) +
+                 list(st.OUTCOME_WORDING.values()) + list(analyst_names.LABEL_WORDS.values()) +
+                 [INFLUENCE_DISPLAY_NAME, st.BELOW_MINIMUMS_LABEL, st.EXPLORATORY_LABEL, st.PARTLY_SUFFICIENT_WORDING,
+                  "missing evidence", "failed search", "insufficient groups", "evidence concentrated",
+                  "uncertainty not estimable", "coefficient not fitted"])
+        names = {"outcome_wording": "insufficient in the sources searched",
+                 **{f"fixed_{LETTER}": w for LETTER, w in zip("abcdefghijklmnopqrstuvwxyz", [w for w in fixed if w])}}
+    decision = {"outcome_wording": names["outcome_wording"], "verdict": "verdict_wording" in names,
+                "verdict_wording": names.get("verdict_wording")}
+    head = names["outcome_wording"] + (" " + names["verdict_wording"] if "verdict_wording" in names else "")
+    for v in names.values():
+        assert text_checks.wording_problems(f"{head}. {v}.", decision) == [], v

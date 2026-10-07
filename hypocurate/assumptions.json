@@ -7386,7 +7386,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), and a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the words 'p-value' and the paper figures only inside their ready-made phrases, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7428,16 +7428,16 @@
           "ref": "python:hypocurate.pipeline.agents.text_checks:ALWAYS_FORBIDDEN"
         },
         {
-          "ref": "python:hypocurate.pipeline.agents.text_checks:PHRASE_KEYS",
-          "equals": [
-            "p_value_phrase",
-            "paper_figures_phrase"
-          ]
-        },
-        {
           "ref": "python:hypocurate.pipeline.agents.text_checks:REQUIRED",
           "equals": [
             "outcome_wording"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:REQUIRED_WITH_VERDICT",
+          "equals": [
+            "pooled_p_phrase",
+            "pooled_figures_phrase"
           ]
         }
       ],
@@ -7475,6 +7475,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
+      },
+      {
+        "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), and a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the words 'p-value' and the paper figures only inside their ready-made phrases, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the first of three live checks was refused by the two word-based rules: those rules removed (with placeholders a p-value and the paper figures exist only inside their phrase names, which no other name exposes, tested); with a verdict, the pooled p-value and paper-figures phrases are required placeholders, refused with 'result_phrases_missing'."
       }
     ]
   },

@@ -64,6 +64,7 @@ FAILURES: Mapping[str, tuple[str, str]] = {
     # Owner, 2026-10-07: the Analyst's placeholders.
     "unknown_name": ("a placeholder names no fact given", "correct"),
     "digit_outside_placeholder": ("a digit was written outside a placeholder; every number is a placeholder", "correct"),
+    "result_phrases_missing": ("with a verdict, the pooled p-value phrase and paper-figures phrase must be used", "correct"),
 }
 
 

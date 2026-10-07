@@ -76,6 +76,9 @@ def make_check(analyst_input: Mapping[str, Any]):
         if counts["required_missing"]:
             check.last_problems = [counts]
             return "wording_refused"
+        if counts["result_phrases_missing"]:
+            check.last_problems = [counts]
+            return "result_phrases_missing"
         report = text_checks.render(template, names)
         problems = text_checks.wording_problems(report, decision, names)
         if problems:
