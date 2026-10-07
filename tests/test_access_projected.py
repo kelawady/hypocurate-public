@@ -127,7 +127,7 @@ def test_the_analysts_facts_carry_the_stored_results_by_named_keys_only(engine):
     got = inputs_of(engine, world, "analyst", "analysis")
     assert set(got) == allowed("analyst", "analysis")
     pooled = got["analyst_facts"]["analyses"][0]
-    assert pooled["estimate"] == 424.9 and pooled["std_error"] == 64.4
+    assert pooled["estimate"] == "424.9" and pooled["std_error"] == "64.4"  # step 8b: display strings
     assert "records_found" not in pooled and "hidden" not in json.dumps(got)
     assert leaks(got, aw.PLANTED.values()) == []
 

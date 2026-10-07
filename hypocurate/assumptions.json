@@ -7298,7 +7298,7 @@
     "key": "analyst_facts_only",
     "name": "The Analyst receives stored facts only",
     "state": "in_force",
-    "statement": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level.",
+    "statement": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level. Every number reaches it as a display string rounded by code; a p-value only inside its ready-made phrase, with its fixed description; the paper figures only together, in their phrase.",
     "value": {
       "text": "named stored facts; nothing outcome-derived below the minimums",
       "unit": null
@@ -7333,15 +7333,23 @@
       "tests/test_access_step8b.py::test_below_the_minimums_the_analysts_facts_hold_nothing_computed_from_outcomes",
       "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate",
       "tests/test_analyst.py::test_below_the_minimums_the_analysts_request_holds_no_outcome_value",
-      "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision"
+      "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision",
+      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "The Analyst receives the claim, the domain, the sources' descriptions, the coverage and code's stored facts by named keys (the decision and its wordings; per analysis its counts, checks, minimums and, unless withheld, estimate, standard error, degrees of freedom, p-value, labels and calibration shares; the gap facts; the plan's scope, option, minimums and threshold; at 'narrowed' only the narrowing facts). Below the minimums it receives no estimate and nothing computed from outcome values; the fixed-noise detection rate, which uses none, stays. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text. It never sets the outcome, verdict, label or level.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the live set and the diagnostic call: rounding and phrasing are done by code; the Analyst quotes display strings and ready-made phrases."
+      }
+    ]
   },
   {
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'. Owner's additions (2026-10-07): always forbidden, even with a verdict: 'confirms the claim', 'confirms the hypothesis', 'causes', 'caused by', 'causal'; a sentence giving a p-value must contain 'approximate'; a sentence naming the effective number (by name or value) must not contain 'independent'; if the text gives the informative-paper count, it must also give the effective number, the largest share and the degrees of freedom of the same analysis.",
+    "statement": "The Analyst's facts carry every number as its display string, rounded by code (register 'display_precision'), and one ready-made phrase per p-value (the value and 'approximate, nominal, one-sided') and per set of paper figures (informative papers, effective number, largest share, degrees of freedom). Every number in the text must be, as a token, a number the facts give, apart from the method's own numbers (validity checks 1 and 2, the 95% interval, the exponent -1/2); thousands separators are ignored; this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, and no verdict where there is none. A p-value may appear only inside its ready-made phrase, the paper figures only inside theirs, and a sentence naming the effective number must not call it 'independent'. A text failing a check is corrected once, naming only the code; failing twice it is discarded, the run shows 'explanation unavailable', and the stage keeps fixed facts about the failure (which rules failed; for an unparsable answer which headers were present), never the text.",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7368,11 +7376,12 @@
         {
           "ref": "python:hypocurate.pipeline.agents.text_checks:FIXED_NUMBERS",
           "equals": [
-            1.0,
-            2.0,
-            95.0,
-            0.5,
-            -0.5
+            "1",
+            "2",
+            "95",
+            "95%",
+            "0.5",
+            "-0.5"
           ]
         },
         {
@@ -7380,20 +7389,30 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.text_checks:ALWAYS_FORBIDDEN"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:PHRASE_KEYS",
+          "equals": [
+            "p_value_phrase",
+            "paper_figures_phrase"
+          ]
         }
       ],
       "note": null
     },
     "notes": [
-      "The wording list (FORBIDDEN, NO_VERDICT_FORBIDDEN) and FIXED_NUMBERS are drafts by Claude Code for the owner's review before the live set (B3)."
+      "The wording lists, FIXED_NUMBERS and the phrases' wording are drafts by Claude Code, extended by the owner on 2026-10-07."
     ],
     "tests": [
-      "tests/test_analyst.py::test_numbers_as_given_or_rounded_to_their_shown_precision_match",
-      "tests/test_analyst.py::test_a_number_not_in_the_facts_is_caught",
+      "tests/test_analyst.py::test_numbers_exactly_as_given_match",
+      "tests/test_analyst.py::test_a_number_not_given_as_shown_is_caught",
       "tests/test_analyst.py::test_the_wording_rules",
       "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded",
       "tests/test_analyst.py::test_a_text_following_every_rule_is_stored",
-      "tests/test_analyst.py::test_a_text_breaking_each_new_rule_is_refused"
+      "tests/test_analyst.py::test_a_text_breaking_each_new_rule_is_refused",
+      "tests/test_analyst.py::test_the_diagnostic_answers_shape_is_refused_and_the_same_with_the_phrases_is_stored",
+      "tests/test_analyst.py::test_an_unparsable_answer_stores_its_form_facts_and_no_text",
+      "tests/test_analyst.py::test_a_refused_text_stores_the_names_of_the_rules_it_broke_and_no_text"
     ],
     "history": [
       {
@@ -7401,6 +7420,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner's additions before the live set (2026-10-07): always-forbidden causal and 'confirms' phrases; p-value with 'approximate'; effective number never 'independent'; informative-paper count with its three figures; the Analyst's instruction extended to match."
+      },
+      {
+        "value": "Every number in the Analyst's text must equal a number of the facts it was given, at the precision shown (plain, percentage, scientific notation), apart from the method's own numbers (the exponent -1/2, the 95% interval, validity checks 1 and 2); this checks numerical consistency only, not interpretation. The text must contain code's outcome wording verbatim (so always 'in the sources searched'), the verdict wording verbatim when there is a verdict, no forbidden phrase (for example 'do not exist', 'proves'), and no verdict where there is none. A text failing either check is corrected once, naming only the code; failing twice it is discarded and the run shows 'explanation unavailable'. Owner's additions (2026-10-07): always forbidden, even with a verdict: 'confirms the claim', 'confirms the hypothesis', 'causes', 'caused by', 'causal'; a sentence giving a p-value must contain 'approximate'; a sentence naming the effective number (by name or value) must not contain 'independent'; if the text gives the informative-paper count, it must also give the effective number, the largest share and the degrees of freedom of the same analysis.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after the live set and the diagnostic call: rounding and phrasing are done by code; the Analyst quotes display strings and ready-made phrases."
       }
     ]
   },
@@ -7537,6 +7562,53 @@
     "tests": [
       "tests/test_no_live_calls.py::test_the_test_process_has_no_provider_credential_and_a_closed_local_address",
       "tests/test_no_live_calls.py::test_an_agent_call_without_the_stub_never_reaches_a_provider"
+    ],
+    "history": []
+  },
+  {
+    "key": "display_precision",
+    "name": "How numbers are shown",
+    "state": "in_force",
+    "statement": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'.",
+    "value": {
+      "text": "0.1 for k and SE; 2 significant figures for p; percentages to 0.1",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every number the Analyst can quote.",
+    "reason": "Owner, 2026-10-07: the Analyst never rounds; code does.",
+    "evidence": [
+      "Register 'reference_test_tolerance' and 'reference_numbers' (k, SE, p; the approved sensitivity numbers' effective number and share). Owner's decision after the live diagnostic call, 2026-10-07."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.display:RULES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.display:P_DESCRIPTION",
+          "equals": "approximate, nominal, one-sided"
+        }
+      ],
+      "note": null
+    },
+    "notes": [
+      "The precisions not fixed by the register (other shares and rates, temperatures, scatter, shift, the fallback) are drafts by Claude Code for the owner's review."
+    ],
+    "tests": [
+      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
+      "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate"
     ],
     "history": []
   }

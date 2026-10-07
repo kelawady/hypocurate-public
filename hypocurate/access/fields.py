@@ -33,6 +33,7 @@ from hypocurate.access.allowlist import (BATCH_COLUMNS, CATEGORY_FIELDS, CONDITI
                                          CONDITION_RANGE_FIELDS, OUTCOME_FIELDS, PLAN_SCHEMA, POWER_SCHEMA,
                                          SOURCE_META_FIELDS)
 from hypocurate.access.context import AccessContext as Context
+from hypocurate.pipeline import display
 from hypocurate.pipeline.binding import binding, record_identity
 from hypocurate.sources import adapters
 from hypocurate.sources.normalize import alloy_label, doi_group_key, identity_hash, same_alloy_key
@@ -580,9 +581,9 @@ _ENTRY_KEYS = ("analysis", "scope", "set", "source", "checks", "inference_reason
 _COUNT_KEYS = ("n_records_in_set", "n_records", "n_records_not_used", "n_alloys", "n_alloys_not_used", "n_groups",
                "n_groups_informative", "resid_df", "effective_papers", "largest_paper_share")
 # Computed from outcome values: never present for a withheld result (owner, 2026-10-07: below the minimums
-# the Analyst receives no estimate and nothing computed from outcome values).
-_FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "p_value", "p_value_description", "significant",
-                  "estimated_power_estimated_noise")
+# the Analyst receives no estimate and nothing computed from outcome values). A p-value reaches the Analyst only as
+# its ready-made phrase, and the paper figures with it (owner, 2026-10-07; `pipeline.display`).
+_FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "significant", "estimated_power_estimated_noise")
 _DECISION_KEYS = ("state", "outcome", "outcome_wording", "verdict", "verdict_wording", "exploratory",
                   "evidence_level", "evidence_level_wording", "label")
 _GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources", "kind")
@@ -609,6 +610,13 @@ def _analysis_entry(e: Mapping) -> dict:
     withheld = e.get("withheld") is not False
     if not withheld:
         out.update({k: e.get(k) for k in _FROM_OUTCOMES})
+        c = e.get("counts") or {}
+        if isinstance(e.get("p_value"), (int, float)):
+            out["p_value_phrase"] = display.p_phrase(e["p_value"])
+        if all(isinstance(x, (int, float)) for x in (c.get("n_groups_informative"), c.get("effective_papers"),
+                                                     c.get("largest_paper_share"), e.get("df"))):
+            out["paper_figures_phrase"] = display.figures_phrase(c["n_groups_informative"], c["effective_papers"],
+                                                                 c["largest_paper_share"], e["df"])
         cal = e.get("calibration") or {}
         out["calibration"] = {m: _calibration(cal.get(m)) for m in ("fixed", "estimated")}
     # The fixed-noise detection rate uses no outcome value (structure only), so it stays below the
@@ -636,7 +644,8 @@ def analyst_facts(conn: Connection, ctx: Context) -> dict:
             raise Refused("facts_missing")
         facts = {k: n.get(k) for k in _NARROWING_KEYS if k != "decision"}
         d = n.get("decision") if isinstance(n.get("decision"), Mapping) else {}
-        return {"kind": "narrowing", "decision": {k: d.get(k) for k in _DECISION_KEYS}, "narrowing": facts}
+        return display.display({"kind": "narrowing", "decision": {k: d.get(k) for k in _DECISION_KEYS},
+                                "narrowing": facts})
     stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
     if stats is None or gap is None:
         raise Refused("facts_missing")
@@ -644,7 +653,7 @@ def analyst_facts(conn: Connection, ctx: Context) -> dict:
                     "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
     content = project(p.content, PLAN_SCHEMA) or {}
     decision = stats.get("decision") if isinstance(stats.get("decision"), Mapping) else {}
-    return {
+    return display.display({
         "kind": "analysis" if ctx.stage == "analysis" else "no_dataset_frozen",
         "decision": {k: decision.get(k) for k in _DECISION_KEYS},
         "plan": {"scope": content.get("scope"), "variables": content.get("variables"),
@@ -659,7 +668,7 @@ def analyst_facts(conn: Connection, ctx: Context) -> dict:
                                                 "n_records_in_set")}
                          for e in stats.get("not_analysed") or [] if isinstance(e, Mapping)],
         "gap": {k: gap.get(k) for k in _GAP_KEYS},
-    }
+    })
 
 
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {

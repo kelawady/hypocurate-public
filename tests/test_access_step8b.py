@@ -154,7 +154,10 @@ def test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate(engine)
     out = analysis.run_statistics(engine, rid)
     facts = analyst_input(engine, rid)["analyst_facts"]
     pooled, stored = facts["analyses"][0], out["analyses"][0]
-    assert pooled["estimate"] == stored["estimate"] and pooled["p_value"] == stored["p_value"]
+    # Step 8b (owner, 2026-10-07): display strings and the ready-made p-value phrase, rounded by code.
+    from hypocurate.pipeline import display
+    assert pooled["estimate"] == display.one_decimal(stored["estimate"]) and "p_value" not in pooled
+    assert pooled["p_value_phrase"] == display.p_phrase(stored["p_value"])
     assert facts["decision"]["state"] == "exploratory" and facts["decision"]["verdict"] in ("supported",
                                                                                            "not_supported")
 

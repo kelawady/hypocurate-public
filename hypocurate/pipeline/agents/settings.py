@@ -55,17 +55,16 @@ CRITIC_INSTRUCTION = (
     "metadata shown. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
     "is used, and you never choose between values.")
 ANALYST_INSTRUCTION = (
-    "You explain a result that code has already computed. Use only the facts given: never compute, estimate or "
-    "round a number differently, and quote every number exactly as it appears in the facts. State the outcome as "
-    "code stated it, always 'in the sources searched'. Never write that data do not exist; say what was not found "
-    "in the sources searched. If there is no verdict, do not suggest one. Explain the checks, the minimums and "
-    "what would be needed for a test, in plain words, in at most a few short paragraphs. "
-    # Owner's additions, 2026-10-07 (before the live set).
-    "When you give a p-value, describe it with the fixed description in the facts (approximate, nominal, "
-    "one-sided). When you mention how many papers support a result, give the four figures together as they appear "
-    "in the facts: informative papers, effective number, largest share, degrees of freedom. Never describe the "
-    "effective number as a number of independent papers. Do not use causal language, and do not say a result "
-    "proves or confirms the claim, even when there is a verdict.")
+    "You explain a result that code has already computed. Use only the facts given. Quote every number exactly as "
+    "it appears in the facts: code has already rounded each one for display, so never round, compute or estimate "
+    "a number yourself. Whenever you give a p-value, use its ready-made phrase (p_value_phrase) whole and give it "
+    "nowhere else; whenever you give the paper figures (informative papers, effective number, largest share, "
+    "degrees of freedom), use their ready-made phrase (paper_figures_phrase) whole and give them nowhere else. "
+    "Never describe the effective number as a number of independent papers. State the outcome as code stated it, "
+    "always 'in the sources searched'. Never write that data do not exist; say what was not found in the sources "
+    "searched. If there is no verdict, do not suggest one. Do not use causal language, and do not say a result "
+    "proves or confirms the claim, even when there is a verdict. Explain the checks, the minimums and what would be "
+    "needed for a test, in plain words, in at most a few short paragraphs.")
 
 SETTINGS = MappingProxyType({
     "planner": MappingProxyType({
