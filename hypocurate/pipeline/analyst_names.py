@@ -36,9 +36,24 @@ from hypocurate.pipeline import statistics as st
 from hypocurate.pipeline.eligibility import INFLUENCE_DISPLAY_NAME, INFLUENCE_KEY
 
 NAME = re.compile(r"[a-z_]+")
-LABEL_WORDS = {"agrees": "agrees", "conflicts": "conflicts",
-               "same_direction_different_decision": "same direction, different decision",
-               "not_enough_data": "not enough data"}
+# Plain wording for the four per-source labels when shown in text (owner, 2026-10-07). 'not_enough_data' is worded by
+# its reason (`label_words`): too few groups, or otherwise no valid test alone.
+LABEL_WORDS = {"agrees": "in agreement with the pooled result",
+               "conflicts": "in conflict with the pooled result (the opposite sign)",
+               "same_direction_different_decision": "in the same direction as the pooled result, with a different test "
+                                                    "result",
+               "not_enough_data": "not testable alone"}
+TOO_FEW_GROUPS = "too few groups to test alone"
+# Code-built sentences the Analyst uses whole (owner, 2026-10-07).
+GROUP_DEFINITION = "A group is a paper, or, for a source that is a single dataset, the whole dataset."
+MODEL_SENTENCE = ("The test fitted yield strength (MPa) as a baseline for each alloy plus one coefficient, shared by all "
+                  "alloys, times the inverse square root of grain size (µm); the estimate is that coefficient, in "
+                  "MPa·µm^0.5.")
+FIXED_PLAN_SENTENCE = "The scope was set by the fixed reference plan and was not read from the claim."
+NARROWER_PLAN_SENTENCE = ("The scope was set by the narrower plan that the original question's narrowing decision stored, "
+                          "and was not read from this question's text.")
+CALIBRATION_NAMES = {"estimated": "noise levels estimated from the data", "fixed": "fixed illustrative noise levels"}
+NO_FLAG = "the share is consistent with the nominal level under the stated assumptions"
 SCOPE_WORDS = {"alloy_class": "an alloy class", "phase_class": "a phase class", "test_type": "a test type",
                "temperature_band": "a temperature"}
 SCOPE_LABELS = {"alloy_class": "alloy class", "phase_class": "phase class", "test_type": "test type",
@@ -66,7 +81,7 @@ def band_words(band: Mapping | str) -> str:
         return str(band)
     if band.get("band") == "room temperature" or "min" not in band:
         return str(band.get("band"))
-    return f"{band['band']} ({display.at_most_one_decimal(band['min'])} to {display.at_most_one_decimal(band['max'])} °C)"
+    return f"{band['band']} ({display.temperature(band['min'])} to {display.temperature(band['max'])})"
 
 
 def scope_value_words(part: str, values: list) -> str:
@@ -92,19 +107,55 @@ def _set_name(key: str) -> str:
 
 
 def _calibration(prefix: str, c: Mapping | None) -> dict[str, str]:
+    out = {f"{prefix}_calibration_name": CALIBRATION_NAMES[prefix]}
     if not isinstance(c, Mapping) or c.get("status") != "computed":
         reason = (c or {}).get("reason") if isinstance(c, Mapping) else None
-        return {f"{prefix}_unavailable": str(reason or "not computed").replace("_", " ")}
+        return {**out, f"{prefix}_unavailable": str(reason or "not computed").replace("_", " ")}
     a = c.get("assumptions") or {}
-    return {f"{prefix}_false_positive": display.percent(c["null"]["share"]),
-            f"{prefix}_false_positive_low": display.percent(c["null"]["ci_low"]),
-            f"{prefix}_false_positive_high": display.percent(c["null"]["ci_high"]),
+    return {**out, f"{prefix}_false_positive": display.percent(c["null"]["share"]),
+            f"{prefix}_false_positive_interval": display.interval_phrase(c["null"]["ci_low"], c["null"]["ci_high"]),
             f"{prefix}_detection": display.percent(c["effect"]["share"]),
-            f"{prefix}_detection_low": display.percent(c["effect"]["ci_low"]),
-            f"{prefix}_detection_high": display.percent(c["effect"]["ci_high"]),
-            f"{prefix}_flag": str(c.get("flag_wording") or c.get("confidence_flag")),
-            f"{prefix}_scatter": display.at_most_one_decimal(a["scatter"]) if "scatter" in a else "not given",
-            f"{prefix}_shift": display.at_most_one_decimal(a["shift"]) if "shift" in a else "not given"}
+            f"{prefix}_detection_interval": display.interval_phrase(c["effect"]["ci_low"], c["effect"]["ci_high"]),
+            f"{prefix}_flag": str(c.get("flag_wording") or NO_FLAG),
+            f"{prefix}_scatter": display.stress(a["scatter"]) if "scatter" in a else "not given",
+            f"{prefix}_shift": display.stress(a["shift"]) if "shift" in a else "not given"}
+
+
+def calibration_summary(cal: Mapping, alpha: float) -> str:
+    """One sentence covering both calibrations and their flags (owner, 2026-10-07)."""
+    parts, flags = [], {}
+    for method in ("estimated", "fixed"):
+        c = cal.get(method)
+        if isinstance(c, Mapping) and c.get("status") == "computed":
+            parts.append(f"with {CALIBRATION_NAMES[method]}, the test was significant in "
+                         f"{display.percent(c['null']['share'])} of simulations with no effect "
+                         f"({display.interval_phrase(c['null']['ci_low'], c['null']['ci_high'])})")
+            flags[method] = c.get("flag_wording") or NO_FLAG
+        else:
+            reason = str((c or {}).get("reason") or "not computed") if isinstance(c, Mapping) else "not computed"
+            parts.append(f"with {CALIBRATION_NAMES[method]}, no calibration ({reason.replace('_', ' ')})")
+    head = "In the simulation check, " + "; ".join(parts) + f", against a nominal level of {display.nominal_level(alpha)}."
+    if len(flags) == 2 and len(set(flags.values())) == 1:
+        return f"{head} Under both, {next(iter(flags.values()))}."
+    tails = [f"under {CALIBRATION_NAMES[m]}, {f}" for m, f in flags.items()]
+    return f"{head} " + ("; ".join(tails)[0].upper() + "; ".join(tails)[1:] + "." if tails else "")
+
+
+def direction_note(estimate: float | None, alternative: str | None) -> str | None:
+    """The estimate's sign against the direction the claim describes (the plan's alternative, k > 0)."""
+    if estimate is None or alternative != "k > 0":
+        return None
+    if estimate > 0:
+        return "the estimate is positive, the direction the claim describes"
+    if estimate < 0:
+        return "the estimate is negative, opposite to the direction the claim describes"
+    return "the estimate is zero"
+
+
+def label_words(e: Mapping) -> str:
+    if e.get("label") == "not_enough_data" and e.get("inference_reason") == "insufficient_groups":
+        return TOO_FEW_GROUPS
+    return LABEL_WORDS.get(e.get("label"), str(e.get("label")))
 
 
 def _result(prefix: str, e: Mapping, withheld: bool) -> dict[str, str]:
@@ -117,9 +168,9 @@ def _result(prefix: str, e: Mapping, withheld: bool) -> dict[str, str]:
     if withheld:
         return out
     if e.get("estimate") is not None:
-        out[f"{prefix}_estimate"] = display.one_decimal(e["estimate"])
+        out[f"{prefix}_estimate"] = display.coefficient(e["estimate"])
     if e.get("std_error") is not None:
-        out[f"{prefix}_std_error"] = display.one_decimal(e["std_error"])
+        out[f"{prefix}_std_error"] = display.coefficient(e["std_error"])
     if e.get("p_value") is not None:
         out[f"{prefix}_p_phrase"] = display.p_phrase(e["p_value"])
     if all(x is not None for x in (c.get("n_groups_informative"), c.get("effective_papers"),
@@ -136,20 +187,21 @@ def sensitivity_summary(analyses: list[Mapping], pooled: Mapping, alpha: float, 
     labels = {e["set"]: st.label(e, pooled, alpha) for e in sets}
     for code, words in LABEL_WORDS.items():
         out[f"sensitivity_{code}"] = str(sum(1 for v in labels.values() if v == code))
-    others = [f"{_set_name(k)} ({LABEL_WORDS[v]})" for k, v in labels.items() if v != "agrees"]
+    by_set = {e["set"]: e for e in sets}
+    others = [f"{_set_name(k)} ({label_words({**by_set[k], 'label': v})})" for k, v in labels.items() if v != "agrees"]
     out["sensitivity_not_agreeing"] = "; ".join(others) if others else "none"
     estimated = [e for e in sets if e.get("estimate") is not None]
     if estimated and not withheld:
         low = min(estimated, key=lambda e: e["estimate"])
         high = max(estimated, key=lambda e: e["estimate"])
-        out.update(sensitivity_smallest_estimate=display.one_decimal(low["estimate"]),
+        out.update(sensitivity_smallest_estimate=display.coefficient(low["estimate"]),
                    sensitivity_smallest_set=_set_name(low["set"]),
-                   sensitivity_largest_estimate=display.one_decimal(high["estimate"]),
+                   sensitivity_largest_estimate=display.coefficient(high["estimate"]),
                    sensitivity_largest_set=_set_name(high["set"]))
     influential = next((e for e in sets if e["set"] == INFLUENCE_KEY), None)
     if influential is not None:
         out.update(_result("without_largest_share", influential, withheld))
-        out["without_largest_share_label"] = LABEL_WORDS[labels[INFLUENCE_KEY]]
+        out["without_largest_share_label"] = label_words({**influential, "label": labels[INFLUENCE_KEY]})
     return out
 
 
@@ -163,7 +215,9 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
         names["verdict_wording"] = str(d.get("verdict_wording"))
     if d.get("label"):
         names["result_label"] = str(d["label"])
-    names["alpha"] = display.as_given(plan["alpha"])
+    names["nominal_level"] = display.nominal_level(plan["alpha"])
+    names["model_sentence"] = MODEL_SENTENCE
+    names["group_definition"] = GROUP_DEFINITION
     names["sufficiency_option"] = str(plan["sufficiency_option"]).replace("_", " ")
     for k, v in plan["minimums"].items():
         names[f"minimum_{k}"] = _s(v)
@@ -177,6 +231,9 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
             names[f"count_{k}"] = _s(m.get("count"))
             names[f"met_{k}"] = "met" if m.get("met") else "not met"
         cal = pooled.get("calibration") or {}
+        note = direction_note(pooled.get("estimate"), plan.get("alternative")) if not withheld else None
+        if note:
+            names["direction_note"] = note
         if withheld:  # the fixed-noise shares use no outcome value (owner, 2026-10-07)
             fixed = (pooled.get("detection") or {}).get("fixed") or {}
             if "detection" in fixed:
@@ -185,12 +242,13 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
         else:
             names.update(_calibration("fixed", cal.get("fixed")))
             names.update(_calibration("estimated", cal.get("estimated")))
+            names["calibration_summary"] = calibration_summary(cal, plan["alpha"])
         for e in analyses:
             if e.get("scope") == "per_source":
                 prefix = _key(e["source"])
                 names.update(_result(prefix, e, withheld))
                 if e.get("label"):
-                    names[f"{prefix}_label"] = LABEL_WORDS.get(e["label"], str(e["label"]))
+                    names[f"{prefix}_label"] = label_words(e)
         names.update(sensitivity_summary(analyses, pooled, plan["alpha"], withheld))
     missed = gap.get("minimums_missed") or []
     names["minimums_missed"] = ", ".join(str(m).replace("_", " ") for m in missed) if missed else "none"

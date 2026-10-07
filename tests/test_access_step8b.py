@@ -155,7 +155,7 @@ def test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate(engine)
     stored = out["analyses"][0]
     # Step 8b (owner, 2026-10-07): named display strings and ready-made phrases, rounded by code.
     from hypocurate.pipeline import display
-    assert names["pooled_estimate"] == display.one_decimal(stored["estimate"])
+    assert names["pooled_estimate"] == display.coefficient(stored["estimate"])  # with its unit (owner, 2026-10-07)
     assert names["pooled_p_phrase"] == display.p_phrase(stored["p_value"])
     assert names["result_label"] == "exploratory" and names["verdict_wording"].endswith("in the sources searched")
     assert names["fixed_false_positive"].endswith("%")

@@ -601,12 +601,13 @@ def analyst_facts(conn: Connection, ctx: Context) -> dict:
         p = _rows(conn, "SELECT content, sufficiency_option, min_records, min_alloys, min_groups, min_resid_df "
                         "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
         content = project(p.content, PLAN_SCHEMA) or {}
-        plan_facts = {"alpha": (content.get("model") or {}).get("alpha"), "sufficiency_option": p.sufficiency_option,
+        plan_facts = {"alpha": (content.get("model") or {}).get("alpha"),
+                      "alternative": (content.get("model") or {}).get("alternative"),
+                      "sufficiency_option": p.sufficiency_option,
                       "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
                                    "resid_df": p.min_resid_df}}
         if number.fixed_plan:
-            note = {"scope_source": "the narrower plan stored by the original question's narrowing decision"
-                    if number.narrower_of_run_id else "the fixed reference plan; the scope was not read from the claim"}
+            note = {"scope_source": an.NARROWER_PLAN_SENTENCE if number.narrower_of_run_id else an.FIXED_PLAN_SENTENCE}
         else:
             planner = _done_output(conn, ctx.run_id, "planner") or {}
             answer = planner.get("answer") or {}

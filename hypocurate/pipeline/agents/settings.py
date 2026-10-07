@@ -59,14 +59,16 @@ ANALYST_INSTRUCTION = (
     "You explain a result that code has already computed. Write no digits at all. Wherever you want a number, a "
     "p-value, the paper figures, the outcome or the verdict, write the name of the fact in braces exactly as it is "
     "listed in 'facts', for example {pooled_estimate} or {pooled_p_phrase}; code replaces each name with its value. "
-    "Always use {outcome_wording} to state the outcome, and {verdict_wording} to state the verdict when it is "
-    "listed; when there is a verdict, also use {pooled_p_phrase} and {pooled_figures_phrase}. A p-value or the "
-    "paper figures can only be given through their phrase names. Use only the facts given and compute nothing. "
-    "Never describe the effective number as a number of independent papers. Never write that data do not exist; "
-    "say what was not found in the sources searched. If there is no verdict, do not suggest one. Do not use causal "
-    "language, and do not say a result proves or confirms the claim, even when there is a verdict. When the facts "
-    "say the claim did not state part of the scope, say so. Explain the checks, the minimums and what would be "
-    "needed for a test, in plain words, in at most a few short paragraphs.")
+    "Open by restating the claim in words, then give the outcome ({outcome_wording}) and, when it is listed, the "
+    "verdict ({verdict_wording}), then the main cautions, in two or three sentences, before any detail; do not open "
+    "with the query number. When there is a verdict, also use {pooled_p_phrase} and {pooled_figures_phrase}. Use the "
+    "ready-made sentences and notes whole where they apply: {model_sentence}, {scope_source} or the scope notes, "
+    "{direction_note}, {calibration_summary}, and {group_definition} once. Say 'groups', not 'papers'. Use only the "
+    "facts and notes given, compute nothing, and do not draw conclusions beyond the facts and notes given. Never "
+    "describe the effective number as a number of independent groups. Never write that data do not exist; say what "
+    "was not found in the sources searched. If there is no verdict, do not suggest one. Do not use causal language, "
+    "and do not say a result proves or confirms the claim, even when there is a verdict. Explain the checks and the "
+    "minimums, and what would be needed for a test, in plain words, in at most a few short paragraphs.")
 
 SETTINGS = MappingProxyType({
     "planner": MappingProxyType({

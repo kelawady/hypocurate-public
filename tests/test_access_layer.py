@@ -238,7 +238,7 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
     aw.stored_facts(w, world.run, frozen=True)  # step 8b: the Analyst reads code's stored facts
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         critic.get("flags_kind")
-    assert analyst.get("analyst_facts")["names"]["pooled_estimate"] == "424.9"  # step 8b: a named display string
+    assert analyst.get("analyst_facts")["names"]["pooled_estimate"] == "424.9 MPa·µm^0.5"  # step 8b: a named display string
 
 
 def test_ending_without_a_freeze_opens_only_the_gap_report_input(engine):

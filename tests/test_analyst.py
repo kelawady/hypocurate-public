@@ -30,8 +30,8 @@ def test_the_facts_carry_display_strings_and_phrases():
     a = FACTS["analyses"][0]
     assert (a["estimate"], a["std_error"], a["detection"], a["largest_paper_share"]) == ("424.9", "64.4", "4.7%", "38.7%")
     assert a["p_value_phrase"] == "p ≈ 1.3e-6 (approximate, nominal, one-sided)"
-    assert a["paper_figures_phrase"] == ("20 informative papers, an effective number of papers of 3.94, a largest "
-                                         "share of 38.7% and 19 degrees of freedom")
+    assert a["paper_figures_phrase"] == ("20 informative groups, an effective number of groups of 3.94, a largest "
+                                         "share of 38.7% and 19 degrees of freedom")  # 'groups' (owner, 2026-10-07)
 
 
 @pytest.mark.parametrize("phrase", [
@@ -209,7 +209,7 @@ def test_a_correct_text_is_accepted_and_rendered_with_the_exact_strings(engine, 
     out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
     assert out.failure is None and len(stub.requests) == 1
     c = pooled["counts"]
-    assert f"The pooled estimate is {display.one_decimal(pooled['estimate'])} ± {display.one_decimal(pooled['std_error'])}, " \
+    assert f"The pooled estimate is {display.coefficient(pooled['estimate'])} ± {display.coefficient(pooled['std_error'])}, " \
            f"with {display.p_phrase(pooled['p_value'])}. It rests on " \
            f"{display.figures_phrase(c['n_groups_informative'], c['effective_papers'], c['largest_paper_share'], pooled['df'])}." \
            in out.report
@@ -319,11 +319,16 @@ def test_the_sensitivity_sets_are_labelled_with_the_per_source_function():
     out = analyst_names.sensitivity_summary([POOLED] + sets, POOLED, 0.05, withheld=False)
     assert (out["sensitivity_sets"], out["sensitivity_agrees"], out["sensitivity_same_direction_different_decision"],
             out["sensitivity_conflicts"], out["sensitivity_not_enough_data"]) == ("5", "2", "1", "1", "1")
-    assert out["sensitivity_not_agreeing"] == ("tension and compression (same direction, different decision); "
-                                               "same alloy 1 at pct (conflicts); six batches as groups (not enough data)")
-    assert (out["sensitivity_smallest_estimate"], out["sensitivity_smallest_set"]) == ("-50.0", "same alloy 1 at pct")
-    assert (out["sensitivity_largest_estimate"], out["sensitivity_largest_set"]) == ("410.0", "no exclusions")
-    assert out["without_largest_share_estimate"] == "390.0" and out["without_largest_share_label"] == "agrees"
+    # Plain label wording and units (owner, 2026-10-07).
+    assert out["sensitivity_not_agreeing"] == (
+        "tension and compression (in the same direction as the pooled result, with a different test result); "
+        "same alloy 1 at pct (in conflict with the pooled result (the opposite sign)); "
+        "six batches as groups (not testable alone)")
+    assert (out["sensitivity_smallest_estimate"], out["sensitivity_smallest_set"]) == ("-50.0 MPa·µm^0.5",
+                                                                                      "same alloy 1 at pct")
+    assert (out["sensitivity_largest_estimate"], out["sensitivity_largest_set"]) == ("410.0 MPa·µm^0.5", "no exclusions")
+    assert out["without_largest_share_estimate"] == "390.0 MPa·µm^0.5"
+    assert out["without_largest_share_label"] == "in agreement with the pooled result"
     assert out["without_largest_share_p_phrase"] == "p ≈ 3.0e-5 (approximate, nominal, one-sided)"
 
 
@@ -403,3 +408,85 @@ def test_no_remaining_rule_fires_on_text_the_facts_supply(engine, kind):
     head = names["outcome_wording"] + (" " + names["verdict_wording"] if "verdict_wording" in names else "")
     for v in names.values():
         assert text_checks.wording_problems(f"{head}. {v}.", decision) == [], v
+
+
+# --- owner's additions after reading a live explanation (2026-10-07): code-built sentences, units, plain names --
+
+FW = "the method is over-confident on this data structure under the stated assumptions"
+
+
+def cal(share, low, high, flag):
+    return {"status": "computed", "null": {"share": share, "ci_low": low, "ci_high": high}, "flag_wording": flag}
+
+
+@pytest.mark.parametrize("calibrations, ending", [
+    ({"estimated": cal(0.082, 0.071, 0.095, FW), "fixed": cal(0.089, 0.077, 0.102, FW)}, f" Under both, {FW}."),
+    ({"estimated": cal(0.082, 0.071, 0.095, FW), "fixed": cal(0.05, 0.04, 0.06, None)},
+     f" Under noise levels estimated from the data, {FW}; under fixed illustrative noise levels, the share is consistent "
+     "with the nominal level under the stated assumptions."),
+])
+def test_the_calibration_summary_covers_both_calibrations_and_their_flags(calibrations, ending):
+    s = analyst_names.calibration_summary(calibrations, 0.05)
+    assert s.startswith("In the simulation check, with noise levels estimated from the data, the test was significant "
+                        "in 8.2% of simulations with no effect (7.1% to 9.5%, a 95% simulation interval covering "
+                        "simulation uncertainty only); with fixed illustrative noise levels")
+    assert "against a nominal level of 5.0%." in s and s.endswith(ending)
+
+
+@pytest.mark.parametrize("estimate, note", [
+    (424.9, "the estimate is positive, the direction the claim describes"),
+    (-12.0, "the estimate is negative, opposite to the direction the claim describes"),
+    (None, None),
+])
+def test_the_direction_note_is_built_from_the_sign_and_the_claims_direction(estimate, note):
+    assert analyst_names.direction_note(estimate, "k > 0") == note
+
+
+def test_the_plain_label_for_a_single_group_source():
+    assert analyst_names.label_words({"label": "not_enough_data", "inference_reason": "insufficient_groups"}) == \
+        "too few groups to test alone"
+    assert analyst_names.label_words({"label": "agrees"}) == "in agreement with the pooled result"
+
+
+def test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level(engine):
+    rid, pooled = exploratory(engine)
+    names = names_of(engine, rid)
+    assert names["scope_source"] == analyst_names.FIXED_PLAN_SENTENCE  # the test world's runs use a fixed plan
+    assert names["model_sentence"] == analyst_names.MODEL_SENTENCE
+    assert names["group_definition"] == analyst_names.GROUP_DEFINITION
+    assert names["direction_note"] == analyst_names.direction_note(pooled["estimate"], "k > 0")
+    assert names["nominal_level"] == "5.0%" and "alpha" not in names
+    assert names["pooled_estimate"].endswith(" MPa·µm^0.5") and names["pooled_std_error"].endswith(" MPa·µm^0.5")
+    assert names["estimated_calibration_name"] == "noise levels estimated from the data"
+    assert names["fixed_calibration_name"] == "fixed illustrative noise levels"
+    assert names["fixed_scatter"].endswith(" MPa") and names["fixed_shift"].endswith(" MPa")
+    assert names["fixed_false_positive_interval"].endswith(", a 95% simulation interval covering simulation "
+                                                           "uncertainty only")
+    assert names["calibration_summary"].startswith("In the simulation check, ")
+
+
+SENTENCES = ("The claim is that yield strength rises as grain size falls. The outcome is {outcome_wording}, and the "
+             "claim is {verdict_wording}, with {pooled_p_phrase}, from {pooled_figures_phrase}. {calibration_summary} "
+             "{scope_source} {model_sentence} The pooled estimate is {pooled_estimate}; {direction_note}. "
+             "{group_definition}")
+
+
+def test_a_text_using_the_code_built_sentences_is_accepted(engine, stub):
+    rid, _ = exploratory(engine)
+    stub.queue(reply(SENTENCES))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None and out.report == text_checks.render(SENTENCES, names_of(engine, rid))
+
+
+def test_the_failure_facts_of_a_corrected_attempt_are_stored(engine, stub):
+    """Owner, 2026-10-07: also when a later attempt is accepted."""
+    rid = below_minimums(engine)
+    stub.queue(reply("ZQDIG The outcome is {outcome_wording}; 12 records."), reply(BELOW))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None
+    stored = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id)
+    assert stored["attempts"] == ["digit_outside_placeholder", "ok"]
+    assert stored["failure_details"] == [{"attempt": 1, "problems": [{"unknown_names": 0, "digits_outside_placeholders": 2,
+                                                                      "required_missing": 0,
+                                                                      "result_phrases_missing": 0}]}]
+    assert "ZQDIG" not in json.dumps(stored)

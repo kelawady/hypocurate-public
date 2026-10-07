@@ -7318,7 +7318,7 @@
     "key": "analyst_facts_only",
     "name": "The Analyst receives stored facts only",
     "state": "in_force",
-    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level.",
+    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'too few groups to test alone', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given.",
     "value": {
       "text": "named stored facts; nothing outcome-derived below the minimums",
       "unit": null
@@ -7353,6 +7353,19 @@
         },
         {
           "ref": "python:hypocurate.pipeline.analyst_names:LABEL_WORDS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:MODEL_SENTENCE"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:FIXED_PLAN_SENTENCE",
+          "equals": "The scope was set by the fixed reference plan and was not read from the claim."
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:calibration_summary"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:direction_note"
         }
       ],
       "note": null
@@ -7365,7 +7378,12 @@
       "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision",
       "tests/test_analyst.py::test_a_run_below_the_minimums_offers_no_estimate_names",
       "tests/test_orchestrator.py::test_the_analyst_is_told_which_scope_parts_the_claim_stated_and_which_were_assumed",
-      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases"
+      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
+      "tests/test_analyst.py::test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level",
+      "tests/test_analyst.py::test_the_calibration_summary_covers_both_calibrations_and_their_flags",
+      "tests/test_analyst.py::test_the_direction_note_is_built_from_the_sign_and_the_claims_direction",
+      "tests/test_analyst.py::test_the_plain_label_for_a_single_group_source",
+      "tests/test_analyst.py::test_a_text_using_the_code_built_sentences_is_accepted"
     ],
     "history": [
       {
@@ -7379,6 +7397,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
+      },
+      {
+        "value": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
       }
     ]
   },
@@ -7386,7 +7410,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07).",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7455,7 +7479,8 @@
       "tests/test_analyst.py::test_a_correct_text_is_accepted_and_rendered_with_the_exact_strings",
       "tests/test_analyst.py::test_the_diagnostic_answers_shape_is_refused_and_the_same_with_placeholders_is_stored",
       "tests/test_analyst.py::test_a_text_breaking_each_rule_is_refused",
-      "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text"
+      "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text",
+      "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored"
     ],
     "history": [
       {
@@ -7481,6 +7506,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the first of three live checks was refused by the two word-based rules: those rules removed (with placeholders a p-value and the paper figures exist only inside their phrase names, which no other name exposes, tested); with a verdict, the pooled p-value and paper-figures phrases are required placeholders, refused with 'result_phrases_missing'."
+      },
+      {
+        "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
       }
     ]
   },
@@ -7624,7 +7655,7 @@
     "key": "display_precision",
     "name": "How numbers are shown",
     "state": "in_force",
-    "statement": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'.",
+    "statement": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'. Owner's additions (2026-10-07): estimates and standard errors of the coefficient carry the unit MPa·µm^0.5, scatter and shift MPa, temperatures °C; the nominal level is shown as a percentage beside the shares (5.0%), replacing the threshold shown as given; each simulation interval is shown as '<low> to <high>, a 95% simulation interval covering simulation uncertainty only'; the paper figures read 'informative groups' and 'an effective number of groups'.",
     "value": {
       "text": "0.1 for k and SE; 2 significant figures for p; percentages to 0.1",
       "unit": null
@@ -7654,6 +7685,14 @@
         {
           "ref": "python:hypocurate.pipeline.display:P_DESCRIPTION",
           "equals": "approximate, nominal, one-sided"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.display:COEFFICIENT_UNIT",
+          "equals": "MPa·µm^0.5"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.display:INTERVAL_NOTE",
+          "equals": "a 95% simulation interval covering simulation uncertainty only"
         }
       ],
       "note": null
@@ -7663,8 +7702,16 @@
     ],
     "tests": [
       "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
-      "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate"
+      "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate",
+      "tests/test_analyst.py::test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
+      }
+    ]
   }
 ]

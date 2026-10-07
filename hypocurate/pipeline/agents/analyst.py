@@ -127,6 +127,8 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     report = check.rendered
     close_stage(engine, run_id, stage_id, "done", {"report": report, "template": result.outputs["report"].strip(),
                                                    "attempts": result.attempts,
+                                                   # owner, 2026-10-07: also for an attempt later corrected
+                                                   "failure_details": result.details,
                                                    "check": "numbers written by code from the run record"},
                 input_=inputs)
     return AnalystResult(report, None, stage_id, result.calls)

@@ -9,8 +9,8 @@ their intervals) as a percentage to one decimal; temperatures, scatter and shift
 threshold α as given; any other number to three significant figures.
 
 `display(facts)` turns every float of the Analyst's facts into its display string; integers (counts) stay as they
-are. `p_phrase` and `figures_phrase` are the ready-made phrases the Analyst must use whole (the wording check
-refuses a p-value or the paper figures anywhere else).
+are. `p_phrase`, `figures_phrase` and `interval_phrase` are ready-made phrases; `coefficient`, `stress` and
+`temperature` carry their units (owner, 2026-10-07); `nominal_level` gives the threshold as a percentage.
 """
 from __future__ import annotations
 
@@ -96,6 +96,34 @@ def display(facts: Mapping) -> dict:
     return _show(None, facts)
 
 
+# Owner, 2026-10-07 (after reading a live explanation): units on every estimate, standard error, scatter, shift and
+# temperature; one form for rates and the threshold (percentages); each simulation interval says what it is.
+COEFFICIENT_UNIT = "MPa·µm^0.5"
+INTERVAL_NOTE = "a 95% simulation interval covering simulation uncertainty only"
+
+
+def coefficient(v: float) -> str:
+    """An estimate or standard error of k, with its unit."""
+    return f"{one_decimal(v)} {COEFFICIENT_UNIT}"
+
+
+def stress(v: float) -> str:
+    return f"{at_most_one_decimal(v)} MPa"
+
+
+def temperature(v: float) -> str:
+    return f"{at_most_one_decimal(v)} °C"
+
+
+def nominal_level(alpha: float) -> str:
+    """The threshold in the same form as the shares it is compared with."""
+    return percent(alpha)
+
+
+def interval_phrase(low: float, high: float) -> str:
+    return f"{percent(low)} to {percent(high)}, {INTERVAL_NOTE}"
+
+
 def p_phrase(p: float) -> str:
     """The ready-made phrase for a p-value: the value and its fixed description."""
     return f"p ≈ {p_value(p)} ({P_DESCRIPTION})"
@@ -103,5 +131,5 @@ def p_phrase(p: float) -> str:
 
 def figures_phrase(informative: int, effective: float, largest_share: float, df: int) -> str:
     """The ready-made phrase for the four paper figures, always together (register 'p_value_reporting')."""
-    return (f"{informative} informative papers, an effective number of papers of {two_decimals(effective)}, "
+    return (f"{informative} informative groups, an effective number of groups of {two_decimals(effective)}, "
             f"a largest share of {percent(largest_share)} and {df} degrees of freedom")
