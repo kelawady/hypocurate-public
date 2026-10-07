@@ -582,7 +582,7 @@ _FROM_OUTCOMES = ("estimate", "std_error", "t", "df", "p_value", "p_value_descri
 _DECISION_KEYS = ("state", "outcome", "outcome_wording", "verdict", "verdict_wording", "exploratory",
                   "evidence_level", "evidence_level_wording", "label")
 _GAP_KEYS = ("minimums", "minimums_missed", "records_lacking_fields", "eligibility_rules", "sources")
-_NARROWING_KEYS = ("result", "reason", "claim_scope", "part_counts", "zero_parts", "narrower_scope")
+_NARROWING_KEYS = ("result", "reason", "claim_scope", "part_counts", "zero_parts", "narrower_scope", "decision")
 
 
 def _calibration(c: Any) -> dict | None:
@@ -630,7 +630,9 @@ def analyst_facts(conn: Connection, ctx: Context) -> dict:
         n = _done_output(conn, ctx.run_id, "narrowing")
         if n is None or n.get("result") != "partly_sufficient":
             raise Refused("facts_missing")
-        return {"kind": "narrowing", "narrowing": {k: n.get(k) for k in _NARROWING_KEYS}}
+        facts = {k: n.get(k) for k in _NARROWING_KEYS if k != "decision"}
+        d = n.get("decision") if isinstance(n.get("decision"), Mapping) else {}
+        return {"kind": "narrowing", "decision": {k: d.get(k) for k in _DECISION_KEYS}, "narrowing": facts}
     stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
     if stats is None or gap is None:
         raise Refused("facts_missing")

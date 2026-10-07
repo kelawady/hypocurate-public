@@ -149,11 +149,9 @@ def run_of_version(engine, vid, sources=("mpea", "tamu_fcc"), marked=False, agen
         else:
             _val(engine, "INSERT INTO run_source (run_id, source_id, search_status) VALUES (:r, :s, 'not_selected')",
                  r=rid, s=ids[key])
-    for role in agents:
-        setting = _val(engine, "INSERT INTO agent_setting (role, version, instruction, model) VALUES (:o, "
-                               "(SELECT coalesce(max(version), 0) + 1 FROM agent_setting WHERE role = :o), 'test', "
-                               "'model-a') RETURNING id", o=role)
-        _val(engine, "INSERT INTO run_agent_setting VALUES (:r, :o, :s)", r=rid, o=role, s=setting)
+    from hypocurate.pipeline.agents.settings import ensure_setting
+    for role in agents:  # the code's settings versions (as `queries.dispatch` records them)
+        _val(engine, "INSERT INTO run_agent_setting VALUES (:r, :o, :s)", r=rid, o=role, s=ensure_setting(engine, role))
     _val(engine, "UPDATE run SET status = 'running', started_at = now() WHERE id = :r", r=rid)
     return rid
 
