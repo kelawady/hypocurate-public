@@ -1,5 +1,5 @@
 {
- "note": "Step 8b live calls on the local development database (2026-10-07), exported for the review packet. Every model call with its tokens and cost; each run's outcome and the Analyst's stage. The diagnostic call's raw answer is not included (owner: local scratch file only).",
+ "note": "Step 8b live calls on the local development database (2026-10-07), exported for the review packet. Every model call with its tokens and cost; each run's outcome and the Analyst's stage. The diagnostic call's raw answer is not included (owner: local scratch file only). Fix round 1 adds one Critic call (fix_round_1_critic_check), included in total_actual_cost.",
  "runs": [
   {
    "run": 1,
@@ -501,7 +501,105 @@
    }
   }
  ],
- "total_actual_cost": "1.027756",
+ "total_actual_cost": 1.033251,
  "total_reserved_maximum": "4.851056",
- "calls": 21
+ "calls": 21,
+ "fix_round_1_critic_check": {
+  "note": "Fix round 1 (owner's go, 2026-10-07): one live Critic call on a fresh local scratch database (not the development database), constructed test data marked as such, fixed plan, no Planner and no Analyst; ceiling $0.25. 'stages[].input' is the request content code built from the Critic's access-layer input (with the instruction of settings version 1); 'decisions_unchanged' compares the run with a second run of the same version whose flags have no class (tests/test_critic.py::decided: decisions, sets, freeze record and fingerprint, statistics, gap facts). Harness: ~/hc-work/step08b/fix/live_critic.py (quoted in the fix packet).",
+  "database": "hc_live_critic_live_1791410589",
+  "run": 1,
+  "comparison_run": 2,
+  "ceiling": "0.25",
+  "critic_setting": {
+   "version": 1,
+   "model": "claude-haiku-4-5",
+   "limits": {
+    "max_tokens": 8000,
+    "max_output_chars": 30000,
+    "max_flags_per_call": 100
+   },
+   "settings": {
+    "reasoning_effort": "low"
+   }
+  },
+  "flags": [
+   {
+    "id": 1,
+    "kind": "invalid_value",
+    "category": "physically impossible"
+   },
+   {
+    "id": 2,
+    "kind": "invalid_value",
+    "category": "physically impossible"
+   }
+  ],
+  "result": {
+   "classified": 2,
+   "refused": {},
+   "failures": []
+  },
+  "stages": [
+   {
+    "id": 2,
+    "status": "done",
+    "input": {
+     "flags": "[{\"category\": \"physically impossible\", \"id\": \"1\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 7, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.001\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}, {\"category\": \"physically impossible\", \"id\": \"2\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 8, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.002\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}]",
+     "classes": "{\"cannot_tell\": \"cannot tell from the metadata\", \"different_specimens_or_conditions\": \"different specimens or conditions\", \"possible_transcription_or_unit_error\": \"possible transcription or unit error\", \"same_measurement\": \"same measurement reported twice\"}",
+     "sources": "[{\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"mpea\", \"licence\": \"Apache-2.0\", \"name\": \"MPEA dataset (Borg et al. 2020)\", \"source_type\": \"uploaded_table\"}]"
+    },
+    "output": {
+     "refused": {},
+     "attempts": [
+      "ok"
+     ],
+     "classified": {
+      "1": {
+       "class": "different_specimens_or_conditions",
+       "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+      },
+      "2": {
+       "class": "different_specimens_or_conditions",
+       "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+      }
+     }
+    }
+   }
+  ],
+  "model_calls": [
+   {
+    "id": 1,
+    "model": "claude-haiku-4-5",
+    "status": "succeeded",
+    "input_tokens": 1330,
+    "output_tokens": 833,
+    "cost": "0.005495",
+    "max_cost": "0.045779",
+    "cached_tokens": 0,
+    "error": null
+   }
+  ],
+  "classes": [
+   {
+    "id": 1,
+    "kind": "invalid_value",
+    "category": "physically impossible",
+    "critic_class": "different_specimens_or_conditions",
+    "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+   },
+   {
+    "id": 2,
+    "kind": "invalid_value",
+    "category": "physically impossible",
+    "critic_class": "different_specimens_or_conditions",
+    "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+   }
+  ],
+  "compared_numbers_in_request": [],
+  "decisions_unchanged": true,
+  "freeze_fingerprints": [
+   "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5",
+   "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5"
+  ]
+ }
 }

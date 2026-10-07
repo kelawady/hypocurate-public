@@ -92,13 +92,14 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
 - **Mutation checks:** 41 deliberate faults in the new safeguards and wording rules, plus a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
 - **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
-- **No live call was made in this round.** Live spending stays at $1.0278.
+- **One live Critic call** (owner's go; fresh scratch database; constructed data marked as such; ceiling $0.25): Haiku 4.5, 1,330 input and 833 output tokens, **$0.005495** (reserved maximum $0.045779). Two `invalid_value` flags were sent, each naming one record. The request held no compared value (code also checked it for each): only each flag's kind and category and its record's metadata (alloy, composition, paper DOI, categories, field statuses). Both entries were accepted (class 'different specimens or conditions'); none was refused; one attempt. A second run of the same version with no classes gave identical decisions, sets, freeze record and fingerprint, statistics and gap facts. Live spending is now $1.0333 (`docs/reviews/step08b_live_record.json`, `fix_round_1_critic_check`).
 
 ### Open
 
-- **One live Critic call** (≤ $0.25, constructed data with a small flagged batch). It waits for the owner's go. The local development database is still at the earlier 0006, so before that call it needs a backup and a migration back down and up to the amended 0006. Its run rows are kept.
+- The local development database is still at the earlier 0006 (the live Critic call ran on a fresh scratch database, by the owner's choice). Before it is used again it needs a backup and a migration back down and up to the amended 0006; its run rows are kept.
 - The confirmation of the question as tested by a person is step 10 (the website).
 - The Analyst's narrative is unverified by design; it is labelled as such.
+- **The Critic's reasoning is not checked either.** In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
 
 ## What the checks cover, and what they do not
 
