@@ -57,6 +57,10 @@ FAILURES: Mapping[str, tuple[str, str]] = {
     "spending_cap_month": ("the monthly spending cap would be exceeded", "stop"),
     "ceiling_reached": ("the ceiling set for this call would be exceeded", "stop"),
     "invocation_unknown": ("no such invocation", "stop"),
+    # Step 8b: the roles' own checks of an answer that could be read (each corrected once).
+    "invalid_plan": ("the plan is not valid for the supported template or does not match the claim's scope", "correct"),
+    "numbers_unmatched": ("a number in the text is not one of the facts given, as given", "correct"),
+    "wording_refused": ("the text uses wording that is not allowed", "correct"),
 }
 
 
