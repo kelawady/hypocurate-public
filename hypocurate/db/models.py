@@ -273,6 +273,10 @@ class Hypothesis(Base):
 VERSION_STATUSES = ("draft", "submitted", "returned", "dispatched")
 
 
+# The data-sufficiency options (PRD 5.8): of a query (step 8b, 0006) and of its locked plan (0001).
+SUFFICIENCY_OPTIONS = ("fixed_minimum", "use_available")
+
+
 class HypothesisVersion(Base):
     """Each edit is a new version. Frozen once it leaves draft, except the review
     fields; everything is frozen once returned or dispatched."""
@@ -291,6 +295,9 @@ class HypothesisVersion(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Step 8b (migration 0006; owner, A2): the query's data-sufficiency option, chosen before dispatch,
+    # fixed once submitted; the locked plan's option must equal it.
+    sufficiency_option: Mapped[str] = mapped_column(Text, server_default=sql("'fixed_minimum'"))
     __table_args__ = (
         UniqueConstraint("hypothesis_id", "version_number"),
         CheckConstraint(one_of("status", VERSION_STATUSES), name="status"),
@@ -302,6 +309,7 @@ class HypothesisVersion(Base):
                         name="dispatch_needs_confirmed_domain"),
         CheckConstraint("status = 'draft' OR submitted_at IS NOT NULL", name="submitted_time"),
         CheckConstraint("status <> 'returned' OR returned_at IS NOT NULL", name="returned_time"),
+        CheckConstraint(one_of("sufficiency_option", SUFFICIENCY_OPTIONS), name="sufficiency_option"),
     )
 
 
@@ -365,7 +373,6 @@ class Run(Base):
     )
 
 
-SUFFICIENCY_OPTIONS = ("fixed_minimum", "use_available")
 
 
 class Plan(Base):
@@ -718,6 +725,13 @@ class AnalysisSetRecord(Base):
     record_id: Mapped[int] = mapped_column(ForeignKey("record.id"), primary_key=True)
 
 
+# The Critic's classes and the bound on its reason (step 8b, migration 0006; owner, A7). The same codes as
+# `access.vocabulary.CRITIC_CLASSES` (tests/test_migrations_step8b.py checks that they are equal).
+CRITIC_CLASSES = ("cannot_tell", "different_specimens_or_conditions", "possible_transcription_or_unit_error",
+                  "same_measurement")
+CRITIC_REASON_MAX = 300
+
+
 class Flag(Base):
     """A flag raised by code. `compared_values` is kept for audit; the access layer
     (step 5) never returns it to the Critic. The Critic's class is set once, before the freeze."""
@@ -733,6 +747,11 @@ class Flag(Base):
     classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         CheckConstraint("(critic_class IS NULL) = (classified_at IS NULL)", name="classified_time"),
+        # Step 8b (migration 0006; owner, A7): the class from the Critic's fixed list; the reason, shown to
+        # people only, bounded and only with a class.
+        CheckConstraint(f"critic_class IS NULL OR {one_of('critic_class', CRITIC_CLASSES)}", name="critic_class"),
+        CheckConstraint(f"critic_reason IS NULL OR (critic_class IS NOT NULL "
+                        f"AND length(btrim(critic_reason)) BETWEEN 1 AND {CRITIC_REASON_MAX})", name="critic_reason"),
     )
 
 

@@ -107,8 +107,9 @@ def _val(engine, sql, **params):
         return result.scalar() if result.returns_rows else None
 
 
-def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False) -> int:
-    """A running run of the reference claim that chose `sources`."""
+def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False, sufficiency="fixed_minimum") -> int:
+    """A running run of the reference claim that chose `sources`. Step 8b (0006): `sufficiency` is the
+    query's option, chosen before dispatch; the plan locked for the run must have the same."""
     with engine.connect() as conn:
         registry = dict(conn.execute(text(
             "SELECT s.key, (SELECT sv.id FROM source_version sv WHERE sv.source_id = s.id AND sv.sealed_at IS NOT NULL "
@@ -116,9 +117,10 @@ def dispatched_run(engine, sources=("mpea", "tamu_fcc"), marked=False) -> int:
         ids = dict(conn.execute(text("SELECT key, id FROM source")).all())
         domain = conn.execute(text("SELECT id FROM domain WHERE key = 'grain_size_strengthening'")).scalar_one()
     h = _val(engine, "INSERT INTO hypothesis DEFAULT VALUES RETURNING id")
-    vid = _val(engine, "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id) VALUES "
+    vid = _val(engine, "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id, "
+                       "sufficiency_option) VALUES "
                        "(:h, 1, 'In FCC multi-principal-element alloys, yield strength rises as grain size falls', "
-                       ":d) RETURNING id", h=h, d=domain)
+                       ":d, :o) RETURNING id", h=h, d=domain, o=sufficiency)
     for key in sources:
         _val(engine, "INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=ids[key])
     _val(engine, "UPDATE hypothesis_version SET status = 'submitted', submitted_at = now() WHERE id = :v", v=vid)

@@ -280,10 +280,11 @@ def test_completion_after_a_freeze_moves_access_to_the_commentator_only(engine):
     with pytest.raises(AccessDenied):
         commentator.get("results")
     assert analyst.get("results")
-    world.w.complete(world.run, "partly_sufficient")
+    # Step 8b (0006; owner, A5): a run with a plan never completes as partly sufficient.
+    world.w.complete(world.run, "insufficient", level=4)
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         analyst.get("results")
-    assert commentator.get("results")["run"]["outcome"] == "partly_sufficient"
+    assert commentator.get("results")["run"]["outcome"] == "insufficient"
 
 
 def test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome(engine):

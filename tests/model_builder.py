@@ -103,12 +103,14 @@ class World:
     def hypothesis(self, narrower_of=None):
         return self.val("INSERT INTO hypothesis (narrower_of_run_id) VALUES (:r) RETURNING id", r=narrower_of)
 
-    def draft(self, hypothesis=None, number=1, domain="grain_size_strengthening", sources=("mpea", "tamu_fcc")):
+    def draft(self, hypothesis=None, number=1, domain="grain_size_strengthening", sources=("mpea", "tamu_fcc"),
+              sufficiency="fixed_minimum"):
+        """Step 8b (0006): the query's sufficiency option is chosen here, before dispatch."""
         hypothesis = hypothesis or self.hypothesis()
         vid = self.val(
-            "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id) "
-            "VALUES (:h, :n, 'Yield strength rises as grain size falls', :d) RETURNING id",
-            h=hypothesis, n=number, d=self.domain[domain])
+            "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id, sufficiency_option) "
+            "VALUES (:h, :n, 'Yield strength rises as grain size falls', :d, :o) RETURNING id",
+            h=hypothesis, n=number, d=self.domain[domain], o=sufficiency)
         for s in sources:
             self.run_sql("INSERT INTO hypothesis_version_source VALUES (:v, :s)", v=vid, s=self.source[s])
         return vid
@@ -131,10 +133,11 @@ class World:
         return vid
 
     # --- runs -------------------------------------------------------------------------
-    def run(self, vid=None, sources=("mpea", "tamu_fcc"), agents=False):
+    def run(self, vid=None, sources=("mpea", "tamu_fcc"), agents=False, sufficiency="fixed_minimum"):
         """Dispatch: a queued run with a run_source row for every registered source; with `agents`,
-        the world's settings version of every role recorded too (needed for model calls, step 8a)."""
-        vid = vid or self.dispatched()
+        the world's settings version of every role recorded too (needed for model calls, step 8a).
+        `sufficiency`: the new query's option (step 8b), when no version is given."""
+        vid = vid or self.dispatched(sufficiency=sufficiency)
         rid = self.val("INSERT INTO run (hypothesis_version_id) VALUES (:v) RETURNING id", v=vid)
         if agents:
             for role in ("planner", "curator", "critic", "analyst", "commentator"):
@@ -163,8 +166,11 @@ class World:
         self.lock(rid)
         return rid
 
-    def lock(self, rid, option="fixed_minimum", keys=(), mins=(4, 1, 2, 1), tags=()):
-        """The rules lock, in one transaction with its tags."""
+    def lock(self, rid, option=None, keys=(), mins=(4, 1, 2, 1), tags=()):
+        """The rules lock, in one transaction with its tags. Step 8b (0006): the plan's option is the
+        query's unless a test gives another (which the database refuses)."""
+        option = option or self.val("SELECT hv.sufficiency_option FROM run r JOIN hypothesis_version hv "
+                                    "ON hv.id = r.hypothesis_version_id WHERE r.id = :r", r=rid)
         with self.e.begin() as conn:
             pid = conn.execute(text(
                 "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
@@ -206,8 +212,8 @@ class World:
         """A running run, locked and frozen, with n eligible records in its primary set.
         per_source: {"mpea": 3, "tamu_fcc": 1}; default: all from MPEA."""
         per_source = per_source or {"mpea": n}
-        rid = self.running(agents=agents)
-        self.lock(rid, option=option, keys=keys, mins=mins)
+        rid = self.running(agents=agents, sufficiency=option)
+        self.lock(rid, keys=keys, mins=mins)
         primary = self.analysis_set(rid)
         recs = []
         for source, count in per_source.items():
@@ -261,6 +267,19 @@ class World:
         self.run_sql("UPDATE run SET status = 'completed', completed_at = now(), outcome = :o, verdict = :v, "
                      "exploratory = :x, evidence_level = :e WHERE id = :r", o=outcome, v=verdict, x=exploratory,
                      e=level, r=rid)
+
+    def partly(self, rid):
+        """Step 8b (0006; owner, A5): a run completes as partly sufficient only with no plan, no record and
+        code's narrowing decision of partly sufficient stored (a done 'narrowing' stage result); level 1."""
+        self.narrowing(rid)
+        self.complete(rid, "partly_sufficient", level=1)
+
+    def narrowing(self, rid, result="partly_sufficient"):
+        """Code's narrowing decision (step 8b): a done 'narrowing' stage result with its result."""
+        sid = self.stage(rid, "narrowing", None)
+        self.run_sql("UPDATE stage_result SET status = 'done', finished_at = now(), "
+                     "output = CAST(:o AS jsonb) WHERE id = :s", o=f'{{"result": "{result}"}}', s=sid)
+        return sid
 
     def fail(self, rid, reason="worker stopped"):
         self.run_sql("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r",

@@ -43,7 +43,7 @@ def plan_for(vid: int, option: str = "fixed_minimum", mins=(30, 5, 10, 10), rule
 def run_on(engine, rows, option="fixed_minimum", mins=(30, 5, 10, 10), marked=False, register=True, rules=None) -> int:
     if register:
         pw.registered_files(engine, {"mpea": pw.mpea_csv(rows)})
-    rid = pw.dispatched_run(engine, sources=("mpea",), marked=marked)
+    rid = pw.dispatched_run(engine, sources=("mpea",), marked=marked, sufficiency=option)
     checkpoints.lock_rules(engine, rid, plan_for(pw.version_of(engine, rid), option, mins, rules))
     extract.store_records(engine, rid)
     checks.run_checks(engine, rid)

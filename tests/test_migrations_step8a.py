@@ -53,8 +53,9 @@ def checks_of(function_sql: str) -> list[str]:
 
 # --- the migration -------------------------------------------------------------------------------
 
-def test_0005_is_the_head_and_follows_0004():
-    assert migrate.head_revision() == "0005" and M0005.down_revision == "0004"
+def test_0005_follows_0004():
+    """Step 8b: 0006 is the head now (test_migrations_step8b.py)."""
+    assert M0005.down_revision == "0004"
 
 
 @pytest.mark.parametrize("name, kept", [("hc_model_call_insert", "MODEL_CALL_INSERT_0001"),
@@ -111,7 +112,7 @@ def test_the_downgrade_refuses_while_0005_is_in_use(db):
     before = snapshot(db)
     with pytest.raises(Exception, match="0005 is in use"):
         migrate.downgrade(db, "0004")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0005"
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()
 
 
 # --- source files by role ------------------------------------------------------------------------

@@ -200,12 +200,14 @@ def test_no_planted_value_in_the_source_free_text_reaches_planner_or_critic(engi
 @pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis", "closed_without_freeze", "final",
                                          "final_without_freeze"])
 def test_nothing_from_another_run_reaches_any_role(engine, world_stage):
-    """Owner's addition A: the original run of the narrower question and an earlier run of the
-    same hypothesis hold OTHER in records, coefficient, stage outputs and commentary."""
+    """Owner's addition A: the original run of the narrower question, an earlier run of the original
+    query and an earlier run of the same hypothesis hold OTHER in records, coefficient, stage outputs
+    and commentary. (Step 8b, 0006: a partly-sufficient original has no plan, record or coefficient, so
+    the coefficient is planted in the original query's earlier run.)"""
     world = aw.build(engine, world_stage)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM analysis_result WHERE run_id = :r AND estimate = :v"),
-                            dict(r=world.original_run, v=aw.OTHER)).scalar() == 1
+                            dict(r=world.original_tested_run, v=aw.OTHER)).scalar() == 1
         assert conn.execute(text("SELECT count(*) FROM commentary WHERE run_id = :r"),
                             dict(r=world.original_run)).scalar() == 1
         assert conn.execute(text("SELECT count(*) FROM record WHERE extraction_run_id = :r"),

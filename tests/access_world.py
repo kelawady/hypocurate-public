@@ -108,6 +108,7 @@ class AccessWorld:
     records: list[int] = field(default_factory=list)
     flags: list[int] = field(default_factory=list)
     settings: dict = field(default_factory=dict)  # role -> agent setting id recorded for the run
+    original_tested_run: int = 0  # step 8b: an earlier run of the original query, with records and a coefficient
 
 
 def add_planted_version(w: World, key="mpea", content: bytes | None = None, label="v-planted") -> int:
@@ -182,29 +183,35 @@ def lock(w: World, run: int) -> None:
                                          "smallest_effect": f"{ys}"})
 
 
-def original_run(w: World) -> int:
-    """A completed 'partly sufficient' run with OTHER in its records, coefficient, stage
-    outputs and commentary: the run a narrower question comes from."""
-    rid = w.running(sources=("mpea",))
+def original_run(w: World) -> tuple[int, int]:
+    """The run a narrower question comes from, completed as 'partly sufficient', and an earlier run of
+    the same original query. Step 8b (0006; owner, A5): a partly-sufficient run has no plan and no
+    record, only code's narrowing decision, so OTHER is planted in its stage outputs and commentary, and
+    in the earlier run's records and coefficient. Returns (original run, earlier tested run)."""
     # Step 7 (owner's decision 1): under the fixed option a run below the minimums stores no
-    # coefficient, so this run, which holds OTHER as its coefficient, uses what is available.
-    w.lock(rid, option="use_available")
-    w.search(rid, "mpea")
-    recs = store_value_records(w, rid, OTHER)
-    primary = w.analysis_set(rid)
+    # coefficient, so the earlier run, which holds OTHER as its coefficient, has minimums it meets.
+    # (The query keeps the default option: its narrower question, the main run, must have the same.)
+    vid = w.dispatched(sources=("mpea",))
+    tested = w.running(vid=vid, sources=("mpea",))
+    w.lock(tested, mins=(1, 1, 1, 1))
+    w.search(tested, "mpea")
+    recs = store_value_records(w, tested, OTHER)
+    primary = w.analysis_set(tested)
     for rec in recs:
-        w.decide(rid, rec)
+        w.decide(tested, rec)
         w.add(primary, rec)
-    w.freeze(rid, len(recs))
+    w.freeze(tested, len(recs))
     sql(w, "INSERT INTO analysis_result (run_id, scope, analysis_set_id, n_records, n_alloys, n_groups, "
            "n_groups_informative, resid_df, check1_passed, check2_passed, minimums_met, estimate) "
-           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, 1, true, false, false, :e)", r=rid, s=primary, e=OTHER)
+           "VALUES (:r, 'pooled', :s, 3, 1, 1, 1, 1, true, false, true, :e)", r=tested, s=primary, e=OTHER)
+    w.complete(tested, "insufficient", level=4)
+    rid = w.running(vid=vid, sources=("mpea",))
     stage(w, rid, "analyst", "analyst", f"k = {OTHER}")
-    w.complete(rid, "partly_sufficient")
+    w.partly(rid)
     cid = stage(w, rid, "commentator", "commentator", f"the coefficient {OTHER}")
     sql(w, "INSERT INTO commentary (run_id, stage_result_id, status, text, model, number_check) "
            "VALUES (:r, :s, 'written', :t2, 'model-b', 'all_match')", r=rid, s=cid, t2=f"k was {OTHER}")
-    return rid
+    return rid, tested
 
 
 def build(engine, stage_name: str) -> AccessWorld:
@@ -221,7 +228,7 @@ def build(engine, stage_name: str) -> AccessWorld:
            "ON CONFLICT (kind, value) DO NOTHING")  # seeded by migration 0002 (step 6)
     sql(w, "INSERT INTO tag_value (kind, value, status) VALUES ('property', :v, 'proposed')",
         v=f"strength {PLANTED['yield_strength']}")
-    original = original_run(w)
+    original, tested = original_run(w)
     h = w.hypothesis(narrower_of=original)
     vid = val(w, "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id) "
                  "VALUES (:h, 1, :t, :d) RETURNING id", h=h, t=DIRECTION, d=w.domain["grain_size_strengthening"])
@@ -237,6 +244,7 @@ def build(engine, stage_name: str) -> AccessWorld:
     w.fail(earlier)
     rid = w.run(vid=vid, sources=("mpea", "tamu_fcc"))
     world = AccessWorld(w, rid, original, earlier)
+    world.original_tested_run = tested
     # Dispatch records the agent setting of each role (the dispatcher reads roles from here).
     for role in ROLES:
         sid = settings.get(role) or val(w, "INSERT INTO agent_setting (role, version, instruction, model) "
@@ -291,6 +299,7 @@ def build(engine, stage_name: str) -> AccessWorld:
             w.add(primary, rec)
         w.freeze(rid, len(world.records))
         if stage_name == "final":
-            w.complete(rid, "partly_sufficient")
+            # Step 8b (0006; owner, A5): a run with a plan never completes as partly sufficient.
+            w.complete(rid, "insufficient", level=4)
         return world
     raise ValueError(stage_name)

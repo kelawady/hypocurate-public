@@ -80,7 +80,7 @@ def test_half_a_unit_in_the_last_digit():
 
 
 def _run(engine, sources, option="fixed_minimum"):
-    rid = pw.dispatched_run(engine, sources=sources)
+    rid = pw.dispatched_run(engine, sources=sources, sufficiency=option)  # step 8b (0006): the query's option
     plan = reference_plan(pw.version_of(engine, rid))
     plan["sufficiency"]["option"] = option
     checkpoints.lock_rules(engine, rid, plan)

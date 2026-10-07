@@ -387,6 +387,11 @@ def test_the_evidence_level_must_agree_with_the_outcome(engine, outcome, verdict
     update = ("UPDATE run SET status = 'completed', completed_at = now(), outcome = :o, verdict = :v, "
               "exploratory = :x, evidence_level = :e WHERE id = :r")
     params = dict(o=outcome, v=verdict, x=exploratory, e=level, r=rid)
+    if outcome == "partly_sufficient":  # step 8b (0006; owner, A5): with code's narrowing decision stored
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO stage_result (run_id, stage) VALUES (:r, 'narrowing')"), dict(r=rid))
+            conn.execute(text("UPDATE stage_result SET status = 'done', finished_at = now(), "
+                              "output = '{\"result\": \"partly_sufficient\"}' WHERE run_id = :r"), dict(r=rid))
     if ok:
         with engine.begin() as conn:
             conn.execute(text(update), params)
