@@ -1,6 +1,6 @@
 # Build step 8b — summary for review
 
-Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: built; the whole suite passes (1,728 locally); pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 12).
+Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: built; the whole suite passes (1,728 locally); pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
 
 PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decision and the partly-sufficient path, the Critic, the Analyst, the orchestrator, and the command line's `run`, `dispatch` and `show`, with criteria 14.1 and 14.3 passing from the command line. Part 8a (merged and live, schema 0005) built the agent core, the Curator, the spending caps and the temperature bands.
 
