@@ -39,6 +39,10 @@ LOG = logging.getLogger("hypocurate.pipeline")
 DEFAULT_TIMEOUT_SECONDS = 300
 # code -> (fixed text, what the runner does: "retry" (the same request again), "correct" (again, with
 # the fixed corrective note), or "stop").
+# The accounting failures that stop the whole run, not only the call (step 8b fix round, finding 3): after either,
+# no further model request is made for the run (no further Critic batch, no Analyst), and the run is left running,
+# with a call whose recording failed still started, for step 9's recovery.
+RUN_STOPS = ("recording_failed", "reservation_failed")
 FAILURES: Mapping[str, tuple[str, str]] = {
     "provider_unavailable": ("the provider could not be reached or did not answer in time", "retry"),
     "model_auth": ("the provider refused the credentials", "stop"),

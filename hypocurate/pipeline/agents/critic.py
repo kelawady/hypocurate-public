@@ -27,6 +27,7 @@ from sqlalchemy import Connection, Engine, text
 
 from hypocurate.access.vocabulary import CRITIC_CLASSES, CRITIC_REASON_MAX
 from hypocurate.pipeline.agents import libraries
+from hypocurate.pipeline.agents.lm import RUN_STOPS
 from hypocurate.pipeline.writes import Refused, write
 
 _FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.S)
@@ -135,7 +136,8 @@ class CriticResult:
 
 def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> CriticResult:
     """The Critic's stage(s). A failed batch leaves its flags unclassified; a spending refusal stops the
-    remaining batches (the orchestrator then fails the run, PRD 8)."""
+    remaining batches (the orchestrator then fails the run, PRD 8), and so does a recording or reservation
+    failure (the orchestrator then stops the run and leaves it open for recovery; fix round, finding 3)."""
     from hypocurate.access.dispatch import bind_invocation
     from hypocurate.access.inputs import role_input
     from hypocurate.pipeline.agents.interface import call_agent
@@ -166,7 +168,8 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
             refused.update({str(f["id"]): result.failure for f in batch})
             close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
                                                              "flags": [f["id"] for f in batch]}, input_=inputs)
-            if result.failure.startswith("spending_cap") or result.failure == "ceiling_reached":
+            if (result.failure.startswith("spending_cap") or result.failure == "ceiling_reached"
+                    or result.failure in RUN_STOPS):  # finding 3: no further batch after an accounting failure
                 break
         else:
             got = classify(parse(result.outputs["classification"]), batch)

@@ -7031,7 +7031,7 @@
     "key": "partly_sufficient_rules",
     "name": "Partly sufficient: before the lock, on counts, never tested",
     "state": "in_force",
-    "statement": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the narrower scope of the parts that have such records, built by code from its counts, makes a valid plan (a narrower scope the Planner gives is stored and never used). The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
+    "statement": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the narrower scope of the parts that have such records, built by code from its counts, makes a valid plan (a narrower scope the Planner gives is stored and never used). The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason but a recording or reservation failure, the run still completes as partly sufficient and the narrower question is still created; after a recording or reservation failure the run stops, stays running for recovery, and no narrower question is created.",
     "value": {
       "text": "no plan, no record, code's decision copied, level 1",
       "unit": null
@@ -7076,7 +7076,8 @@
       "tests/test_access_step8b.py::test_no_plan_is_locked_at_narrowed_by_code_or_by_the_database",
       "tests/test_orchestrator.py::test_14_3_a_partly_sufficient_original_and_its_narrower_question",
       "tests/test_orchestrator.py::test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_the_narrower_question",
-      "tests/test_orchestrator.py::test_live_run_c_the_planner_gives_no_narrower_scope_and_code_builds_it"
+      "tests/test_orchestrator.py::test_live_run_c_the_planner_gives_no_narrower_scope_and_code_builds_it",
+      "tests/test_orchestrator.py::test_finding_3_an_accounting_failure_at_the_analyst_on_the_partly_path_creates_no_narrower_question"
     ],
     "history": [
       {
@@ -7084,6 +7085,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      },
+      {
+        "value": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the narrower scope of the parts that have such records, built by code from its counts, makes a valid plan (a narrower scope the Planner gives is stored and never used). The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (finding 3): accounting failures stop the run (B2's exception)."
       }
     ]
   },
@@ -7555,7 +7562,7 @@
     "key": "run_order_and_failures",
     "name": "The run order and what a failure does to a run",
     "state": "in_force",
-    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a, or a narrower question's stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A call whose recording failed stays open, so the run stays running until step 9's recovery. No model call runs inside a database transaction.",
+    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9's recovery. No model call runs inside a database transaction.",
     "value": {
       "text": "the step 8b run order and failure table",
       "unit": null
@@ -7564,7 +7571,8 @@
     "affects": "Every run's stages and endings (PRD 3, 8, 14.4).",
     "reason": "The step 8 plan's run order, corrected by the owner (A1); the failure table approved with the plan.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers A1, A3, A11, B1, B2."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers A1, A3, A11, B1, B2.",
+      "Step 8b second-model review, findings 1 and 3 (docs/reviews/step08b_review_chatgpt.md)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7584,6 +7592,13 @@
         },
         {
           "ref": "python:hypocurate.pipeline.orchestrator:REASONS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.lm:RUN_STOPS",
+          "equals": [
+            "recording_failed",
+            "reservation_failed"
+          ]
         }
       ],
       "note": null
@@ -7595,10 +7610,21 @@
       "tests/test_orchestrator.py::test_a3_a_spending_refusal_at_the_analyst_leaves_codes_decision_standing",
       "tests/test_orchestrator.py::test_a_spending_refusal_at_the_planner_fails_the_run",
       "tests/test_orchestrator.py::test_a_spending_refusal_at_the_critic_fails_the_run",
-      "tests/test_orchestrator.py::test_a_critic_failure_leaves_flags_unclassified_and_the_run_goes_on",
-      "tests/test_orchestrator.py::test_no_model_call_is_made_while_a_database_transaction_is_open"
+      "tests/test_orchestrator.py::test_no_model_call_is_made_while_a_database_transaction_is_open",
+      "tests/test_orchestrator_flagged.py::test_a_critic_failure_on_flagged_data_leaves_every_flag_unclassified_and_the_run_completes",
+      "tests/test_orchestrator_flagged.py::test_an_accounting_failure_at_the_critic_stops_the_run_with_no_further_request",
+      "tests/test_orchestrator_flagged.py::test_an_accounting_failure_at_the_analyst_stops_the_run_before_completion",
+      "tests/test_orchestrator.py::test_finding_3_an_accounting_failure_at_the_planner_stops_the_run_open",
+      "tests/test_orchestrator.py::test_finding_3_an_accounting_failure_at_the_analyst_on_the_partly_path_creates_no_narrower_question"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a, or a narrower question's stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A call whose recording failed stays open, so the run stays running until step 9's recovery. No model call runs inside a database transaction.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (ChatGPT review, findings 1 and 3): a narrower question is recognised by its link; recording and reservation failures stop the run with no further request."
+      }
+    ]
   },
   {
     "key": "nothing_found_kinds",

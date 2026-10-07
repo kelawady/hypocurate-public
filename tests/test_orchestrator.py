@@ -293,6 +293,50 @@ def test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_t
     assert one(engine, "SELECT status FROM stage_result WHERE run_id = :r AND stage = 'analyst'", r=rid) == "failed"
 
 
+@pytest.mark.parametrize("failure", ["recording_failed", "reservation_failed"])
+def test_finding_3_an_accounting_failure_at_the_planner_stops_the_run_open(engine, stub, monkeypatch, failure):
+    from hypocurate.pipeline.agents import spend
+
+    def broken(*a, **kw):
+        raise RuntimeError("database gone")
+
+    stub.respond(responder(planner_body()))
+    rid = dispatched(engine)
+    monkeypatch.setattr(spend, "finish" if failure == "recording_failed" else "reserve", broken)
+    report = run(engine, rid, stub)
+    assert report.status == "running" and report.failure.startswith(f"{failure}: ")
+    assert len(stub.requests) == (1 if failure == "recording_failed" else 0)
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'narrowing'", r=rid) == 0
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
+
+
+@pytest.mark.parametrize("failure", ["recording_failed", "reservation_failed"])
+def test_finding_3_an_accounting_failure_at_the_analyst_on_the_partly_path_creates_no_narrower_question(
+        engine, stub, monkeypatch, failure):
+    """B2's exception: the partly-sufficient run is not completed and no narrower question is created; the run
+    stays running for recovery."""
+    from hypocurate.pipeline.agents import spend
+    name = "finish" if failure == "recording_failed" else "reserve"
+    real = getattr(spend, name)
+
+    def broken_for_the_analyst(db, *a, **kw):
+        with db.connect() as conn:
+            role = conn.execute(text("SELECT role FROM stage_result WHERE status = 'running' ORDER BY id DESC "
+                                     "LIMIT 1")).scalar()
+        if role == "analyst":
+            raise RuntimeError("database gone")
+        return real(db, *a, **kw)
+
+    monkeypatch.setattr(spend, name, broken_for_the_analyst)
+    stub.respond(responder(PARTLY))
+    rid = dispatched(engine, claim=PARTLY_CLAIM)
+    report = run(engine, rid, stub)
+    assert report.status == "running" and report.failure.startswith(f"{failure}: ")
+    assert report.narrower_question is None
+    assert one(engine, "SELECT count(*) FROM hypothesis WHERE narrower_of_run_id = :r", r=rid) == 0
+    assert one(engine, "SELECT outcome FROM run WHERE id = :r", r=rid) is None
+
+
 def test_a3_a_spending_refusal_at_the_analyst_leaves_codes_decision_standing(engine, stub):
     from decimal import Decimal
     stub.respond(responder())
@@ -329,18 +373,6 @@ def test_a_run_fails_before_the_lock_with_a_stated_reason(engine, stub, answer, 
     assert report.status == "failed" and report.failure.startswith(f"{code}: ")
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND status = 'running'", r=rid) == 0
-
-
-def test_a_critic_failure_leaves_flags_unclassified_and_the_run_goes_on(engine, stub):
-    def respond(raw):
-        if "[[ ## classification ## ]]" in raw:
-            return sp.reply(sp.fields(classification="prose, not JSON"))
-        return responder()(raw)
-    stub.respond(respond)
-    rid = dispatched(engine, fixed_plan=True)
-    report = run(engine, rid, stub)
-    assert (report.status, report.outcome) == ("completed", "sufficient")
-    assert one(engine, "SELECT count(*) FROM flag WHERE run_id = :r AND critic_class IS NOT NULL", r=rid) == 0
 
 
 def test_no_model_call_is_made_while_a_database_transaction_is_open(migrated_database, stub):

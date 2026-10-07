@@ -21,9 +21,10 @@ the agents' stages are opened and closed around the request (`agents.runstage`).
 a refused checkpoint or write, a spending refusal at the Planner or the Critic, or changed source versions
 for a narrower question fail the run with a stated reason (`fail_run`). A Critic failure leaves flags
 unclassified and the run goes on (no decision reads the class). Any Analyst failure, a spending refusal
-included, leaves code's decision standing: the run completes with "explanation unavailable" (A3, B2). A call
-whose recording failed stays open; the database then refuses to end the run, which stays running for
-step 9's recovery, and `run` reports it.
+included, leaves code's decision standing: the run completes with "explanation unavailable" (A3, B2). A
+recording or a reservation failure at any agent (`lm.RUN_STOPS`) stops the run at once: no further model request
+is made (no further Critic batch, no Analyst), nothing more is written, and the run stays running (a call whose
+recording failed stays started) for step 9's recovery; `run` reports it (fix round, finding 3).
 """
 from __future__ import annotations
 
@@ -36,9 +37,11 @@ from sqlalchemy import Connection, Engine, text
 from hypocurate.pipeline import analysis, checkpoints, checks, completion, extract, inclusion, narrowing, queries
 from hypocurate.pipeline import plan as plans
 from hypocurate.pipeline.agents import analyst, critic, planner
+from hypocurate.pipeline.agents.lm import RUN_STOPS
 from hypocurate.pipeline.writes import Refused, write
 
 SPENDING = ("spending_cap_run", "spending_cap_month", "ceiling_reached")
+STOPPED = "the run stopped and stays open for recovery (step 9); no further model request was made"
 # Fixed reasons of a failed run (failure_reason: "<code>: <reason>").
 REASONS = {
     "planner_failed": "the Planner gave no usable plan",
@@ -62,6 +65,7 @@ class RunReport:
     stages: list = field(default_factory=list)
     narrower_question: str | None = None
     explanation: str | None = None
+    explanation_failure: str | None = None
 
 
 def fail_run(engine: Engine, run_id: int, code: str, detail: str | None = None) -> str:
@@ -127,6 +131,8 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
         else:
             result = planner.run_planner(engine, run_id, **agent_kw)
             report.stages.append("planner")
+            if result.failure in RUN_STOPS:
+                return _stopped(engine, report, result.failure)
             if result.failure is not None:
                 return _failed(engine, report, "spending_refused" if result.failure in SPENDING else "planner_failed",
                                result.failure)
@@ -138,7 +144,8 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
             if decision["result"] == "claim_not_one_plan":
                 return _failed(engine, report, "claim_not_one_plan", decision["reason"])
             if decision["result"] == "partly_sufficient":
-                _explain(engine, report, agent_kw)
+                if _explain(engine, report, agent_kw) in RUN_STOPS:
+                    return _stopped(engine, report, report.explanation_failure)
                 completion.copy_partly_sufficient(engine, run_id)
                 q = queries.create_narrower(engine, run_id, decision["narrower_scope"])
                 report.narrower_question = q.number
@@ -152,6 +159,9 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
         report.stages += ["records stored", "checks"]
         c = critic.run_critic(engine, run_id, **agent_kw)
         report.stages.append("critic")
+        stops = [f for f in c.failures if f in RUN_STOPS]
+        if stops:
+            return _stopped(engine, report, stops[0])
         spent = [f for f in c.failures if f in SPENDING]
         if spent:
             return _failed(engine, report, "spending_refused", spent[0])
@@ -159,18 +169,28 @@ def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[st
         checkpoints.freeze_dataset(engine, run_id)
         analysis.run_statistics(engine, run_id)
         report.stages += ["inclusion", "dataset freeze", "statistics"]
-        _explain(engine, report, agent_kw)
+        if _explain(engine, report, agent_kw) in RUN_STOPS:
+            return _stopped(engine, report, report.explanation_failure)
         completion.copy_decision(engine, run_id)
         return _done(engine, report)
     except Refused as refused:
         return _failed(engine, report, "refused", refused.code)
 
 
-def _explain(engine: Engine, report: RunReport, agent_kw: Mapping) -> None:
-    """The Analyst: any failure leaves code's decision standing (A3, B2)."""
+def _explain(engine: Engine, report: RunReport, agent_kw: Mapping) -> str | None:
+    """The Analyst: any failure but an accounting one leaves code's decision standing (A3, B2). Returns the
+    failure code, if any."""
     result = analyst.run_analyst(engine, report.run_id, **agent_kw)
     report.stages.append("analyst")
     report.explanation = result.report if result.failure is None else f"{analyst.UNAVAILABLE} ({result.failure})"
+    report.explanation_failure = result.failure
+    return result.failure
+
+
+def _stopped(engine: Engine, report: RunReport, code: str) -> RunReport:
+    """An accounting failure (finding 3): nothing more is written or requested; the run stays as it is."""
+    report.failure = f"{code}: {STOPPED}"
+    return _done(engine, report)
 
 
 def _done(engine: Engine, report: RunReport) -> RunReport:
