@@ -123,6 +123,12 @@ def _number(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+def _word(v, allowed) -> bool:
+    """A vocabulary value: text first, then membership (a list or object never reaches a membership test;
+    fix round, finding 5)."""
+    return isinstance(v, str) and v in allowed
+
+
 def _values(v, allowed, what) -> list:
     if not isinstance(v, list) or not v or not all(isinstance(x, str) for x in v) or len(set(v)) != len(v) \
             or not all(x in allowed for x in v):
@@ -135,7 +141,7 @@ def _bands(v) -> list[dict]:
         raise AnswerInvalid("temperature_band: a non-empty list")
     out, seen = [], set()
     for b in v:
-        if not isinstance(b, dict) or b.get("band") not in BANDS:
+        if not isinstance(b, dict) or not _word(b.get("band"), BANDS):
             raise AnswerInvalid("temperature_band: each {band} from the list")
         if b["band"] == plans.ROOM_TEMPERATURE:
             if set(b) != {"band"}:
@@ -157,7 +163,7 @@ def _exclusions(v) -> list[dict]:
         raise AnswerInvalid("exclusion_rules: a list")
     out = []
     for e in v:
-        if not isinstance(e, dict) or e.get("rule") not in EXCLUSION_RULES:
+        if not isinstance(e, dict) or not _word(e.get("rule"), EXCLUSION_RULES):
             raise AnswerInvalid("an exclusion rule comes from the menu")
         if e["rule"] in ("grain_size_range", "temperature_range"):
             if not set(e) - {"rule"} or set(e) - {"rule", "min", "max"} or not all(_number(e[k]) for k in e if k != "rule"):
@@ -196,7 +202,7 @@ def read_answer(data: Mapping) -> Answer:
         raise AnswerInvalid("the answer has exactly the keys " + ", ".join(sorted(KEYS)))
     if not isinstance(data["domain_matches"], bool):
         raise AnswerInvalid("domain_matches is true or false")
-    if data["outcome"] not in SUPPORTED_OUTCOMES:
+    if not _word(data["outcome"], SUPPORTED_OUTCOMES):
         raise AnswerInvalid("the outcome comes from the list")
     narrower = None if data["narrower"] is None else _scope(data["narrower"], NARROWER_KEYS)
     stated = data["stated"]

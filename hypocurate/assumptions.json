@@ -7283,7 +7283,9 @@
       "tests/test_planner_narrowing.py::test_a_valid_answer_is_stored_and_its_plan_is_the_reference_plan",
       "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
       "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer",
-      "tests/test_planner_narrowing.py::test_an_answer_without_the_stated_marks_is_invalid"
+      "tests/test_planner_narrowing.py::test_an_answer_without_the_stated_marks_is_invalid",
+      "tests/test_planner_narrowing.py::test_every_wrong_type_at_every_position_is_refused_by_the_planners_check",
+      "tests/test_planner_narrowing.py::test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan"
     ],
     "history": [
       {
@@ -7353,7 +7355,9 @@
       "tests/test_critic.py::test_changing_every_class_changes_no_decision_set_fingerprint_or_result",
       "tests/test_critic.py::test_no_decision_path_reads_the_critics_class",
       "tests/test_migrations_step8b.py::test_each_critic_class_is_accepted",
-      "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused"
+      "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused",
+      "tests/test_critic.py::test_a_class_of_the_wrong_type_leaves_that_entry_unclassified",
+      "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry"
     ],
     "history": []
   },

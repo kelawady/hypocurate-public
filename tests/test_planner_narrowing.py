@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 
 import pipeline_world as pw
+from answer_shapes import variants
 import stub_provider as sp
 from hypocurate.db.engine import make_engine
 from hypocurate.pipeline import completion, narrowing, queries
@@ -344,3 +345,27 @@ def test_an_answer_without_the_stated_marks_is_invalid():
     del b["stated"]
     with pytest.raises(planner.AnswerInvalid):
         planner.read_answer(b)
+
+
+# --- finding 5 (fix round 1): wrong-type answer shapes ---------------------------------------------------------
+
+FULL = body(narrower={"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [RT]},
+            exclusion_rules=[{"rule": "grain_size_range", "min": 0.1}, {"rule": "temperature_range", "min": 10.0,
+                                                                         "max": 30.0},
+                             {"rule": "phase", "values": ["FCC"]}, {"rule": "test_type", "values": ["tension"]}])
+
+
+def test_every_wrong_type_at_every_position_is_refused_by_the_planners_check():
+    """The reviewer's shape: a list or object where a rule name is expected raised TypeError at a membership
+    test. Every variant is now either still a valid answer or refused with the check's own code."""
+    check = planner.make_check(1, "fixed_minimum", {MPEA_CLASS})
+    assert check({"plan": json.dumps(FULL)}) is None
+    for path, value, answer in variants(FULL):
+        assert check({"plan": json.dumps(answer)}) in (None, "invalid_plan", "malformed"), (path, value)
+
+
+@pytest.mark.parametrize("value", [[], {}, ["grain_size_range"], {"grain_size_range": 1}])
+def test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan(value):
+    check = planner.make_check(1, "fixed_minimum", {MPEA_CLASS})
+    answer = body(exclusion_rules=[{"rule": value, "min": 0.1}])
+    assert check({"plan": json.dumps(answer)}) == "invalid_plan"

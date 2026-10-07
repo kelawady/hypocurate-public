@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import text
 
 import pipeline_world as pw
+from answer_shapes import WRONG, variants
 import stub_provider as sp
 from hypocurate.access.vocabulary import CRITIC_CLASSES
 from hypocurate.db.engine import make_engine
@@ -215,3 +216,42 @@ def test_no_decision_path_reads_the_critics_class():
     start = fields.index("def flags_full(")
     end = fields.index("\ndef ", start + 1)
     assert uses and all(start <= u < end for u in uses)
+
+
+# --- finding 5 (fix round 1): wrong-type answer shapes ---------------------------------------------------------
+
+BATCH = [{"id": 7, "kind": "values_disagree", "category": "c", "records": []},
+         {"id": 8, "kind": "values_disagree", "category": "c", "records": []}]
+VALID = {"7": {"class": "cannot_tell", "reason": "the metadata are the same"},
+         "8": {"class": "same_measurement", "reason": "same paper and alloy"}}
+
+
+@pytest.mark.parametrize("shape", [{"7": {"class": []}}, {"7": {"class": {}}}, {"7": {"class": ["cannot_tell"]}},
+                                   {"7": {"class": {"cannot_tell": 1}}}, {"7": {"class": 1}}, {"7": {"class": None}}])
+def test_a_class_of_the_wrong_type_leaves_that_entry_unclassified(shape):
+    """The reviewer's reproduction: a list or object as the class raised TypeError at the membership test."""
+    out = critic.classify(shape, BATCH)
+    assert out.accepted == {} and out.refused["7"] in ("class_not_allowed", "malformed_entry")
+    assert out.refused["8"] == "not_answered"
+
+
+def test_every_wrong_type_at_every_position_is_refused_entry_by_entry():
+    for path, value, answer in variants(VALID):
+        if not isinstance(answer, dict):
+            continue  # not a JSON object: the interface's check makes it malformed (corrected once)
+        out = critic.classify(answer, BATCH)                    # never raises
+        if not path:                                            # the whole answer replaced by another object
+            assert set(out.refused) >= {"7", "8"} and not out.accepted, value
+            continue
+        touched = str(path[0])
+        for key in ("7", "8"):
+            if key != touched:
+                assert out.accepted.get(int(key)) == (VALID[key]["class"], VALID[key]["reason"]), (path, value)
+        if touched in ("7", "8") and int(touched) not in out.accepted:
+            assert out.refused[touched], (path, value)
+
+
+def test_a_non_object_answer_is_malformed():
+    for value in WRONG:
+        if not isinstance(value, dict):
+            assert critic.check({"classification": json.dumps(value)}) == "malformed"

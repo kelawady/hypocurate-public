@@ -17,6 +17,7 @@ from decimal import Decimal
 import pytest
 
 import stub_provider as sp
+from answer_shapes import variants
 from hypocurate.access.vocabulary import CURATION_TARGETS
 from hypocurate.pipeline.agents import quotes
 from hypocurate.pipeline.agents.settings import CURATOR_INSTRUCTION
@@ -438,3 +439,21 @@ def test_a_quote_that_fails_the_current_term_checks_is_refused_on_import(db):
     doc["values"]["test_temperature_band"] = {**doc["values"]["phase_class"], "value": "room temperature",
                                               "term": "room temperature"}
     refused_everywhere(db, {**dict(base.files), CURATION_PATH: encode(doc)})
+
+
+# --- finding 5 (fix round 1): wrong-type answer shapes ---------------------------------------------------------
+
+def test_every_wrong_type_at_every_position_is_refused_entry_by_entry():
+    """Each target's entry of the wrong shape or type is refused with its code (never an exception); the
+    Curator's answer was already safe here, and stays so."""
+    from hypocurate.access.vocabulary import CURATION_TARGETS
+    from hypocurate.pipeline.agents import curator
+    docs = {"documentation/main.tex": "Quasistatic tensile testing was used.\nThe alloys are FCC.\n"}
+    valid = {f: "not stated" for f in CURATION_TARGETS}
+    valid["test_type"] = {"value": "tension", "quote": "Quasistatic tensile testing was used."}
+    for path, value, answer in variants(valid):
+        if not isinstance(answer, dict):
+            assert curator.check({"proposals": json.dumps(answer)}) == "malformed"
+            continue
+        proposals, _ = curator.proposals_from(json.dumps(answer), docs)
+        assert {p.status for p in proposals} <= {"not_stated", "refused", "proposed"}, (path, value)

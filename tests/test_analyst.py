@@ -490,3 +490,16 @@ def test_the_failure_facts_of_a_corrected_attempt_are_stored(engine, stub):
                                                                       "required_missing": 0,
                                                                       "result_phrases_missing": 0}]}]
     assert "ZQDIG" not in json.dumps(stored)
+
+
+# --- finding 5 (fix round 1): answer shapes ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("raw", ["", "{}", "[]", "null", "{outcome_wording", "{{outcome_wording}}", "{Outcome_wording}",
+                                 "{a.b}", "{outcome_wording} {}", "{outcome_wording} {[]}", '{"report": []}'])
+def test_an_analyst_text_of_any_shape_gets_a_code_never_an_exception(raw):
+    """The Analyst's answer is text; whatever its shape, the check returns a failure code or accepts it."""
+    from hypocurate.pipeline.agents import analyst
+    check = analyst.make_check({"analyst_facts": {"kind": "analysis", "names": {
+        "outcome_wording": "insufficient in the sources searched"}}})
+    assert check({"report": raw}) in (None, "empty", "malformed", "unknown_name", "digit_outside_placeholder",
+                                      "wording_refused", "result_phrases_missing", "numbers_unmatched")

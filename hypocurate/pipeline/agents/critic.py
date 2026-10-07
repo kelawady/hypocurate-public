@@ -96,7 +96,7 @@ def classify(data: Mapping, batch: list[Mapping]) -> Classified:
             continue
         if not isinstance(entry, dict) or set(entry) - {"class", "reason"} or "class" not in entry:
             out.refused[key] = "malformed_entry"
-        elif entry["class"] not in CRITIC_CLASSES:
+        elif not isinstance(entry["class"], str) or entry["class"] not in CRITIC_CLASSES:  # type first (finding 5)
             out.refused[key] = "class_not_allowed"
         elif entry.get("reason") is not None and not (isinstance(entry["reason"], str)
                                                        and 1 <= len(entry["reason"].strip()) <= CRITIC_REASON_MAX):
