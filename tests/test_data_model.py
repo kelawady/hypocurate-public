@@ -1077,14 +1077,15 @@ def test_model_call_usage_rules(w):
 
 def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bound(w):
     rid = w.running(agents=True)
-    planner, curator = w.stage(rid), w.stage(rid, "curator", "curator")
+    # Step 8a review (finding 6): the Curator has no run invocation, so the second stage is the Critic's.
+    planner, critic = w.stage(rid), w.stage(rid, "critic", "critic")
     ok = w.call(rid, planner, max_cost=0.50)
     w.finish_call(ok, "succeeded", (1000, 200, 100, 0.0123))
     charged = w.call(rid, planner, max_cost=0.40)
     w.finish_call(charged, "failed", (500, 0, 0, 0.0040))         # failed, but the provider reported usage
-    lost = w.call(rid, curator, max_cost=0.30)
+    lost = w.call(rid, critic, max_cost=0.30)
     w.finish_call(lost, "failed", None)                           # failed without usage: may still be charged
-    w.call(rid, curator, max_cost=0.20)                           # still started (e.g. the worker died)
+    w.call(rid, critic, max_cost=0.20)                            # still started (e.g. the worker died)
     columns = "calls, input_tokens, output_tokens, cached_tokens, reported_cost, unconfirmed_calls, " \
               "unconfirmed_cost_bound, cap_cost"
     run_total = w.rows(f"SELECT {columns} FROM model_call_totals_by_run WHERE run_id = :r", r=rid)[0]
@@ -1092,7 +1093,7 @@ def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bou
     by_stage = w.rows(f"SELECT stage, {columns} FROM model_call_totals_by_stage WHERE run_id = :r ORDER BY stage",
                       r=rid)
     assert [(s, float(rep), float(cap)) for s, _, _, _, _, rep, _, _, cap in by_stage] == [
-        ("curator", 0.0, 0.50), ("planner", 0.0163, 0.0163)]
+        ("critic", 0.0, 0.50), ("planner", 0.0163, 0.0163)]
     query = w.rows("SELECT h.id FROM hypothesis h JOIN hypothesis_version v ON v.hypothesis_id = h.id "
                    "JOIN run r ON r.hypothesis_version_id = v.id WHERE r.id = :r", r=rid)[0][0]
     assert float(w.val("SELECT cap_cost FROM model_call_totals_by_query WHERE hypothesis_id = :h", h=query)) == 0.5163
@@ -1107,7 +1108,7 @@ def test_small_costs_are_stored_exactly(w):
     rid = w.running(agents=True)
     call = w.call(rid, w.stage(rid), max_cost=Decimal("1E-12"))
     w.finish_call(call, "succeeded", (1, 1, 0, Decimal("3E-13")))
-    w.call(rid, w.stage(rid, "curator", "curator"), max_cost=Decimal("2E-12"))
+    w.call(rid, w.stage(rid, "critic", "critic"), max_cost=Decimal("2E-12"))  # step 8a review: not the Curator
     row = w.rows("SELECT reported_cost, unconfirmed_cost_bound, cap_cost FROM model_call_totals_by_run "
                  "WHERE run_id = :r", r=rid)[0]
     assert row == (Decimal("3E-13"), Decimal("2E-12"), Decimal("2.3E-12"))

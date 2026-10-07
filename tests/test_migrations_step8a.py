@@ -367,7 +367,7 @@ def test_one_proposal_per_field_per_invocation_for_its_own_version(w, curation):
     other = sealed_version_with_documentation(w, label="other")
     w.rejected(PROPOSAL, "its invocation's source version", i=inv, v=other, **proposal(f="phase_class"))
     rid = w.running(agents=True)
-    run_inv = w.invocation(rid, w.stage(rid, "curator", "curator"), role="curator")
+    run_inv = w.invocation(rid, w.stage(rid))  # a run invocation (the Curator never has one: review finding 6)
     w.rejected(PROPOSAL, "registration invocation of the curator", i=run_inv, v=v, **proposal(f="phase_class"))
 
 
@@ -396,3 +396,152 @@ def test_the_database_sets_the_decision_time(w, curation):
               "VALUES (:p, 'accepted', 'K', now() - interval '3 days')", p=passed)
     assert w.val("SELECT decided_at > now() - interval '1 minute' FROM curator_decision WHERE proposal_id = :p",
                  p=passed)
+
+
+# --- review fixes (ChatGPT, 2026-10-07; owner's term-check changes) ------------------------------------
+# Finding 6: the Curator never runs within a run, enforced when the invocation is created.
+
+def test_a_run_invocation_of_the_curator_is_refused(w):
+    rid = w.running(agents=True)
+    stage = w.stage(rid, "curator", "curator")   # a running stage with that role, and its setting recorded
+    sql, params = run_invocation(w, rid, stage, role="curator")
+    w.rejected(sql, "ck_agent_invocation_shape", **params)
+
+
+# Finding 2: the database checks the value, its type and vocabulary, and its term; nothing it needs is NULL.
+
+@pytest.mark.parametrize("change", [
+    dict(l=None), dict(t=None), dict(q=None), dict(d=None), dict(val=None), dict(val="null"),
+])
+def test_a_passed_proposal_with_a_missing_part_is_refused(w, curation, change):
+    """A NULL must not turn the completeness check into UNKNOWN (which a CHECK accepts); JSON null is
+    not a value either."""
+    v, inv = curation
+    w.rejected(PROPOSAL, "ck_curator_proposal_proposed_complete", i=inv, v=v, **proposal(**change))
+
+
+def test_json_null_is_never_stored_as_a_value(w, curation):
+    v, inv = curation
+    w.rejected(PROPOSAL, "ck_curator_proposal_value_not_json_null", i=inv, v=v,
+               **proposal(f="phase_class", st="refused", val="null", t=None, rc="value_not_allowed"))
+    assert w.val(PROPOSAL, i=inv, v=v, **proposal(f="phase_class", st="refused", val=None, t=None,
+                                                  rc="value_not_allowed"))
+
+
+@pytest.mark.parametrize("change", [
+    dict(val='"compression"'),                          # the reviewer's case: the term belongs to another value
+    dict(val='"compression"', t="compression"),         # a term that is not in the quote
+    dict(val='"shear"'),                                # not in the vocabulary
+    dict(val='5'),                                      # not a string
+    dict(val='["tension"]'),
+    dict(t="tension"),                                  # a listed term, but not in the quote
+    dict(t="Quasistatic"),                              # in the quote, but not a listed term
+    dict(t="TENSILE"),                                  # not as listed
+    dict(f="phase_class", val='"FCC"', t="tensile"),    # a term of another field
+    dict(f="test_temperature", val='"25"', t="25"),     # a temperature is a number
+    dict(f="microstructure", val='"FCC+B2"', t="FCC"),  # every part needs its term in the quote
+    dict(f="microstructure", val='"FCC+"', t="FCC"),
+])
+def test_a_value_that_does_not_match_its_term_is_refused(w, curation, change):
+    v, inv = curation
+    w.rejected(PROPOSAL, "ck_curator_proposal_proposed_complete", i=inv, v=v, **proposal(**change))
+
+
+def test_the_matching_value_and_term_are_stored(w, curation):
+    v, inv = curation
+    assert w.val(PROPOSAL, i=inv, v=v, **proposal())
+    assert w.val(PROPOSAL, i=inv, v=v, **proposal(f="microstructure", val='"FCC"', t="FCC",
+                                                  q="The dataset contains 94 FCC alloy conditions in the system.",
+                                                  l=2))
+
+
+def test_a_quote_must_begin_and_end_at_a_word_boundary_in_the_document(w, curation):
+    v, inv = curation
+    w.rejected(PROPOSAL, "must occur", i=inv, v=v, **proposal(q=QUOTE[1:]))          # "uasistatic …"
+    w.rejected(PROPOSAL, "must occur", i=inv, v=v, **proposal(q=QUOTE[:-1]))         # "… offset Y"
+
+
+def test_the_databases_term_list_is_the_codes():
+    from hypocurate.pipeline.agents import quotes
+    listed = {(f, v, t) for f, by_value in quotes.TERMS.items() for v, terms in by_value.items() for t in terms}
+    assert {(f, v, t) for f, v, t in M0005.CURATOR_TERMS} == listed and len(M0005.CURATOR_TERMS) == len(listed)
+    assert set(M0005.CASE_SENSITIVE_TERMS) == set(quotes.CASE_SENSITIVE_TERMS)
+    assert tuple(M0005.TESTING_WORDS) == tuple(quotes.TESTING_WORDS)
+    assert tuple(M0005.EXCLUDED_PHRASES) == tuple(quotes.EXCLUDED_PHRASES)
+    assert (M0005.QUOTE_MIN, M0005.QUOTE_MAX) == (quotes.QUOTE_MIN_CHARS, quotes.QUOTE_MAX_CHARS) == (30, 600)
+
+
+# The database and the code agree on every case below: a quote the code passes is stored with the
+# code's term and line; for a quote the code refuses, the database refuses every term it could be given.
+AGREEMENT = [
+    ("test_type", "tension", "Specimens were tested in tension at a constant crosshead speed."),
+    ("test_type", "tension", "Specimens were tested after extension of the gauge section by machining."),
+    ("test_type", "tension", "The ultimate tensile strength was tested for each of the alloys."),
+    ("test_type", "tension", "The ultimate tensile strength and tensile ductility were tested for each."),
+    ("test_type", "tension", "Dog-bone tensile specimens were cut from each plate by machining."),
+    ("test_type", "tension", "Specimens were pulled in tension at a strain rate of 0.001 per second."),
+    ("test_type", "compression", "Cylinders were tested under compressive loading at room temperature."),
+    ("phase_class", "FCC", "All alloys were designed as fcc solid solutions in this study."),
+    ("phase_class", "FCC", "All alloys were designed as face centered cubic solid solutions."),
+    ("phase_class", "BCC", "All alloys were designed as BCCs and HCPs in this study, then."),
+    ("microstructure", "B2", "The Nb25 alloys were examined by diffraction after annealing."),
+    ("microstructure", "B2", "Ordered B2 precipitates were found after annealing in every alloy."),
+    ("microstructure", "B2", "Ordered b2 precipitates were found after annealing in every alloy."),
+    ("microstructure", "L12", "Coherent L1$_2$ precipitates were found after ageing in every alloy."),
+    ("microstructure", "FCC+B2", "Each alloy had an FCC matrix with B2 particles after annealing."),
+    ("microstructure", "FCC+B2", "Each alloy had an FCC matrix with Nb2 particles after annealing."),
+    ("test_temperature_band", "room temperature", "All specimens were tested at room temperature in air."),
+    ("test_temperature_band", "room temperature", "The plates were cold rolled at room temperature to 60%."),
+    ("test_temperature_band", "cryogenic", "Further specimens were tested in liquid helium baths."),
+    ("test_temperature", 25, "All the specimens were tested at 25 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at 25~°C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at \\SI{25}{\\degreeCelsius} in air."),
+    ("test_temperature", 25, "All the specimens were tested at 25.0 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at −25 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at -25 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at 25.5 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at 125 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested between 20-25 °C in laboratory air."),
+    ("test_temperature", 25, "All the specimens were tested at 25 K in laboratory air, as usual."),
+    ("test_temperature", 25, "All the plates were annealed and cooled to 25 °C in still air."),
+    ("test_temperature", -196, "All the specimens were tested at −196 °C in liquid nitrogen."),
+    ("test_temperature", 25.5, "All the specimens were tested at 25.5 °C in laboratory air."),
+]
+
+
+def _stored(engine, params) -> bool:
+    with engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            conn.execute(text(PROPOSAL), params)
+            return True
+        except IntegrityError:
+            return False
+        finally:
+            trans.rollback()
+
+
+def test_the_database_and_the_code_agree_on_every_case(w):
+    import json
+    from hypocurate.pipeline.agents import quotes
+    document = "\n".join(q for _, _, q in AGREEMENT) + "\n"
+    v = w.new_version("tamu_fcc", "agreement")
+    w.add_file(v, "table.csv", b"a,b,agreement\n")
+    w.add_file(v, "documentation/cases.md", document.encode(), role="documentation")
+    w.seal(v)
+    inv = w.val(REGISTRATION, v=v, o="curator", a=curator_setting(w))
+    docs = {"documentation/cases.md": document}
+    passed = 0
+    for field, value, quote in AGREEMENT:
+        result = quotes.check(field, value, quote, docs)
+        base = dict(i=inv, v=v, f=field, st="proposed", val=json.dumps(value), q=quote, d="documentation/cases.md",
+                    l=result.located.line if result.located else 1, rc=None)
+        if result.code is None:
+            passed += 1
+            assert _stored(w.e, {**base, "t": result.term}), (field, value, quote)
+            continue
+        listed = [t for p in str(value).split("+") for t in quotes.TERMS.get(field, {}).get(p, ())]
+        numbers = re.findall(r"[-+−–]?\d+(?:\.\d+)?", quote)
+        for term in listed + numbers + [str(value)]:
+            assert not _stored(w.e, {**base, "t": term}), (field, value, quote, term)
+    assert 0 < passed < len(AGREEMENT)

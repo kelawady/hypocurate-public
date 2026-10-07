@@ -1,5 +1,7 @@
 # Build step 8a — summary for review
 
+> **After ChatGPT's review (2026-10-07):** six findings and the owner's term-check changes were fixed; see `step08a_review_chatgpt.md` and `step08a_fix_packet.md`. This summary is kept as it was reviewed, with two overclaims corrected in place (marked *Corrected*). Where it gives the quote bounds as 30–1500 characters, the database checks as occurrence and term only, or the Curator invocation as allowed in a run, the fix packet supersedes it.
+
 Date: 2026-10-06. Branch: `step-08a-curator` (from `main` at `cd2b3be`). **Status: built; the whole suite passes (1,342 locally and 1,342 in the rebuilt test image); pushed; not merged** (owner's instruction: "When 8a is built: full suite, summary, review packet, push, and stop. Do not merge."). Part 8b (Planner, partly sufficient, Critic, Analyst, orchestration, command-line runs) waits for the owner's separate approval after 8a is merged.
 
 PRD Section 15, step 8 ("Agents"), split by the owner into 8a and 8b because it held six safeguard changes and a migration. **8a: the foundation and the Curator.** It contains these **safeguard changes, which need the second model's review before any merge** (CLAUDE.md, "How we work" item 5): migration 0005; the Curator's registration binding and fields, and the removal of its run-stage field; the spending caps; plan validation and eligibility rule 3 (temperature bands); the guarded runner's handling of missing import-path entries.
@@ -35,7 +37,7 @@ From the step 8 brief and planning (one question at a time):
 
 ## Migration 0005
 
-Additive; 0001–0004 untouched; the two replaced model-call functions keep every check of 0001 (tested textually and verbatim for the downgrade).
+0001–0004 untouched as files; the two replaced model-call functions keep every check of 0001 (tested textually and verbatim for the downgrade). *Corrected after ChatGPT's review (2026-10-07): not "additive" as first written: 0005 replaces two of 0001's functions, replaces source_file's path rule under the same name, and makes model_call.run_id and stage_result_id nullable (safe because the live database holds no model call). See step08a_fix_packet.md.*
 
 | Change | Why |
 |---|---|
@@ -50,7 +52,7 @@ Works with the previous release's code (it inserts source files without a role a
 
 1. **Reserve** (`spend.reserve`): one transaction (a run call takes the run's lock first, then one month-wide advisory lock) checks the caps ($2 per run, $2 per curation, $50 per calendar month UTC, and an optional lower ceiling) against every recorded call at its reported cost or, while none is known, its maximum; records the call as started with its maximum cost; commits. A refusal sends nothing and is logged.
 2. **Send** once through DSPy's own litellm engine, **outside any database transaction** (tested with `pg_stat_activity` while the stub holds the request).
-3. **Record** (`spend.finish`): reported usage and its cost from the price table, or failed with no usage and a fixed code. No provider, library or database text is kept or sent later; the original goes to the process log only.
+3. **Record** (`spend.finish`): reported usage and its cost from the price table, or failed with no usage and a fixed code. No provider, library or database text is kept or sent later; the original goes to the process log only. *Corrected after ChatGPT's review (2026-10-07): the process log held the exception's full text and traceback; it now gets the code, the exception's types and where it was raised, never the text. A failed recording on the failure branches was not stopped (finding 4); now every branch stops. See step08a_fix_packet.md.*
 4. **Failure policy** (at most two requests per agent call): unavailable provider (connection, timeout, 429, 5xx, a reply litellm cannot read) → the same request once more; unusable answer (empty, malformed, a tool call, truncated, over-long) → once more with a fixed corrective note naming only the code; refused credentials, other refused requests, refusals, unknown cost, failed recording, spending refusals → stop. DSPy's JSON fallback is off.
 
 **The maximum cost** reserved: the request's UTF-8 JSON bytes (a token is never shorter than a byte) plus 1000 tokens of framing at the input price, and the output limit at the output price. **The price check** (owner's addition 4): the table matches Anthropic's published pricing (https://platform.claude.com/docs/en/about-claude/pricing, read 2026-10-06) for every price, including the cache prices first marked as assumed.

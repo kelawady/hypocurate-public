@@ -555,7 +555,7 @@ class ModelCall(Base):
 # --- Agent invocations and the Curator's proposals (step 8a, migration 0005) --------------
 
 CURATION_FIELDS = ("test_type", "phase_class", "test_temperature", "test_temperature_band", "microstructure")
-QUOTE_MIN, QUOTE_MAX = 30, 1500  # a proposal's quote, whitespace collapsed (register 'curator_quote_checks')
+QUOTE_MIN, QUOTE_MAX = 30, 600  # a proposal's quote, whitespace collapsed (register 'curator_quote_checks')
 STORED_TEXT_MAX = 4000
 
 
@@ -577,7 +577,8 @@ class AgentInvocation(Base):
         CheckConstraint("scope IN ('run', 'registration')", name="scope"),
         CheckConstraint(one_of("role", ROLES), name="role"),
         CheckConstraint(
-            "(scope = 'run' AND run_id IS NOT NULL AND stage_result_id IS NOT NULL AND source_version_id IS NULL) "
+            "(scope = 'run' AND run_id IS NOT NULL AND stage_result_id IS NOT NULL AND source_version_id IS NULL "
+            "AND role <> 'curator') "
             "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
             "AND source_version_id IS NOT NULL AND role = 'curator')", name="shape"),
         ForeignKeyConstraint(["agent_setting_id", "role"], ["agent_setting.id", "agent_setting.role"],
@@ -612,9 +613,11 @@ class CuratorProposal(Base):
         CheckConstraint(one_of("field", CURATION_FIELDS), name="field"),
         CheckConstraint("status IN ('proposed', 'refused', 'not_stated')", name="status"),
         CheckConstraint(
-            f"status <> 'proposed' OR (value IS NOT NULL AND document_path IS NOT NULL AND line >= 1 "
+            f"status <> 'proposed' OR coalesce(value IS NOT NULL AND quote IS NOT NULL AND document_path IS NOT NULL "
+            f"AND line IS NOT NULL AND term IS NOT NULL AND line >= 1 "
             f"AND length(btrim(regexp_replace(quote, '\\s+', ' ', 'g'))) BETWEEN {QUOTE_MIN} AND {QUOTE_MAX} "
-            f"AND length(term) > 0 AND strpos(lower(quote), lower(term)) > 0)", name="proposed_complete"),
+            f"AND hc_curator_term_ok(field, value, quote, term), false)", name="proposed_complete"),
+        CheckConstraint("value IS NULL OR jsonb_typeof(value) <> 'null'", name="value_not_json_null"),
         CheckConstraint("(status = 'refused') = (refusal_code IS NOT NULL) "
                         "AND (refusal_code IS NULL OR refusal_code ~ '^[a-z_]+$')", name="refusal_code"),
         CheckConstraint("status <> 'not_stated' OR (value IS NULL AND quote IS NULL AND document_path IS NULL "

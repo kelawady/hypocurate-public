@@ -6,7 +6,8 @@ measurements, with the exact sentence it relied on, or says "not stated". It is 
 plan or data row (its access list holds only the documentation and the targets).
 
 Code decides what a proposal is: `proposals_from` checks each entry (the field is a target, the
-value is allowed, the quote is found in the documentation and contains a listed term; `quotes`) and
+value is allowed, the quote is found in the documentation at word boundaries, holds a listed term and, for a
+test condition, a testing word; `quotes.check`) and
 stores it as 'proposed', 'refused' with a code, or 'not_stated'. A proposal takes effect only when a
 person accepts it (`sources.curation`), and only where a table gives no value.
 
@@ -18,12 +19,11 @@ common interface).
 from __future__ import annotations
 
 import json
-import math
 import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from hypocurate.access.vocabulary import CURATION_TARGETS, MICROSTRUCTURE_TOKENS
+from hypocurate.access.vocabulary import CURATION_TARGETS
 from hypocurate.pipeline.agents import libraries, quotes
 
 OUTPUT_DESCRIPTION = ('One JSON object with one key per target field. The value of each key is either the string '
@@ -84,17 +84,6 @@ class Proposal:
     refusal_code: str | None = None
 
 
-def _value_problem(field: str, value: Any) -> str | None:
-    if field == "test_temperature":
-        ok = (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-              and -273.15 <= value <= 3000)
-        return None if ok else "value_not_allowed"
-    if field == "microstructure":
-        ok = isinstance(value, str) and value != "" and all(t in MICROSTRUCTURE_TOKENS for t in value.split("+"))
-        return None if ok else "value_not_allowed"
-    return None if isinstance(value, str) and value in CURATION_TARGETS[field]["vocabulary"] else "value_not_allowed"
-
-
 def _stored(value: Any) -> Any:
     """What a refused entry keeps of the model's value: JSON within the bound, else nothing."""
     try:
@@ -110,23 +99,11 @@ def _entry(field: str, entry: Any, documents: Mapping[str, str]) -> Proposal:
     if not (isinstance(entry, dict) and set(entry) == {"value", "quote"} and isinstance(entry["quote"], str)):
         return Proposal(field, "refused", refusal_code="malformed_entry")
     value, quote = entry["value"], entry["quote"]
-    kept = dict(value=_stored(value), quote=quote[:STORED_MAX])
-    code = _value_problem(field, value)
-    collapsed = quotes.collapse(quote)
-    if code is None and len(collapsed) < quotes.QUOTE_MIN_CHARS:
-        code = "quote_too_short"
-    if code is None and len(collapsed) > quotes.QUOTE_MAX_CHARS:
-        code = "quote_too_long"
-    located = quotes.locate(quote, documents) if code is None else None
-    if code is None and located is None:
-        code = "quote_not_found"
-    term = quotes.term_for(field, value, quote) if code is None else None
-    if code is None and term is None:
-        code = "term_missing"
-    if code is not None:
-        return Proposal(field, "refused", refusal_code=code, **kept)
-    return Proposal(field, "proposed", value=value, quote=quote, document=located.document, line=located.line,
-                    term=term)
+    result = quotes.check(field, value, quote, documents)
+    if result.code is not None:
+        return Proposal(field, "refused", refusal_code=result.code, value=_stored(value), quote=quote[:STORED_MAX])
+    return Proposal(field, "proposed", value=value, quote=quote, document=result.located.document,
+                    line=result.located.line, term=result.term)
 
 
 def proposals_from(text: str, documents: Mapping[str, str]) -> tuple[list[Proposal], list[str]]:

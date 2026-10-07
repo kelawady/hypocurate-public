@@ -328,3 +328,113 @@ def test_the_quote_checks_collapse_whitespace_only():
     assert quotes.term_for("microstructure", "FCC+BCC", "FCC only") is None
     assert quotes.term_for("test_temperature", 25, "tested at 25 °C") == "25"
     assert quotes.term_for("test_temperature", 25, "tested at 250 °C") is None
+
+
+# --- review finding 1 (ChatGPT, 2026-10-07): a curation file is checked against the version it is attached to ---
+# Before it is sealed into a version (registration, seal-curation) and again before it is applied (adapters.read):
+# the base version's fingerprint, every quote found again in that version's documentation on the stated line,
+# every value and term passing the current checks, and the acceptance fields present and valid. The one trusted
+# import is the exact approved export replayed on the same base (the frozen data/sources/tamu_fcc/curation.json).
+
+def frozen_curation() -> dict:
+    from hypocurate.sources.versions import DATA_DIR
+    return json.loads((DATA_DIR / "sources" / "tamu_fcc" / "curation.json").read_text(encoding="utf-8"))
+
+
+def encode(doc: dict) -> bytes:
+    return (json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def sealed_as(base, files):
+    from hypocurate.sources.versions import SealedVersion
+    digest = files_digest(files)
+    return SealedVersion(base.id, base.source_key, base.label, base.source_type, base.data_kind, base.grouping_unit,
+                         base.sealed_at, digest, version_identity(digest, base.source_type, base.data_kind,
+                                                                  base.grouping_unit), files)
+
+
+def refused_everywhere(db, files) -> None:
+    """Registration refuses the files, and an adapter refuses a version holding them."""
+    from hypocurate.db.retry import run_transaction
+    from hypocurate.sources.record import AdapterError
+    from hypocurate.sources.versions import SOURCES, RegistrationError, _register_in
+    base = version_of(db, "tamu_fcc")
+    with pytest.raises(RegistrationError, match="curation.json"):
+        run_transaction(db, lambda conn: _register_in(conn, SOURCES["tamu_fcc"], files, base.sealed_at.date()))
+    with pytest.raises(AdapterError, match="curation.json"):
+        adapters.read(sealed_as(base, files))
+
+
+def test_the_frozen_export_on_its_own_base_is_accepted(db):
+    register_base(db)
+    base = version_of(db, "tamu_fcc")
+    files = {**dict(base.files), CURATION_PATH: encode(frozen_curation())}
+    records = adapters.read(sealed_as(base, files)).records
+    assert {records[0].harmonized[f].value for f in ("test_type", "phase_class")} == {"tension", "FCC"}
+
+
+def test_an_export_copied_onto_another_base_is_refused(db):
+    """The reviewer's case: the documentation (or data) changed, so the export's base fingerprint no longer
+    matches, even though every quote is still found."""
+    register_base(db)
+    base = version_of(db, "tamu_fcc")
+    changed = dict(base.files)
+    changed["documentation/main.tex"] = changed["documentation/main.tex"] + b"\n% a later revision\n"
+    refused_everywhere(db, {**changed, CURATION_PATH: encode(frozen_curation())})
+
+
+def _set(path, value):
+    def change(doc):
+        target = doc
+        for key in path[:-1]:
+            target = target[key]
+        if value is KeyError:
+            del target[path[-1]]
+        else:
+            target[path[-1]] = value
+    return change
+
+
+T = ("values", "test_type")
+@pytest.mark.parametrize("change", [
+    _set(("base_version", "fingerprint"), "0" * 64),
+    _set(("base_version", "label"), ""),
+    _set(("source",), "mpea"),
+    _set(T + ("document",), "documentation/absent.tex"),
+    _set(T + ("document",), "Grain_Size_Summary_v3.xlsx"),
+    _set(T + ("quote",), "Quasistatic tensile testing was used everywhere in this imaginary paper."),
+    _set(T + ("quote",), "uasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers"),
+    _set(T + ("line",), 178),
+    _set(T + ("term",), "tension"),
+    _set(T + ("value",), "compression"),
+    _set(T + ("value",), "shear"),
+    _set(T + ("accepted_by",), "  "),
+    _set(T + ("accepted_by",), None),
+    _set(T + ("accepted_at",), "yesterday"),
+    _set(T + ("accepted_at",), "2026-10-06T23:17:06"),        # no time zone
+    _set(T + ("proposal",), "5"),
+    _set(T + ("proposal",), True),
+    _set(T + ("proposal",), 0),
+    _set(T + ("agent_setting_version",), 0),
+    _set(T + ("model",), ""),
+    _set(T + ("note",), 5),
+    _set(T + ("accepted_at",), KeyError),
+    _set(("values", "microstructure"), {}),
+])
+def test_an_export_that_does_not_check_out_is_refused(db, change):
+    register_base(db)
+    base = version_of(db, "tamu_fcc")
+    doc = frozen_curation()
+    change(doc)
+    refused_everywhere(db, {**dict(base.files), CURATION_PATH: encode(doc)})
+
+
+def test_a_quote_that_fails_the_current_term_checks_is_refused_on_import(db):
+    """A quote that is found, on its line, but no longer passes the checks (here: no testing word for a
+    temperature band) is refused like any other."""
+    register_base(db)
+    base = version_of(db, "tamu_fcc")
+    doc = frozen_curation()
+    doc["values"]["test_temperature_band"] = {**doc["values"]["phase_class"], "value": "room temperature",
+                                              "term": "room temperature"}
+    refused_everywhere(db, {**dict(base.files), CURATION_PATH: encode(doc)})

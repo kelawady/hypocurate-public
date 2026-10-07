@@ -3,8 +3,9 @@
 **Before every request** (`reserve`): one transaction checks the caps and records the call as
 started with its maximum cost; it is finished before the request is sent, so no model call ever
 happens inside a database transaction. A run call takes the run's lock first (the locking protocol);
-every reservation then takes one month-wide advisory lock, so two reservations can never both pass
-the monthly cap. The caps count every recorded call at its reported cost, or at its maximum cost
+every reservation then takes one month-wide advisory lock, and only then reads any total, so two
+reservations can never both pass the same cap or ceiling (the run's, the curation's or the month's)
+on a stale total. (Before the step 8a review fix a registration call read its total before the lock.) The caps count every recorded call at its reported cost, or at its maximum cost
 while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
 - a run: at most `RUN_CAP_USD` over all its calls;
 - a registration invocation (the Curator): at most `CURATION_CAP_USD` over its calls;
@@ -76,18 +77,22 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
                            dict(i=invocation_id)).one_or_none()
         if inv is None:
             return ("refused", "invocation_unknown", None, None, None)
+        # Every lock before any total is read (step 8a review, finding 3): the run's lock first (the
+        # locking protocol), then the month-wide lock; read in the same order everywhere.
         if inv.scope == "run":
             status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=inv.run_id)).scalar_one()
             stage = actual_stage(conn, inv.run_id, status)
+        else:
+            stage = "registration"
+        conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=MONTH_LOCK_KEY))
+        if inv.scope == "run":
             spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
                                       "WHERE run_id = :r"), dict(r=inv.run_id)).scalar_one()
             cap, cap_code = RUN_CAP_USD, "spending_cap_run"
         else:
-            stage = "registration"
             spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
                                       "WHERE invocation_id = :i"), dict(i=invocation_id)).scalar_one()
             cap, cap_code = CURATION_CAP_USD, "spending_cap_curation"
-        conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=MONTH_LOCK_KEY))
         month = conn.execute(text(_MONTH_TOTAL)).scalar_one()
         code = (cap_code if spent + max_cost > cap else
                 "ceiling_reached" if ceiling is not None and spent + max_cost > ceiling else

@@ -363,3 +363,158 @@ def test_a_reservation_waits_for_the_month_wide_lock(w, db):
     assert done.wait(10)
     thread.join()
     assert len(calls(w, inv)) == 1
+
+
+# --- review fixes (ChatGPT, 2026-10-07) -------------------------------------------------------------------------
+# Finding 3: the serialization lock is taken before the invocation's (or run's) total is read.
+
+def _waiting_for_advisory_locks(db, n, timeout=10.0):
+    import time
+    deadline = time.monotonic() + timeout
+    with db.connect() as conn:
+        while time.monotonic() < deadline:
+            waiting = conn.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"))
+            if waiting.scalar_one() >= n:
+                return
+            conn.rollback()
+            time.sleep(0.05)
+    raise AssertionError(f"{n} reservations never waited for the month-wide lock")
+
+
+def _race(db, inv, amount, ceiling=None):
+    """Two reservations on the same invocation, released together: deterministic, not timing-dependent.
+    Both are made to wait for the month-wide lock first; if either read its total before taking the lock,
+    both would read the same stale total."""
+    outcomes = []
+
+    def go():
+        try:
+            outcomes.append(("ok", spend.reserve(db, inv, MODEL, Decimal(amount), ceiling)))
+        except spend.SpendingRefused as refused:
+            outcomes.append(("refused", refused.code))
+
+    with db.connect() as holder:
+        holder.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=spend.MONTH_LOCK_KEY))
+        threads = [threading.Thread(target=go) for _ in range(2)]
+        [t.start() for t in threads]
+        _waiting_for_advisory_locks(db, 2)
+        holder.rollback()
+    [t.join(30) for t in threads]
+    return sorted(outcomes)
+
+
+def test_two_reservations_on_one_invocation_cannot_both_pass_the_curation_cap(w, db):
+    inv = spent(w, registration(w), "1.70")
+    outcomes = _race(db, inv, "0.20")
+    assert [o[0] for o in outcomes] == ["ok", "refused"] and outcomes[1][1] == "spending_cap_curation"
+    assert w.val("SELECT sum(coalesce(cost, max_cost)) FROM model_call WHERE invocation_id = :i", i=inv) <= 2
+
+
+def test_two_reservations_on_one_invocation_cannot_both_pass_a_lower_ceiling(w, db):
+    inv = spent(w, registration(w), "0.30")
+    outcomes = _race(db, inv, "0.15", ceiling=Decimal("0.50"))
+    assert [o[0] for o in outcomes] == ["ok", "refused"] and outcomes[1][1] == "ceiling_reached"
+    assert w.val("SELECT sum(coalesce(cost, max_cost)) FROM model_call WHERE invocation_id = :i", i=inv) <= Decimal(
+        "0.50")
+
+
+def test_two_reservations_on_one_run_cannot_both_pass_the_run_cap(w, db):
+    rid = w.running(agents=True)
+    inv = spent(w, rid, "1.70", run=True)
+    outcomes, done = [], []
+
+    def go():
+        try:
+            outcomes.append(("ok", spend.reserve(db, inv, MODEL, Decimal("0.20"))))
+        except spend.SpendingRefused as refused:
+            outcomes.append(("refused", refused.code))
+
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    [t.start() for t in threads]
+    [t.join(30) for t in threads]
+    assert sorted(o[0] for o in outcomes) == ["ok", "refused"]
+    assert [o[1] for o in outcomes if o[0] == "refused"] == ["spending_cap_run"]
+
+
+# Finding 4: a recording failure on any branch stops the call; the reservation stays at its maximum.
+
+class _NoUsage:
+    """An engine whose reply litellm could read but whose usage is empty (the engine's own branch)."""
+    requests = 0
+
+    def __init__(self, **_):
+        pass
+
+    def complete(self, request):
+        from types import SimpleNamespace
+        type(self).requests += 1
+        return SimpleNamespace(usage=None, finish_reason="stop", text="[[ ## answer ## ]]\nx", tool_calls=())
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize("branch", ["provider_failure", "unreadable_reply", "no_usage", "success"])
+def test_a_recording_failure_on_any_branch_stops_and_keeps_the_maximum(w, db, stub, monkeypatch, caplog, branch):
+    from hypocurate.pipeline.agents import libraries
+    inv = registration(w)
+
+    def broken(*a, **kw):
+        raise RuntimeError(f"database gone {PLANTED}")
+
+    monkeypatch.setattr(spend, "finish", broken)
+    if branch == "no_usage":
+        _NoUsage.requests = 0
+        monkeypatch.setattr(libraries, "litellm_engine", lambda **kw: _NoUsage(**kw))
+    stub.queue(*{"provider_failure": [sp.error(500, "api_error")] * 2,
+                 "unreadable_reply": [sp.no_usage(sp.fields(answer="x"))] * 2,
+                 "no_usage": [],
+                 "success": [sp.reply(sp.fields(answer="Kept?"))] * 2}[branch])
+    result = ask(db, inv, stub)
+    assert result.attempts == ["recording_failed"] and result.outputs is None
+    assert len(stub.requests) + _NoUsage.requests * (branch == "no_usage") == 1   # no further request
+    [row] = calls(w, inv)
+    assert row.status == "started"                                                 # counted at its maximum
+    assert w.val("SELECT sum(cap_cost) FROM model_call_totals_by_month") == row.max_cost
+    assert PLANTED not in caplog.text
+
+
+def test_a_reservation_that_cannot_be_written_sends_nothing(w, db, stub, monkeypatch, caplog):
+    inv = registration(w)
+
+    def broken(*a, **kw):
+        raise RuntimeError(f"database gone {PLANTED}")
+
+    monkeypatch.setattr(spend, "reserve", broken)
+    stub.queue(sp.reply(sp.fields(answer="x")))
+    result = ask(db, inv, stub)
+    assert result.attempts == ["reservation_failed"] and stub.requests == [] and calls(w, inv) == []
+    assert PLANTED not in caplog.text and "RuntimeError" in caplog.text
+
+
+# The overclaim on logs: the agent request path logs a failure's type and where it was raised, never its text.
+
+def test_provider_error_text_never_reaches_the_process_log(w, db, stub, caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    inv = registration(w)
+    stub.queue(sp.error(400, "invalid_request_error", f"bad request {PLANTED}"))
+    result = ask(db, inv, stub)
+    assert result.attempts == ["provider_rejected"]
+    assert "agent_request_failure" in caplog.text and PLANTED not in caplog.text
+
+
+# The request's headers (ChatGPT, question 1): exactly the transport's and the provider's own, no input in any.
+
+def test_the_request_headers_carry_nothing_of_the_input(w, db, stub):
+    inv = registration(w)
+    stub.queue(sp.reply(sp.fields(answer="Yes.")))
+    ask(db, inv, stub, question=f"Is it tension? {PLANTED}")
+    [request] = stub.requests
+    headers = {k.lower(): v for k, v in request["headers"].items()}
+    assert set(headers) == {"host", "accept-encoding", "connection", "user-agent", "anthropic-version", "accept",
+                            "content-type", "x-api-key", "content-length"}
+    assert headers["x-api-key"] == sp.DUMMY_KEY and headers["anthropic-version"] == "2023-06-01"
+    assert headers["user-agent"].startswith("litellm/") and headers["content-type"] == "application/json"
+    assert not any(PLANTED in v or "tension" in v for v in headers.values())
+    assert PLANTED in request["raw"].decode()  # the planted value is in the body, so the check above can fail

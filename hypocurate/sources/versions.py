@@ -225,6 +225,12 @@ def _register_in(conn: Connection, d: SourceDefinition, files: dict[str, bytes],
     """Registers and seals a version of `d` holding `files` (or finds the identical sealed one).
     `label`: the version's label (default: the definition's); a curated version names its own."""
     label = label or d.version_label
+    if CURATION_PATH in files:  # checked against the files it is sealed with (step 8a review, finding 1)
+        from hypocurate.sources.curated import CurationInvalid, check_curation
+        try:
+            check_curation(files, d.key, d.source_type, d.data_kind, d.grouping_unit)
+        except CurationInvalid as error:
+            raise RegistrationError(f"{CURATION_PATH}: not a curation of this version ({error})") from None
     digest = files_digest(files)
     identity = version_identity(digest, d.source_type, d.data_kind, d.grouping_unit)
     conn.execute(text(

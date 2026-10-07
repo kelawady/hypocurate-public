@@ -27,7 +27,10 @@ def registered_files(engine, files: dict[str, bytes]) -> dict[str, int]:
     """Registers each source key with one sealed version holding the given file (MPEA layout for
     'mpea' and 'controlled_duplicates'), with the settings of the code's source definition. Step 8a:
     a Texas A&M version also holds the frozen curation (the owner's accepted values: test type
-    tension, phase class FCC), as the real source does, since adapter version 3 no longer assigns them."""
+    tension, phase class FCC), as the real source does, since adapter version 3 no longer assigns them.
+    Step 8a review (finding 1): a curation file must belong to the version it is in, so the version
+    also holds the frozen documentation the quotes come from, and the file names this version's own
+    base fingerprint (the frozen file's entries otherwise unchanged)."""
     from hypocurate.sources.versions import DATA_DIR, SOURCES, file_role, files_digest, version_identity
     out = {}
     for key, content in files.items():
@@ -43,7 +46,14 @@ def registered_files(engine, files: dict[str, bytes]) -> dict[str, int]:
             import hashlib
             stored = {name: content}
             if d.curation_file:
-                stored[d.curation_file] = (DATA_DIR / d.directory / d.curation_file).read_bytes()
+                import json
+                for doc in d.documentation_files:
+                    stored[doc] = (DATA_DIR / d.directory / doc).read_bytes()
+                curation = json.loads((DATA_DIR / d.directory / d.curation_file).read_text(encoding="utf-8"))
+                curation["base_version"] = {"label": "test file", "fingerprint": version_identity(
+                    files_digest(stored), d.source_type, d.data_kind, d.grouping_unit)}
+                stored[d.curation_file] = (json.dumps(curation, indent=2, sort_keys=True, ensure_ascii=False)
+                                           + "\n").encode("utf-8")
             for path, data in stored.items():
                 conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content, role) "
                                   "VALUES (:v, :p, :h, :c, :r)"),

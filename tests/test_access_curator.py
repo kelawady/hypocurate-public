@@ -7,7 +7,8 @@ values), no claim (so not its direction), no plan, no other version. Every read 
 run, naming the version and the invocation.
 
 What these tests do not cover: the model request built from this input (the agent-core tests,
-through the local stub provider), and anything the documentation itself says.
+through the local stub provider), and anything the documentation itself says: a paper may state
+outcome numbers, so the claim is "no data row", not "no outcome value whatsoever".
 """
 from __future__ import annotations
 
