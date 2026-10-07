@@ -17,8 +17,9 @@ by the common interface); `build_plan` makes the plan from the profile's default
 parameters: the model, the rules, the eligibility rules, the calibration and the data-sufficiency option
 never come from the model (the option is the query's, A2). The plan's scope is the claim's scope; a claim
 that is not one plan (more than one alloy class, temperature band or test type, A11) gets no plan here,
-and the narrowing decision (`pipeline.narrowing`) decides what happens. A proposed narrower scope is only
-a proposal: code checks it against the counts and decides (`narrowing`).
+and the narrowing decision (`pipeline.narrowing`) decides what happens. Code builds any narrower scope from its
+own counts (owner, 2026-10-07, after live run C); a narrower scope the Planner gives anyway is checked for its
+shape, stored, and never used.
 """
 from __future__ import annotations
 
@@ -70,7 +71,7 @@ def allowed_values(tag_values: list[Mapping]) -> dict:
                  "claim_scope": {"alloy_class": "list", "phase_class": "list", "test_type": "list",
                                  "temperature_band": "list of {band} or {band, min, max} in °C"},
                  "outcome": "one value", "exclusion_rules": "list of {rule, min?, max?, values?}",
-                 "narrower": "null, or {phase_class, test_type, temperature_band} as in claim_scope"},
+                 "narrower": "null (code decides any narrower scope from its own counts)"},
         "alloy_class": [a for a in approved if a in ALLOY_CLASSES],
         "phase_class": sorted(PHASE_CLASSES - {"other"}),
         "test_type": sorted(TEST_TYPES),

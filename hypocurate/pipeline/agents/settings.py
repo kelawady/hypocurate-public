@@ -45,9 +45,8 @@ PLANNER_INSTRUCTION = (
     "states it, using only the allowed values: its alloy classes, phase classes, test types and temperature bands "
     "(room temperature, elevated or cryogenic; for elevated or cryogenic, the range in degrees Celsius that the "
     "claim names). Where the claim does not state a part of the scope, use the default given. Choose the outcome "
-    "field from the allowed list and exclusion rules only from the menu. If the counts show that part of the "
-    "claim's scope has no record with both a grain size and the outcome, you may propose a narrower scope that "
-    "leaves out exactly those parts. Do not judge whether the claim is true.")
+    "field from the allowed list and exclusion rules only from the menu. Give null for 'narrower': code decides "
+    "any narrower scope from its own counts. Do not judge whether the claim is true.")
 CRITIC_INSTRUCTION = (
     "You classify flags that code raised on records of a scientific data set. For each flag you are told its kind "
     "and category and the metadata of the records it names (source, alloy and composition, paper DOI, field "

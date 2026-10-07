@@ -214,23 +214,34 @@ def test_a_part_with_none_and_the_exact_narrower_scope_is_partly_sufficient():
     assert d["decision"]["evidence_level_wording"] == PARTLY_SUFFICIENT_WORDING
 
 
-@pytest.mark.parametrize("narrower, reason", [
-    (None, "narrower_missing"),
-    ({"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [CRYO]}, "narrower_not_exact"),
-    ({"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [RT, CRYO]}, "narrower_not_exact"),
+@pytest.mark.parametrize("proposed", [
+    None,
+    {"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [CRYO]},
+    {"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [RT, CRYO]},
 ])
-def test_a_narrower_scope_that_is_not_exactly_the_parts_with_records_is_declined(narrower, reason):
-    """Two bands are not one plan (A11), so a declined narrowing stops the original."""
-    d = narrowing.decide(answer_of(claim_scope=TWO_BANDS, narrower=narrower),
+def test_code_builds_the_narrower_scope_and_never_uses_the_planners(proposed):
+    """Owner, 2026-10-07 (after live run C; was ..._not_exactly_the_parts_with_records_is_declined): the Planner
+    cannot see which part has no usable record, so code builds the narrower scope; a proposal is stored only."""
+    d = narrowing.decide(answer_of(claim_scope=TWO_BANDS, narrower=proposed),
                          counts(cell(n=5), cell(t=-196.0, gs=False)), 1, "fixed_minimum")
-    assert (d["result"], d["reason"]) == ("claim_not_one_plan", reason)
+    assert (d["result"], d["narrower_scope"]) == ("partly_sufficient", NARROWER)
+    assert d["proposed_narrower"] == (planner.read_answer(body(claim_scope=TWO_BANDS, narrower=proposed)).narrower)
 
 
-def test_a_declined_narrowing_of_a_one_plan_claim_proceeds():
+def test_a_one_plan_claim_with_a_part_without_records_is_narrowed_by_code():
+    """(Was test_a_declined_narrowing_of_a_one_plan_claim_proceeds.)"""
     two_phases = body()["claim_scope"] | {"phase_class": ["FCC", "BCC"]}
     d = narrowing.decide(answer_of(claim_scope=two_phases, narrower=None), counts(cell(n=5)), 1, "fixed_minimum")
-    assert (d["result"], d["reason"], d["zero_parts"]) == ("proceed", "narrower_missing",
-                                                           [{"part": "phase_class", "value": "BCC"}])
+    assert (d["result"], d["zero_parts"]) == ("partly_sufficient", [{"part": "phase_class", "value": "BCC"}])
+    assert d["narrower_scope"] == {"phase_class": ["FCC"], "test_type": ["tension"], "temperature_band": [RT]}
+
+
+def test_a_narrower_scope_that_is_not_one_plan_is_not_used():
+    """Two alloy classes: no narrower scope is one plan, so the claim is not one plan."""
+    two_classes = TWO_BANDS | {"alloy_class": [MPEA_CLASS, "steel"]}
+    d = narrowing.decide(answer_of(claim_scope=two_classes), counts(cell(n=5), cell(t=-196.0, gs=False)), 1,
+                         "fixed_minimum")
+    assert (d["result"], d["reason"]) == ("claim_not_one_plan", "narrower_invalid")
 
 
 def test_two_bands_each_with_records_are_not_one_plan():

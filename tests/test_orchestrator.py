@@ -262,8 +262,12 @@ def test_a_spending_refusal_at_the_planner_fails_the_run(engine, stub):
 
 @pytest.mark.parametrize("answer, code", [(planner_body(domain_matches=False), "domain_mismatch"),
                                           (planner_body(outcome="hardness"), "planner_failed"),
+                                          # Both test types have usable records (FCC at room temperature), so
+                                          # there is no narrower question: the claim is not one plan (A11). (Was
+                                          # two bands, RT and 950-1050 °C; the second has no usable record, so code
+                                          # now narrows it, owner 2026-10-07.)
                                           (planner_body(claim_scope={**planner_body()["claim_scope"],
-                                                                     "temperature_band": [RT, HOT]}),
+                                                                     "test_type": ["tension", "compression"]}),
                                            "claim_not_one_plan")])
 def test_a_run_fails_before_the_lock_with_a_stated_reason(engine, stub, answer, code):
     stub.respond(responder(answer))
@@ -332,3 +336,12 @@ def test_a_spending_refusal_at_the_critic_fails_the_run(migrated_database, stub)
     assert stub.requests == []  # nothing was sent
     assert one(engine, "SELECT count(*) FROM run_snapshot WHERE run_id = :r", r=rid) == 0
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND status = 'running'", r=rid) == 0
+
+
+def test_live_run_c_the_planner_gives_no_narrower_scope_and_code_builds_it(engine, stub):
+    """Owner, 2026-10-07 (after live run C failed 'narrower_missing'): the same answer now gives a
+    partly-sufficient original and its narrower question."""
+    stub.respond(responder(PARTLY | {"narrower": None}))
+    rid = dispatched(engine, claim=PARTLY_CLAIM)
+    report = run(engine, rid, stub)
+    assert (report.status, report.outcome) == ("completed", "partly_sufficient") and report.narrower_question

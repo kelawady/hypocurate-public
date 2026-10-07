@@ -7012,7 +7012,7 @@
     "key": "partly_sufficient_rules",
     "name": "Partly sufficient: before the lock, on counts, never tested",
     "state": "in_force",
-    "statement": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the Planner proposed exactly the narrower scope of the parts that have such records, which makes a valid plan. The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
+    "statement": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the narrower scope of the parts that have such records, built by code from its counts, makes a valid plan (a narrower scope the Planner gives is stored and never used). The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
     "value": {
       "text": "no plan, no record, code's decision copied, level 1",
       "unit": null
@@ -7056,15 +7056,23 @@
       "tests/test_migrations_step8b.py::test_no_plan_is_locked_after_a_narrowing_decision_of_partly_sufficient",
       "tests/test_access_step8b.py::test_no_plan_is_locked_at_narrowed_by_code_or_by_the_database",
       "tests/test_orchestrator.py::test_14_3_a_partly_sufficient_original_and_its_narrower_question",
-      "tests/test_orchestrator.py::test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_the_narrower_question"
+      "tests/test_orchestrator.py::test_b2_the_analyst_failing_on_the_partly_path_still_completes_and_creates_the_narrower_question",
+      "tests/test_orchestrator.py::test_live_run_c_the_planner_gives_no_narrower_scope_and_code_builds_it"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "A run is completed as partly sufficient only when code's narrowing decision, taken after the Planner and before any lock, finds a claim part with no record that has a grain size and the outcome at an accepted status, and the Planner proposed exactly the narrower scope of the parts that have such records, which makes a valid plan. The original then locks no plan and stores no record (the stage 'narrowed'; the database refuses a plan after such a decision and a partly-sufficient run with a plan, a record or no stored decision); the Analyst explains the narrowing facts; the decision is copied (outcome 'partly_sufficient', no verdict, level 1); the narrower question is created as a separate, linked, submitted query. If the Analyst fails for any reason, the run still completes as partly sufficient and the narrower question is still created.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      }
+    ]
   },
   {
     "key": "narrowing_decision",
     "name": "The narrowing decision counts structure only",
     "state": "in_force",
-    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint.",
+    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C).",
     "value": {
       "text": "counts per claim part; zero parts; exact narrower scope",
       "unit": null
@@ -7109,15 +7117,24 @@
     "tests": [
       "tests/test_planner_narrowing.py::test_every_part_with_records_proceeds",
       "tests/test_planner_narrowing.py::test_a_part_with_none_and_the_exact_narrower_scope_is_partly_sufficient",
-      "tests/test_planner_narrowing.py::test_a_narrower_scope_that_is_not_exactly_the_parts_with_records_is_declined",
+      "tests/test_planner_narrowing.py::test_code_builds_the_narrower_scope_and_never_uses_the_planners",
       "tests/test_planner_narrowing.py::test_two_bands_each_with_records_are_not_one_plan",
       "tests/test_planner_narrowing.py::test_no_part_with_records_proceeds_to_an_insufficient_run",
       "tests/test_planner_narrowing.py::test_a_record_counts_only_with_a_grain_size_the_outcome_and_a_known_condition",
       "tests/test_planner_narrowing.py::test_the_frozen_sources_make_the_cryogenic_claim_partly_sufficient",
       "tests/test_access_step8b.py::test_candidate_counts_are_counts_of_structure_only",
-      "tests/test_orchestrator.py::test_a_run_fails_before_the_lock_with_a_stated_reason"
+      "tests/test_orchestrator.py::test_a_run_fails_before_the_lock_with_a_stated_reason",
+      "tests/test_planner_narrowing.py::test_a_one_plan_claim_with_a_part_without_records_is_narrowed_by_code",
+      "tests/test_planner_narrowing.py::test_a_narrower_scope_that_is_not_one_plan_is_not_used"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      }
+    ]
   },
   {
     "key": "narrower_question",
@@ -7169,7 +7186,7 @@
     "key": "planner_answer",
     "name": "What the Planner may answer and what code does with it",
     "state": "in_force",
-    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and optionally a narrower scope; values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
     "value": {
       "text": "fixed form; plan built by code",
       "unit": null
@@ -7211,7 +7228,14 @@
       "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
       "tests/test_planner_narrowing.py::test_a_claim_of_another_domain_is_a_valid_answer"
     ],
-    "history": []
+    "history": [
+      {
+        "value": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), the outcome field, exclusion rules from the menu, and optionally a narrower scope; values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the rules, the eligibility rules, the calibration and the sufficiency option never come from the model. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, 2026-10-07, after live run C failed 'narrower_missing': code builds the narrower scope from its own counts; the Planner cannot see which part has no usable record, so a proposal of its is stored and never used."
+      }
+    ]
   },
   {
     "key": "critic_classes",

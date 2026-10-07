@@ -14,12 +14,12 @@ accepted value statuses.
 
 **The decision** (`decide`, pure):
 - no part has zero records: `proceed` if the claim is one plan, else `claim_not_one_plan` (A11);
-- some part has zero records: the narrower scope is the claim's scope less exactly those parts. If a
-  dimension is left empty, nothing is testable: `proceed` (the original then ends insufficient) or
-  `claim_not_one_plan`. Otherwise, if the Planner proposed exactly that scope and it makes a valid plan:
-  `partly_sufficient`, with the narrower plan (less its hypothesis version) and its fingerprint; if not,
-  the narrowing is declined with its reason and the original goes on (`proceed`) or stops
-  (`claim_not_one_plan`).
+- some part has zero records: the narrower scope is the claim's scope less exactly those parts, built by code
+  (owner, 2026-10-07, after live run C: the Planner cannot see which part has no usable record; a proposal of
+  its, if any, is stored as `proposed_narrower` and never used). If a dimension is left empty, nothing is
+  testable: `proceed` (the original then ends insufficient) or `claim_not_one_plan`. If the narrower scope
+  makes a valid plan: `partly_sufficient`, with the narrower plan (less its hypothesis version) and its
+  fingerprint; if not (`narrower_invalid`), the original goes on (`proceed`) or stops (`claim_not_one_plan`).
 
 `run_narrowing` stores the decision as the code stage 'narrowing' (with the counts' fingerprint and each
 source's version fingerprint, B1) in one locked transaction at 'before_lock'. A decision of partly
@@ -106,10 +106,8 @@ def decide(answer: Answer, counts: list[Mapping], hypothesis_version_id: int, su
     if not all(narrower.values()):
         return {**out, "result": fallback, "reason": "no_part_with_records"}
     out["narrower_scope"] = narrower
-    if answer.narrower is None:
-        return {**out, "result": fallback, "reason": "narrower_missing"}
-    if not all(_same(answer.narrower[d], narrower[d]) for d in DIMENSIONS):
-        return {**out, "result": fallback, "reason": "narrower_not_exact"}
+    # Owner, 2026-10-07 (after live run C): code builds the narrower scope from its own counts; the Planner
+    # cannot see which part has no usable record, so a proposal of its, if any, is stored and never used.
     if len(scope["alloy_class"]) != 1 or not one_plan(narrower):
         return {**out, "result": fallback, "reason": "narrower_invalid"}
     try:
