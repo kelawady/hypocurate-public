@@ -1,7 +1,7 @@
 # Build step 8b — fix packet, round 1
 
 Date: 2026-10-07. Branch: `step-08b-agents`. Reviewed head: `859e019` (ChatGPT: "not safe to merge",
-`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `1e515c4`. Generated from the files on disk by a script
+`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `538b2c1`. Generated from the files on disk by a script
 (`~/hc-work/step08b/fix/fixpacket.py`, quoted in the last section), so every diff and output below is quoted exactly.
 
 Sections: 1 the fix-round summary (the first section of `docs/reviews/step08b_summary.md`); 2 the code diff since the
@@ -43,6 +43,48 @@ The statement is **not stored as text**. It is rendered from the stored results 
 - The wording follows the format version.
 - A run completed by code that did not record a version (the previous release's, or the 12 live runs in the development database) shows "not recorded".
 
+### Further change after the first live Critic call (owner's decision, 2026-10-07)
+
+The first live call (above) sent two single-record flags, and the Critic compared them with each other. The owner decided three changes, built on this branch with recorded-response tests, then one more live call:
+
+- **Scope** (register `critic_scope`, a safeguard change for the reviewer). Only a flag that names two or more records is sent (`critic.MIN_RECORDS = 2`).
+  - A single-record flag keeps code's own kind and category. Its class stays empty, and `show` lists it as "not classified: single-record flag" (not a refusal).
+  - A run with no multi-record flag makes no Critic call.
+  - The class is displayed through `critic.flag_display`, inside the Critic's module, so the source scan confirming that no decision reads the class is unchanged.
+- **Instruction** (a new settings version; register `critic_classes` reworded): "Each flag stands alone: judge it only on the records it names, and never compare records across flags." Each flag is rendered as its own block (`=== Flag N: judge this flag on its own === … === end of flag N ===`).
+- **Answer key, test side only:** `tests/fixtures/controlled_duplicates/critic_key.csv`, derived from how each pair was built (`truth.csv`) and approved by the owner before the call. Tests check that it is not in the package or `data/`, and that a request on the real file holds no answer material (no case name, explanation or key wording).
+
+| Extract rows | Case | Expected | Also acceptable |
+|---|---|---|---|
+| 1–4 | exact duplicate (verbatim; alloy renamed) | same measurement | — |
+| 5–6 | possible duplicate, paper unknown | cannot tell | same measurement |
+| 7–8 | conflict, yield ×1.3 | possible transcription or unit error | same measurement |
+| 13–14 | test temperature missing | cannot tell | same measurement |
+
+**The second live call:** Haiku 4.5, fresh scratch database, MPEA with the controlled duplicate extract, a marked test run, ceiling $0.25. It sent 10 flags, each naming two records, with no answer material and no compared value in the request. One attempt, none refused. 7,953 input and 1,954 output tokens, **$0.017723**. The live total is now $1.0510.
+
+| Flag | Kind | Extract row | Critic's class | Expected | Grade | Critic's reason |
+|---|---|---|---|---|---|---|
+| 1 | exact_duplicate | 1 | same measurement | same measurement | correct | Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources |
+| 2 | exact_duplicate | 2 | same measurement | same measurement | correct | (as flag 1) |
+| 3 | exact_duplicate | 3 | same measurement | same measurement | correct | (as flag 1) |
+| 4 | exact_duplicate | 4 | same measurement | same measurement | correct | (as flag 1) |
+| 5 | possible_duplicate | 5 | same measurement | cannot tell | acceptable | Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source |
+| 6 | possible_duplicate | 6 | same measurement | cannot tell | acceptable | Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record |
+| 7 | values_disagree | 7 | cannot tell | possible transcription or unit error | abstention | Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata |
+| 8 | values_disagree | 8 | cannot tell | possible transcription or unit error | abstention | (as flag 7) |
+| 9 | possible_duplicate | 13 | same measurement | cannot tell | acceptable | Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources |
+| 10 | possible_duplicate | 14 | same measurement | cannot tell | acceptable | (as flag 9) |
+
+**Totals:** 4 correct, 4 acceptable, 2 abstentions, 0 wrong. The run with the Critic's answers left out gave identical decisions, sets, freeze record and fingerprint (`e175c543…`), statistics and gap facts.
+
+**What the grades do not show:**
+- **Flags 9–10 misstate the request.** The reason says the test conditions are identical, but the request shows the extract record's test temperature as "not reported". The class is acceptable; the reason misstates the metadata.
+- **Flags 1–4 were given away.** Their kind ("exact_duplicate", "identical values") nearly states the answer. Code derives the alloy label from the composition, so the renamed alloys of rows 3–4 look identical.
+- **Flags 7–8:** the Critic abstained rather than naming a likely transcription error.
+
+The instruction was not adjusted after seeing the answers (owner's instruction).
+
 ### Safeguard changes in this round (second-model review before any merge)
 
 - Migration 0006, amended in place (unmerged; never applied to the live database):
@@ -52,6 +94,7 @@ The statement is **not stored as text**. It is rendered from the stored results 
 - **Recorded settings:** requests are built from the recorded settings version (all four roles).
 - **Accounting failures:** recording or reservation failures stop the run (`RUN_STOPS`).
 - **Answer checks:** the Critic and Planner check types before membership; the Planner's defaulted parts must hold the default.
+- **The Critic's scope and instruction:** only flags naming two or more records are sent; the new instruction says each flag stands alone (owner's further change, after the first live call).
 - **Analyst's facts:** the informative-group count is no longer a name of its own.
 - **Statement:** the results statement and the Analyst's label. The statement is outside the agents' path; it reads stored rows only.
 
@@ -77,12 +120,17 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 | `test_planner_narrowing.py::body`, `test_orchestrator.py::planner_body` (fixtures) | A scope part that differs from the default is marked as stated unless a test gives the marks | Decision B: a part marked defaulted must hold the default. |
 | `model_builder.World` (`run`, `lock`, `partly`), `access_world` (`planted_plan`) | `fixed_plan` derived for a narrower question; plan content as given; the original stores a narrower plan and its counted sources | Finding 1's backstop. |
 | `test_reading.py` (new this round) | Labels, "alloys" | The owner's F-Q2 changes after decision B. |
+| `test_critic.py` fixture (`engine`, `version`, `checked_run`) | Two pairs split between MPEA and a second source (constructed, so runs are marked as tests), besides the two single-record flags | The Critic's scope (owner's further change): only flags naming two or more records are sent; the single-record flags alone would make no call. |
+| `test_critic.py::test_the_critics_complete_request_holds_no_compared_number_or_outcome` | Asserts the multi-record kinds are told and `invalid_value` / "physically impossible" are **not** sent (was: they were told); the distinctive values of the pairs are also checked absent | The scope rule. |
+| `test_critic.py::test_each_valid_entry_is_written_once_and_an_invalid_one_is_left_unclassified` | Uses the multi-record flags | The scope rule. |
+| `test_critic.py::test_flags_are_sent_in_batches` | Its synthetic flags name two records each (were empty) | Flags with no records are no longer batched. |
+| `test_orchestrator_flagged.py` fixture, `test_recorded_settings.py::test_the_critic_uses_the_settings_recorded_at_dispatch`, `test_orchestrator.py::test_no_model_call_is_made_while_a_database_transaction_is_open`, `test_orchestrator.py::test_a_spending_refusal_at_the_critic_fails_the_run` | Data with the two cross-source pairs, runs marked as tests; the flag counts are of flags naming two or more records | The scope rule; each still makes the Critic calls it tests. No assertion was loosened. |
 
 ### Numbers
 
-- **The whole suite** passes on the final code of this round: 1,829 tests (up from 1,728), locally and in the test image rebuilt on the same code (its package and `tests/` byte-identical to the repository's).
+- **The whole suite** passes on the final code of this round: 1,836 tests (up from 1,728), locally and in the test image rebuilt on the same code (its package and `tests/` byte-identical to the repository's).
 - **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
-- **Mutation checks:** 41 deliberate faults in the new safeguards and wording rules, plus a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
+- **Mutation checks:** 46 deliberate faults in the new safeguards and wording rules (41, then 5 for the Critic's scope and instruction), each with a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
 - **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
 - **One live Critic call** (owner's go; fresh scratch database; constructed data marked as such; ceiling $0.25): Haiku 4.5, 1,330 input and 833 output tokens, **$0.005495** (reserved maximum $0.045779). Two `invalid_value` flags were sent, each naming one record. The request held no compared value (code also checked it for each): only each flag's kind and category and its record's metadata (alloy, composition, paper DOI, categories, field statuses). Both entries were accepted (class 'different specimens or conditions'); none was refused; one attempt. A second run of the same version with no classes gave identical decisions, sets, freeze record and fingerprint, statistics and gap facts. Live spending is now $1.0333 (`docs/reviews/step08b_live_record.json`, `fix_round_1_critic_check`).
 
@@ -91,13 +139,13 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - The local development database is still at the earlier 0006 (the live Critic call ran on a fresh scratch database, by the owner's choice). Before it is used again it needs a backup and a migration back down and up to the amended 0006; its run rows are kept.
 - The confirmation of the question as tested by a person is step 10 (the website).
 - The Analyst's narrative is unverified by design; it is labelled as such.
-- **The Critic's reasoning is not checked either.** In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
+- **The Critic's reasoning is not checked either** (addressed in part by the owner's further change above; the second call's reasons for flags 9–10 still misstate the metadata). In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
 
 ## 2. Code diff (`859e019..HEAD`, the package; the register is in section 5)
 
 ````diff
 diff --git a/hypocurate/cli_runs.py b/hypocurate/cli_runs.py
-index adcfd8e..ca681aa 100644
+index adcfd8e..a04bb92 100644
 --- a/hypocurate/cli_runs.py
 +++ b/hypocurate/cli_runs.py
 @@ -42,11 +42,7 @@ def command(args, engine: Engine) -> int:
@@ -136,7 +184,7 @@ index adcfd8e..ca681aa 100644
      except GuardedRunError:
          print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
                f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
-@@ -88,8 +93,22 @@ def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
+@@ -88,8 +93,28 @@ def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
      return 0 if report.get("status") in ("completed", "failed") else 1
  
  
@@ -152,6 +200,12 @@ index adcfd8e..ca681aa 100644
 +        return reading.stored(conn, run_id)
 +
 +
++def critic_flags(engine: Engine, run_id: int) -> list[dict]:
++    """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
++    from hypocurate.pipeline.agents import critic
++    return critic.flag_display(engine, run_id)
++
++
  def show(engine: Engine, run_id: int) -> dict | None:
 +    from hypocurate.pipeline import statement
      from hypocurate.pipeline import statistics as st
@@ -159,7 +213,7 @@ index adcfd8e..ca681aa 100644
      with engine.connect() as conn:
          run = conn.execute(text(
              "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
-@@ -122,10 +141,15 @@ def show(engine: Engine, run_id: int) -> dict | None:
+@@ -122,10 +147,15 @@ def show(engine: Engine, run_id: int) -> dict | None:
          explanation = explained.get("shown") or "explanation unavailable"
      else:
          explanation = None
@@ -177,12 +231,13 @@ index adcfd8e..ca681aa 100644
          "outcome": decision.get("outcome_wording") if run.status == "completed" else None,
          "verdict": decision.get("verdict_wording") if run.verdict else None,
          "exploratory": run.exploratory, "evidence_level": run.evidence_level,
-@@ -136,7 +160,11 @@ def show(engine: Engine, run_id: int) -> dict | None:
+@@ -136,7 +166,12 @@ def show(engine: Engine, run_id: int) -> dict | None:
                                           "resid_df", "minimums_met")} for r in results if r["withheld"]],
          "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
          "sources": (gap or {}).get("sources"),
 -        "explanation": explanation, "explanation_label": "model explanation; numbers checked against the run record"
 +        "statement": built["lines"] if built else None,
++        "flags": critic_flags(engine, run_id),
 +        # Owner, 2026-10-07: the statement is shown with its format version (rendered; recorded at completion).
 +        "statement_format_version": ({"rendered": built["format_version"], "recorded": built["recorded_format_version"]}
 +                                     if built else None),
@@ -373,7 +428,7 @@ index 7e9738b..72ef895 100644
                  input_=inputs)
      return AnalystResult(report, None, stage_id, result.calls)
 diff --git a/hypocurate/pipeline/agents/critic.py b/hypocurate/pipeline/agents/critic.py
-index 41bc805..3650ea6 100644
+index 41bc805..3eb7b78 100644
 --- a/hypocurate/pipeline/agents/critic.py
 +++ b/hypocurate/pipeline/agents/critic.py
 @@ -27,6 +27,7 @@ from sqlalchemy import Connection, Engine, text
@@ -384,7 +439,60 @@ index 41bc805..3650ea6 100644
  from hypocurate.pipeline.writes import Refused, write
  
  _FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.S)
-@@ -95,7 +96,7 @@ def classify(data: Mapping, batch: list[Mapping]) -> Classified:
+@@ -39,7 +40,8 @@ def signature(instruction: str):
+ 
+     class CriticSignature(dspy.Signature):
+         sources: str = dspy.InputField(desc="The chosen sources' descriptions, as JSON.")
+-        flags: str = dspy.InputField(desc="The flags to classify, each with the metadata of the records it names.")
++        flags: str = dspy.InputField(desc="The flags to classify, each in its own block with the metadata of the "
++                                          "records it names; judge each flag on its own.")
+         classes: str = dspy.InputField(desc="The allowed classes: code and meaning.")
+         note: str = dspy.InputField(desc="'none', or a note about your previous answer.")
+         classification: str = dspy.OutputField(desc=OUTPUT_DESCRIPTION)
+@@ -47,19 +49,37 @@ def signature(instruction: str):
+     return CriticSignature.with_instructions(instruction)
+ 
+ 
++# Owner, 2026-10-07 (fix round 1): only a flag that names at least this many records is sent to the Critic. A
++# single-record flag keeps code's own kind and category, its class stays empty, and it is shown as NOT_SENT.
++MIN_RECORDS = 2
++NOT_SENT = "not classified: single-record flag"
++
++
++def sent(critic_input: Mapping[str, Any]) -> list[Mapping]:
++    """The flags the Critic is asked about: those naming at least MIN_RECORDS records."""
++    return [f for f in critic_input["flags_kind"] if len(f["records"]) >= MIN_RECORDS]
++
++
+ def batches(critic_input: Mapping[str, Any], size: int) -> list[list[Mapping]]:
+-    flags = list(critic_input["flags_kind"])
++    flags = sent(critic_input)
+     return [flags[i:i + size] for i in range(0, len(flags), size)]
+ 
+ 
+ def render_inputs(critic_input: Mapping[str, Any], batch: list[Mapping]) -> dict[str, str]:
+-    """The Critic's request inputs for one batch, built only from its access-layer input."""
++    """The Critic's request inputs for one batch, built only from its access-layer input. Each flag is its own
++    clearly separated block, to be judged on its own records only (owner, 2026-10-07)."""
+     named = {r for f in batch for r in f["records"]}
+     meta = {r["id"]: r for r in critic_input["record_metadata"] if r["id"] in named}
+-    flags = [{"id": str(f["id"]), "kind": f["kind"], "category": f["category"],
+-              "records": [meta[r] for r in f["records"] if r in meta]} for f in batch]
++    blocks = []
++    for f in batch:
++        records = [meta[r] for r in f["records"] if r in meta]
++        blocks.append("\n".join([f"=== Flag {f['id']}: judge this flag on its own ===",
++                                  f"kind: {f['kind']}", f"category: {f['category']}",
++                                  f"records named by this flag ({len(records)}):"]
++                                 + [json.dumps(m, sort_keys=True, ensure_ascii=False) for m in records]
++                                 + [f"=== end of flag {f['id']} ==="]))
+     return {"sources": json.dumps(critic_input["sources_meta"], sort_keys=True, ensure_ascii=False),
+-            "flags": json.dumps(flags, sort_keys=True, ensure_ascii=False),
++            "flags": "\n\n".join(blocks),
+             "classes": json.dumps(dict(CRITIC_CLASSES), sort_keys=True, ensure_ascii=False)}
+ 
+ 
+@@ -95,7 +115,7 @@ def classify(data: Mapping, batch: list[Mapping]) -> Classified:
              continue
          if not isinstance(entry, dict) or set(entry) - {"class", "reason"} or "class" not in entry:
              out.refused[key] = "malformed_entry"
@@ -393,7 +501,7 @@ index 41bc805..3650ea6 100644
              out.refused[key] = "class_not_allowed"
          elif entry.get("reason") is not None and not (isinstance(entry["reason"], str)
                                                         and 1 <= len(entry["reason"].strip()) <= CRITIC_REASON_MAX):
-@@ -135,20 +136,21 @@ class CriticResult:
+@@ -135,26 +155,29 @@ class CriticResult:
  
  def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> CriticResult:
      """The Critic's stage(s). A failed batch leaves its flags unclassified; a spending refusal stops the
@@ -418,7 +526,16 @@ index 41bc805..3650ea6 100644
          current = role_input(bind_invocation(engine, invocation))
          if plan_batches is None:
              data, plan_batches = current, batches(current, s["limits"]["max_flags_per_call"])
-@@ -166,7 +168,8 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
+         batch = plan_batches.pop(0) if plan_batches else []
+         if not batch:
+-            close_stage(engine, run_id, stage_id, "skipped", {"reason": "no_flags"})
++            single = [f["id"] for f in current["flags_kind"] if len(f["records"]) < MIN_RECORDS]
++            close_stage(engine, run_id, stage_id, "skipped",
++                        {"reason": "no_multi_record_flags" if single else "no_flags", "not_sent": single})
+             break
+         inputs = render_inputs(current, batch)
+         result = call_agent(engine, invocation, signature(s["instruction"]), inputs, model=s["model"],
+@@ -166,7 +189,8 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
              refused.update({str(f["id"]): result.failure for f in batch})
              close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
                                                               "flags": [f["id"] for f in batch]}, input_=inputs)
@@ -428,6 +545,37 @@ index 41bc805..3650ea6 100644
                  break
          else:
              got = classify(parse(result.outputs["classification"]), batch)
+@@ -174,7 +198,29 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
+             refused.update(got.refused)
+             close_stage(engine, run_id, stage_id, "done", {
+                 "classified": {str(k): {"class": c, "reason": r} for k, (c, r) in sorted(got.accepted.items())},
+-                "refused": got.refused, "attempts": result.attempts}, input_=inputs)
++                "refused": got.refused, "attempts": result.attempts,
++                "not_sent": [f["id"] for f in data["flags_kind"] if len(f["records"]) < MIN_RECORDS]}, input_=inputs)
+         if not plan_batches:
+             break
+     return CriticResult(classified, refused, failures, stages)
++
++
++def flag_display(engine: Engine, run_id: int) -> list[dict]:
++    """Each flag of a run as shown to people: code's kind and category, how many records it names, and the
++    Critic's class and reason, or NOT_SENT for a single-record flag, or 'not classified' (shown, never decided on)."""
++    with engine.connect() as conn:
++        rows = conn.execute(text(
++            "SELECT f.id, f.kind, f.category, f.critic_class, f.critic_reason, "
++            "(SELECT count(*) FROM flag_record fr WHERE fr.flag_id = f.id) AS n FROM flag f WHERE f.run_id = :r "
++            "ORDER BY f.id"), dict(r=run_id)).all()
++    out = []
++    for r in rows:
++        if r.n < MIN_RECORDS:
++            critic_words = NOT_SENT
++        elif r.critic_class:
++            critic_words = f"{CRITIC_CLASSES[r.critic_class]}: {r.critic_reason}" if r.critic_reason else \
++                CRITIC_CLASSES[r.critic_class]
++        else:
++            critic_words = "not classified"
++        out.append({"flag": r.id, "kind": r.kind, "category": r.category, "records": r.n, "critic": critic_words})
++    return out
 diff --git a/hypocurate/pipeline/agents/lm.py b/hypocurate/pipeline/agents/lm.py
 index 00a1241..043bc97 100644
 --- a/hypocurate/pipeline/agents/lm.py
@@ -576,7 +724,7 @@ index ec062d6..8252a5f 100644
      return PlannerResult(answer, None, stage_id, invocation, result.calls)
  
 diff --git a/hypocurate/pipeline/agents/settings.py b/hypocurate/pipeline/agents/settings.py
-index c92f989..29237d2 100644
+index c92f989..e1d4068 100644
 --- a/hypocurate/pipeline/agents/settings.py
 +++ b/hypocurate/pipeline/agents/settings.py
 @@ -12,6 +12,7 @@ from __future__ import annotations
@@ -587,7 +735,17 @@ index c92f989..29237d2 100644
  
  from sqlalchemy import Engine, text
  
-@@ -120,3 +121,16 @@ def ensure_setting(engine: Engine, role: str) -> int:
+@@ -53,7 +54,8 @@ CRITIC_INSTRUCTION = (
+     "and category and the metadata of the records it names (source, alloy and composition, paper DOI, field "
+     "statuses and conditions such as test type and phase); you are never told the numbers that were compared. "
+     "Classify each flag with exactly one of the allowed classes and give a short reason based only on the "
+-    "metadata shown. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
++    "metadata shown. Each flag stands alone: judge it only on the records it names, and never compare records "
++    "across flags. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
+     "is used, and you never choose between values.")
+ ANALYST_INSTRUCTION = (
+     "You explain a result that code has already computed. Write no digits at all. Wherever you want a number, a "
+@@ -120,3 +122,16 @@ def ensure_setting(engine: Engine, role: str) -> int:
              dict(r=role, i=s["instruction"], m=s["model"], l=json.dumps(limits), s=json.dumps(extra))).scalar_one()
  
      return run_transaction(engine, transaction)
@@ -1520,6 +1678,10 @@ def variants(answer: Any) -> Iterator[tuple[tuple, Any, Any]]:
         for value in WRONG:
             yield path, value, _replaced(answer, path, value)
 ```
+### `tests/fixtures/controlled_duplicates/critic_key.csv`
+
+(data fixture, 2,083 bytes; not quoted)
+
 ### `tests/fixtures/statement_facts.json`
 
 (data fixture, 223,498 bytes; not quoted)
@@ -1550,7 +1712,7 @@ from hypocurate.pipeline import orchestrator, queries
 from hypocurate.pipeline.agents import settings as agent_settings
 from hypocurate.pipeline.agents import spend
 from stats_world import small_rows
-from test_critic import CONFLICT
+from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
 from test_orchestrator import responder
 
 CLAIM = "In FCC multi-principal-element alloys, yield strength rises as grain size falls"
@@ -1565,8 +1727,11 @@ def stub():
 
 @pytest.fixture
 def engine(migrated_database):
+    """Fix round 1 (owner, 2026-10-07): only flags naming two or more records reach the Critic, so the data hold two
+    pairs split between two sources (tests/test_critic.py), besides the single-record flags of CONFLICT."""
     e = make_engine(migrated_database)
-    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                            "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
     yield e
     e.dispose()
 
@@ -1582,7 +1747,7 @@ def dispatched(engine, flags_per_call=None, monkeypatch=None):
         c = agent_settings.SETTINGS["critic"]
         changed = MappingProxyType({**c, "limits": MappingProxyType({**c["limits"], "max_flags_per_call": flags_per_call})})
         monkeypatch.setattr(agent_settings, "SETTINGS", MappingProxyType({**agent_settings.SETTINGS, "critic": changed}))
-    q = queries.create(engine, CLAIM, ("mpea",))
+    q = queries.create(engine, CLAIM, SOURCES)
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
     return queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
@@ -1610,8 +1775,9 @@ def test_a_critic_failure_on_flagged_data_leaves_every_flag_unclassified_and_the
     stub.respond(respond)
     rid = dispatched(engine)
     report = run(engine, rid, stub)
-    flags = one(engine, "SELECT count(*) FROM flag WHERE run_id = :r", r=rid)
-    assert flags >= 2                                                     # the data raise flags
+    flags = one(engine, "SELECT count(*) FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM flag_record fr "
+                        "WHERE fr.flag_id = f.id) >= 2", r=rid)
+    assert flags == 2                                                     # the data raise two flags the Critic gets
     assert kinds(stub)[:2] == ["critic", "critic"]                        # the Critic was asked, and corrected once
     assert one(engine, "SELECT status FROM stage_result WHERE run_id = :r AND stage = 'critic'", r=rid) == "failed"
     assert one(engine, "SELECT count(*) FROM flag WHERE run_id = :r AND critic_class IS NOT NULL", r=rid) == 0
@@ -1632,7 +1798,8 @@ def test_an_accounting_failure_at_the_critic_stops_the_run_with_no_further_reque
     stub.respond(responder())
     monkeypatch.setattr(spend, "finish" if failure == "recording_failed" else "reserve", broken)
     report = run(engine, rid, stub)
-    assert one(engine, "SELECT count(*) FROM flag WHERE run_id = :r", r=rid) >= 2  # two batches were due
+    assert one(engine, "SELECT count(*) FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM flag_record fr "
+                       "WHERE fr.flag_id = f.id) >= 2", r=rid) == 2  # two batches were due
     assert attempts == [1]                                                # one reservation or one recording only
     assert kinds(stub) == (["critic"] if failure == "recording_failed" else [])  # no second batch, no Analyst
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'critic'", r=rid) == 1
@@ -1821,13 +1988,14 @@ def test_the_critic_uses_the_settings_recorded_at_dispatch(migrated_database, st
     import pipeline_world as pw
     from hypocurate.db.engine import make_engine
     from stats_world import small_rows
-    from test_critic import CONFLICT
+    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, multi_flag_ids
     engine = make_engine(migrated_database)
     try:
-        pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
+        pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
+                                     "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
         rid = checked_run(engine, version(engine))
-        flags = flag_ids(engine, rid)
-        assert len(flags) >= 2  # version B's limit of one flag per call would make one call per flag
+        flags = multi_flag_ids(engine, rid)  # fix round 1: only these are sent
+        assert len(flags) == 2  # version B's limit of one flag per call would make one call per flag
         a = make_current(monkeypatch, engine, "critic")
         stub.respond(lambda raw: critic_reply({str(f): {"class": "cannot_tell", "reason": "same metadata"}
                                                for f in flags}))
@@ -2544,8 +2712,49 @@ index 2378e41..364f1e7 100644
 +    assert r["reading"]["question_as_tested"]["label"] == reading.LABELS["fixed"]
 +    code, out, err = hc(capsys, "show", str(r["run"]))
 +    assert json.loads(out)["question_as_tested"] == r["reading"]["question_as_tested"]
+diff --git a/tests/test_controlled_duplicates.py b/tests/test_controlled_duplicates.py
+index 30ab97f..1cad1c6 100644
+--- a/tests/test_controlled_duplicates.py
++++ b/tests/test_controlled_duplicates.py
+@@ -348,3 +348,36 @@ def test_survivor_is_stated(t):
+         assert "conflicts_survivor_value" in t["survivor_reason"] and "rule 2:" in t["survivor_reason"]
+     else:
+         assert t["survivor_in_primary"] == "no pair: both kept"
++
++
++# --- the Critic's answer key (fix round 1, owner 2026-10-07): test side only ------------------------------------
++
++KEY = FIXTURES / "critic_key.csv"
++
++
++def key_markers() -> set[str]:
++    import csv
++    rows = list(csv.DictReader(KEY.open(encoding="utf-8")))
++    return {"critic_key", "expected_class", "acceptable_classes"} | {r["basis"] for r in rows} | {r["case"] for r in rows}
++
++
++def test_the_critic_answer_key_covers_every_flagged_row_and_only_allowed_classes():
++    import csv
++    from hypocurate.access.vocabulary import CRITIC_CLASSES
++    rows = list(csv.DictReader(KEY.open(encoding="utf-8")))
++    assert [int(r["extract_row"]) for r in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 13, 14]
++    truth = {t["extract_row"]: t for t in TRUTH_ROWS}
++    for r in rows:
++        assert r["case"] == truth[r["extract_row"]]["case"]
++        assert r["expected_class"] in CRITIC_CLASSES
++        assert all(c in CRITIC_CLASSES for c in filter(None, r["acceptable_classes"].split(";")))
++
++
++def test_the_critic_answer_key_is_not_under_data_or_the_package():
++    markers = key_markers()
++    for root in ("data", "hypocurate"):
++        assert not list((REPO_ROOT / root).rglob("*key*.csv"))
++        for path in (REPO_ROOT / root).rglob("*"):
++            if path.is_file() and path.suffix in (".py", ".json", ".csv", ".md", ".txt", ".yaml", ".toml"):
++                text_ = path.read_text(encoding="utf-8", errors="ignore")
++                assert not [m for m in markers if m in text_], path
 diff --git a/tests/test_critic.py b/tests/test_critic.py
-index 6724901..872ad00 100644
+index 6724901..819aaf8 100644
 --- a/tests/test_critic.py
 +++ b/tests/test_critic.py
 @@ -11,6 +11,7 @@ import pytest
@@ -2556,7 +2765,171 @@ index 6724901..872ad00 100644
  import stub_provider as sp
  from hypocurate.access.vocabulary import CRITIC_CLASSES
  from hypocurate.db.engine import make_engine
-@@ -215,3 +216,42 @@ def test_no_decision_path_reads_the_critics_class():
+@@ -35,17 +36,30 @@ def stub():
+     s.close()
+ 
+ 
++# Fix round 1 (owner, 2026-10-07): only a flag naming two or more records is sent to the Critic. Flags between
++# records are raised across sources only, so two pairs are split between MPEA and a second source in MPEA layout:
++# one the same values in both (an exact duplicate), one whose yield strength differs beyond the tolerance. The
++# CONFLICT rows above stay as single-record flags, which are not sent. Distinctive numbers, for the planted test.
++PAIR_SAME = pw.mpea_row("CoCrFeNi", 5.0, 5123.125, doi="10.1016/j.test.2026.102")
++PAIR_MPEA = pw.mpea_row("CoCrNi", 3.0, 6123.375, doi="10.1016/j.test.2026.101")
++PAIR_OTHER = pw.mpea_row("CoCrNi", 3.0, 7960.375, doi="10.1016/j.test.2026.101")
++SOURCES = ("mpea", "controlled_duplicates")
++NOT_SENT_VALUES = ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5",
++                   "6123.375", "7960.375", "5123.125", "6123.4", "7960.4", "5123.1")
++
++
+ @pytest.fixture
+ def engine(migrated_database):
+     e = make_engine(migrated_database)
+-    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
++    pw.registered_files(e, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
++                            "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
+     yield e
+     e.dispose()
+ 
+ 
+-def version(engine):
++def version(engine, sources=SOURCES):
+     q = queries.create(engine, "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+-                       ("mpea",))
++                       sources)
+     queries.submit(engine, q.version_id)
+     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+     return q.version_id
+@@ -53,10 +67,11 @@ def version(engine):
+ 
+ def checked_run(engine, vid):
+     """A run of version `vid` through Checks: its flags are raised, nothing decided yet."""
++    # The second source is constructed test data: its runs are marked as tests (fix round 1).
+     if not one(engine, "SELECT count(*) FROM run WHERE hypothesis_version_id = :v", v=vid):
+-        rid = queries.dispatch(engine, vid)
++        rid = queries.dispatch(engine, vid, constructed_test_data=True)
+     else:
+-        rid = pw.run_of_version(engine, vid, ("mpea",), agents=("planner", "critic", "analyst"))
++        rid = pw.run_of_version(engine, vid, SOURCES, marked=True, agents=("planner", "critic", "analyst"))
+     if one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "queued":
+         queries.start(engine, rid)
+     checkpoints.lock_rules(engine, rid, plan_for(vid))
+@@ -89,24 +104,47 @@ def run_critic(engine, rid, stub):
+ 
+ # --- the request and the answer --------------------------------------------------------------------------
+ 
++def multi_flag_ids(engine, rid):
++    """The flags naming two or more records: the only ones sent to the Critic (fix round 1)."""
++    return [r[0] for r in rows(engine, "SELECT f.id FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM "
++                                       "flag_record fr WHERE fr.flag_id = f.id) >= 2 ORDER BY f.id", r=rid)]
++
++
+ def test_the_critics_complete_request_holds_no_compared_number_or_outcome(engine, stub):
+     rid = checked_run(engine, version(engine))
+-    flags = flag_ids(engine, rid)
+-    assert flags  # the conflicting pair raised at least one flag
++    flags = multi_flag_ids(engine, rid)
++    assert len(flags) == 2  # the two pairs split between the sources
+     stub.queue(reply({str(f): {"class": "cannot_tell", "reason": "the metadata are the same"} for f in flags}))
+     run_critic(engine, rid, stub)
+     raw = stub.requests[0]["raw"].decode()
+-    for v in ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5"):
++    for v in NOT_SENT_VALUES:
+         assert v not in raw, v
+     assert "compared_values" not in raw and "tools" not in json.loads(raw)
+     assert CRITIC_INSTRUCTION in json.dumps(json.loads(raw), ensure_ascii=False)
+-    assert "physically impossible" in raw and "invalid_value" in raw  # the kind and category are told
++    # The kind and category of each flag sent are told; a single-record flag is not sent (fix round 1; was: the
++    # single-record 'invalid_value' flags were sent).
++    assert "differ beyond tolerance" in raw and "values_disagree" in raw and "exact_duplicate" in raw
++    assert "invalid_value" not in raw and "physically impossible" not in raw
++
++
++def test_each_flag_is_its_own_block_and_the_instruction_says_so(engine, stub):
++    """Owner, 2026-10-07: each flag stands alone; the request renders each as its own separated block."""
++    rid = checked_run(engine, version(engine))
++    flags = multi_flag_ids(engine, rid)
++    stub.queue(reply({str(f): {"class": "cannot_tell", "reason": "x"} for f in flags}))
++    run_critic(engine, rid, stub)
++    content = json.dumps(json.loads(stub.requests[0]["raw"]), ensure_ascii=False)
++    for f in flags:
++        assert f"=== Flag {f}: judge this flag on its own ===" in content and f"=== end of flag {f} ===" in content
++    assert "Each flag stands alone: judge it only on the records it names, and never compare records across flags." \
++        in CRITIC_INSTRUCTION
+ 
+ 
+ def test_each_valid_entry_is_written_once_and_an_invalid_one_is_left_unclassified(engine, stub):
+     rid = checked_run(engine, version(engine))
+-    flags = flag_ids(engine, rid)
++    flags = multi_flag_ids(engine, rid)
+     good, *rest = flags
++    assert rest
+     answer = {str(good): {"class": "same_measurement", "reason": "same DOI, alloy and grain size"},
+               "999999": {"class": "cannot_tell"}}
+     for f in rest:
+@@ -142,14 +180,60 @@ def test_a_malformed_answer_is_corrected_once_then_every_flag_stays_unclassified
+ 
+ 
+ def test_flags_are_sent_in_batches():
+-    data = {"flags_kind": [{"id": i, "records": []} for i in range(7)]}
++    data = {"flags_kind": [{"id": i, "records": [10 * i, 10 * i + 1]} for i in range(7)]}
+     assert [len(b) for b in critic.batches(data, 3)] == [3, 3, 1]
+ 
+ 
++# --- scope: only flags naming two or more records are sent (owner, 2026-10-07, fix round 1) -------------------
++
++def test_only_flags_naming_two_or_more_records_are_batched():
++    data = {"flags_kind": [{"id": 1, "records": [5]}, {"id": 2, "records": [5, 6]}, {"id": 3, "records": [7, 8, 9]},
++                           {"id": 4, "records": []}]}
++    assert [[f["id"] for f in b] for b in critic.batches(data, 10)] == [[2, 3]]
++    assert critic.MIN_RECORDS == 2
++
++
++def test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified(engine, stub):
++    from hypocurate import cli_runs
++    rid = checked_run(engine, version(engine))
++    single = [f for f in flag_ids(engine, rid) if f not in multi_flag_ids(engine, rid)]
++    assert len(single) == 2
++    stub.respond(lambda raw: reply({str(f): {"class": "same_measurement", "reason": "same paper and alloy"}
++                                    for f in multi_flag_ids(engine, rid)}))
++    out = run_critic(engine, rid, stub)
++    assert len(stub.requests) == 1 and out.classified == 2
++    content = json.dumps(json.loads(stub.requests[0]["raw"]), ensure_ascii=False)
++    for f in single:
++        assert f"=== Flag {f}:" not in content
++        assert rows(engine, "SELECT critic_class, critic_reason FROM flag WHERE id = :f", f=f) == [(None, None)]
++        assert str(f) not in out.refused
++    stage = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stages[0])
++    assert sorted(stage["not_sent"]) == sorted(single)
++    shown = {x["flag"]: x for x in cli_runs.critic_flags(engine, rid)}
++    for f in single:
++        assert shown[f]["critic"] == "not classified: single-record flag" and shown[f]["records"] == 1
++        assert shown[f]["kind"] == "invalid_value" and shown[f]["category"] == "physically impossible"
++    for f in multi_flag_ids(engine, rid):
++        assert shown[f]["critic"] == "same measurement reported twice: same paper and alloy"
++
++
++def test_a_run_with_only_single_record_flags_makes_no_critic_call(migrated_database, stub):
++    engine = make_engine(migrated_database)
++    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
++    rid = checked_run(engine, version(engine, ("mpea",)))
++    assert len(flag_ids(engine, rid)) == 2 and multi_flag_ids(engine, rid) == []
++    out = run_critic(engine, rid, stub)
++    assert stub.requests == [] and out.classified == 0 and out.failures == []
++    assert one(engine, "SELECT status FROM stage_result WHERE id = :s", s=out.stages[0]) == "skipped"
++    assert one(engine, "SELECT output->>'reason' FROM stage_result WHERE id = :s", s=out.stages[0]) == \
++        "no_multi_record_flags"
++    assert one(engine, "SELECT count(*) FROM model_call") == 0
++
++
+ def test_with_no_flag_nothing_is_sent(migrated_database, stub):
+     engine = make_engine(migrated_database)
+     pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3))})
+-    rid = checked_run(engine, version(engine))
++    rid = checked_run(engine, version(engine, ("mpea",)))
+     assert flag_ids(engine, rid) == []
+     out = run_critic(engine, rid, stub)
+     assert stub.requests == [] and out.classified == 0
+@@ -215,3 +299,59 @@ def test_no_decision_path_reads_the_critics_class():
      start = fields.index("def flags_full(")
      end = fields.index("\ndef ", start + 1)
      assert uses and all(start <= u < end for u in uses)
@@ -2599,6 +2972,23 @@ index 6724901..872ad00 100644
 +    for value in WRONG:
 +        if not isinstance(value, dict):
 +            assert critic.check({"classification": json.dumps(value)}) == "malformed"
++
++
++
++def test_the_request_on_the_controlled_duplicate_file_holds_no_answer_material(migrated_database, stub):
++    """The real controlled duplicate extract with MPEA: the flags sent name two records each, and the request holds
++    nothing of the answer files (truth.csv, the Critic's key): no case name, explanation or key wording."""
++    from test_controlled_duplicates import _row_specific_markers, key_markers
++    engine = make_engine(migrated_database)
++    pw.registered(engine, SOURCES)
++    rid = checked_run(engine, version(engine))
++    flags = multi_flag_ids(engine, rid)
++    assert len(flags) == 10 and flags == flag_ids(engine, rid)
++    stub.respond(lambda raw: reply({str(f): {"class": "cannot_tell", "reason": "x"} for f in flags}))
++    run_critic(engine, rid, stub)
++    content = json.dumps([json.loads(r["raw"]) for r in stub.requests], ensure_ascii=False)
++    leaked = [m for m in _row_specific_markers() | key_markers() if m and m in content]
++    assert leaked == []
 diff --git a/tests/test_curator.py b/tests/test_curator.py
 index c493d96..f039636 100644
 --- a/tests/test_curator.py
@@ -2773,7 +3163,7 @@ index 012b3c4..58fc1bf 100644
 +        w.run_sql("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
 +                  "evidence_level = 1, statement_format_version = 0 WHERE id = :r", r=rid)
 diff --git a/tests/test_orchestrator.py b/tests/test_orchestrator.py
-index ada84e5..ddac5ee 100644
+index ada84e5..cc565e3 100644
 --- a/tests/test_orchestrator.py
 +++ b/tests/test_orchestrator.py
 @@ -33,6 +33,12 @@ def planner_body(**over):
@@ -2924,7 +3314,7 @@ index ada84e5..ddac5ee 100644
  def test_a3_a_spending_refusal_at_the_analyst_leaves_codes_decision_standing(engine, stub):
      from decimal import Decimal
      stub.respond(responder())
-@@ -280,18 +407,6 @@ def test_a_run_fails_before_the_lock_with_a_stated_reason(engine, stub, answer,
+@@ -280,26 +407,17 @@ def test_a_run_fails_before_the_lock_with_a_stated_reason(engine, stub, answer,
      assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND status = 'running'", r=rid) == 0
  
  
@@ -2942,7 +3332,55 @@ index ada84e5..ddac5ee 100644
 -
  def test_no_model_call_is_made_while_a_database_transaction_is_open(migrated_database, stub):
      """For every role: while the stub serves a request, the run's connections hold no open transaction. (Small
-     data with invalid values, so the Critic has flags to classify; the reference data raise none.)"""
+-    data with invalid values, so the Critic has flags to classify; the reference data raise none.)"""
++    data with pairs split between two sources, so the Critic has flags naming two records to classify (fix round 1:
++    single-record flags are not sent); the reference data raise none. The second source is constructed test data, so
++    the run is marked as a test.)"""
+     from stats_world import small_rows
+-    from test_critic import CONFLICT
++    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
+     engine = make_engine(migrated_database)
+     engine.test_url = migrated_database
+-    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
++    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
++                                 "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
+     seen = []
+ 
+     def check():
+@@ -310,10 +428,10 @@ def test_no_model_call_is_made_while_a_database_transaction_is_open(migrated_dat
+ 
+     stub.on_request(check)
+     stub.respond(responder(planner_body()))
+-    q = queries.create(engine, FCC_CLAIM, ("mpea",))
++    q = queries.create(engine, FCC_CLAIM, SOURCES)
+     queries.submit(engine, q.version_id)
+     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+-    rid = queries.dispatch(engine, q.version_id)
++    rid = queries.dispatch(engine, q.version_id, constructed_test_data=True)
+     assert run(engine, rid, stub).status == "completed"
+     asked = {field for r in stub.requests for field in ("plan", "classification", "report")
+              if f"[[ ## {field} ## ]]" in r["raw"].decode()}
+@@ -325,14 +443,16 @@ def test_a_spending_refusal_at_the_critic_fails_the_run(migrated_database, stub)
+     """PRD 8, 14.4: before the freeze a cap or ceiling stops the run, marked failed with the reason."""
+     from decimal import Decimal
+     from stats_world import small_rows
+-    from test_critic import CONFLICT
++    from test_critic import CONFLICT, PAIR_MPEA, PAIR_OTHER, PAIR_SAME, SOURCES
+     engine = make_engine(migrated_database)
+-    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT)})
++    # Fix round 1: flags naming two records (single-record flags are not sent), a marked test run.
++    pw.registered_files(engine, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + CONFLICT + [PAIR_SAME, PAIR_MPEA]),
++                                 "controlled_duplicates": pw.mpea_csv([PAIR_SAME, PAIR_OTHER])})
+     stub.respond(responder())
+-    q = queries.create(engine, FCC_CLAIM, ("mpea",))
++    q = queries.create(engine, FCC_CLAIM, SOURCES)
+     queries.submit(engine, q.version_id)
+     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+-    rid = queries.dispatch(engine, q.version_id, fixed_plan=True)
++    rid = queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
+     report = run(engine, rid, stub, ceiling=Decimal("0.001"))
+     assert report.status == "failed" and report.failure.startswith("spending_refused:")
+     assert stub.requests == []  # nothing was sent
 diff --git a/tests/test_planner_narrowing.py b/tests/test_planner_narrowing.py
 index 8e0891e..afccfce 100644
 --- a/tests/test_planner_narrowing.py
@@ -3061,7 +3499,7 @@ index 63a339b..06c0c71 100644
      _, rid = dispatched(engine)
      with pytest.raises(IntegrityError, match="partly_sufficient"):
 ```
-## 5. Assumptions register (137 entries; 2 new, 10 changed)
+## 5. Assumptions register (138 entries; 3 new, 10 changed)
 
 ### New: `question_as_tested`
 
@@ -3129,6 +3567,62 @@ index 63a339b..06c0c71 100644
   "tests/test_orchestrator.py::test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested",
   "tests/test_cli_runs.py::test_run_prints_the_claim_and_the_planners_reading_before_the_report_and_show_keeps_it",
   "tests/test_cli_runs.py::test_a_fixed_plan_runs_reading_is_the_reference_plans"
+ ]
+}
+```
+### New: `critic_scope`
+
+```json
+{
+ "key": "critic_scope",
+ "name": "Which flags the Critic is asked about",
+ "state": "in_force",
+ "statement": "Only a flag that names two or more records is sent to the Critic (MIN_RECORDS = 2). A single-record flag (for example a physically impossible value within one record) is not sent: it keeps code's own kind and category, its class and reason stay empty, and it is shown as 'not classified: single-record flag'; it is not a refusal. If a run has no flag naming two or more records, no Critic call is made (the stage is skipped, reason 'no_multi_record_flags'). As before, no code decision reads the class.",
+ "value": {
+  "text": "flags naming at least 2 records",
+  "unit": null
+ },
+ "category": "operational",
+ "affects": "Which flags get a Critic class and how many Critic calls a run makes.",
+ "reason": "The first live Critic call (fix round 1) was given two single-record flags and compared them with each other; the four classes describe relations between records, which a single-record flag does not have.",
+ "evidence": [
+  "Owner's decision, 2026-10-07, after the live Critic call recorded in docs/reviews/step08b_live_record.json (fix_round_1_critic_check)."
+ ],
+ "decided": {
+  "by": "owner (Khalid El-Awady)",
+  "date": "2026-10-07"
+ },
+ "expert_review": {
+  "status": "not_reviewed",
+  "name": null,
+  "date": null
+ },
+ "sensitivity": null,
+ "applied": {
+  "status": "yes",
+  "settings": [
+   {
+    "ref": "python:hypocurate.pipeline.agents.critic:MIN_RECORDS",
+    "equals": 2
+   },
+   {
+    "ref": "python:hypocurate.pipeline.agents.critic:NOT_SENT",
+    "equals": "not classified: single-record flag"
+   },
+   {
+    "ref": "python:hypocurate.pipeline.agents.critic:sent"
+   }
+  ],
+  "note": null
+ },
+ "history": [],
+ "notes": [],
+ "tests": [
+  "tests/test_critic.py::test_only_flags_naming_two_or_more_records_are_batched",
+  "tests/test_critic.py::test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified",
+  "tests/test_critic.py::test_a_run_with_only_single_record_flags_makes_no_critic_call",
+  "tests/test_critic.py::test_the_critics_complete_request_holds_no_compared_number_or_outcome",
+  "tests/test_critic.py::test_the_request_on_the_controlled_duplicate_file_holds_no_answer_material"
  ]
 }
 ```
@@ -3641,7 +4135,7 @@ index 63a339b..06c0c71 100644
  "key": "critic_classes",
  "name": "The Critic's classes and reason",
  "state": "in_force",
- "statement": "The Critic classifies each flag code raised with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them.",
+ "statement": "The Critic classifies each flag code raised that names two or more records (register 'critic_scope') with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them. Owner, 2026-10-07 (fix round 1, after the first live call compared two single-record flags with each other): the instruction says each flag stands alone, to be judged only on the records it names, never by comparing records across flags (a new settings version), and the request renders each flag as its own separated block.",
  "value": {
   "text": "four classes; reason for people only; read by no decision",
   "unit": null
@@ -3677,6 +4171,9 @@ index 63a339b..06c0c71 100644
    },
    {
     "ref": "sql:ck_flag_critic_reason"
+   },
+   {
+    "ref": "python:hypocurate.pipeline.agents.settings:CRITIC_INSTRUCTION"
    }
   ],
   "note": null
@@ -3692,9 +4189,17 @@ index 63a339b..06c0c71 100644
   "tests/test_migrations_step8b.py::test_each_critic_class_is_accepted",
   "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused",
   "tests/test_critic.py::test_a_class_of_the_wrong_type_leaves_that_entry_unclassified",
-  "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry"
+  "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry",
+  "tests/test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"
  ],
- "history": []
+ "history": [
+  {
+   "value": "The Critic classifies each flag code raised with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them.",
+   "from": "2026-10-07",
+   "to": "2026-10-07",
+   "note": "Fix round 1: scope to multi-record flags; each flag stands alone (new instruction)."
+  }
+ ]
 }
 ```
 ### Changed: `analyst_facts_only` (as it now stands; the earlier wording is in its history)
@@ -4117,6 +4622,13 @@ f39      CAUGHT  1 failed in 3.03s
 f40      CAUGHT  1 failed in 2.74s
 control  clean  138 passed in 165.83s (0:02:45)
 f35      CAUGHT (re-run after the all-kinds order test was added)  1 failed, 6 passed, 14 deselected in 2.30s
+--- further change (the Critic's scope and instruction), run on 88b57b9 ---
+f41      CAUGHT  4 failed, 20 passed in 17.93s
+f42      CAUGHT  4 failed, 20 passed in 17.23s
+f43      CAUGHT  1 failed in 8.63s
+f44      CAUGHT  1 failed in 8.51s
+f45      CAUGHT  1 failed in 8.75s
+control  clean  150 passed in 109.40s (0:01:49)
 ```
 
 The specification and the runner:
@@ -4176,6 +4688,11 @@ MUTATIONS = [
  ("f38", M06, "        IF NEW.statement_format_version IS DISTINCT FROM OLD.statement_format_version\n           AND NOT", "        IF false AND NOT", ["test_migrations_step8b.py"]),
  ("f39", S, "FORMAT_VERSION = 1", "FORMAT_VERSION = 2", ["test_statement.py::test_the_wording_of_each_format_version_is_pinned"]),
  ("f40", S, "NONE = \"Main cautions: none beyond those above.\"", "NONE = \"Main cautions: none.\"", ["test_statement.py::test_the_wording_of_each_format_version_is_pinned"]),
+ ("f41", "pipeline/agents/critic.py", "MIN_RECORDS = 2", "MIN_RECORDS = 1", ["test_critic.py"]),
+ ("f42", "pipeline/agents/critic.py", "    flags = sent(critic_input)\n", "    flags = list(critic_input[\"flags_kind\"])\n", ["test_critic.py"]),
+ ("f43", "pipeline/agents/critic.py", "            critic_words = NOT_SENT", "            critic_words = \"not classified\"", ["test_critic.py::test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified"]),
+ ("f44", "pipeline/agents/critic.py", "        blocks.append(\"\\n\".join([f\"=== Flag {f['id']}: judge this flag on its own ===\",", "        blocks.append(\"\\n\".join([f\"Flag {f['id']}\",", ["test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"]),
+ ("f45", "pipeline/agents/settings.py", "Each flag stands alone: judge it only on the records it names, and never compare records \"\n    \"across flags. ", "", ["test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"]),
 ]
 ```
 ```python
@@ -4205,15 +4722,15 @@ for mid, f, old, new, tests in MUTATIONS + [("control", None, None, None, ["test
 The whole suite on this head (locally):
 
 ```
-1829 passed, 1 warning in 865.52s (0:14:25)
+1836 passed, 1 warning in 865.43s (0:14:25)
 ```
 
 The test image, rebuilt on this head:
 
 ```
-1829 passed, 1 warning in 899.21s (0:14:59)
+1836 passed, 1 warning in 914.18s (0:15:14)
 exit 0
-overlay          32G   23G  7.2G  76% /
+overlay          32G   23G  7.2G  77% /
 ```
 
 The guard checks in the runtime image, rebuilt on this head:
@@ -4221,30 +4738,25 @@ The guard checks in the runtime image, rebuilt on this head:
 ```
 no tests/ or docs/ in the image
 ALL GUARD CHECKS PASSED IN THE RUNTIME IMAGE
-{'statistics_libraries': ['ok'], 'refusals_after_clean_import': [], 'agent_libraries': ['ok'], 'after': ['ok', 'refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code', 'refused: file guard: ctypes.dlopen is outside the approved inputs of pipeline code', 'refused: file guard: reading /tmp/tmp1c0woc9x/.env is outside the approved inputs of pipeline code']}
+{'statistics_libraries': ['ok'], 'refusals_after_clean_import': [], 'agent_libraries': ['ok'], 'after': ['ok', 'refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code', 'refused: file guard: ctypes.dlopen is outside the approved inputs of pipeline code', 'refused: file guard: reading /tmp/tmpj_ppke31/.env is outside the approved inputs of pipeline code']}
 ```
 
 Package files in the repository and both images:
 
 ```
-repo:    2c6c2bbe662095e3dd15d9b7e9b776fbab6fad987b630ba46a6ee643c42e41dc  -
-runtime: 2c6c2bbe662095e3dd15d9b7e9b776fbab6fad987b630ba46a6ee643c42e41dc  -
-test:    2c6c2bbe662095e3dd15d9b7e9b776fbab6fad987b630ba46a6ee643c42e41dc  -
+repo:    8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
+runtime: 8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
+test:    8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
 tests/ in the test image vs the repository: identical
 ```
 
 GitHub Actions on this branch:
 
 ```
-(Recorded before pushing b947828, the head this packet was generated on; its own run follows that push. The two failures are the race test, fixed in 395d948.)
+(Recorded before pushing the fix round's last commits; the run on the pushed head follows that push.)
+completed	success	Step 8b fix round 1: fix packet with the live Critic call (section 8b)	tests	step-08b-agents	push	37695367342	11m2s	2026-10-07T22:18:51Z
+completed	success	Step 8b fix round 1: fix packet for the second-model re-check	tests	step-08b-agents	push	37693044063	10m51s	2026-10-07T21:58:02Z
 completed	success	Step 8b fix round 1: the statement is a pure function of stored rows,…	tests	step-08b-agents	push	37687740256	12m43s	2026-10-07T21:12:29Z
-completed	success	CLAUDE.md: run the whole suite locally before every push (owner, 2026…	tests	step-08b-agents	push	37682617080	12m32s	2026-10-07T20:31:15Z
-completed	failure	Step 8b fix round 1: owner's decision B (the Planner's reading: defau…	tests	step-08b-agents	push	37677014529	14m13s	2026-10-07T19:46:27Z
-completed	failure	Step 8b fix round 1: finding 3 (accounting failures stop the run); a …	tests	step-08b-agents	push	37675124058	11m37s	2026-10-07T19:31:25Z
-completed	success	Step 8b M10: review packet; summary points to the packet's plan section	tests	step-08b-agents	push	37667347593	11m38s	2026-10-07T18:30:22Z
-completed	success	Step 8b M9: code-built sentences, units and plain wording for the Ana…	tests	step-08b-agents	push	37660998690	12m5s	2026-10-07T17:41:17Z
-completed	success	Step 8b M9: remove the two word-based rules; require the pooled phras…	tests	step-08b-agents	push	37656798667	11m30s	2026-10-07T17:08:49Z
-completed	success	Step 8b M9: the Analyst writes placeholders; fewer facts built by cod…	tests	step-08b-agents	push	37650754427	9m17s	2026-10-07T16:16:38Z
 ```
 ## 8. Reference comparison with `main`
 
@@ -4272,6 +4784,7 @@ tamu_use     n_records     IDENTICAL
 byte-identical
 4797b3c17da38ae50d9954f38406c5639992ca1097e389faae363d6f5257345f  /home/codespace/hc-work/step08b/refdump/main.json
 4797b3c17da38ae50d9954f38406c5639992ca1097e389faae363d6f5257345f  /home/codespace/hc-work/step08b/fix/branch_fix.json
+byte-identical on 88b57b9 too
 ```
 
 The comparison script:
@@ -4509,6 +5022,610 @@ def main(mode: str) -> None:
         out = Path.home() / f"hc-work/step08b/fix/live_critic_{mode}.json"
         out.write_text(json.dumps(record, indent=1, ensure_ascii=False, default=str))
         cost = sum(Decimal(str(c["cost"])) for c in calls if c["cost"] is not None)
+        print(json.dumps({"mode": mode, "flags": len(flags), "classified": result.classified,
+                          "refused": result.refused, "failures": result.failures,
+                          "calls": [{k: str(v) for k, v in c.items()} for c in calls], "actual_cost": str(cost),
+                          "compared_numbers_in_request": leaked, "decisions_unchanged": same,
+                          "record": str(out)}, indent=1))
+    finally:
+        engine.dispose()
+        if stub is not None:
+            stub.close()
+        if mode == "rehearse":
+            with admin.connect() as conn:
+                conn.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+        admin.dispose()
+
+
+if __name__ == "__main__":
+    mode = {"--rehearse": "rehearse", "--live": "live"}.get(sys.argv[1] if len(sys.argv) > 1 else "")
+    if mode is None:
+        sys.exit("usage: live_critic.py --rehearse | --live")
+    if mode == "rehearse":
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+    main(mode)
+```
+## 8c. The second live Critic call, after the owner's further change (`fix_round_1_critic_check_2`)
+
+The answer key it was graded against (test side only):
+
+```csv
+extract_row,case,flag_kind,expected_class,acceptable_classes,basis
+1,exact_duplicate_verbatim,exact_duplicate,same_measurement,,"truth.csv: exact duplicate, the same measurement reported by two sources (byte-for-byte copy)"
+2,exact_duplicate_verbatim,exact_duplicate,same_measurement,,"truth.csv: exact duplicate, the same measurement reported by two sources (byte-for-byte copy)"
+3,exact_duplicate_renamed_alloy,exact_duplicate,same_measurement,,"truth.csv: exact duplicate; the formula is written differently, the composition is identical"
+4,exact_duplicate_renamed_alloy,exact_duplicate,same_measurement,,"truth.csv: exact duplicate; the formula is written differently, the composition is identical"
+5,possible_duplicate_unknown_paper,possible_duplicate,cannot_tell,same_measurement,"truth.csv: possible duplicate that cannot be resolved (paper reference blank); by construction a copy, so 'same measurement' is acceptable"
+6,possible_duplicate_unknown_paper,possible_duplicate,cannot_tell,same_measurement,"truth.csv: possible duplicate that cannot be resolved (paper reference blank); by construction a copy, so 'same measurement' is acceptable"
+7,conflict_value_differs,values_disagree,possible_transcription_or_unit_error,same_measurement,"truth.csv: conflicting reports of the same measurement (yield strength x 1.3 in the copy); same paper, alloy, grain size and conditions"
+8,conflict_value_differs,values_disagree,possible_transcription_or_unit_error,same_measurement,"truth.csv: conflicting reports of the same measurement (yield strength x 1.3 in the copy); same paper, alloy, grain size and conditions"
+13,missing_test_condition,possible_duplicate,cannot_tell,same_measurement,"truth.csv: neither the scope nor the same measurement can be confirmed (test temperature blank); by construction a copy, so 'same measurement' is acceptable"
+14,missing_test_condition,possible_duplicate,cannot_tell,same_measurement,"truth.csv: neither the scope nor the same measurement can be confirmed (test temperature blank); by construction a copy, so 'same measurement' is acceptable"
+```
+```json
+{
+ "note": "Fix round 1, after the owner's decision on the Critic (only flags naming two or more records; each flag stands alone, a new instruction): one live Critic call (owner's go, 2026-10-07) on a fresh local scratch database, MPEA with the controlled duplicate extract, marked as constructed test data, fixed plan, no Planner and no Analyst; ceiling $0.25. Graded afterwards against the test-side key tests/fixtures/controlled_duplicates/critic_key.csv (approved by the owner before the call; read only after it; absent from the request, checked). 'stages[].input' is the request content code built. Harness: ~/hc-work/step08b/fix/live_critic2.py (quoted in the fix packet).",
+ "database": "hc_live_critic2_live_1791412642",
+ "run": 1,
+ "comparison_run": 2,
+ "ceiling": "0.25",
+ "critic_setting": {
+  "version": 1,
+  "model": "claude-haiku-4-5",
+  "limits": {
+   "max_tokens": 8000,
+   "max_output_chars": 30000,
+   "max_flags_per_call": 100
+  },
+  "settings": {
+   "reasoning_effort": "low"
+  }
+ },
+ "flags": [
+  {
+   "id": 1,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:0",
+    "mpea:MPEA_dataset.csv:row:1315"
+   ]
+  },
+  {
+   "id": 2,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:1",
+    "mpea:MPEA_dataset.csv:row:812"
+   ]
+  },
+  {
+   "id": 3,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:2",
+    "mpea:MPEA_dataset.csv:row:1316"
+   ]
+  },
+  {
+   "id": 4,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:3",
+    "mpea:MPEA_dataset.csv:row:1007"
+   ]
+  },
+  {
+   "id": 5,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:4",
+    "mpea:MPEA_dataset.csv:row:998"
+   ]
+  },
+  {
+   "id": 6,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:5",
+    "mpea:MPEA_dataset.csv:row:1085"
+   ]
+  },
+  {
+   "id": 7,
+   "kind": "values_disagree",
+   "category": "differ beyond tolerance",
+   "records": [
+    "controlled_duplicates:extract.csv:row:6",
+    "mpea:MPEA_dataset.csv:row:1278"
+   ]
+  },
+  {
+   "id": 8,
+   "kind": "values_disagree",
+   "category": "differ beyond tolerance",
+   "records": [
+    "controlled_duplicates:extract.csv:row:7",
+    "mpea:MPEA_dataset.csv:row:986"
+   ]
+  },
+  {
+   "id": 9,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:12",
+    "mpea:MPEA_dataset.csv:row:1036"
+   ]
+  },
+  {
+   "id": 10,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "records": [
+    "controlled_duplicates:extract.csv:row:13",
+    "mpea:MPEA_dataset.csv:row:813"
+   ]
+  }
+ ],
+ "result": {
+  "classified": 10,
+  "refused": {},
+  "failures": []
+ },
+ "stages": [
+  {
+   "id": 2,
+   "status": "done",
+   "input": {
+    "flags": "=== Flag 1: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1332, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 1 ===\n\n=== Flag 2: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 2, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 829, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 2 ===\n\n=== Flag 3: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 3, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1333, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 3 ===\n\n=== Flag 4: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co44.4Cr11.1Ni44.4\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 44.44444444444444, \"Cr\": 11.11111111111111, \"Ni\": 44.44444444444444}, \"id\": 4, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co44.4Cr11.1Ni44.4\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 44.44444444444444, \"Cr\": 11.11111111111111, \"Ni\": 44.44444444444444}, \"id\": 1024, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 4 ===\n\n=== Flag 5: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Fe33.3Mn33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Fe\": 33.333333333333336, \"Mn\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 5, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": null, \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Fe33.3Mn33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Fe\": 33.333333333333336, \"Mn\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 1015, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 5 ===\n\n=== Flag 6: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co10Cr15Fe35Mn5Ni25V10\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.006997900629809, \"Cr\": 15.010496850944715, \"Fe\": 34.98950314905528, \"Mn\": 5.0034989503149045, \"Ni\": 24.98250524842547, \"V\": 10.006997900629809}, \"id\": 6, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": null, \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co10Cr15Fe35Mn5Ni25V10\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.006997900629809, \"Cr\": 15.010496850944715, \"Fe\": 34.98950314905528, \"Mn\": 5.0034989503149045, \"Ni\": 24.98250524842547, \"V\": 10.006997900629809}, \"id\": 1102, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2018.12.077\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 6 ===\n\n=== Flag 7: judge this flag on its own ===\nkind: values_disagree\ncategory: differ beyond tolerance\nrecords named by this flag (2):\n{\"alloy\": \"Co10Cr10Fe40Mn40\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.0, \"Cr\": 10.0, \"Fe\": 40.0, \"Mn\": 40.0}, \"id\": 7, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.138039\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co10Cr10Fe40Mn40\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.0, \"Cr\": 10.0, \"Fe\": 40.0, \"Mn\": 40.0}, \"id\": 1295, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.138039\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 7 ===\n\n=== Flag 8: judge this flag on its own ===\nkind: values_disagree\ncategory: differ beyond tolerance\nrecords named by this flag (2):\n{\"alloy\": \"Co33.3Fe33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Fe\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 8, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.intermet.2019.106477\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co33.3Fe33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Fe\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 1003, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.intermet.2019.106477\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 8 ===\n\n=== Flag 9: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 13, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.04.025\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"not_reported\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1053, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.04.025\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 9 ===\n\n=== Flag 10: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 14, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"not_reported\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 830, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 10 ===",
+    "classes": "{\"cannot_tell\": \"cannot tell from the metadata\", \"different_specimens_or_conditions\": \"different specimens or conditions\", \"possible_transcription_or_unit_error\": \"possible transcription or unit error\", \"same_measurement\": \"same measurement reported twice\"}",
+    "sources": "[{\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"controlled_duplicates\", \"licence\": \"Apache-2.0 (derived from the MPEA dataset)\", \"name\": \"Controlled duplicate extract (constructed test data; never pooled into a real analysis)\", \"source_type\": \"uploaded_table\"}, {\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"mpea\", \"licence\": \"Apache-2.0\", \"name\": \"MPEA dataset (Borg et al. 2020)\", \"source_type\": \"uploaded_table\"}]"
+   },
+   "output": {
+    "refused": {},
+    "attempts": [
+     "ok"
+    ],
+    "not_sent": [],
+    "classified": {
+     "1": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     },
+     "2": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     },
+     "3": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     },
+     "4": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     },
+     "5": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source"
+     },
+     "6": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record"
+     },
+     "7": {
+      "class": "cannot_tell",
+      "reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+     },
+     "8": {
+      "class": "cannot_tell",
+      "reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+     },
+     "9": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     },
+     "10": {
+      "class": "same_measurement",
+      "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+     }
+    }
+   }
+  }
+ ],
+ "model_calls": [
+  {
+   "id": 1,
+   "model": "claude-haiku-4-5",
+   "status": "succeeded",
+   "input_tokens": 7953,
+   "output_tokens": 1954,
+   "cost": "0.017723",
+   "max_cost": "0.067433",
+   "cached_tokens": 0,
+   "error": null
+  }
+ ],
+ "classes": [
+  {
+   "id": 1,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  },
+  {
+   "id": 2,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  },
+  {
+   "id": 3,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  },
+  {
+   "id": 4,
+   "kind": "exact_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  },
+  {
+   "id": 5,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source"
+  },
+  {
+   "id": 6,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record"
+  },
+  {
+   "id": 7,
+   "kind": "values_disagree",
+   "category": "differ beyond tolerance",
+   "critic_class": "cannot_tell",
+   "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+  },
+  {
+   "id": 8,
+   "kind": "values_disagree",
+   "category": "differ beyond tolerance",
+   "critic_class": "cannot_tell",
+   "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+  },
+  {
+   "id": 9,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  },
+  {
+   "id": 10,
+   "kind": "possible_duplicate",
+   "category": "identical values",
+   "critic_class": "same_measurement",
+   "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+  }
+ ],
+ "compared_numbers_in_request": [],
+ "decisions_unchanged": true,
+ "freeze_fingerprints": [
+  "e175c543e3e4eaea9cdf8ae7b1dfcc6f4e6cff079ac82ab883a4f33d779577fc",
+  "e175c543e3e4eaea9cdf8ae7b1dfcc6f4e6cff079ac82ab883a4f33d779577fc"
+ ],
+ "grading": {
+  "rows": [
+   {
+    "flag": 1,
+    "kind": "exact_duplicate",
+    "extract_row": 1,
+    "case": "exact_duplicate_verbatim",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "same_measurement",
+    "acceptable": [],
+    "grade": "correct"
+   },
+   {
+    "flag": 2,
+    "kind": "exact_duplicate",
+    "extract_row": 2,
+    "case": "exact_duplicate_verbatim",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "same_measurement",
+    "acceptable": [],
+    "grade": "correct"
+   },
+   {
+    "flag": 3,
+    "kind": "exact_duplicate",
+    "extract_row": 3,
+    "case": "exact_duplicate_renamed_alloy",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "same_measurement",
+    "acceptable": [],
+    "grade": "correct"
+   },
+   {
+    "flag": 4,
+    "kind": "exact_duplicate",
+    "extract_row": 4,
+    "case": "exact_duplicate_renamed_alloy",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "same_measurement",
+    "acceptable": [],
+    "grade": "correct"
+   },
+   {
+    "flag": 5,
+    "kind": "possible_duplicate",
+    "extract_row": 5,
+    "case": "possible_duplicate_unknown_paper",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source",
+    "expected_class": "cannot_tell",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "acceptable"
+   },
+   {
+    "flag": 6,
+    "kind": "possible_duplicate",
+    "extract_row": 6,
+    "case": "possible_duplicate_unknown_paper",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record",
+    "expected_class": "cannot_tell",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "acceptable"
+   },
+   {
+    "flag": 7,
+    "kind": "values_disagree",
+    "extract_row": 7,
+    "case": "conflict_value_differs",
+    "critic_class": "cannot_tell",
+    "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata",
+    "expected_class": "possible_transcription_or_unit_error",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "abstention"
+   },
+   {
+    "flag": 8,
+    "kind": "values_disagree",
+    "extract_row": 8,
+    "case": "conflict_value_differs",
+    "critic_class": "cannot_tell",
+    "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata",
+    "expected_class": "possible_transcription_or_unit_error",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "abstention"
+   },
+   {
+    "flag": 9,
+    "kind": "possible_duplicate",
+    "extract_row": 13,
+    "case": "missing_test_condition",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "cannot_tell",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "acceptable"
+   },
+   {
+    "flag": 10,
+    "kind": "possible_duplicate",
+    "extract_row": 14,
+    "case": "missing_test_condition",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+    "expected_class": "cannot_tell",
+    "acceptable": [
+     "same_measurement"
+    ],
+    "grade": "acceptable"
+   }
+  ],
+  "totals": {
+   "correct": 4,
+   "acceptable": 4,
+   "abstention": 2,
+   "wrong": 0,
+   "unanswered": 0
+  }
+ }
+}
+```
+
+The harness:
+
+```python
+"""Step 8b fix round 1, second live Critic call (owner's go required; ceiling $0.25), on a fresh scratch database,
+on the controlled duplicate extract with MPEA, after the scope rule and the new instruction (settings version 2).
+Graded afterwards against the test-side key tests/fixtures/controlled_duplicates/critic_key.csv, which is read only
+after the call and checked to be absent from the request.
+
+(Derived from live_critic.py, the first call's harness.)
+
+Steps: create a scratch database (local server) and migrate it to head; register the constructed source used by
+tests/test_critic.py (three ordinary rows per paper plus two rows whose tensile strength is below their yield
+strength, which raise flags); create, submit and confirm a query; dispatch it as a fixed-plan run marked as
+constructed test data; lock, store the records, run Checks; run the Critic once (Haiku 4.5) under the ceiling. Then:
+- the Critic stage's stored input (the request's inputs, built from its access-layer input) and output, the model
+  call's tokens and costs, and each flag's class and reason;
+- the compared numbers of the flagged records are not in the request inputs;
+- the decisions are unchanged by the classes: a second run of the same version, through Checks with no Critic call,
+  gives the same eligibility decisions, sets, freeze record and fingerprint, statistics and gap facts
+  (tests/test_critic.py::decided).
+No Planner, no Analyst. The record goes to ~/hc-work/step08b/fix/live_critic_<mode>.json.
+
+    --rehearse   the same steps against the local stub provider (no cost), then the scratch database is dropped
+    --live       the real provider (ANTHROPIC_API_KEY exported from .env without printing it); the database is kept
+
+Scratch harness, not committed; quoted in the live record."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from decimal import Decimal
+from pathlib import Path
+
+REPO = Path("/workspaces/hypocurate")
+sys.path.insert(0, str(REPO / "tests"))
+sys.path.insert(0, str(REPO))
+
+from sqlalchemy import create_engine, text  # noqa: E402
+
+CEILING = Decimal("0.25")
+CLAIM = "In FCC multi-principal-element alloys, yield strength rises as grain size falls"
+BY = "Khalid El-Awady (live Critic check, run by Claude Code on the owner's go)"
+COMPARED = ("7311.375", "8911.625", "7311.4", "8911.6", "5511.25", "4411.5")  # tests/test_critic.py::CONFLICT
+
+
+def grade(classes: list, flags: list) -> dict:
+    """After the call only: the test-side key, by extract row (the flag's controlled-duplicate record)."""
+    import csv
+    key = {int(r["extract_row"]): r for r in csv.DictReader(
+        (REPO / "tests/fixtures/controlled_duplicates/critic_key.csv").open(encoding="utf-8"))}
+    by_flag = {f["id"]: f for f in flags}
+    rows, totals = [], {"correct": 0, "acceptable": 0, "abstention": 0, "wrong": 0, "unanswered": 0}
+    for c in classes:
+        recs = by_flag[c["id"]]["records"]
+        row = next(int(x.rsplit(":", 1)[1]) + 1 for x in recs if x.startswith("controlled_duplicates:"))
+        k = key[row]
+        got = c["critic_class"]
+        acceptable = [a for a in k["acceptable_classes"].split(";") if a]
+        grade_ = ("unanswered" if got is None else "correct" if got == k["expected_class"] else
+                  "acceptable" if got in acceptable else "abstention" if got == "cannot_tell" else "wrong")
+        totals[grade_] += 1
+        rows.append({"flag": c["id"], "kind": c["kind"], "extract_row": row, "case": k["case"], "critic_class": got,
+                     "critic_reason": c["critic_reason"], "expected_class": k["expected_class"],
+                     "acceptable": acceptable, "grade": grade_})
+    return {"rows": rows, "totals": totals}
+
+
+def main(mode: str) -> None:
+    import pipeline_world as pw
+    import stub_provider as sp
+    from hypocurate.db import migrate
+    from hypocurate.db.engine import make_engine
+    from hypocurate.pipeline import checkpoints, checks, extract, queries
+    from hypocurate.pipeline.agents import critic
+    from hypocurate.pipeline.plan import reference_plan
+    from test_controlled_duplicates import _row_specific_markers, key_markers
+    from test_critic import decided
+
+    base = os.environ["DATABASE_URL"]
+    name = f"hc_live_critic2_{mode}_{int(time.time())}"
+    admin = create_engine(base.rsplit("/", 1)[0].replace("postgresql://", "postgresql+psycopg://", 1) + "/postgres",
+                          isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE DATABASE "{name}"'))
+    url = base.rsplit("/", 1)[0] + "/" + name
+    engine = make_engine(url)
+    stub = None
+    try:
+        migrate.upgrade(engine)
+        pw.registered(engine, ("mpea", "controlled_duplicates"))
+        q = queries.create(engine, CLAIM, ("mpea", "controlled_duplicates"))
+        queries.submit(engine, q.version_id)
+        queries.confirm_domain(engine, q.version_id, by=BY)
+        rid = queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
+        queries.start(engine, rid)
+
+        def through_checks(run_id):
+            checkpoints.lock_rules(engine, run_id, reference_plan(q.version_id))
+            extract.store_records(engine, run_id)
+            checks.run_checks(engine, run_id)
+
+        through_checks(rid)
+        with engine.connect() as conn:
+            flags = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT f.id, f.kind, f.category, array_agg(s.key || ':' || r.source_item_key ORDER BY s.key) AS records "
+                "FROM flag f JOIN flag_record fr ON fr.flag_id = f.id JOIN record r ON r.id = fr.record_id "
+                "JOIN source_version sv ON sv.id = r.source_version_id JOIN source s ON s.id = sv.source_id "
+                "WHERE f.run_id = :r GROUP BY f.id ORDER BY f.id"), dict(r=rid))]
+        client_options = None
+        if mode == "rehearse":
+            stub = sp.StubProvider()
+            stub.respond(lambda raw: sp.reply(sp.fields(classification=json.dumps(
+                {str(f["id"]): {"class": "cannot_tell", "reason": "rehearsal"} for f in flags}))))
+            client_options = sp.client_options(stub)
+        result = critic.run_critic(engine, rid, ceiling=CEILING, client_options=client_options)
+
+        with engine.connect() as conn:
+            stage = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT id, status, input, output FROM stage_result WHERE run_id = :r AND stage = 'critic' ORDER BY id"),
+                dict(r=rid))]
+            calls = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT mc.id, mc.model, mc.status, mc.input_tokens, mc.output_tokens, mc.cost, mc.max_cost, mc.cached_tokens, "
+                "mc.error FROM model_call mc JOIN agent_invocation i ON i.id = mc.invocation_id "
+                "WHERE i.run_id = :r ORDER BY mc.id"), dict(r=rid))]
+            classes = [dict(r._mapping) for r in conn.execute(text(
+                "SELECT id, kind, category, critic_class, critic_reason FROM flag WHERE run_id = :r ORDER BY id"),
+                dict(r=rid))]
+            setting = conn.execute(text(
+                "SELECT a.version, a.model, a.limits, a.settings FROM run_agent_setting ras JOIN agent_setting a "
+                "ON a.id = ras.agent_setting_id WHERE ras.run_id = :r AND ras.role = 'critic'"), dict(r=rid)).one()
+        inputs_text = json.dumps([s["input"] for s in stage], ensure_ascii=False)
+        leaked = [m for m in _row_specific_markers() | key_markers() if m and m in inputs_text]
+        # The compared values: each flagged record's yield strength, as stored (never sent).
+        with engine.connect() as conn:
+            values = {str(v) for v in conn.execute(text(
+                "SELECT DISTINCT (r.harmonized->'yield_strength'->>'value') FROM flag_record fr JOIN record r ON "
+                "r.id = fr.record_id JOIN flag f ON f.id = fr.flag_id WHERE f.run_id = :r"), dict(r=rid)).scalars() if v}
+        leaked += [v for v in values if v in inputs_text]
+
+        # The decisions do not depend on the classes: the same version again, through Checks, no Critic call.
+        again = pw.run_of_version(engine, q.version_id, ("mpea", "controlled_duplicates"), marked=True, agents=("planner", "critic", "analyst"))
+        through_checks(again)
+        with_classes, without = decided(engine, rid), decided(engine, again)
+        same = with_classes == without
+
+        record = {"mode": mode, "database": name, "run": rid, "comparison_run": again, "ceiling": str(CEILING),
+                  "critic_setting": {"version": setting.version, "model": setting.model,
+                                     "limits": setting.limits, "settings": setting.settings},
+                  "flags": flags, "result": {"classified": result.classified, "refused": result.refused,
+                                              "failures": result.failures},
+                  "stages": stage, "model_calls": calls, "classes": classes,
+                  "compared_numbers_in_request": leaked,
+                  "decisions_unchanged": same,
+                  "freeze_fingerprints": [with_classes["freeze"]["fingerprint"], without["freeze"]["fingerprint"]]}
+        record["grading"] = grade(classes, flags)
+        out = Path.home() / f"hc-work/step08b/fix/live_critic2_{mode}.json"
+        out.write_text(json.dumps(record, indent=1, ensure_ascii=False, default=str))
+        cost = sum(Decimal(str(c["cost"])) for c in calls if c["cost"] is not None)
+        print(json.dumps(record["grading"], indent=1, ensure_ascii=False))
         print(json.dumps({"mode": mode, "flags": len(flags), "classified": result.classified,
                           "refused": result.refused, "failures": result.failures,
                           "calls": [{k: str(v) for k, v in c.items()} for c in calls], "actual_cost": str(cost),
@@ -5040,6 +6157,12 @@ parts.append("## 8b. The live Critic call (`fix_round_1_critic_check` in `docs/r
              + fence(json.dumps(json.loads(read("docs/reviews/step08b_live_record.json"))["fix_round_1_critic_check"],
                                 indent=1, ensure_ascii=False), "json")
              + "\nThe harness:\n\n" + fence(read(HOME / "fix/live_critic.py"), "python"))
+parts.append("## 8c. The second live Critic call, after the owner's further change (`fix_round_1_critic_check_2`)\n\n"
+             + "The answer key it was graded against (test side only):\n\n"
+             + fence(read("tests/fixtures/controlled_duplicates/critic_key.csv"), "csv")
+             + fence(json.dumps(json.loads(read("docs/reviews/step08b_live_record.json"))["fix_round_1_critic_check_2"],
+                                indent=1, ensure_ascii=False), "json")
+             + "\nThe harness:\n\n" + fence(read(HOME / "fix/live_critic2.py"), "python"))
 parts.append("## 9. The review being answered\n\n" + read("docs/reviews/step08b_review_chatgpt.md") + "\n")
 parts.append("## 10. The plan file and the scripts\n\n### The step 8b plan file (with the fix round's answers)\n\n"
              + fence(read(PLAN), "markdown") + "### `~/hc-work/step08b/fix/fixpacket.py`\n\n"
