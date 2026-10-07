@@ -11,9 +11,10 @@ MPEA = "multi-principal-element (high-entropy) alloy"
 
 
 def test_the_label_says_whose_reading_it_is_and_that_a_person_confirms_it():
-    assert reading.LABELS["planner"] == ("the Planner's reading of the claim; not verified by code; a person confirms "
-                                         "it at the rules lock on the website (step 10)")
-    assert reading.LABELS["fixed"] == "the fixed reference plan (criterion 14.1a); not read from the claim"
+    """Owner, F-Q2 (2026-10-07): the labels say what is true in this version (no person confirms the reading yet)."""
+    assert reading.LABELS["planner"] == ("the Planner's reading of the claim; not verified by code and, in this "
+                                         "version, not confirmed by a person")
+    assert reading.LABELS["fixed"] == "the fixed reference plan; not read from the claim"
     assert reading.LABELS["narrower"] == "the narrower plan stored by the original question's narrowing decision"
 
 
@@ -34,11 +35,15 @@ def test_an_elevated_band_names_its_range_and_no_marks_without_a_reading():
     scope = {"alloy_class": [MPEA], "phase_class": ["FCC"], "test_type": ["compression"],
              "temperature_band": [{"band": "elevated", "min": 900.0, "max": 1100.0}]}
     q = reading.question_as_tested(scope, "yield_strength", [], None, "fixed")
-    assert q == {"text": f"yield strength against grain size, in {MPEA}; phase class FCC; test type compression; "
+    assert q == {"text": f"yield strength against grain size, in {MPEA}s; phase class FCC; test type compression; "
                          "elevated, 900 to 1100 °C", "label": reading.LABELS["fixed"], "source": "fixed"}
 
 
 def test_the_reference_plans_reading():
     q = reading.from_plan(plans.reference_plan(1), "fixed")
-    assert q["text"] == (f"yield strength against grain size, in {MPEA}; phase class FCC; test type tension; "
+    assert q["text"] == (f"yield strength against grain size, in {MPEA}s; phase class FCC; test type tension; "
                          "room temperature, 20 to 25 °C; excluding records with a grain size below 0.1 µm")
+
+
+def test_a_band_at_one_temperature_names_it_once():
+    assert reading.band_words({"band": "elevated", "min": 1000.0, "max": 1000.0}) == "elevated, 1000 °C"

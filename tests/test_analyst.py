@@ -17,25 +17,30 @@ from stats_world import run_on, small_rows
 from hypocurate.pipeline import display
 
 # Step 8b (owner, 2026-10-07, after the live set): the facts carry display strings and ready-made phrases; the
-# number check compares tokens exactly (was: rounding to the shown precision accepted).
-FACTS = display.display({"decision": {"outcome_wording": "sufficient in the sources searched", "verdict": "supported",
-                                      "verdict_wording": "supported under the stated model, in the sources searched"},
-                         "analyses": [{"estimate": 424.93, "std_error": 64.41, "n_records": 97, "detection": 0.0465,
-                                       "largest_paper_share": 0.387,
-                                       "p_value_phrase": display.p_phrase(1.287e-06),
-                                       "paper_figures_phrase": display.figures_phrase(20, 3.9358, 0.38673, 19)}]})
+# number check compares tokens exactly (was: rounding to the shown precision accepted). Fix round 1: the function
+# that turned every float into its display string is deleted (owner); the same strings are written by the named
+# formatting functions.
+FACTS = {"decision": {"outcome_wording": "sufficient in the sources searched", "verdict": "supported",
+                      "verdict_wording": "supported under the stated model, in the sources searched"},
+         "analyses": [{"estimate": display.one_decimal(424.93), "std_error": display.one_decimal(64.41),
+                       "n_records": 97, "detection": display.percent(0.0465),
+                       "largest_paper_share": display.percent(0.387),
+                       "p_value_phrase": display.p_phrase(1.287e-06),
+                       "paper_figures_phrase": display.figures_phrase(20, 3.9358, 0.38673, 19)}]}
 
 
-def test_the_facts_carry_display_strings_and_phrases():
+def test_the_named_formatting_functions_give_the_display_strings_and_phrases():
     a = FACTS["analyses"][0]
     assert (a["estimate"], a["std_error"], a["detection"], a["largest_paper_share"]) == ("424.9", "64.4", "4.7%", "38.7%")
-    assert a["p_value_phrase"] == "p ≈ 1.3e-6 (approximate, nominal, one-sided)"
+    # Fix round 1 (owner's wording fix): no brackets, so the phrase reads the same inside parentheses.
+    assert a["p_value_phrase"] == "an approximate, nominal, one-sided p ≈ 1.3e-6"
     assert a["paper_figures_phrase"] == ("20 informative groups, an effective number of groups of 3.94, a largest "
                                          "share of 38.7% and 19 degrees of freedom")  # 'groups' (owner, 2026-10-07)
+    assert display.coefficient(424.93) == "424.9 MPa·µm^0.5" and not hasattr(display, "display")
 
 
 @pytest.mark.parametrize("phrase", [
-    "k = 424.9 ± 64.4", "97 records", "p ≈ 1.3e-6 (approximate, nominal, one-sided)", "4.7%",
+    "k = 424.9 ± 64.4", "97 records", "an approximate, nominal, one-sided p ≈ 1.3e-6", "4.7%",
     "38.7% of the slope information", "the model k × (grain size)^-1/2", "a 95% interval", "validity check 2",
     "an effective number of papers of 3.94",
 ])
@@ -329,7 +334,7 @@ def test_the_sensitivity_sets_are_labelled_with_the_per_source_function():
     assert (out["sensitivity_largest_estimate"], out["sensitivity_largest_set"]) == ("410.0 MPa·µm^0.5", "no exclusions")
     assert out["without_largest_share_estimate"] == "390.0 MPa·µm^0.5"
     assert out["without_largest_share_label"] == "in agreement with the pooled result"
-    assert out["without_largest_share_p_phrase"] == "p ≈ 3.0e-5 (approximate, nominal, one-sided)"
+    assert out["without_largest_share_p_phrase"] == "an approximate, nominal, one-sided p ≈ 3.0e-5"  # fix round 1: no brackets
 
 
 def test_a_withheld_result_gives_no_estimate_name_even_if_numbers_were_stored():
@@ -377,6 +382,13 @@ def test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure(engin
     for k, v in names.items():
         if k not in phrase_names:
             assert not set(text_checks.tokens(v)) & bare, (k, v)
+    # Fix round 1 (ChatGPT's finding 4): the earlier version of this test missed the informative-group count, which
+    # the group minimum's count ('count_groups', with 'met_groups') exposed on its own. No name carries the count of
+    # informative groups (the minimum's count) any more; the statement written by code shows the minimums.
+    assert "count_groups" not in names and "met_groups" not in names
+    informative = pooled["minimums"]["groups"]["count"]
+    assert informative == c["n_groups_informative"]
+    assert not [k for k, v in names.items() if k.startswith(("count_", "met_")) and k.endswith("groups")]
 
 
 @pytest.mark.parametrize("kind", ["exploratory", "withheld", "narrowed", "fixed wordings"])
@@ -444,7 +456,7 @@ def test_the_direction_note_is_built_from_the_sign_and_the_claims_direction(esti
 
 def test_the_plain_label_for_a_single_group_source():
     assert analyst_names.label_words({"label": "not_enough_data", "inference_reason": "insufficient_groups"}) == \
-        "too few groups to test alone"
+        "not testable alone (too few groups)"  # fix round 1 wording
     assert analyst_names.label_words({"label": "agrees"}) == "in agreement with the pooled result"
 
 

@@ -67,7 +67,8 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
     pooled = next(x for x in shown["results"] if x["scope"] == "pooled")
     assert (pooled["n_records"], pooled["n_alloys"], pooled["n_groups"], pooled["resid_df"]) == (97, 22, 20, 74)
     assert round(pooled["estimate"], 1) == 424.9 and round(pooled["std_error"], 1) == 64.4
-    assert shown["explanation_label"] == "model explanation; numbers checked against the run record"
+    assert shown["explanation_label"] == ("written by a language model; values inserted from the run record; "
+                                         "narrative not verified")  # decision A (fix round 1)
     assert shown["tokens_and_cost"] is not None
 
 

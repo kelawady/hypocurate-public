@@ -7098,7 +7098,7 @@
     "key": "narrowing_decision",
     "name": "The narrowing decision counts structure only",
     "state": "in_force",
-    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C). The decision also stores the Planner's mark of each scope part (stated by the claim or defaulted), which the Analyst's facts carry as notes.",
+    "statement": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no candidate record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C). The decision also stores the Planner's mark of each scope part (stated by the claim or defaulted), which the Analyst's facts carry as notes. The counts are candidate records only: they do not show that records will survive eligibility under the locked rules, nor that the narrower question will meet the minimums.",
     "value": {
       "text": "counts per claim part; zero parts; exact narrower scope",
       "unit": null
@@ -7107,7 +7107,8 @@
     "affects": "Partly sufficient and 'claim not one plan' (PRD 5.4).",
     "reason": "Owner's Q5; A11 for two bands; Claude Code extended A11 to test types and alloy classes, since a plan's tags allow one of each (stated to the owner).",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q5, A11."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answers Q5, A11.",
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7166,6 +7167,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
+      },
+      {
+        "value": "Code's narrowing decision reads, before the lock, only counts of structure per chosen source from the sealed version recorded at dispatch (never an outcome value). Claim parts are each phase class, temperature band (with its range) and test type of the claim's scope as the Planner stated it; alloy class is not countable. A part's count is the records that have a grain size and the outcome at an accepted status, fall in that part and in the claim's values on the other dimensions, with temperature judged as eligibility rule 3 judges it. A claim with more than one alloy class, temperature band or test type is not one plan: unless the partly-sufficient path applies, the run fails before the lock with a stated reason (submit one question per band, test type and alloy class). The decision stores the counts' fingerprint and each source version's fingerprint. The narrower scope is the claim's scope less exactly the parts with no usable record, built by code; a narrower scope the Planner gives is stored and never used (owner, 2026-10-07, after live run C). The decision also stores the Planner's mark of each scope part (stated by the claim or defaulted), which the Analyst's facts carry as notes.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (wording correction, second-model review): the counts are candidate availability."
       }
     ]
   },
@@ -7318,7 +7325,7 @@
     "key": "question_as_tested",
     "name": "The question as tested, beside the claim",
     "state": "in_force",
-    "statement": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code; a person confirms it at the rules lock on the website (step 10)'. Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
+    "statement": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a person' (owner, F-Q2: the label says what is true now; the confirmation by a person comes in step 10). Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run ('the fixed reference plan; not read from the claim') or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
     "value": {
       "text": "code-written; labelled the Planner's reading; confirmed by a person in step 10",
       "unit": null
@@ -7360,7 +7367,14 @@
       "step": 10,
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code; a person confirms it at the rules lock on the website (step 10)'. Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Owner, F-Q2: labels say what is true in this version; no step 10 or website in the label."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_reading.py::test_the_label_says_whose_reading_it_is_and_that_a_person_confirms_it",
@@ -7435,7 +7449,7 @@
     "key": "analyst_facts_only",
     "name": "The Analyst receives stored facts only",
     "state": "in_force",
-    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'too few groups to test alone', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given.",
+    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum except the groups' (that count is of informative groups, a paper figure shown only with the other three); per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'not testable alone (too few groups)', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given. Fix round 1 (owner, F-Q2): the calibration summary describes the simulation interval once.",
     "value": {
       "text": "named stored facts; nothing outcome-derived below the minimums",
       "unit": null
@@ -7444,7 +7458,8 @@
     "affects": "What the Analyst can say (PRD 3 step 8).",
     "reason": "Owner's Q6 and standing requirement.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q6."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q6.",
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7495,7 +7510,7 @@
       "tests/test_analyst.py::test_the_analyst_changes_no_stored_decision",
       "tests/test_analyst.py::test_a_run_below_the_minimums_offers_no_estimate_names",
       "tests/test_orchestrator.py::test_the_analyst_is_told_which_scope_parts_the_claim_stated_and_which_were_assumed",
-      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
+      "tests/test_analyst.py::test_the_named_formatting_functions_give_the_display_strings_and_phrases",
       "tests/test_analyst.py::test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level",
       "tests/test_analyst.py::test_the_calibration_summary_covers_both_calibrations_and_their_flags",
       "tests/test_analyst.py::test_the_direction_note_is_built_from_the_sign_and_the_claims_direction",
@@ -7520,6 +7535,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
+      },
+      {
+        "value": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum; per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'too few groups to test alone', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1: no separate informative-group count (finding 4); label wording and the interval described once."
       }
     ]
   },
@@ -7527,7 +7548,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07).",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement').",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7536,7 +7557,8 @@
     "affects": "The Analyst's text (CLAUDE.md rule 13; PRD 5.9 for the Commentator later).",
     "reason": "Owner's Q8: the number check is written for reuse by the Commentator.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8.",
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7580,6 +7602,10 @@
             "pooled_p_phrase",
             "pooled_figures_phrase"
           ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.analyst:LABEL",
+          "equals": "written by a language model; values inserted from the run record; narrative not verified"
         }
       ],
       "note": null
@@ -7597,7 +7623,8 @@
       "tests/test_analyst.py::test_the_diagnostic_answers_shape_is_refused_and_the_same_with_placeholders_is_stored",
       "tests/test_analyst.py::test_a_text_breaking_each_rule_is_refused",
       "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text",
-      "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored"
+      "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored",
+      "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure"
     ],
     "history": [
       {
@@ -7629,7 +7656,69 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
+      },
+      {
+        "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07).",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (finding 4, decision A): the label and the limits of the checks stated; count_groups removed."
       }
+    ]
+  },
+  {
+    "key": "results_statement",
+    "name": "The results statement written by code",
+    "state": "in_force",
+    "statement": "Every completed run has a short statement written by code from what code stored, built whenever it is shown (`show`), so it is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+    "value": {
+      "text": "code-written from stored facts; always present on a completed run",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "What every completed run says, independently of the Analyst.",
+    "reason": "The second-model review (finding 4) found the Analyst's numerical guarantees stronger than its checks: numbers written in words pass. The owner put every numerical assertion in a statement written by code and labelled the Analyst's text as unverified narrative.",
+    "evidence": [
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.statement:build"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:ASSOCIATION",
+          "equals": "The result is an association under the stated model in the sources searched; it does not show cause."
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:OVER_CONFIDENT"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:EXPLORATORY"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_statement.py::test_the_reference_run_s_statement",
+      "tests/test_statement.py::test_the_statement_is_present_when_the_analyst_fails_and_holds_nothing_it_wrote",
+      "tests/test_statement.py::test_a_planner_run_s_statement_labels_the_planner_s_reading",
+      "tests/test_statement.py::test_nothing_frozen_shows_each_count_against_its_minimum_and_the_records_found_per_source",
+      "tests/test_statement.py::test_partly_sufficient_shows_the_counts_per_part_and_the_narrower_question_to_dispatch",
+      "tests/test_statement.py::test_the_other_kinds",
+      "tests/test_statement.py::test_a_failed_run_has_no_statement"
     ]
   },
   {
@@ -7791,7 +7880,7 @@
     "key": "display_precision",
     "name": "How numbers are shown",
     "state": "in_force",
-    "statement": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'. Owner's additions (2026-10-07): estimates and standard errors of the coefficient carry the unit MPa·µm^0.5, scatter and shift MPa, temperatures °C; the nominal level is shown as a percentage beside the shares (5.0%), replacing the threshold shown as given; each simulation interval is shown as '<low> to <high>, a 95% simulation interval covering simulation uncertainty only'; the paper figures read 'informative groups' and 'an effective number of groups'.",
+    "statement": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'an approximate, nominal, one-sided p ≈ <value>' (no brackets, so it reads the same inside parentheses; fix round 1); the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'. Owner's additions (2026-10-07): estimates and standard errors of the coefficient carry the unit MPa·µm^0.5, scatter and shift MPa, temperatures °C; the nominal level is shown as a percentage beside the shares (5.0%), replacing the threshold shown as given; each simulation interval is shown as '<low> to <high>, a 95% simulation interval covering simulation uncertainty only'; the paper figures read 'informative groups' and 'an effective number of groups'. Every number is formatted by the named functions of pipeline/display.py; the earlier function that turned every float of the facts into a display string without its unit is deleted (fix round 1).",
     "value": {
       "text": "0.1 for k and SE; 2 significant figures for p; percentages to 0.1",
       "unit": null
@@ -7800,7 +7889,8 @@
     "affects": "Every number the Analyst can quote.",
     "reason": "Owner, 2026-10-07: the Analyst never rounds; code does.",
     "evidence": [
-      "Register 'reference_test_tolerance' and 'reference_numbers' (k, SE, p; the approved sensitivity numbers' effective number and share). Owner's decision after the live diagnostic call, 2026-10-07."
+      "Register 'reference_test_tolerance' and 'reference_numbers' (k, SE, p; the approved sensitivity numbers' effective number and share). Owner's decision after the live diagnostic call, 2026-10-07.",
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -7816,9 +7906,6 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.pipeline.display:RULES"
-        },
-        {
           "ref": "python:hypocurate.pipeline.display:P_DESCRIPTION",
           "equals": "approximate, nominal, one-sided"
         },
@@ -7829,6 +7916,9 @@
         {
           "ref": "python:hypocurate.pipeline.display:INTERVAL_NOTE",
           "equals": "a 95% simulation interval covering simulation uncertainty only"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.display:p_phrase"
         }
       ],
       "note": null
@@ -7837,7 +7927,7 @@
       "All the precisions, including those drafted by Claude Code where the register was silent (other shares and rates, temperatures, scatter, shift, the fallback), were approved by the owner on 2026-10-07."
     ],
     "tests": [
-      "tests/test_analyst.py::test_the_facts_carry_display_strings_and_phrases",
+      "tests/test_analyst.py::test_the_named_formatting_functions_give_the_display_strings_and_phrases",
       "tests/test_access_step8b.py::test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate",
       "tests/test_analyst.py::test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level"
     ],
@@ -7847,6 +7937,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after reading the first accepted live explanation: code-built sentences so the Analyst need not interpret; units; one form for rates and the threshold; interval phrases; plain names and labels; 'groups' throughout."
+      },
+      {
+        "value": "Numbers shown to the Analyst (and, from step 10, to people) are rounded by code in one place: k, its standard error and t to 0.1; a p-value to two significant figures (scientific notation below 0.001, e.g. 1.3e-6); counts exact; the effective number of papers to two decimals; the largest share and every other share or rate (calibration, detection, power and their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the threshold as given; any other number to three significant figures. A p-value is shown as 'p ≈ <value> (approximate, nominal, one-sided)'; the paper figures as '<n> informative papers, an effective number of papers of <e>, a largest share of <s> and <df> degrees of freedom'. Owner's additions (2026-10-07): estimates and standard errors of the coefficient carry the unit MPa·µm^0.5, scatter and shift MPa, temperatures °C; the nominal level is shown as a percentage beside the shares (5.0%), replacing the threshold shown as given; each simulation interval is shown as '<low> to <high>, a 95% simulation interval covering simulation uncertainty only'; the paper figures read 'informative groups' and 'an effective number of groups'.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Step 8b fix round 1 (owner's wording fixes): the p-value phrase without brackets; display() deleted."
       }
     ]
   }

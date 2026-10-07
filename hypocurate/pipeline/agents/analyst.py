@@ -24,6 +24,8 @@ from typing import Any, Mapping
 from hypocurate.pipeline.agents import libraries, text_checks
 
 UNAVAILABLE = "explanation unavailable"
+# Owner's decision A (fix round 1): what the stored explanation is; shown with it, separately from code's statement.
+LABEL = "written by a language model; values inserted from the run record; narrative not verified"
 OUTPUT_DESCRIPTION = ("The explanation, in plain text, a few short paragraphs. No digits: every number, p-value, set of "
                       "paper figures, the outcome and the verdict are written as {name} placeholders from 'facts'.")
 
@@ -129,6 +131,6 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                                                    "attempts": result.attempts,
                                                    # owner, 2026-10-07: also for an attempt later corrected
                                                    "failure_details": result.details,
-                                                   "check": "numbers written by code from the run record"},
+                                                   "check": LABEL},
                 input_=inputs)
     return AnalystResult(report, None, stage_id, result.calls)

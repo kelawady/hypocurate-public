@@ -43,7 +43,7 @@ LABEL_WORDS = {"agrees": "in agreement with the pooled result",
                "same_direction_different_decision": "in the same direction as the pooled result, with a different test "
                                                     "result",
                "not_enough_data": "not testable alone"}
-TOO_FEW_GROUPS = "too few groups to test alone"
+TOO_FEW_GROUPS = "not testable alone (too few groups)"  # fix round 1: reads after "is" and in a list
 # Code-built sentences the Analyst uses whole (owner, 2026-10-07).
 GROUP_DEFINITION = "A group is a paper, or, for a source that is a single dataset, the whole dataset."
 MODEL_SENTENCE = ("The test fitted yield strength (MPa) as a baseline for each alloy plus one coefficient, shared by all "
@@ -81,6 +81,8 @@ def band_words(band: Mapping | str) -> str:
         return str(band)
     if band.get("band") == "room temperature" or "min" not in band:
         return str(band.get("band"))
+    if float(band["min"]) == float(band["max"]):
+        return f"{band['band']} ({display.temperature(band['min'])})"
     return f"{band['band']} ({display.temperature(band['min'])} to {display.temperature(band['max'])})"
 
 
@@ -124,12 +126,15 @@ def _calibration(prefix: str, c: Mapping | None) -> dict[str, str]:
 def calibration_summary(cal: Mapping, alpha: float) -> str:
     """One sentence covering both calibrations and their flags (owner, 2026-10-07)."""
     parts, flags = [], {}
+    described = False  # the interval's description is given once (owner, F-Q2)
     for method in ("estimated", "fixed"):
         c = cal.get(method)
         if isinstance(c, Mapping) and c.get("status") == "computed":
+            interval = (f"{display.percent(c['null']['ci_low'])} to {display.percent(c['null']['ci_high'])}" if described
+                        else display.interval_phrase(c["null"]["ci_low"], c["null"]["ci_high"]))
+            described = True
             parts.append(f"with {CALIBRATION_NAMES[method]}, the test was significant in "
-                         f"{display.percent(c['null']['share'])} of simulations with no effect "
-                         f"({display.interval_phrase(c['null']['ci_low'], c['null']['ci_high'])})")
+                         f"{display.percent(c['null']['share'])} of simulations with no effect ({interval})")
             flags[method] = c.get("flag_wording") or NO_FLAG
         else:
             reason = str((c or {}).get("reason") or "not computed") if isinstance(c, Mapping) else "not computed"
@@ -227,7 +232,11 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
     if analyses:
         pooled = analyses[0]
         names.update(_result("pooled", pooled, withheld))
+        # The count against each minimum, except the groups': that count is of informative groups, a paper figure
+        # shown only with the other three (fix round 1, finding 4; the statement shows the minimums).
         for k, m in (pooled.get("minimums") or {}).items():
+            if k == "groups":
+                continue
             names[f"count_{k}"] = _s(m.get("count"))
             names[f"met_{k}"] = "met" if m.get("met") else "not met"
         cal = pooled.get("calibration") or {}

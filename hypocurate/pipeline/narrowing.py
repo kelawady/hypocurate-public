@@ -15,7 +15,7 @@ accepted value statuses.
 **The decision** (`decide`, pure):
 - no part has zero records: `proceed` if the claim is one plan, else `claim_not_one_plan` (A11);
 - some part has zero records: the narrower scope is the claim's scope less exactly those parts, built by code
-  (owner, 2026-10-07, after live run C: the Planner cannot see which part has no usable record; a proposal of
+  (owner, 2026-10-07, after live run C: the Planner cannot see which part has no candidate record; a proposal of
   its, if any, is stored as `proposed_narrower` and never used). If a dimension is left empty, nothing is
   testable: `proceed` (the original then ends insufficient) or `claim_not_one_plan`. If the narrower scope
   makes a valid plan: `partly_sufficient`, with the narrower plan (less its hypothesis version) and its
@@ -107,7 +107,7 @@ def decide(answer: Answer, counts: list[Mapping], hypothesis_version_id: int, su
         return {**out, "result": fallback, "reason": "no_part_with_records"}
     out["narrower_scope"] = narrower
     # Owner, 2026-10-07 (after live run C): code builds the narrower scope from its own counts; the Planner
-    # cannot see which part has no usable record, so a proposal of its, if any, is stored and never used.
+    # cannot see which part has no candidate record, so a proposal of its, if any, is stored and never used.
     if len(scope["alloy_class"]) != 1 or not one_plan(narrower):
         return {**out, "result": fallback, "reason": "narrower_invalid"}
     try:

@@ -410,7 +410,7 @@ def test_the_planners_stage_stores_the_question_as_tested_labelled_as_its_readin
     out = one(engine, "SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=rid)
     q = out["question_as_tested"]
     assert q["label"] == reading.LABELS["planner"]
-    assert q["text"] == ("yield strength against grain size, in multi-principal-element (high-entropy) alloy "
+    assert q["text"] == ("yield strength against grain size, in multi-principal-element (high-entropy) alloys "
                          "(as the claim states); phase class FCC (as the claim states); test type tension (assumed: "
                          "the claim does not state it); room temperature, 20 to 25 °C (assumed: the claim does not "
                          "state it); excluding records with a grain size below 0.1 µm")

@@ -100,24 +100,15 @@ def _claim(engine: Engine, run_id: int) -> str:
 
 
 def question_as_tested(engine: Engine, run_id: int) -> dict | None:
-    """The Planner's stored reading, else the reading of the locked plan (fixed or narrower), else none."""
     from hypocurate.pipeline import reading
     with engine.connect() as conn:
-        stored = conn.execute(text("SELECT output->'question_as_tested' FROM stage_result WHERE run_id = :r AND "
-                                   "stage = 'planner' AND status = 'done' ORDER BY id DESC LIMIT 1"),
-                              dict(r=run_id)).scalar_one_or_none()
-        if stored:
-            return stored
-        row = conn.execute(text("SELECT p.content, h.narrower_of_run_id FROM plan p JOIN run r ON r.id = p.run_id "
-                                "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h "
-                                "ON h.id = hv.hypothesis_id WHERE p.run_id = :r"), dict(r=run_id)).one_or_none()
-    if row is None:
-        return None
-    return reading.from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed")
+        return reading.stored(conn, run_id)
 
 
 def show(engine: Engine, run_id: int) -> dict | None:
+    from hypocurate.pipeline import statement
     from hypocurate.pipeline import statistics as st
+    from hypocurate.pipeline.agents import analyst
     with engine.connect() as conn:
         run = conn.execute(text(
             "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
@@ -150,6 +141,7 @@ def show(engine: Engine, run_id: int) -> dict | None:
         explanation = explained.get("shown") or "explanation unavailable"
     else:
         explanation = None
+    built = statement.build(engine, run_id)  # decision A: code's statement, for every completed run
     return {
         "run": run.id, "query": run.number, "claim": run.text,
         "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
@@ -168,7 +160,8 @@ def show(engine: Engine, run_id: int) -> dict | None:
                                          "resid_df", "minimums_met")} for r in results if r["withheld"]],
         "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
         "sources": (gap or {}).get("sources"),
-        "explanation": explanation, "explanation_label": "model explanation; numbers checked against the run record"
+        "statement": built["lines"] if built else None,
+        "explanation": explanation, "explanation_label": analyst.LABEL
         if isinstance(explained, dict) and explained.get("report") else None,
         "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
         "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,

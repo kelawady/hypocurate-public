@@ -15,14 +15,17 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from sqlalchemy import Connection, text
+
 from hypocurate.pipeline import display
 from hypocurate.pipeline import plan as plans
 from hypocurate.pipeline import profile as p
 
+# Owner, 2026-10-07 (F-Q2): the labels say what is true in this version.
 LABELS = {
-    "planner": "the Planner's reading of the claim; not verified by code; a person confirms it at the rules lock on "
-               "the website (step 10)",
-    "fixed": "the fixed reference plan (criterion 14.1a); not read from the claim",
+    "planner": "the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a "
+               "person",
+    "fixed": "the fixed reference plan; not read from the claim",
     "narrower": "the narrower plan stored by the original question's narrowing decision",
 }
 PART_LABELS = {"phase_class": "phase class", "test_type": "test type"}
@@ -34,11 +37,18 @@ def _number(v: float) -> str:
     return display.at_most_one_decimal(float(v))
 
 
+def plural(alloy_class: str) -> str:
+    """'multi-principal-element (high-entropy) alloys' (owner, F-Q2: 'alloys', not 'alloy')."""
+    return alloy_class if alloy_class.endswith("s") else alloy_class + "s"
+
+
 def band_words(band: Mapping) -> str:
     if band["band"] == plans.ROOM_TEMPERATURE:
         lo, hi = p.ROOM_TEMPERATURE_C
     else:
         lo, hi = band["min"], band["max"]
+    if float(lo) == float(hi):
+        return f"{band['band']}, {_number(lo)} °C"
     return f"{band['band']}, {_number(lo)} to {_number(hi)} °C"
 
 
@@ -66,7 +76,7 @@ def question_as_tested(scope: Mapping, outcome: str, exclusion_rules: list, stat
             return words
         return f"{words} ({STATED if stated.get(part) else ASSUMED})"
 
-    parts = [mark("alloy_class", ", ".join(scope["alloy_class"]))]
+    parts = [mark("alloy_class", ", ".join(plural(a) for a in scope["alloy_class"]))]
     for part in ("phase_class", "test_type"):
         parts.append(mark(part, f"{PART_LABELS[part]} {', '.join(scope[part])}"))
     parts.append(mark("temperature_band", "; ".join(band_words(b) for b in scope["temperature_band"])))
@@ -86,3 +96,18 @@ def from_plan(plan: Mapping[str, Any], source: str) -> dict[str, str]:
              "temperature_band": bands}
     return question_as_tested(scope, plan["variables"]["outcome"]["field"], plan.get("exclusion_rules") or [], None,
                               source)
+
+
+def stored(conn: Connection, run_id: int) -> dict | None:
+    """The question as tested of a run: the Planner's stored reading, else the reading of its locked plan (fixed
+    or narrower), else the Planner's reading of a partly-sufficient original (no plan), else none."""
+    out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner' AND status = "
+                            "'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+    if isinstance(out, dict) and out.get("question_as_tested"):
+        return out["question_as_tested"]
+    row = conn.execute(text("SELECT p.content, h.narrower_of_run_id FROM plan p JOIN run r ON r.id = p.run_id JOIN "
+                            "hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = "
+                            "hv.hypothesis_id WHERE p.run_id = :r"), dict(r=run_id)).one_or_none()
+    if row is None:
+        return None
+    return from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed")

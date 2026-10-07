@@ -8,14 +8,13 @@ decimal. Drafted by Claude Code for the owner's review: every other share or rat
 their intervals) as a percentage to one decimal; temperatures, scatter and shift to at most one decimal; the
 threshold α as given; any other number to three significant figures.
 
-`display(facts)` turns every float of the Analyst's facts into its display string; integers (counts) stay as they
-are. `p_phrase`, `figures_phrase` and `interval_phrase` are ready-made phrases; `coefficient`, `stress` and
+Every number shown is formatted here, with its unit where it has one (fix round 1: the earlier `display(facts)`, which
+gave numbers without units, is deleted). `p_phrase`, `figures_phrase` and `interval_phrase` are ready-made phrases; `coefficient`, `stress` and
 `temperature` carry their units (owner, 2026-10-07); `nominal_level` gives the threshold as a percentage.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Mapping
 
 P_DESCRIPTION = "approximate, nominal, one-sided"
 
@@ -59,43 +58,6 @@ def fallback(v: float) -> str:
     return significant(v, 3)
 
 
-# Key -> how its value is shown. A list value (an interval) is shown element by element.
-RULES: Mapping[str, Callable[[float], str]] = {
-    "estimate": one_decimal, "std_error": one_decimal, "t": one_decimal,
-    "p_value": p_value,
-    "effective_papers": two_decimals,
-    "largest_paper_share": percent, "share": percent, "ci_low": percent, "ci_high": percent,
-    "detection": percent, "detection_ci": percent, "false_positive": percent, "false_positive_ci": percent,
-    "estimated_power": percent, "estimated_power_estimated_noise": percent,
-    "scatter": at_most_one_decimal, "shift": at_most_one_decimal, "min": at_most_one_decimal,
-    "max": at_most_one_decimal,
-    "alpha": as_given,
-}
-
-
-def _show(key: str | None, value: Any) -> Any:
-    if isinstance(value, bool) or value is None:
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            return None
-        if value.is_integer() and key not in RULES:
-            return int(value)
-        return RULES.get(key, fallback)(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, Mapping):
-        return {k: _show(k, v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_show(key, v) for v in value]
-    return value
-
-
-def display(facts: Mapping) -> dict:
-    """The facts with every float as its display string (integers unchanged)."""
-    return _show(None, facts)
-
-
 # Owner, 2026-10-07 (after reading a live explanation): units on every estimate, standard error, scatter, shift and
 # temperature; one form for rates and the threshold (percentages); each simulation interval says what it is.
 COEFFICIENT_UNIT = "MPa·µm^0.5"
@@ -125,8 +87,9 @@ def interval_phrase(low: float, high: float) -> str:
 
 
 def p_phrase(p: float) -> str:
-    """The ready-made phrase for a p-value: the value and its fixed description."""
-    return f"p ≈ {p_value(p)} ({P_DESCRIPTION})"
+    """The ready-made phrase for a p-value: its fixed description and the value, with no brackets, so that it reads
+    the same inside parentheses (fix round 1, owner's wording fix)."""
+    return f"an {P_DESCRIPTION} p ≈ {p_value(p)}"
 
 
 def figures_phrase(informative: int, effective: float, largest_share: float, df: int) -> str:
