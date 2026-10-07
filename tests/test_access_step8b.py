@@ -140,6 +140,9 @@ def test_below_the_minimums_the_analysts_facts_hold_nothing_computed_from_outcom
     # The fixed-noise detection and false-positive shares use no outcome value: they stay (owner, 2026-10-07).
     assert names["fixed_detection"].endswith("%") and names["fixed_false_positive"].endswith("%")
     assert names["result_label"] == "data found; not enough to test"
+    # Nothing beyond code's named display values: no record identity from the stored statistics output.
+    found = [i for e in out["analyses"] for i in e.get("records_found") or []]
+    assert found and not [i for i in found if i in json.dumps(facts)]
     text_of = json.dumps(got)
     values = stored_outcomes(engine, rid)
     assert len(values) == len(rows)
@@ -158,6 +161,9 @@ def test_above_the_minimums_the_analysts_facts_carry_the_stored_estimate(engine)
     assert names["pooled_estimate"] == display.coefficient(stored["estimate"])  # with its unit (owner, 2026-10-07)
     assert names["pooled_p_phrase"] == display.p_phrase(stored["p_value"])
     assert names["result_label"] == "exploratory" and names["verdict_wording"].endswith("in the sources searched")
+    # Only display strings: no full-precision number from the stored statistics output.
+    text_of = json.dumps(names)
+    assert repr(stored["estimate"]) not in text_of and repr(stored["p_value"]) not in text_of
     assert names["fixed_false_positive"].endswith("%")
     assert names.get("estimated_false_positive", "%").endswith("%") and ("estimated_false_positive" in names
                                                                          or "estimated_unavailable" in names)
