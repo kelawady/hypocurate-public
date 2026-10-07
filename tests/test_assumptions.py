@@ -60,7 +60,7 @@ def test_every_category_has_entries_and_keys_are_unique():
 # Step 7 completed tamu_grouping_unit, papers_independent, validity_checks, fixed_minimums,
 # grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
 # the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
-PARTLY = {"constructed_test_runs"}
+PARTLY = {"constructed_test_runs", "agent_models"}  # step 8a: the other roles' settings come in step 8b
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -128,10 +128,13 @@ def test_the_pairing_rule_is_decided_and_calibration_awaits_its_technical_review
     and added the possible-duplicate case and the rule for several candidates in step 6 planning.
     Step 6 recorded two new open decisions for the owner (steps 7 and 8). Step 7: the owner decided
     the first; a new one (records without a group) was open before step 8, and the owner decided it in
-    step 7b (2026-10-06)."""
-    assert [e["key"] for e in REGISTER if e["state"] == "open"] == ["curator_tabular_sources"]
-    assert {e["key"]: e["pending"]["before_step"] for e in REGISTER if e["state"] == "open"} == {
-        "curator_tabular_sources": 8}
+    step 7b (2026-10-06). Step 8a: the owner decided the last one, the Curator's role (2026-10-06)."""
+    assert [e["key"] for e in REGISTER if e["state"] == "open"] == []
+    curator = BY_KEY["curator_tabular_sources"]
+    assert curator["state"] == "in_force" and curator["decided"] == {"by": OWNER, "date": "2026-10-06"}
+    assert "pending" not in curator and curator["applied"]["status"] == "yes"
+    assert curator["history"][-1]["value"].startswith("Open: what the Curator agent does for tabular sources")
+    assert "never in a run" in curator["statement"] and "grouped by dataset" in curator["statement"]
     grouped = BY_KEY["records_without_group"]
     assert grouped["state"] == "in_force" and grouped["decided"] == {"by": OWNER, "date": "2026-10-06"}
     assert "pending" not in grouped and grouped["applied"]["status"] == "yes"
@@ -464,7 +467,8 @@ HEADINGS = ["Open decisions", "Direction approved, pending technical review",
 def test_the_page_shows_every_entry_grouped_with_pending_states_first():
     html = signed_in().get("/assumptions").text
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
-    assert headings == HEADINGS  # step 6 recorded two open decisions (steps 7 and 8)
+    # Step 8a: no decision is open, so the page leaves out the "Open decisions" heading (step 4b design).
+    assert headings == HEADINGS[1:]
     for e in REGISTER:
         assert f'id="{e["key"]}"' in html, e["key"]
     sections = re.split(r"<h2>", html)[1:]
@@ -479,10 +483,11 @@ def test_open_decisions_are_shown_first_when_there_are_any():
     headings = re.findall(r"<h2>([^<]+)</h2>", html)
     assert headings == HEADINGS
     first = re.split(r"<h2>", html)[1]
-    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["curator_tabular_sources", "an_open_question"]
+    # Step 8a: the register's last open entry is decided; only the fixture's is open.
+    assert re.findall(r'<tbody id="([a-z0-9_]+)"', first) == ["an_open_question"]
     assert "Not decided (owner, before step 6)" in first and "Open decision</span>" in first
-    assert first.count("Not decided (owner, before step 8)") == 1  # records_without_group decided in step 7b
-    assert "2 open decisions</strong>" in html
+    assert first.count("Not decided (owner, before step 8)") == 0
+    assert "1 open decision</strong>" in html
     second = re.split(r"<h2>", html)[2]
     assert re.findall(r'<tbody id="([a-z0-9_]+)"', second) == ["calibration_noise_levels"]
     assert "pending: second-model technical review, before step 8" in second
@@ -493,9 +498,9 @@ def test_the_summary_line_counts_each_state_and_unreviewed_scientific_entries():
     summary = " ".join(re.search(r'<p class="summary" id="summary">(.*?)</p>', html, re.S).group(1).split())
     count = {s: sum(e["state"] == s for e in REGISTER) for s in a.STATES}
     n_sci = sum(e["category"] == "scientific" and e["expert_review"]["status"] == "not_reviewed" for e in REGISTER)
-    assert count == {"in_force": len(REGISTER) - 2, "open": 1, "direction_approved": 1}
+    assert count == {"in_force": len(REGISTER) - 1, "open": 0, "direction_approved": 1}  # step 8a: none open
     assert f"{len(REGISTER)} entries: {count['in_force']} in force" in summary
-    assert "1 open decision</strong>" in summary
+    assert "0 open decisions</strong>" in summary
     assert "1 direction approved, pending technical review</strong>" in summary
     assert f"{n_sci} scientific assumptions not reviewed by an expert" in summary
     assert html.index('id="summary"') < html.index("<h2>")
@@ -532,7 +537,11 @@ def test_the_filter_shows_only_entries_not_reviewed_by_an_expert():
 
 
 def test_each_row_expands_to_reason_evidence_history_and_sensitivity():
-    html = signed_in().get("/assumptions").text
+    # Step 8a: no register entry is "not yet" applied any more (spending_caps is applied), so the
+    # "Not yet" display is shown on a fixture entry.
+    not_yet = copy.deepcopy(BY_KEY["spending_caps"])
+    not_yet.update(key="a_not_yet_entry", applied={"status": "not_yet", "step": 9, "note": None}, tests=[])
+    html = signed_in(REGISTER + [not_yet]).get("/assumptions").text
     body = re.search(r'<tbody id="values_disagree_tolerance"(.*?)</tbody>', html, re.S).group(1)
     e = BY_KEY["values_disagree_tolerance"]
     assert "<details>" in body
@@ -540,7 +549,7 @@ def test_each_row_expands_to_reason_evidence_history_and_sensitivity():
         assert str(escape(text)) in body, text
     applied = re.search(r'<tbody id="session_length"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>python:hypocurate.web.app:SESSION_MAX_AGE</code>" in applied
-    assert "Not yet: step 9" in re.search(r'<tbody id="spending_caps"(.*?)</tbody>', html, re.S).group(1)
+    assert "Not yet: step 9" in re.search(r'<tbody id="a_not_yet_entry"(.*?)</tbody>', html, re.S).group(1)
     assert "<code>tests/test_login.py::test_session_expires_after_max_age</code>" in applied
     assert "Named settings (reference and value checks only)" in applied
 

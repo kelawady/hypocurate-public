@@ -1,0 +1,320 @@
+{
+  "about": "The live curation of step 8a, exported on 2026-10-07 from the local development database (schema 0005 as reviewed, before its amendment after ChatGPT's review), before that database was rebuilt at the amended 0005. One Curator call (claude-sonnet-5-5) on the Texas A&M source's sealed version 1, run by the owner's command `hypocurate sources curate tamu_fcc --ceiling 0.50` on 2026-10-06 (UTC 23:15). Rows are exactly as stored (PostgreSQL to_jsonb; times in UTC). Proposals: 3 that passed the checks of the time (1 microstructure FCC, 2 phase class FCC, 5 test type tension) and 2 'not stated' (test temperature, temperature band); no refusals. Decisions: the owner accepted 5 and 2 and rejected 1 (with its note). The model call: 61,537 input and 262 output tokens, cost $0.125694 against a reserved maximum of $0.378166. Version 2 is the curated version sealed from the accepted values; its curation.json is the one frozen in data/sources/tamu_fcc/. 'audit_log_without_run' holds the dispatcher's bind and the Curator's two reads. 'recheck_2026_10_07' re-runs the checks as amended after the review (quotes.check) on each passed proposal against the frozen documentation; this part is computed, not stored.",
+  "rows": {
+    "schema": "0005",
+    "model_call": [
+      {
+        "id": 1,
+        "cost": 0.125694,
+        "role": "curator",
+        "error": null,
+        "model": "claude-sonnet-5-5",
+        "run_id": null,
+        "status": "succeeded",
+        "max_cost": 0.378166,
+        "started_at": "2026-10-06T23:15:40.66627+00:00",
+        "finished_at": "2026-10-06T23:15:44.093475+00:00",
+        "input_tokens": 61537,
+        "cached_tokens": 0,
+        "invocation_id": 1,
+        "output_tokens": 262,
+        "stage_result_id": null,
+        "price_table_version": "anthropic-2026-09-25"
+      }
+    ],
+    "agent_setting": [
+      {
+        "id": 1,
+        "role": "curator",
+        "model": "claude-sonnet-5-5",
+        "limits": {
+          "max_tokens": 8000,
+          "max_output_chars": 20000
+        },
+        "version": 1,
+        "settings": {
+          "reasoning_effort": "medium"
+        },
+        "created_at": "2026-10-06T23:15:35.668564+00:00",
+        "instruction": "You read the documentation of one scientific data source. For each field named in the targets, decide whether the documentation explicitly states one value of that field that holds for all of the source's measurements. If it does, give that value, using only the allowed values listed for the field (for the test temperature, a number in degrees Celsius), and copy the one sentence that states it, word for word as it appears in the documentation, including any markup. If the documentation does not state it explicitly, answer \"not stated\" for that field. Do not infer, estimate or generalize, and do not use anything you know from outside the documentation."
+      }
+    ],
+    "source_version": [
+      {
+        "id": 1,
+        "files": [
+          {
+            "path": "documentation/main.tex",
+            "role": "documentation",
+            "bytes": 76524,
+            "sha256": "81fb864c1463573adbfc2272c79287c2c71649e7a6e3024ca927bb221836038e"
+          },
+          {
+            "path": "documentation/supplementary.tex",
+            "role": "documentation",
+            "bytes": 65359,
+            "sha256": "8dfe9731af618937c6686da5d63b8e0decc220c591e1831060cd10d447461317"
+          },
+          {
+            "path": "Grain_Size_Summary_v3.xlsx",
+            "role": "data",
+            "bytes": 22939,
+            "sha256": "dea3f117e947ae875de31911fabb08d3d747a055336d17793edb82ad7e88155b"
+          }
+        ],
+        "label": "v1.1.0, commit 11390ee516c1a17cacdde318b40d5d6889d4007f",
+        "source": "tamu_fcc",
+        "sealed_at": "2026-10-06T23:15:27.632457+00:00",
+        "fingerprint": "c25b31743b28c5483e53a0a0569f6e78ac35873347cd83843eeffc5fb36ca050",
+        "obtained_on": "2026-10-04",
+        "files_digest": "bd3072ae812920cbe651f196aab97a00b874be52e5ac39f72963fb69e1826962"
+      },
+      {
+        "id": 2,
+        "files": [
+          {
+            "path": "curation.json",
+            "role": "curation",
+            "bytes": 1272,
+            "sha256": "2a6cbf0124901df611d9f41760ad8e96d58acf20d343947f587d88f926dde69c"
+          },
+          {
+            "path": "documentation/main.tex",
+            "role": "documentation",
+            "bytes": 76524,
+            "sha256": "81fb864c1463573adbfc2272c79287c2c71649e7a6e3024ca927bb221836038e"
+          },
+          {
+            "path": "documentation/supplementary.tex",
+            "role": "documentation",
+            "bytes": 65359,
+            "sha256": "8dfe9731af618937c6686da5d63b8e0decc220c591e1831060cd10d447461317"
+          },
+          {
+            "path": "Grain_Size_Summary_v3.xlsx",
+            "role": "data",
+            "bytes": 22939,
+            "sha256": "dea3f117e947ae875de31911fabb08d3d747a055336d17793edb82ad7e88155b"
+          }
+        ],
+        "label": "v1.1.0, commit 11390ee516c1a17cacdde318b40d5d6889d4007f + curation",
+        "source": "tamu_fcc",
+        "sealed_at": "2026-10-06T23:18:07.599533+00:00",
+        "fingerprint": "2fad3ccb3dbc32c1ec51e6efcb70a9d17d755bfdfa606cb044f458bd2b37b982",
+        "obtained_on": "2026-10-04",
+        "files_digest": "157f149f39a465806f98c50666054381a7a5d278ba34604f98609d4ddd9017bd"
+      }
+    ],
+    "agent_invocation": [
+      {
+        "id": 1,
+        "role": "curator",
+        "scope": "registration",
+        "run_id": null,
+        "created_at": "2026-10-06T23:15:35.674961+00:00",
+        "stage_result_id": null,
+        "agent_setting_id": 1,
+        "source_version_id": 1
+      }
+    ],
+    "curator_decision": [
+      {
+        "id": 1,
+        "note": "Owner's decision in the step 8a session, 2026-10-06",
+        "decision": "accepted",
+        "decided_at": "2026-10-06T23:17:06.989007+00:00",
+        "decided_by": "Khalid El-Awady",
+        "proposal_id": 5
+      },
+      {
+        "id": 2,
+        "note": "Owner's decision in the step 8a session, 2026-10-06",
+        "decision": "accepted",
+        "decided_at": "2026-10-06T23:17:37.483039+00:00",
+        "decided_by": "Khalid El-Awady",
+        "proposal_id": 2
+      },
+      {
+        "id": 3,
+        "note": "Owner's decision in the step 8a session, 2026-10-06: the sentence states the phase class, not a single-phase microstructure as a result; the microstructure stays assigned by decision (register 'tamu_microstructure').",
+        "decision": "rejected",
+        "decided_at": "2026-10-06T23:18:06.884858+00:00",
+        "decided_by": "Khalid El-Awady",
+        "proposal_id": 1
+      }
+    ],
+    "curator_proposal": [
+      {
+        "id": 1,
+        "line": 173,
+        "term": "FCC",
+        "field": "microstructure",
+        "quote": "The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.",
+        "value": "FCC",
+        "status": "proposed",
+        "created_at": "2026-10-06T23:15:44.121119+00:00",
+        "refusal_code": null,
+        "document_path": "documentation/main.tex",
+        "invocation_id": 1,
+        "source_version_id": 1
+      },
+      {
+        "id": 2,
+        "line": 173,
+        "term": "FCC",
+        "field": "phase_class",
+        "quote": "The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.",
+        "value": "FCC",
+        "status": "proposed",
+        "created_at": "2026-10-06T23:15:44.121119+00:00",
+        "refusal_code": null,
+        "document_path": "documentation/main.tex",
+        "invocation_id": 1,
+        "source_version_id": 1
+      },
+      {
+        "id": 3,
+        "line": null,
+        "term": null,
+        "field": "test_temperature",
+        "quote": null,
+        "value": null,
+        "status": "not_stated",
+        "created_at": "2026-10-06T23:15:44.121119+00:00",
+        "refusal_code": null,
+        "document_path": null,
+        "invocation_id": 1,
+        "source_version_id": 1
+      },
+      {
+        "id": 4,
+        "line": null,
+        "term": null,
+        "field": "test_temperature_band",
+        "quote": null,
+        "value": null,
+        "status": "not_stated",
+        "created_at": "2026-10-06T23:15:44.121119+00:00",
+        "refusal_code": null,
+        "document_path": null,
+        "invocation_id": 1,
+        "source_version_id": 1
+      },
+      {
+        "id": 5,
+        "line": 177,
+        "term": "tensile",
+        "field": "test_type",
+        "quote": "Quasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers indentation tests provided the HV.",
+        "value": "tension",
+        "status": "proposed",
+        "created_at": "2026-10-06T23:15:44.121119+00:00",
+        "refusal_code": null,
+        "document_path": "documentation/main.tex",
+        "invocation_id": 1,
+        "source_version_id": 1
+      }
+    ],
+    "audit_log_without_run": [
+      {
+        "at": "2026-10-06T23:15:35.680099+00:00",
+        "id": 1,
+        "role": "curator",
+        "stage": "registration",
+        "detail": {
+          "result": "allowed",
+          "source": "tamu_fcc",
+          "invocation": 1,
+          "actual_stage": "registration",
+          "agent_setting": 1,
+          "source_version": 1
+        },
+        "run_id": null,
+        "allowed": true,
+        "function": "bind"
+      },
+      {
+        "at": "2026-10-06T23:15:35.683276+00:00",
+        "id": 2,
+        "role": "curator",
+        "stage": "registration",
+        "detail": {
+          "result": "allowed",
+          "source": "tamu_fcc",
+          "invocation": 1,
+          "actual_stage": "registration",
+          "source_version": 1
+        },
+        "run_id": null,
+        "allowed": true,
+        "function": "curation_targets"
+      },
+      {
+        "at": "2026-10-06T23:15:35.683276+00:00",
+        "id": 3,
+        "role": "curator",
+        "stage": "registration",
+        "detail": {
+          "result": "allowed",
+          "source": "tamu_fcc",
+          "invocation": 1,
+          "actual_stage": "registration",
+          "source_version": 1
+        },
+        "run_id": null,
+        "allowed": true,
+        "function": "source_documentation"
+      }
+    ]
+  },
+  "recheck_2026_10_07": [
+    {
+      "proposal": 1,
+      "field": "microstructure",
+      "value": "FCC",
+      "code": null,
+      "passed": true,
+      "document": "documentation/main.tex",
+      "line": 173,
+      "term": "FCC",
+      "testing_word": null,
+      "same_document_line_and_term_as_stored": true
+    },
+    {
+      "proposal": 2,
+      "field": "phase_class",
+      "value": "FCC",
+      "code": null,
+      "passed": true,
+      "document": "documentation/main.tex",
+      "line": 173,
+      "term": "FCC",
+      "testing_word": null,
+      "same_document_line_and_term_as_stored": true
+    },
+    {
+      "proposal": 3,
+      "field": "test_temperature",
+      "status": "not_stated",
+      "rechecked": "nothing to check (not stated)"
+    },
+    {
+      "proposal": 4,
+      "field": "test_temperature_band",
+      "status": "not_stated",
+      "rechecked": "nothing to check (not stated)"
+    },
+    {
+      "proposal": 5,
+      "field": "test_type",
+      "value": "tension",
+      "code": null,
+      "passed": true,
+      "document": "documentation/main.tex",
+      "line": 177,
+      "term": "tensile",
+      "testing_word": "tests",
+      "same_document_line_and_term_as_stored": true
+    }
+  ]
+}

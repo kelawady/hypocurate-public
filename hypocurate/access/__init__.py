@@ -11,9 +11,9 @@
 - `file_guard` and `guarded`: a tripwire against accidental file access by pipeline code
   (not a sandbox).
 """
-from hypocurate.access.dispatch import bind
+from hypocurate.access.dispatch import bind, bind_invocation
 from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.inputs import role_input
 from hypocurate.access.layer import Access
 
-__all__ = ["Access", "AccessDenied", "AccessFailed", "bind", "role_input"]
+__all__ = ["Access", "AccessDenied", "AccessFailed", "bind", "bind_invocation", "role_input"]

@@ -8,7 +8,7 @@ MANIFEST = load_manifest()
 MANIFEST_PATH = REPO_ROOT / "data/manifest.json"
 # Pinned here, outside data/, so the data and the manifest cannot be changed
 # together without changing a test (second-model review of step 1, finding 2).
-MANIFEST_SHA256 = "fa25ebee6a7c95d4d05dfe7eec2d388001fe37cd975e027d688b2de70b11f5b8"
+MANIFEST_SHA256 = "ea06df04819736e2608a508c63f9fff8177a2543d954cdbd1f6e2191f9c45d14"  # step 8a: documentation, curation
 # Every file the manifest must cover. Fixed here so that dropping an entry from
 # the manifest cannot silently remove its fingerprint check.
 REQUIRED_FILES = {
@@ -18,6 +18,12 @@ REQUIRED_FILES = {
     "data/sources/tamu_fcc/inputs.csv",
     "data/sources/tamu_fcc/LICENSE",
     "data/controlled_duplicates/extract.csv",
+    # Step 8a (owner, 2026-10-06): the sources' documentation, frozen into the source versions.
+    "data/sources/tamu_fcc/documentation/main.tex",
+    "data/sources/tamu_fcc/documentation/supplementary.tex",
+    "data/sources/mpea/documentation/Borg2020_PMC7722748.xml",
+    # Step 8a (owner, 2026-10-06): the Curator's proposals the owner accepted for Texas A&M.
+    "data/sources/tamu_fcc/curation.json",
 }
 MPEA_CSV = REPO_ROOT / "data/sources/mpea/MPEA_dataset.csv"
 TAMU_XLSX = REPO_ROOT / "data/sources/tamu_fcc/Grain_Size_Summary_v3.xlsx"
@@ -81,6 +87,40 @@ def test_manifest_records_origin_date_and_licence(source_id):
         assert f["origin_url"].startswith("https://")
         assert s["commit"] in f["origin_url"], "origin must be pinned to the recorded commit"
     assert s["licence_file"] in {f["path"] for f in s["files"]}, "licence text must be frozen too"
+
+
+def test_documentation_records_its_origin_and_licence():
+    """Step 8a (owner, 2026-10-06): each frozen document states where it came from and under
+    which licence; the Texas A&M documents come from the pinned commit's archive."""
+    tamu = MANIFEST["sources"]["tamu_fcc"]
+    assert [d["path"] for d in tamu["documentation"]] == ["data/sources/tamu_fcc/documentation/main.tex",
+                                                          "data/sources/tamu_fcc/documentation/supplementary.tex"]
+    for d in tamu["documentation"]:
+        assert d["origin_url"].startswith("https://") and tamu["commit"] in d["origin_url"]
+        assert d["archive_member"] == "paper/" + d["path"].rsplit("/", 1)[1]
+    mpea = MANIFEST["sources"]["mpea"]
+    [paper] = mpea["documentation"]
+    assert paper["path"] == "data/sources/mpea/documentation/Borg2020_PMC7722748.xml"
+    assert paper["origin_url"] == "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC7722748/fullTextXML"
+    assert paper["licence"].startswith("CC-BY-4.0") and paper["retrieved"] == "2026-10-06"
+    text = (REPO_ROOT / paper["path"]).read_text(encoding="utf-8")
+    assert "Creative Commons Attribution 4.0 International License" in text
+    assert "10.1038/s41597-020-00768-9" in text
+
+
+def test_the_curation_file_records_the_owners_decisions():
+    """Step 8a: the frozen curation holds exactly the two values the owner accepted (proposals 5 and 2;
+    proposal 1, microstructure, rejected), each quoted from the frozen documentation."""
+    import json
+    [entry] = MANIFEST["sources"]["tamu_fcc"]["curation"]
+    assert entry["path"] == "data/sources/tamu_fcc/curation.json" and entry["built"] == "2026-10-06"
+    doc = json.loads((REPO_ROOT / entry["path"]).read_text(encoding="utf-8"))
+    assert doc["source"] == "tamu_fcc" and set(doc["values"]) == {"test_type", "phase_class"}
+    main = (REPO_ROOT / "data/sources/tamu_fcc/documentation/main.tex").read_text(encoding="utf-8").splitlines()
+    for field, value, line in (("test_type", "tension", 177), ("phase_class", "FCC", 173)):
+        v = doc["values"][field]
+        assert (v["value"], v["line"], v["accepted_by"]) == (value, line, "Khalid El-Awady")
+        assert v["quote"] in main[line - 1]
 
 
 def test_licence_texts_match_the_manifest():

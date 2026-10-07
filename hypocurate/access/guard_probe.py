@@ -81,6 +81,17 @@ def _database(_: Any) -> str:
     return f"ok {value}"
 
 
+def _timestamp(_: Any) -> str:
+    """Reads a timestamp with time zone (step 8a review: no zone file is read for it)."""
+    from sqlalchemy import text
+    from hypocurate.db.engine import make_engine
+    engine = make_engine(os.environ["DATABASE_URL"])
+    with engine.connect() as conn:
+        zone, value = conn.execute(text("SELECT current_setting('TimeZone'), now()")).one()
+    engine.dispose()
+    return f"ok {zone} {value.isoformat()[-6:]}"
+
+
 def _certificates(_: Any) -> str:
     import urllib.request
     context = ssl.create_default_context()
@@ -147,15 +158,30 @@ def _role_input(action: dict) -> str:
     return out
 
 
+def _agent_libraries(_: Any) -> str:
+    """Loads the model-call libraries the way the agents do (step 8a)."""
+    from hypocurate.pipeline.agents import libraries
+    libraries.load()
+    return "ok"
+
+
+def _dotenv(action: dict) -> str:
+    """A library reading a `.env` file (step 8a): what the tripwire must still catch."""
+    import dotenv
+    dotenv.load_dotenv(action["path"])
+    return "ok"
+
+
 ACTIONS: dict[str, Callable[[dict], str]] = {
     "read": lambda a: _read(a["path"], a.get("how", "open")),
     "list": lambda a: _list(a["path"], a.get("how", "listdir")),
     "write": lambda a: _write(a["path"]),
-    "write_scratch": _write_scratch, "scratch": _scratch, "render": _render, "database": _database, "certificates": _certificates,
+    "write_scratch": _write_scratch, "scratch": _scratch, "render": _render, "database": _database, "timestamp": _timestamp, "certificates": _certificates,
     "subprocess": _subprocess, "system": _system, "ctypes": _ctypes, "ctypes_string_at": _ctypes_string_at,
     "ctypes_from_address": _ctypes_from_address,
     "register": _register,
     "role_input": _role_input, "sleep": _sleep,
+    "agent_libraries": _agent_libraries, "dotenv": _dotenv,
 }
 
 

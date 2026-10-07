@@ -6,7 +6,7 @@ HypoCurate takes a scientific hypothesis in words, searches registered data sour
 
 ## Status
 
-Build step 7 of 12 (PRD Section 15): the statistics, the validity checks, data sufficiency, the verdict and per-run calibration. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), the access layer with its audit log and the file guard for pipeline processes (step 5), plus the plan model, the rules lock, record storage, the code checks that raise flags, the eligibility decisions and the dataset freeze (step 6), plus the supported model, the two validity checks, the fixed-minimum check, the verdict, per-run calibration both ways, the record of statistical significance, the gap facts and the copy of the decision onto the run (step 7). The agents, the worker, the screens, the plot and the workbook come in later steps.
+Build step 8a of 12 (PRD Section 15; step 8 is built in two parts): the statistics, the validity checks, data sufficiency, the verdict and per-run calibration. The skeleton of step 2 (one Docker image for the web service and the worker, Docker Compose, a health page, the shared login, the suite on GitHub at every push, locked dependencies, `render.yaml`), the tables of PRD Section 7 with the rules the database enforces and Alembic migrations applied before every deploy (step 3), the three sources registered as sealed versions, one adapter per source and "test connection" (step 4), the assumptions register and its page (step 4b), the access layer with its audit log and the file guard for pipeline processes (step 5), plus the plan model, the rules lock, record storage, the code checks that raise flags, the eligibility decisions and the dataset freeze (step 6), plus the supported model, the two validity checks, the fixed-minimum check, the verdict, per-run calibration both ways, the record of statistical significance, the gap facts and the copy of the decision onto the run (step 7), plus, in step 8a, the agents' request path (every model call reserved, sent once and recorded, with spending caps), the Curator at source registration and plans for other temperature bands. The run-time agents (Planner, Critic, Analyst) and the command-line run come in step 8b; the worker, the screens, the plot and the workbook in later steps.
 
 ## Set up secrets (once)
 
@@ -14,7 +14,7 @@ Build step 7 of 12 (PRD Section 15): the statistics, the validity checks, data s
 cp .env.example .env     # then fill in every value; .env is never committed
 ```
 
-`HYPOCURATE_PASSWORD` is the login password: at least 24 characters in production (the site refuses to start otherwise), 12 locally. Generate it, e.g. with a password manager or `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` (32 random characters). `SESSION_SECRET` signs the session cookie (at least 32 characters): `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. `POSTGRES_PASSWORD` is for the local database container only. `DATABASE_URL` is needed only to run the suite outside Docker: `postgresql://hypocurate:<POSTGRES_PASSWORD>@localhost:5432/hypocurate`.
+`HYPOCURATE_PASSWORD` is the login password: at least 24 characters in production (the site refuses to start otherwise), 12 locally. Generate it, e.g. with a password manager or `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` (32 random characters). `SESSION_SECRET` signs the session cookie (at least 32 characters): `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. `POSTGRES_PASSWORD` is for the local database container only. `DATABASE_URL` is needed only to run the suite outside Docker: `postgresql://hypocurate:<POSTGRES_PASSWORD>@localhost:5432/hypocurate`. `ANTHROPIC_API_KEY` is the model provider's key (step 8a): the owner enters it; our code never prints it, the agent request path logs a failure only as its code, exception types and where it was raised (never an exception's text), and the suite never needs it (tests use a local stub of the provider). Not covered by that: what a library logs by itself (litellm's own debug logging is off unless a process turns it on).
 
 ## Start the system locally
 
@@ -110,7 +110,8 @@ python -m hypocurate.db.migrate downgrade <revision> # drops tables and their da
 |---|---|
 | `data/manifest.json` | Fingerprint (SHA-256), size, licence, origin and retrieval date of every frozen file |
 | `data/sources/mpea/` | MPEA dataset (Borg et al. 2020), Apache-2.0 |
-| `data/sources/tamu_fcc/` | Texas A&M FCC dataset (Mulukutla et al. 2026, Zenodo 10.5281/zenodo.22798856), MIT |
+| `data/sources/tamu_fcc/` | Texas A&M FCC dataset (Mulukutla et al. 2026, Zenodo 10.5281/zenodo.22798856), MIT; `curation.json`: the Curator's values the owner accepted (step 8a) |
+| `data/sources/*/documentation/` | Each source's own documentation, sealed with its data (step 8a): the Texas A&M paper (LaTeX, MIT), the MPEA paper (Europe PMC XML, CC BY 4.0) |
 | `data/controlled_duplicates/` | Constructed extract for testing duplicate detection; see its README |
 
 To check that the origins still serve the same bytes (needs network; never overwrites the frozen copies):
@@ -138,6 +139,20 @@ hypocurate sources test tamu_fcc -n 3    # the first 3 records, in the common re
 - "Test connection" runs in a read-only transaction.
 - The controlled duplicate extract is registered with `enabled = false`: it is constructed test data.
 - Not yet run on the live database: registering there is a later step and needs the owner.
+
+## The Curator and the agents' request path (step 8a)
+
+The Curator runs when a source version is registered, never in a run, and only for a source grouped by dataset. It reads that version's documentation and proposes, for the fields a table may lack, one value with the exact sentence it relied on. Code checks each proposal (the value is allowed; the quote, 30 to 600 characters, occurs in the sealed documentation at word boundaries, whitespace collapsed; it holds a listed term for the value as a whole word and, for a test condition, a testing word; the database checks it all again except the line); a person accepts or rejects it; the accepted values are sealed into a new source version and applied only where the table gives no value. A curation file is checked against the version it is attached to before it is sealed or applied. That check does not prove an approval is authentic: the exact approved bytes are protected by the manifest fingerprint of the frozen file. The documentation itself may state outcome numbers (a paper reports its results): the Curator receives no data row, claim or plan, not "no outcome value whatsoever".
+
+```
+hypocurate sources curate tamu_fcc --ceiling 0.50   # one model call (costs money); needs ANTHROPIC_API_KEY
+hypocurate sources proposals tamu_fcc               # proposals with quote, document, line and checks
+hypocurate sources accept 5 --by "Name" [--note …]  # or: reject
+hypocurate sources seal-curation tamu_fcc           # a new sealed version with curation.json
+hypocurate sources export-curation tamu_fcc --out data/sources/tamu_fcc/curation.json
+```
+
+Every agent call (`hypocurate/pipeline/agents/`) goes through one path: the call's maximum cost is reserved in one transaction that checks the caps ($2 per run, $2 per curation, $50 per month, or a lower ceiling) and records the call as started; the request is sent once, outside any transaction; the reported usage and its cost (from `prices.py`) are recorded. At most two requests per call: the same request again if the provider is unavailable, a fixed corrective note if the answer cannot be used, otherwise stop. Only `libraries.py` imports DSPy and litellm (it sets `LITELLM_MODE=PRODUCTION` first, so litellm never reads a `.env` file).
 
 ## Plan, checkpoints, inclusion and checks
 

@@ -101,7 +101,7 @@ def test_an_agent_setting_cannot_bind_as_a_code_role(engine):
     """`bind` takes the role from run_agent_setting, whose roles are the five agent roles."""
     world = aw.build(engine, "curation")
     for role, setting in world.settings.items():
-        assert bind(engine, world.run, setting, source_key="mpea" if role == "curator" else None).context.role == role
+        assert bind(engine, world.run, setting).context.role == role
     with engine.connect() as conn:
         setting = conn.execute(text("SELECT id FROM agent_setting LIMIT 1")).scalar()
     for role in CODE_ROLES:

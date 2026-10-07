@@ -38,7 +38,9 @@ class FileEntry:
 def file_entries(manifest: dict) -> list[FileEntry]:
     entries = []
     for source_id, source in manifest["sources"].items():
-        for f in source["files"]:
+        # Step 8a (owner, 2026-10-06): a source's documentation is frozen too, in its own list
+        # (its origin is not always the data's commit), and checked like every other file.
+        for f in source["files"] + source.get("documentation", []) + source.get("curation", []):
             entries.append(FileEntry(f"sources/{source_id}", f["path"], f["sha256"], f["bytes"]))
     for f in manifest["controlled_duplicates"]["files"]:
         entries.append(FileEntry("controlled_duplicates", f["path"], f["sha256"], f["bytes"]))

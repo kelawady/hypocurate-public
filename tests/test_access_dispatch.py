@@ -46,8 +46,9 @@ def test_bind_reads_the_role_from_the_runs_agent_settings_and_the_stage_from_the
     for role in ("critic", "analyst", "planner"):
         a = bind(engine, world.run, world.settings[role])
         assert a.context == AccessContext(world.run, role, "curation", None, world.settings[role])
-    curator = bind(engine, world.run, world.settings["curator"], source_key="mpea")
-    assert curator.context.role == "curator" and curator.context.source_key == "mpea"
+    # Step 8a: the Curator binds to a run with no source and then has nothing at a run stage.
+    curator = bind(engine, world.run, world.settings["curator"])
+    assert curator.context.role == "curator" and curator.context.source_key is None
     assert role_input(bind(engine, world.run, world.settings["critic"]))["flags_kind"]
     binds = [r for r in audit(engine, world.run) if r.function == "bind"]
     assert len(binds) == 5 and all(r.allowed and r.detail["result"] == "allowed" for r in binds)
@@ -57,10 +58,11 @@ def test_bind_refuses_a_setting_or_source_the_run_did_not_record(engine):
     world = aw.build(engine, "curation")
     stray = aw.val(world.w, "INSERT INTO agent_setting (role, version, instruction, model) "
                             "VALUES ('analyst', 2, 'x', 'model-a') RETURNING id")
+    # Step 8a: no run role is bound to a source, the Curator included (it reads at registration).
     cases = [(dict(agent_setting_id=stray), "setting_not_recorded"),
-             (dict(agent_setting_id=world.settings["curator"]), "no_source"),
+             (dict(agent_setting_id=world.settings["curator"], source_key="mpea"), "source_not_for_role"),
              (dict(agent_setting_id=world.settings["curator"], source_key="controlled_duplicates"),
-              "source_not_recorded"),
+              "source_not_for_role"),
              (dict(agent_setting_id=world.settings["critic"], source_key="mpea"), "source_not_for_role")]
     for kw, code in cases:
         with pytest.raises(AccessDenied) as denied:

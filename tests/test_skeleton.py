@@ -30,7 +30,8 @@ LAYOUT = [
     "requirements.lock",
     "requirements-dev.lock",
 ]
-SECRET_NAMES = {"HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD", "DATABASE_URL"}
+# Step 8a: the model provider's key (ANTHROPIC_API_KEY), entered by the owner only.
+SECRET_NAMES = {"HYPOCURATE_PASSWORD", "SESSION_SECRET", "POSTGRES_PASSWORD", "DATABASE_URL", "ANTHROPIC_API_KEY"}
 
 
 def read(path):
@@ -136,7 +137,22 @@ def test_runtime_and_dev_locks_agree():
 
 
 def test_test_tools_are_not_in_the_runtime_lock():
-    assert {"pytest", "httpx2", "pyyaml"}.isdisjoint(locked("requirements.lock"))
+    """pytest and httpx2 never reach the runtime image. pyyaml is a test tool too, but from step 8a
+    it is also a dependency of the runtime libraries (litellm, and huggingface-hub through it;
+    owner, 2026-10-06): it may be in the runtime lock only as theirs, never as our own runtime
+    dependency."""
+    runtime = locked("requirements.lock")
+    assert {"pytest", "httpx2"}.isdisjoint(runtime)
+    assert "pyyaml" not in direct_dependencies()
+    assert via("requirements.lock", "pyyaml") <= {"huggingface-hub", "litellm"}
+
+
+def via(path, package):
+    """The packages that pip-compile records as requiring `package` in a lock file."""
+    block = re.search(rf"^{re.escape(package)}==.*?\n((?:    .*\n)+)", read(path), re.M | re.I)
+    lines = [l.strip().lstrip("#").strip() for l in block.group(1).splitlines() if l.strip().startswith("#")]
+    names = [l.removeprefix("via").strip() for l in lines]
+    return {n.split(" ")[0].lower() for n in names if n}
 
 
 # --- Docker image ------------------------------------------------------------------

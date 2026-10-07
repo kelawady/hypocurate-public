@@ -794,7 +794,7 @@ def test_no_dataset_frozen_and_a_freeze_exclude_each_other(w):
 def test_what_may_be_written_after_completion(w):
     """Owner, 2026-10-05: the commentary, the Commentator's stage and model calls, and
     artifacts. The Commentator's calls count in the run's totals and cap. Nothing else."""
-    rid, sets, _ = w.frozen()
+    rid, sets, _ = w.frozen(agents=True)
     w.result(rid, sets["primary"])
     w.complete(rid, "sufficient", "supported")
     commentator = w.stage(rid, "commentator", "commentator")
@@ -820,7 +820,7 @@ def test_what_may_be_written_after_completion(w):
 
 
 def test_nothing_but_the_audit_log_after_failure(w):
-    rid = w.running()
+    rid = w.running(agents=True)
     st = w.stage(rid, "planner", "planner")
     w.run_sql("UPDATE stage_result SET status = 'failed', finished_at = now() WHERE id = :s", s=st)
     w.fail(rid, "worker stopped")
@@ -837,7 +837,7 @@ def test_nothing_but_the_audit_log_after_failure(w):
 
 @pytest.mark.parametrize("ending", ["completed", "failed"])
 def test_a_run_ends_only_with_no_stage_running_and_no_call_open(w, ending):
-    rid = w.running()
+    rid = w.running(agents=True)
     st = w.stage(rid)
     end = (lambda: w.complete(rid, "insufficient")) if ending == "completed" else (lambda: w.fail(rid))
     with pytest.raises(IntegrityError, match="no stage is running and no model call is open"):
@@ -1037,7 +1037,7 @@ def test_calibration_intervals_contain_their_share(w):
 # --- model calls and totals (owner decision, question 5) ------------------------------------------------
 
 def test_a_model_call_is_recorded_before_the_request_and_finished_once(w):
-    rid = w.running()
+    rid = w.running(agents=True)
     st = w.stage(rid)
     w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost, status, "
                "input_tokens, output_tokens, cached_tokens, cost, finished_at) VALUES (:r, :s, 'planner', 'm', 'p', 1, "
@@ -1052,7 +1052,7 @@ def test_a_model_call_is_recorded_before_the_request_and_finished_once(w):
 
 
 def test_model_call_usage_rules(w):
-    rid = w.running()
+    rid = w.running(agents=True)
     st = w.stage(rid)
     w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost) "
                "VALUES (:r, :s, 'planner', 'm', '', 1)", "ck_model_call_model_and_prices_named", r=rid, s=st)
@@ -1065,21 +1065,27 @@ def test_model_call_usage_rules(w):
                "cost = 0, finished_at = now() WHERE id = :c", "ck_model_call_usage_not_negative", c=partial)
     w.rejected("UPDATE model_call SET status = 'failed', max_cost = 0, finished_at = now() WHERE id = :c",
                "before the request cannot change", c=partial)
+    # A call whose stage belongs to another run. Step 8a (0005): every call names its invocation, and
+    # the call must have the invocation's run, stage and role, which the insert trigger checks before
+    # the foreign key on (stage, run) is reached; the foreign key still holds for the invocation.
     other = w.running()
-    w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost) "
-               "VALUES (:r, :s, 'planner', 'm', 'p', 1)", "fk_model_call_stage_result", r=other, s=st)
+    inv = w.invocation(rid, st)
+    w.rejected("INSERT INTO model_call (run_id, stage_result_id, invocation_id, role, model, price_table_version, "
+               "max_cost) VALUES (:r, :s, :i, 'planner', 'm', 'p', 1)", "its invocation's run, stage and role",
+               r=other, s=st, i=inv)
 
 
 def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bound(w):
-    rid = w.running()
-    planner, curator = w.stage(rid), w.stage(rid, "curator", "curator")
+    rid = w.running(agents=True)
+    # Step 8a review (finding 6): the Curator has no run invocation, so the second stage is the Critic's.
+    planner, critic = w.stage(rid), w.stage(rid, "critic", "critic")
     ok = w.call(rid, planner, max_cost=0.50)
     w.finish_call(ok, "succeeded", (1000, 200, 100, 0.0123))
     charged = w.call(rid, planner, max_cost=0.40)
     w.finish_call(charged, "failed", (500, 0, 0, 0.0040))         # failed, but the provider reported usage
-    lost = w.call(rid, curator, max_cost=0.30)
+    lost = w.call(rid, critic, max_cost=0.30)
     w.finish_call(lost, "failed", None)                           # failed without usage: may still be charged
-    w.call(rid, curator, max_cost=0.20)                           # still started (e.g. the worker died)
+    w.call(rid, critic, max_cost=0.20)                            # still started (e.g. the worker died)
     columns = "calls, input_tokens, output_tokens, cached_tokens, reported_cost, unconfirmed_calls, " \
               "unconfirmed_cost_bound, cap_cost"
     run_total = w.rows(f"SELECT {columns} FROM model_call_totals_by_run WHERE run_id = :r", r=rid)[0]
@@ -1087,7 +1093,7 @@ def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bou
     by_stage = w.rows(f"SELECT stage, {columns} FROM model_call_totals_by_stage WHERE run_id = :r ORDER BY stage",
                       r=rid)
     assert [(s, float(rep), float(cap)) for s, _, _, _, _, rep, _, _, cap in by_stage] == [
-        ("curator", 0.0, 0.50), ("planner", 0.0163, 0.0163)]
+        ("critic", 0.0, 0.50), ("planner", 0.0163, 0.0163)]
     query = w.rows("SELECT h.id FROM hypothesis h JOIN hypothesis_version v ON v.hypothesis_id = h.id "
                    "JOIN run r ON r.hypothesis_version_id = v.id WHERE r.id = :r", r=rid)[0][0]
     assert float(w.val("SELECT cap_cost FROM model_call_totals_by_query WHERE hypothesis_id = :h", h=query)) == 0.5163
@@ -1099,10 +1105,10 @@ def test_totals_are_the_sum_of_the_calls_and_unreported_calls_count_at_their_bou
 def test_small_costs_are_stored_exactly(w):
     """Review finding 7: numeric without a fixed scale; nothing rounds to zero."""
     from decimal import Decimal
-    rid = w.running()
+    rid = w.running(agents=True)
     call = w.call(rid, w.stage(rid), max_cost=Decimal("1E-12"))
     w.finish_call(call, "succeeded", (1, 1, 0, Decimal("3E-13")))
-    w.call(rid, w.stage(rid, "curator", "curator"), max_cost=Decimal("2E-12"))
+    w.call(rid, w.stage(rid, "critic", "critic"), max_cost=Decimal("2E-12"))  # step 8a review: not the Curator
     row = w.rows("SELECT reported_cost, unconfirmed_cost_bound, cap_cost FROM model_call_totals_by_run "
                  "WHERE run_id = :r", r=rid)[0]
     assert row == (Decimal("3E-13"), Decimal("2E-12"), Decimal("2.3E-12"))
@@ -1127,7 +1133,7 @@ def test_max_cost_must_be_finite(w, value, match):
     ("-Infinity", "ck_model_call_usage_not_negative"),
 ])
 def test_reported_cost_must_be_finite(w, value, match):
-    rid = w.running()
+    rid = w.running(agents=True)
     call = w.call(rid, w.stage(rid))
     w.rejected("UPDATE model_call SET status = 'succeeded', input_tokens = 1, output_tokens = 1, cached_tokens = 0, "
                "cost = CAST(:v AS numeric), finished_at = now() WHERE id = :c", match, c=call, v=value)
@@ -1135,7 +1141,7 @@ def test_reported_cost_must_be_finite(w, value, match):
 
 
 def test_call_times_are_set_by_the_database(w):
-    rid = w.running()
+    rid = w.running(agents=True)
     st = w.stage(rid)
     w.rejected("INSERT INTO model_call (run_id, stage_result_id, role, model, price_table_version, max_cost, started_at) "
                "VALUES (:r, :s, 'planner', 'm', 'p', 1, now() - interval '40 days')", "started_at is set by the database",

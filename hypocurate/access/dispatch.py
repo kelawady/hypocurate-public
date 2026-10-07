@@ -6,14 +6,20 @@ anything a model controls:
 - the **role** is read from the run's recorded agent settings (`run_agent_setting`): the
   setting being invoked must be recorded for this run, and its role is the one recorded;
 - the **stage** is read from the database;
-- a **source** is bound only for the Curator, and must be one of the run's `run_source` rows
-  with a recorded version.
+- no run role is bound to a source (step 8a, owner 2026-10-06: the Curator reads a source version
+  at registration, never in a run; `source_not_for_role`).
 The result is an `Access` around an immutable `AccessContext`. The binding itself is
 logged (function "bind"): allowed, denied with its code, or failed. Every later read checks
 again that the run is still at the bound stage.
 
 Nothing a model controls ever receives SQL, a database connection or a file path (CLAUDE.md):
 agents get text built from `role_input` and from reads through this object only.
+
+`bind_invocation(engine, invocation_id)` (step 8a) binds one agent call from its invocation record
+alone (step 5 re-check: run, setting and source come from one record, never assembled
+separately): a run invocation binds as `bind` does, for its run and setting; a registration
+invocation binds the Curator to the one sealed source version it names, with no run (stage
+'registration'). Every bind is logged; an unknown invocation is a logged failure.
 
 `bind_code(engine, run_id, role)` (step 6, owner 2026-10-05) binds the two **code roles** of
 PRD 4, Inclusion and Checks, which have no agent setting. It is called by trusted pipeline
@@ -33,7 +39,7 @@ from hypocurate.access.allowlist import CODE_ROLES, allowed
 from hypocurate.access.context import AccessContext
 from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.layer import (_AUDIT, _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, DENIALS, Access, _detail, _row,
-                                     bounded_source, keep_in_process_log, log_failure)
+                                     bounded_source, keep_in_process_log, log_failure, registration_stage)
 from hypocurate.access.stage import actual_stage
 from hypocurate.db.retry import run_transaction, sqlstate
 
@@ -41,11 +47,11 @@ UNBOUND = "invalid"  # the role logged for a binding refused before a role is kn
 
 
 def bind(engine: Engine, run_id: int, agent_setting_id: int, source_key: str | None = None,
-         lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS) -> Access:
+         lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS, _invocation_id: int | None = None) -> Access:
     """An access object for one agent call, or AccessDenied / AccessFailed (logged)."""
     if not isinstance(run_id, int) or isinstance(run_id, bool) or not isinstance(agent_setting_id, int):
         raise TypeError("bind takes an integer run id and an integer agent setting id")
-    probe = AccessContext(run_id, UNBOUND, UNBOUND, source_key, agent_setting_id)
+    probe = AccessContext(run_id, UNBOUND, UNBOUND, source_key, agent_setting_id, invocation_id=_invocation_id)
 
     def transaction(conn: Connection):
         conn.execute(text(f"SET LOCAL lock_timeout = {int(lock_timeout_ms)}"))
@@ -55,19 +61,12 @@ def bind(engine: Engine, run_id: int, agent_setting_id: int, source_key: str | N
         stage = actual_stage(conn, run_id, status)
         role = conn.execute(text("SELECT role FROM run_agent_setting WHERE run_id = :r AND agent_setting_id = :a"),
                             dict(r=run_id, a=agent_setting_id)).scalar_one_or_none()
-        ctx = AccessContext(run_id, role or UNBOUND, stage, source_key, agent_setting_id)
+        ctx = AccessContext(run_id, role or UNBOUND, stage, source_key, agent_setting_id, invocation_id=_invocation_id)
         code = None
         if role is None:
             code = "setting_not_recorded"
-        elif role != "curator" and source_key is not None:
+        elif source_key is not None:
             code = "source_not_for_role"
-        elif role == "curator" and source_key is None:
-            code = "no_source"
-        elif role == "curator" and not conn.execute(text(
-                "SELECT EXISTS (SELECT 1 FROM run_source rs JOIN source s ON s.id = rs.source_id "
-                "WHERE rs.run_id = :r AND s.key = :k AND rs.source_version_id IS NOT NULL)"),
-                dict(r=run_id, k=source_key)).scalar_one():
-            code = "source_not_recorded"
         extra = {"agent_setting": agent_setting_id}
         result = "denied" if code else "allowed"
         conn.execute(_AUDIT, _row(ctx, run_id, "bind", code is None, _detail(ctx, result, code, stage, **extra)))
@@ -87,6 +86,49 @@ def bind(engine: Engine, run_id: int, agent_setting_id: int, source_key: str | N
         raise AccessFailed(UNBOUND, UNBOUND, "bind", "unknown_run")
     result, code, ctx = outcome
     if result == "denied":
+        raise AccessDenied(ctx.role, ctx.stage, "bind", code, DENIALS[code])
+    return Access(engine, ctx, lock_timeout_ms=lock_timeout_ms, _trusted=_TRUSTED)
+
+
+def bind_invocation(engine: Engine, invocation_id: int, lock_timeout_ms: int = ACCESS_LOCK_TIMEOUT_MS) -> Access:
+    """An access object for the agent call recorded by `invocation_id`, or AccessDenied / AccessFailed
+    (logged). Run, role, setting and source all come from that one record."""
+    if not isinstance(invocation_id, int) or isinstance(invocation_id, bool):
+        raise TypeError("bind_invocation takes an integer invocation id")
+    try:
+        row = run_transaction(engine, lambda conn: conn.execute(text(
+            "SELECT i.scope, i.run_id, i.role, i.agent_setting_id, i.source_version_id, s.key AS source_key "
+            "FROM agent_invocation i LEFT JOIN source_version sv ON sv.id = i.source_version_id "
+            "LEFT JOIN source s ON s.id = sv.source_id WHERE i.id = :i"), dict(i=invocation_id)).one_or_none())
+    except DBAPIError as error:
+        probe = AccessContext(None, UNBOUND, UNBOUND, invocation_id=invocation_id)
+        keep_in_process_log(probe, "bind", "database_error", error)
+        failure = True
+    else:
+        failure = False
+    if failure:
+        log_failure(engine, AccessContext(None, UNBOUND, UNBOUND, invocation_id=invocation_id), "bind", "database_error")
+        raise AccessFailed(UNBOUND, UNBOUND, "bind", "database_error")
+    if row is None:
+        log_failure(engine, AccessContext(None, UNBOUND, UNBOUND, invocation_id=invocation_id), "bind",
+                    "unknown_invocation", run_known=False)
+        raise AccessFailed(UNBOUND, UNBOUND, "bind", "unknown_invocation")
+    if row.scope == "run":
+        return bind(engine, row.run_id, row.agent_setting_id, lock_timeout_ms=lock_timeout_ms,
+                    _invocation_id=invocation_id)
+    ctx = AccessContext(None, row.role, "registration", row.source_key, row.agent_setting_id,
+                        source_version_id=row.source_version_id, invocation_id=invocation_id)
+
+    def transaction(conn: Connection):
+        stage = registration_stage(conn, ctx)
+        code = None if stage == "registration" else "stage_mismatch"
+        conn.execute(_AUDIT, _row(ctx, None, "bind", code is None,
+                                  _detail(ctx, "denied" if code else "allowed", code, stage,
+                                          agent_setting=row.agent_setting_id)))
+        return code
+
+    code = run_transaction(engine, transaction)
+    if code is not None:
         raise AccessDenied(ctx.role, ctx.stage, "bind", code, DENIALS[code])
     return Access(engine, ctx, lock_timeout_ms=lock_timeout_ms, _trusted=_TRUSTED)
 
@@ -133,4 +175,4 @@ def bind_code(engine: Engine, run_id: int, role: str, lock_timeout_ms: int = ACC
     return Access(engine, ctx, lock_timeout_ms=lock_timeout_ms, _trusted=_TRUSTED)
 
 
-__all__ = ["bind", "bind_code", "bounded_source"]
+__all__ = ["bind", "bind_code", "bind_invocation", "bounded_source"]

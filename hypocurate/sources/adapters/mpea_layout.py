@@ -105,9 +105,10 @@ def read(version: SealedVersion) -> AdapterResult:
     if version.grouping_unit != "paper":
         raise AdapterError(f"the MPEA-layout adapter groups by paper; version {version.id} "
                            f"has grouping unit {version.grouping_unit!r}")
-    if len(version.files) != 1:
-        raise AdapterError(f"expected one CSV file, found {sorted(version.files)}")
-    (path, content), = version.files.items()
+    # Step 8a: a version may also hold documentation and a curation file; the adapter reads its data.
+    if len(version.data_files) != 1:
+        raise AdapterError(f"expected one CSV file, found {sorted(version.data_files)}")
+    (path, content), = version.data_files.items()
     try:
         decoded = content.decode("utf-8")
     except UnicodeDecodeError as error:

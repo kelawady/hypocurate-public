@@ -202,21 +202,31 @@ class SourceVersion(Base):
     )
 
 
+FILE_ROLES = ("data", "documentation", "curation")
+
+
 class SourceFile(Base):
-    """A data file an adapter reads (owner decision: only data files, at most 5 MiB).
-    Added only before its version is sealed. Append-only."""
+    """A file of a source version (at most 5 MiB), added only before its version is sealed.
+    Append-only. Step 8a (migration 0005; owner, 2026-10-06): its role is 'data' (what an adapter
+    reads; every file before 8a), 'documentation' (the source's own documentation, which the Curator
+    reads) or 'curation' (the accepted Curator values sealed into a curated version)."""
     __tablename__ = "source_file"
     id: Mapped[int] = pk()
     source_version_id: Mapped[int] = mapped_column(ForeignKey("source_version.id"))
     path: Mapped[str] = mapped_column(Text)
     sha256: Mapped[str] = mapped_column(Text)
     content: Mapped[bytes] = mapped_column(LargeBinary)
+    role: Mapped[str] = mapped_column(Text, server_default=sql("'data'"))
     __table_args__ = (
         UniqueConstraint("source_version_id", "path"),
         CheckConstraint(f"octet_length(content) <= {MAX_FILE_BYTES}", name="max_size"),
         # Re-check item 2: a safe character set, anchored at both ends, so a path holds no
-        # line break and the sealed file list has one unambiguous line per file.
-        CheckConstraint("path ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)$'", name="safe_data_file_path"),
+        # line break and the sealed file list has one unambiguous line per file. Step 8a: the rule
+        # by role (0001's name kept); a path tells its role, so the files digest stays unambiguous.
+        CheckConstraint(
+            "(role = 'data' AND path ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)$' AND path !~ '^documentation/') "
+            "OR (role = 'documentation' AND path ~ '^documentation/[A-Za-z0-9][A-Za-z0-9._-]*[.](tex|xml|md|txt)$') "
+            "OR (role = 'curation' AND path = 'curation.json')", name="safe_data_file_path"),
         CheckConstraint("sha256 = encode(sha256(content), 'hex')", name="sha256_matches_content"),
     )
 
@@ -400,6 +410,8 @@ class RunAgentSetting(Base):
     __table_args__ = (
         ForeignKeyConstraint(["agent_setting_id", "role"], ["agent_setting.id", "agent_setting.role"],
                              name="fk_run_agent_setting_agent_setting"),
+        # Step 8a (0005): the target of an invocation's (run, role, setting).
+        UniqueConstraint("run_id", "role", "agent_setting_id"),
     )
 
 
@@ -496,8 +508,10 @@ class ModelCall(Base):
     `finished_at` are the database's transaction times (review finding 7)."""
     __tablename__ = "model_call"
     id: Mapped[int] = pk()
-    run_id: Mapped[int] = mapped_column(BigInteger)
-    stage_result_id: Mapped[int] = mapped_column(BigInteger)
+    # Step 8a (0005): NULL exactly for the calls of a registration invocation (the Curator).
+    run_id: Mapped[int | None] = mapped_column(BigInteger)
+    stage_result_id: Mapped[int | None] = mapped_column(BigInteger)
+    invocation_id: Mapped[int | None] = mapped_column(ForeignKey("agent_invocation.id"))
     role: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(Text)
     price_table_version: Mapped[str] = mapped_column(Text)
@@ -515,7 +529,11 @@ class ModelCall(Base):
         ForeignKeyConstraint(["stage_result_id", "run_id"], ["stage_result.id", "stage_result.run_id"],
                              name="fk_model_call_stage_result"),
         Index("ix_model_call_run_id", "run_id"),
+        Index("ix_model_call_invocation_id", "invocation_id"),
         CheckConstraint(one_of("role", ROLES), name="role"),
+        CheckConstraint("(run_id IS NULL) = (stage_result_id IS NULL)", name="run_with_stage"),
+        # Named to sort after every check of 0001, so their refusals keep their own messages.
+        CheckConstraint("invocation_id IS NOT NULL", name="with_invocation"),
         CheckConstraint(one_of("status", CALL_STATUSES), name="status"),
         CheckConstraint("length(model) > 0 AND length(price_table_version) > 0", name="model_and_prices_named"),
         CheckConstraint("max_cost > 0", name="max_cost_positive"),
@@ -531,6 +549,98 @@ class ModelCall(Base):
                         f"OR ({_all('IS NOT NULL')})))", name="failed_usage_all_or_none"),
         CheckConstraint(f"status <> 'interrupted' OR ({_all('IS NULL')} AND finished_at IS NOT NULL)",
                         name="interrupted_has_no_usage"),
+    )
+
+
+# --- Agent invocations and the Curator's proposals (step 8a, migration 0005) --------------
+
+CURATION_FIELDS = ("test_type", "phase_class", "test_temperature", "test_temperature_band", "microstructure")
+QUOTE_MIN, QUOTE_MAX = 30, 600  # a proposal's quote, whitespace collapsed (register 'curator_quote_checks')
+STORED_TEXT_MAX = 4000
+
+
+class AgentInvocation(Base):
+    """One record per agent call (step 5 re-check): the dispatcher reads run or version, role,
+    setting and source from it alone. A run invocation's (run, role, setting) is one recorded at
+    dispatch; a registration invocation is the Curator's, on a sealed source version. Append-only."""
+    __tablename__ = "agent_invocation"
+    id: Mapped[int] = pk()
+    scope: Mapped[str] = mapped_column(Text)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("run.id"))
+    stage_result_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_version_id: Mapped[int | None] = mapped_column(ForeignKey("source_version.id"))
+    role: Mapped[str] = mapped_column(Text)
+    agent_setting_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        Index("ix_agent_invocation_run_id", "run_id"),
+        CheckConstraint("scope IN ('run', 'registration')", name="scope"),
+        CheckConstraint(one_of("role", ROLES), name="role"),
+        CheckConstraint(
+            "(scope = 'run' AND run_id IS NOT NULL AND stage_result_id IS NOT NULL AND source_version_id IS NULL "
+            "AND role <> 'curator') "
+            "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
+            "AND source_version_id IS NOT NULL AND role = 'curator')", name="shape"),
+        ForeignKeyConstraint(["agent_setting_id", "role"], ["agent_setting.id", "agent_setting.role"],
+                             name="fk_agent_invocation_agent_setting"),
+        ForeignKeyConstraint(["stage_result_id", "run_id"], ["stage_result.id", "stage_result.run_id"],
+                             name="fk_agent_invocation_stage_result"),
+        ForeignKeyConstraint(["run_id", "role", "agent_setting_id"],
+                             ["run_agent_setting.run_id", "run_agent_setting.role",
+                              "run_agent_setting.agent_setting_id"], name="fk_agent_invocation_run_agent_setting"),
+    )
+
+
+class CuratorProposal(Base):
+    """What the Curator proposed for one field, as stored by code after its two checks (owner, Q2):
+    'proposed' (passed: the quote occurs in the named documentation file, which the database checks
+    again, and contains the listed term), 'refused' (with a code) or 'not_stated'. Append-only."""
+    __tablename__ = "curator_proposal"
+    id: Mapped[int] = pk()
+    invocation_id: Mapped[int] = mapped_column(ForeignKey("agent_invocation.id"))
+    source_version_id: Mapped[int] = mapped_column(ForeignKey("source_version.id"))
+    field: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    value: Mapped[dict | None] = mapped_column(JSONB)
+    quote: Mapped[str | None] = mapped_column(Text)
+    document_path: Mapped[str | None] = mapped_column(Text)
+    line: Mapped[int | None] = mapped_column(Integer)
+    term: Mapped[str | None] = mapped_column(Text)
+    refusal_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        UniqueConstraint("invocation_id", "field"),
+        CheckConstraint(one_of("field", CURATION_FIELDS), name="field"),
+        CheckConstraint("status IN ('proposed', 'refused', 'not_stated')", name="status"),
+        CheckConstraint(
+            f"status <> 'proposed' OR coalesce(value IS NOT NULL AND quote IS NOT NULL AND document_path IS NOT NULL "
+            f"AND line IS NOT NULL AND term IS NOT NULL AND line >= 1 "
+            f"AND length(btrim(regexp_replace(quote, '\\s+', ' ', 'g'))) BETWEEN {QUOTE_MIN} AND {QUOTE_MAX} "
+            f"AND hc_curator_term_ok(field, value, quote, term), false)", name="proposed_complete"),
+        CheckConstraint("value IS NULL OR jsonb_typeof(value) <> 'null'", name="value_not_json_null"),
+        CheckConstraint("(status = 'refused') = (refusal_code IS NOT NULL) "
+                        "AND (refusal_code IS NULL OR refusal_code ~ '^[a-z_]+$')", name="refusal_code"),
+        CheckConstraint("status <> 'not_stated' OR (value IS NULL AND quote IS NULL AND document_path IS NULL "
+                        "AND line IS NULL AND term IS NULL)", name="not_stated_empty"),
+        CheckConstraint(f"length(coalesce(quote, '')) <= {STORED_TEXT_MAX} "
+                        f"AND length(coalesce(value::text, '')) <= {STORED_TEXT_MAX}", name="bounded"),
+    )
+
+
+class CuratorDecision(Base):
+    """A person's decision on one proposal that passed the checks: accepted or rejected, by a
+    named person, at the database's time. One per proposal. Append-only."""
+    __tablename__ = "curator_decision"
+    id: Mapped[int] = pk()
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("curator_proposal.id"), unique=True)
+    decision: Mapped[str] = mapped_column(Text)
+    decided_by: Mapped[str] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint("decision IN ('accepted', 'rejected')", name="decision"),
+        CheckConstraint("length(btrim(decided_by)) BETWEEN 1 AND 200 AND length(coalesce(note, '')) <= 2000",
+                        name="named_and_bounded"),
     )
 
 

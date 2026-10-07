@@ -42,8 +42,6 @@ def engine(migrated_database):
 
 
 def access(engine, world, role, stage, **kw):
-    if role == "curator" and "source_key" not in kw:
-        kw["source_key"] = "mpea"
     return access_for(engine, world.run, role, stage, **kw)
 
 
@@ -60,10 +58,14 @@ def test_the_allow_list_matches_the_owners_table():
     assert ROLES == ("planner", "curator", "critic", "analyst", "commentator")
     assert set(ALLOWED) == set(ROLES)
     assert {r: set(s) for r, s in ALLOWED.items()} == {
-        "planner": {"before_lock"}, "curator": {"curation"}, "critic": {"curation"},
+        "planner": {"before_lock"}, "curator": {"registration"}, "critic": {"curation"},
         "analyst": {"analysis", "closed_without_freeze"}, "commentator": {"final", "final_without_freeze"}}
     assert allowed("planner", "before_lock") == {"claim", "domain", "sources_meta", "tag_values", "record_counts"}
-    assert allowed("curator", "curation") == {"plan_fields_to_extract", "sources_meta", "source_content"}
+    # Owner, 2026-10-06 (step 8a, Q2): the Curator reads a source version's documentation at
+    # registration, never in a run.
+    assert allowed("curator", "registration") == {"source_documentation", "curation_targets"}
+    assert all(allowed("curator", stage) == frozenset() for stage in STAGES if stage != "registration")
+    assert all(allowed(role, "registration") == frozenset() for role in ROLES if role != "curator")
     assert allowed("critic", "curation") == {"sources_meta", "record_metadata", "flags_kind"}
     analysis = {"claim", "domain", "sources_meta", "plan", "records_full", "decisions", "flags_full", "results",
                 "coverage", "stage_outputs", "run_cost"}
@@ -87,7 +89,7 @@ def test_every_listed_field_has_a_reader_and_a_description():
 
 
 def test_no_outcome_reaching_field_is_listed_for_the_planner_the_critic_or_the_gap_report():
-    outcome_bearing = {"records_full", "flags_full", "results", "stage_outputs", "source_content", "plan"}
+    outcome_bearing = {"records_full", "flags_full", "results", "stage_outputs", "source_documentation", "plan"}
     for role, stage in (("planner", "before_lock"), ("critic", "curation")):
         assert not allowed(role, stage) & outcome_bearing, role
     assert not allowed("analyst", "closed_without_freeze") & (outcome_bearing - {"plan"})
@@ -161,12 +163,12 @@ def test_a_denied_row_survives_the_rejection_and_the_callers_rollback(engine):
 def test_the_planner_and_the_critic_asking_for_outcomes_are_denied_and_logged(engine, world_stage, role):
     """Criterion 14.2, first point."""
     world = aw.build(engine, world_stage)
-    for field in ("records_full", "flags_full", "results", "stage_outputs", "source_content"):
+    for field in ("records_full", "flags_full", "results", "stage_outputs", "source_documentation"):
         with pytest.raises(AccessDenied):
             access(engine, world, role, world_stage).get(field)
     denied = [r for r in audit(engine, world.run) if r.role == role and not r.allowed]
     assert {r.function for r in denied} == {"records_full", "flags_full", "results", "stage_outputs",
-                                            "source_content"}
+                                            "source_documentation"}
     assert not [r for r in audit(engine, world.run) if r.role == role and r.allowed]
 
 
@@ -209,23 +211,23 @@ def test_the_rules_lock_changes_what_each_role_may_see(engine):
     critic = access(engine, world, "critic", "curation")
     curator = access(engine, world, "curator", "curation")
     assert planner.get("claim")["text"] == aw.DIRECTION
-    for a, field in ((critic, "record_metadata"), (curator, "plan_fields_to_extract")):
-        with pytest.raises(AccessDenied):
-            a.get(field)
+    with pytest.raises(AccessDenied):
+        critic.get("record_metadata")
     aw.lock(world.w, world.run)
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         planner.get("claim")
     assert critic.get("record_metadata") == []
-    assert curator.get("plan_fields_to_extract") == ["grain_size", "yield_strength", "composition"]
+    # Step 8a: the Curator has nothing at the curation stage (it reads at registration).
+    with pytest.raises(AccessDenied, match="not on the role's list"):
+        curator.get("sources_meta")
 
 
 def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
     world = aw.build(engine, "curation")
     w = world.w
     critic = access(engine, world, "critic", "curation")
-    curator = access(engine, world, "curator", "curation")
     analyst = access(engine, world, "analyst", "analysis")
-    assert critic.get("flags_kind") and curator.get("sources_meta")
+    assert critic.get("flags_kind")
     with pytest.raises(AccessDenied):
         analyst.get("records_full")
     primary = w.analysis_set(world.run)
@@ -233,9 +235,8 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
         w.decide(world.run, rec)
         w.add(primary, rec)
     w.freeze(world.run, len(world.records))
-    for a, field in ((critic, "flags_kind"), (curator, "sources_meta")):
-        with pytest.raises(AccessDenied, match="no longer at the stage"):
-            a.get(field)
+    with pytest.raises(AccessDenied, match="no longer at the stage"):
+        critic.get("flags_kind")
     assert len(analyst.get("records_full")) == len(world.records)
 
 
@@ -341,27 +342,24 @@ def test_sources_meta_comes_from_the_code_and_the_sealed_version_not_the_registr
                     "licence": d.licence, "grouping_unit": "paper", "fields_available": list(d.properties_covered)}
 
 
-def test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim(engine):
-    world = aw.build(engine, "curation")
-    got = role_input(access(engine, world, "curator", "curation"))
-    assert got["plan_fields_to_extract"] == ["grain_size", "yield_strength", "composition"]
-    assert [s["key"] for s in got["sources_meta"]] == ["mpea"]  # its own source only
-    assert list(got["source_content"]["files"]) == ["mpea_planted.csv"]
-    without_files = json.dumps({k: v for k, v in got.items() if k != "source_content"})
-    assert "ZQXDIR" not in without_files and "rises" not in without_files and "k > 0" not in without_files
-    assert b"ZQXDIR" not in got["source_content"]["files"]["mpea_planted.csv"]
-    other = access(engine, world, "curator", "curation", source_key="controlled_duplicates")
-    assert other.get("sources_meta") == []
-    with pytest.raises(AccessDenied, match="not recorded for this run"):
-        other.get("source_content")
-    with pytest.raises(AccessDenied, match="reads one named source"):
-        access(engine, world, "curator", "curation", source_key=None).get("source_content")
+@pytest.mark.parametrize("world_stage", ["before_lock", "curation", "analysis"])
+def test_the_curator_has_nothing_in_any_run(engine, world_stage):
+    """Step 8a (owner, 2026-10-06, Q2), replacing the run-stage Curator test of step 5: the Curator
+    reads a source version at registration (tests/test_access_curator.py), never a run's data."""
+    world = aw.build(engine, world_stage)
+    a = access(engine, world, "curator", WORLD_STAGES[world_stage])
+    with pytest.raises(AccessDenied, match="no field at this stage"):
+        role_input(a)
+    for field in ("sources_meta", "record_metadata", "claim", "source_documentation"):
+        with pytest.raises(AccessDenied):
+            a.get(field)
 
 
 def test_inclusion_is_not_the_curators(engine):
     """The Curator's list has no eligibility, set or flag field (criterion 14.2, fourth point);
     eligibility is code's (step 6)."""
-    assert not allowed("curator", "curation") & {"decisions", "flags_kind", "flags_full", "record_metadata"}
+    assert not allowed("curator", "registration") & {"decisions", "flags_kind", "flags_full", "record_metadata",
+                                                      "records_full", "claim", "plan"}
 
 
 def test_record_metadata_carries_no_number_but_identity_and_composition(engine):

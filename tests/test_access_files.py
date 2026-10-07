@@ -189,3 +189,14 @@ def test_the_guarded_process_refuses_a_scratch_directory_that_would_open_anythin
                 f.unlink()
             made.rmdir()
     assert done.returncode != 0 and "unsuitable scratch directory" in done.stderr
+
+
+def test_a_guarded_timestamp_read_needs_no_zone_file(migrated_database, caplog):
+    """Step 8a review (owner, 2026-10-07): the database session's time zone is set to UTC when the engine
+    connects, so the driver reads no zone file to interpret a timestamp, and the guard refuses nothing.
+    Before, the server's 'Etc/UTC' made the driver open /usr/share/zoneinfo/Etc/UTC, which the guard
+    refused (the driver then fell back to UTC, with a warning)."""
+    import logging
+    caplog.set_level(logging.WARNING, logger="hypocurate.access")
+    assert probe([{"op": "timestamp"}], migrated_database) == ["ok UTC +00:00"]
+    assert [r.getMessage() for r in caplog.records if "file_guard" in r.getMessage()] == []

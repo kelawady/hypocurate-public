@@ -35,8 +35,10 @@ def extraction(source_key: str) -> dict:
 
 
 def read(version: SealedVersion) -> AdapterResult:
-    """Reads a sealed version with its source's adapter."""
+    """Reads a sealed version with its source's adapter, then applies the version's sealed curation,
+    if it has one, where the table gives no value (step 8a; `sources.curated`)."""
+    from hypocurate.sources.curated import apply_curation
     adapter = ADAPTERS.get(version.source_key)
     if adapter is None:
         raise AdapterError(f"no adapter for source {version.source_key!r}")
-    return adapter(version)
+    return apply_curation(adapter(version), version)

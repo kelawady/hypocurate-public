@@ -631,7 +631,8 @@
       "The paper says 81 compositions; the spreadsheet has 82 distinct compositions.",
       "No passage states the result of the XRD phase check.",
       "Not reviewed by an expert.",
-      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses')."
+      "Uses the status 'assigned by decision' (see entry 'assigned_value_statuses').",
+      "Step 8a (2026-10-06): the Curator proposed 'FCC' as the microstructure from line 173 of paper/main.tex; the owner rejected it (proposal 1): the sentence states the phase class, not a single-phase microstructure as a result. The value stays assigned by decision."
     ],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
@@ -1039,7 +1040,8 @@
     "affects": "Which records are pooled; a high-rate test would be pooled with quasistatic ones.",
     "reason": "Neither source has a loading-rate field.",
     "evidence": [
-      "PRD 5.2 (exclusion menu has no rate rule); the MPEA and Texas A&M column lists."
+      "PRD 5.2 (exclusion menu has no rate rule); the MPEA and Texas A&M column lists.",
+      "Texas A&M: data/sources/tamu_fcc/documentation/main.tex line 177 (accepted Curator proposal 5, owner, 2026-10-06): \"Quasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers indentation tests provided the HV.\""
     ],
     "decided": {
       "by": "implicit in PRD v1.6 and the reference script",
@@ -1061,7 +1063,9 @@
       "note": "The plan's scope has no loading-rate rule."
     },
     "history": [],
-    "notes": [],
+    "notes": [
+      "For the Texas A&M source the assumption has the source's own statement (owner, 2026-10-07, item h): the quote of the accepted Curator proposal 5."
+    ],
     "tests": [
       "tests/test_plan.py::test_the_reference_plan_is_the_default_plan_under_the_owners_decisions"
     ]
@@ -1157,13 +1161,15 @@
       }
     ],
     "notes": [
-      "How a record with an assigned room-temperature band (decision 'tamu_test_temperature') passes this scope is defined in step 6."
+      "How a record with an assigned room-temperature band (decision 'tamu_test_temperature') passes this scope is defined in step 6.",
+      "Step 8a (owner, 2026-10-06, Q4): plans may name another band (elevated or cryogenic) with the claim's temperature range; this rule holds for room-temperature plans unchanged (entry 'temperature_bands')."
     ],
     "tests": [
       "tests/test_eligibility.py::test_each_rule_on_its_own",
       "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
       "tests/test_eligibility.py::test_texas_am_band_and_microstructure_by_decision_are_in_scope_unless_the_set_refuses_them",
-      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139"
+      "tests/test_reference_sets.py::test_the_primary_set_is_the_reference_selection_without_row_139",
+      "tests/test_temperature_range.py::test_rule_3_under_a_room_temperature_plan_is_unchanged"
     ]
   },
   {
@@ -1417,7 +1423,7 @@
     "key": "tamu_test_type",
     "name": "Texas A&M test type",
     "state": "in_force",
-    "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
+    "statement": "The Texas A&M yield strengths are from tensile tests, assigned from source. From step 8a the value comes from the source version's sealed curation: the Curator proposed it with the sentence on line 177 of paper/main.tex, which the checks found, and the owner accepted it (proposal 5, 2026-10-06); the adapter no longer assigns it.",
     "value": {
       "text": "tension (assigned from source)",
       "unit": null
@@ -1430,8 +1436,8 @@
       "paper/supplementary.tex line 65."
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1443,23 +1449,36 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.sources.adapters.tamu_fcc:TEST_TYPE_CITATION"
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.curation_file",
+          "equals": "curation.json"
+        },
+        {
+          "ref": "file:data/sources/tamu_fcc/curation.json:\"value\": \"tension\""
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The Texas A&M yield strengths are from tensile tests, assigned from source.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Steps 4-7b: assigned by the adapter itself (version 2), citing the same sentence."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
-      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable",
+      "tests/test_frozen_sources.py::test_the_curation_file_records_the_owners_decisions",
+      "tests/test_source_versions.py::test_registering_the_frozen_curation_reproduces_the_sealed_curated_version"
     ]
   },
   {
     "key": "tamu_phase_class",
     "name": "Texas A&M phase class",
     "state": "in_force",
-    "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
+    "statement": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'. From step 8a the value comes from the source version's sealed curation: the Curator proposed it with the sentence on line 173 of paper/main.tex, which the checks found, and the owner accepted it (proposal 2, 2026-10-06); the adapter no longer assigns it. The Curator's proposal of the same sentence as a single-phase microstructure was rejected by the owner (proposal 1): the microstructure stays assigned by decision (entry 'tamu_microstructure').",
     "value": {
       "text": "FCC (assigned from source)",
       "unit": null
@@ -1471,8 +1490,8 @@
       "paper/main.tex line 173: \"The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.\""
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), on the step 4 rule for assigned values",
-      "date": "2026-10-05"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -1484,16 +1503,28 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.sources.adapters.tamu_fcc:PHASE_CITATION"
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.curation_file",
+          "equals": "curation.json"
+        },
+        {
+          "ref": "file:data/sources/tamu_fcc/curation.json:\"value\": \"FCC\""
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The Texas A&M records are FCC, assigned from source. This is the phase class, not 'single-phase'.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Steps 4-7b: assigned by the adapter itself (version 2), citing the same sentence."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_adapter_tamu.py::test_assigned_values_carry_their_passage",
-      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable"
+      "tests/test_adapter_tamu.py::test_assigned_and_reported_stay_distinguishable",
+      "tests/test_frozen_sources.py::test_the_curation_file_records_the_owners_decisions"
     ]
   },
   {
@@ -3392,9 +3423,9 @@
     "key": "spending_caps",
     "name": "Spending caps",
     "state": "in_force",
-    "statement": "Model calls may cost at most $2 per run and $50 per calendar month (UTC), counting calls without a reported cost at their upper bound.",
+    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling the caller names, is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. The monthly cap counts the calls recorded in this database only.",
     "value": {
-      "text": "$2 per run; $50 per month",
+      "text": "$2 per run; $2 per curation; $50 per month",
       "unit": "USD"
     },
     "category": "operational",
@@ -3404,8 +3435,8 @@
       "CLAUDE.md, rule 12; step 3 summary, 'Step 9 requirements'."
     ],
     "decided": {
-      "by": "PRD v1.6 (owner)",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3414,19 +3445,54 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 9,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.spend:RUN_CAP_USD",
+          "equals": 2
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.spend:CURATION_CAP_USD",
+          "equals": 2
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.spend:MONTH_CAP_USD",
+          "equals": 50
+        }
+      ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Model calls may cost at most $2 per run and $50 per calendar month (UTC), counting calls without a reported cost at their upper bound.",
+        "from": "2026-10-04",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06): the per-curation cap and the enforcement before each request."
+      },
+      {
+        "value": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction (the run's lock for a run call, then one month-wide advisory lock) that records the call as started; a request that would pass a cap, or a lower ceiling the caller names, is not sent, and the refusal is logged. The monthly cap counts the calls recorded in this database only.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8a as built: a registration call read its curation total before taking the month-wide lock, so two concurrent reservations could both pass the curation cap or a lower ceiling (ChatGPT's review of step 8a, finding 3). Fixed 2026-10-07."
+      }
+    ],
     "notes": [],
-    "tests": []
+    "tests": [
+      "tests/test_agent_core.py::test_the_run_cap_refuses_a_request_before_it_is_sent",
+      "tests/test_agent_core.py::test_the_curation_cap_and_a_ceiling_refuse_before_sending",
+      "tests/test_agent_core.py::test_the_month_cap_counts_every_call_including_unconfirmed_ones",
+      "tests/test_agent_core.py::test_two_reservations_cannot_both_pass_the_month_cap",
+      "tests/test_agent_core.py::test_a_reservation_waits_for_the_month_wide_lock",
+      "tests/test_agent_core.py::test_two_reservations_on_one_invocation_cannot_both_pass_the_curation_cap",
+      "tests/test_agent_core.py::test_two_reservations_on_one_invocation_cannot_both_pass_a_lower_ceiling",
+      "tests/test_agent_core.py::test_two_reservations_on_one_run_cannot_both_pass_the_run_cap"
+    ]
   },
   {
     "key": "access_allow_lists",
     "name": "Allowed fields per role and stage",
     "state": "in_force",
-    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+    "statement": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. The Curator receives nothing at any run stage: it reads one sealed source version when that version is registered (stage 'registration', no run), and then only that version's documentation and the fields it may propose values for (step 8a). On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope), or for the Curator only its invocation's source version. Every read and every refusal is logged.",
     "value": {
       "text": "the table in hypocurate/access/allowlist.py (ALLOWED)",
       "unit": null
@@ -3440,7 +3506,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3473,7 +3539,8 @@
             "analysis",
             "closed_without_freeze",
             "final",
-            "final_without_freeze"
+            "final_without_freeze",
+            "registration"
           ]
         }
       ],
@@ -3485,6 +3552,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Step 5 first build; changed by the owner before the review."
+      },
+      {
+        "value": "Each agent role receives exactly the fields listed for it at the run's stage, and nothing else: the Planner before the rules lock; the Curator and the Critic between the lock and the freeze; the Analyst after the freeze, or after a run ended without a freeze (gap report); the Commentator after completion. On a run completed with no dataset frozen, the Commentator receives only what the Analyst received for the gap report, plus the Analyst's gap report and the run's outcome: no outcome values and no row-level records. Queued and failed runs give nothing. Every field reads only the run's own rows (single-run scope). Every read and every refusal is logged.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06, Q2): the Curator moved from the curation stage (its own source's data files and the fields to extract) to registration."
       }
     ],
     "notes": [
@@ -3495,7 +3568,8 @@
       "tests/test_access_layer.py::test_each_role_gets_exactly_its_fields_and_every_refusal_is_logged",
       "tests/test_access_projected.py::test_nothing_from_another_run_reaches_any_role",
       "tests/test_access_layer.py::test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome",
-      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze"
+      "tests/test_access_projected.py::test_no_projected_planted_value_in_the_commentators_input_without_a_freeze",
+      "tests/test_access_layer.py::test_the_curator_has_nothing_in_any_run"
     ]
   },
   {
@@ -3781,10 +3855,10 @@
       }
     ],
     "notes": [
-      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval."
+      "Step 6 must store the plan's content in this schema; a change to the schema is a register change needing the owner's approval.",
+      "Step 8a (2026-10-06): the step 5 Curator test named here was replaced (the Curator no longer reads the plan's fields to extract); the plan's projection is still covered by the other named tests."
     ],
     "tests": [
-      "tests/test_access_layer.py::test_the_curator_reads_only_its_own_source_and_never_the_direction_of_the_claim",
       "tests/test_access_layer.py::test_the_plan_is_projected_by_its_named_parts",
       "tests/test_eligibility.py::test_decisions_ignore_the_domain_profile",
       "tests/test_eligibility.py::test_each_setting_is_read_from_the_locked_plan",
@@ -3977,7 +4051,8 @@
     "notes": [
       "Python documentation, sys.addaudithook and PEP 578: audit hooks are not suitable for implementing a sandbox.",
       "Sufficient under the threat model (entry 'threat_model'): only trusted code runs; agents return text only.",
-      "A library that imports ctypes after the guard is installed is refused; such a library (for example the plotting library, step 7) must be added to PRELOADED with the owner's approval."
+      "A library that imports ctypes after the guard is installed is refused; such a library (for example the plotting library, step 7) must be added to PRELOADED with the owner's approval.",
+      "Step 8a (owner, 2026-10-06): the guarded process drops import-path entries that do not exist before installing the guard, so importing the agent libraries logs no refusal; a planted .env read by a library is still refused (entry 'model_call_libraries')."
     ],
     "tests": [
       "tests/test_access_files.py::test_answers_reviews_data_and_the_repository_root_cannot_be_read",
@@ -3989,7 +4064,9 @@
       "tests/test_access_files.py::test_preloaded_ctypes_still_works_a_documented_limit",
       "tests/test_access_dispatch.py::test_file_guard_refusals_are_logged_for_the_run_or_in_the_process_log",
       "tests/test_check_runtime_image.py::test_clean_image_passes",
-      "tests/test_access_dispatch.py::test_a_refusal_followed_by_a_timeout_is_still_logged"
+      "tests/test_access_dispatch.py::test_a_refusal_followed_by_a_timeout_is_still_logged",
+      "tests/test_agent_libraries.py::test_a_planted_env_file_read_by_a_library_is_still_refused_under_the_guard",
+      "tests/test_agent_libraries.py::test_missing_path_entries_are_dropped_and_the_others_kept"
     ]
   },
   {
@@ -4039,7 +4116,7 @@
     "key": "access_context_dispatcher",
     "name": "Access objects come only from the dispatcher",
     "state": "in_force",
-    "statement": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+    "statement": "An access object is created only by the trusted dispatcher, around an immutable context captured once: hypocurate.access.dispatch.bind(run, agent setting) reads the role from the run's recorded agent settings and the stage from the database, and binds no run role to a source; hypocurate.access.dispatch.bind_invocation(invocation) (step 8a) reads run or source version, role and agent setting from one invocation record (agent_invocation), so a call's run, setting and source are never assembled separately, and binds a registration invocation to the one sealed source version it names. The database refuses a run invocation of the Curator (the Curator never runs within a run). There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
     "value": {
       "text": "dispatch.bind only",
       "unit": null
@@ -4052,7 +4129,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-07"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4065,22 +4142,39 @@
       "settings": [
         {
           "ref": "python:hypocurate.access.dispatch:bind"
+        },
+        {
+          "ref": "python:hypocurate.access.dispatch:bind_invocation"
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "An access object is created only by hypocurate.access.dispatch.bind(run, agent setting, source), around an immutable context captured once: the role is read from the run's recorded agent settings, the stage from the database, and a Curator's source must be one of the run's run_source rows. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06): one invocation record per agent call (step 5 re-check); the Curator binds at registration, not to a run's source."
+      },
+      {
+        "value": "An access object is created only by the trusted dispatcher, around an immutable context captured once: hypocurate.access.dispatch.bind(run, agent setting) reads the role from the run's recorded agent settings and the stage from the database, and binds no run role to a source; hypocurate.access.dispatch.bind_invocation(invocation) (step 8a) reads run or source version, role and agent setting from one invocation record (agent_invocation), so a call's run, setting and source are never assembled separately, and binds a registration invocation to the one sealed source version it names. There is no public constructor taking a caller-chosen run, role, stage or source (the tests have their own helper). Every bind is logged.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8a as built: a run-scoped Curator invocation could be created; the access layer gave it no fields, but the common request interface could still send a request against it (ChatGPT's review of step 8a, finding 6). Refused by the database from 2026-10-07."
+      }
+    ],
     "notes": [],
     "tests": [
       "tests/test_access_dispatch.py::test_bind_refuses_a_setting_or_source_the_run_did_not_record",
-      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed"
+      "tests/test_access_dispatch.py::test_an_access_object_has_no_public_constructor_and_cannot_be_changed",
+      "tests/test_migrations_step8a.py::test_a_run_invocation_of_the_curator_is_refused"
     ]
   },
   {
     "key": "access_logging",
     "name": "What the audit log records, and its fallback",
     "state": "in_force",
-    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out.",
+    "statement": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, unknown invocation, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out. A registration read (step 8a) is logged with no run, naming the source version and the invocation.",
     "value": {
       "text": "allowed / denied / failed; process log as fallback",
       "unit": null
@@ -4094,7 +4188,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-06"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4109,6 +4203,7 @@
           "ref": "python:hypocurate.access.layer:FAILURES",
           "equals": [
             "unknown_run",
+            "unknown_invocation",
             "lock_timeout",
             "reader_error",
             "database_error",
@@ -4127,6 +4222,12 @@
         "from": "2026-10-05",
         "to": "2026-10-05",
         "note": "Before the step 5 re-check: the error raised was chained to the original."
+      },
+      {
+        "value": "Every read, policy denial and access failure is logged: detail.result is 'allowed', 'denied' (a policy refusal, with a fixed code) or 'failed' (unknown run, lock timeout, reader error, database error, file-guard refusal). Only validated, bounded strings are logged; anything not one of ours is 'invalid' with its length. A role's whole input is read and logged in one transaction. If a failure cannot be written to the database, it goes to the process log (logger hypocurate.access); durable logging in the database is not unconditional. The original error of a failure (a reader's exception, the database's error) is kept, with its traceback, in the process log only; the error raised to the caller carries nothing of it (no cause, no context, no text). A file-guard refusal is still logged when the guarded process then times out.",
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "note": "Step 8a (owner, 2026-10-06): the failure 'unknown invocation' and registration reads."
       }
     ],
     "notes": [],
@@ -4444,7 +4545,9 @@
         "note": "Step 7b additions approved by the owner on 2026-10-06."
       }
     ],
-    "notes": [],
+    "notes": [
+      "Step 8a (owner, 2026-10-06): vocabulary.CURATION_TARGETS names the fields the Curator may propose values for, each with its vocabulary or unit (entry 'curator_tabular_sources'); the curation refusal codes are in sources/curation.py (CODES) and pipeline/agents/curator.py, the request failure codes in pipeline/agents/lm.py (FAILURES)."
+    ],
     "tests": [
       "tests/test_access_layer.py::test_flags_kind_has_no_numbers",
       "tests/test_access_dispatch.py::test_the_gap_report_input_has_codes_not_failure_text"
@@ -4951,16 +5054,22 @@
   {
     "key": "curator_tabular_sources",
     "name": "The Curator's role for tabular sources",
-    "state": "open",
-    "statement": "Open: what the Curator agent does for tabular sources, whose records the adapters (code) extract in step 6.",
-    "value": null,
+    "state": "in_force",
+    "statement": "The Curator does not extract tabular records: adapters (code) do. It runs when a source version is registered, never in a run, and only for a source grouped by dataset (a source grouped by paper, a compilation, is refused: a value for the whole source would be a guess for each paper). It reads that version's documentation and proposes, for the fields a table may lack (test type, phase class, test temperature or band, microstructure), one value that holds for all the source's measurements with the exact sentence it relied on, or 'not stated'. Code checks each proposal (entry 'curator_quote_checks'); a person accepts or rejects it (entry 'curation_acceptance'). It is not told any claim, plan or data row.",
+    "value": {
+      "text": "registration only; single-dataset sources; proposals accepted by a person",
+      "unit": null
+    },
     "category": "data_handling",
     "affects": "Record extraction from step 8; which records count as extracted by an agent.",
     "reason": "Step 6 stores records by adapter code and does not settle the Curator's role.",
     "evidence": [
       "Owner, step 6 planning (2026-10-05)."
     ],
-    "decided": null,
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
     "expert_review": {
       "status": "not_reviewed",
       "name": null,
@@ -4968,17 +5077,35 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": 8,
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.curation:curate"
+        },
+        {
+          "ref": "python:hypocurate.access.allowlist:ALLOWED.curator.registration",
+          "equals": [
+            "curation_targets",
+            "source_documentation"
+          ]
+        }
+      ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Open: what the Curator agent does for tabular sources, whose records the adapters (code) extract in step 6.",
+        "from": "2026-10-06",
+        "to": "2026-10-06",
+        "note": "Open until step 8a; decided by the owner in the step 8a plan (Q2, Q3)."
+      }
+    ],
     "notes": [],
-    "tests": [],
-    "pending": {
-      "by": "owner",
-      "before_step": 8
-    }
+    "tests": [
+      "tests/test_curator.py::test_a_compilation_source_is_never_curated",
+      "tests/test_access_curator.py::test_the_curators_complete_input_is_its_versions_documentation_and_the_targets",
+      "tests/test_curator.py::test_no_planted_value_and_no_claim_reaches_the_curator"
+    ]
   },
   {
     "key": "reference_numbers",
@@ -6154,6 +6281,569 @@
       "Like every sensitivity set: descriptive, never changes the verdict, no multiplicity adjustment (entries 'sensitivity_one_change', 'no_multiplicity_adjustment').",
       "On the reference data (approved by the owner, 2026-10-06): the removed group is a paper (DOI 10.1007/s11661-019-05231-y; 8 records, 1 alloy; share 38.7%); 89 records, 22 alloys, 19 informative papers, 66 residual df, k = 393.5 ± 90.5 (one standard error), p ≈ 1.9e-4, effective number 3.24, largest share 52.1%, t df 18.",
       "Deferred (owner, 2026-10-06, on the second model's review of step 7b; backlog, before the final evaluation): an analysis-specific simulation seed (from a fingerprint of the analysis's own stable records and design, the simulation settings and the calibration method, keeping the run fingerprint for provenance), so that adding an unrelated set does not change other analyses' draws; and about 10,000 simulations (95% Monte Carlo margin about ±0.5 points at an 8% rate, against about ±1.2 with 2,000). Not done now."
+    ]
+  },
+  {
+    "key": "source_documentation",
+    "name": "Source documentation frozen into the source version",
+    "state": "in_force",
+    "statement": "Each source's own documentation is frozen with its data (sha256 in the manifest, in a 'documentation' list per source) and stored in the sealed source version as documentation files (paths documentation/<name>.tex|.xml|.md|.txt; source_file.role), so the version's fingerprint covers it. Texas A&M: paper/main.tex and paper/supplementary.tex from the pinned Zenodo archive (MIT); MPEA: the dataset paper's full text from Europe PMC (CC BY 4.0). Adapters read only data files.",
+    "value": {
+      "text": "documentation files of the sealed version",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "What the Curator reads; every source version's fingerprint (not any reference number).",
+    "reason": "The Curator proposes values from the source's own documentation, which must be fixed and sealed like the data.",
+    "evidence": [
+      "Owner, step 8a plan, Q1 (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.tamu_fcc.documentation_files",
+          "equals": [
+            "documentation/main.tex",
+            "documentation/supplementary.tex"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.sources.versions:SOURCES.mpea.documentation_files",
+          "equals": [
+            "documentation/Borg2020_PMC7722748.xml"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.sources.versions:file_role"
+        },
+        {
+          "ref": "sql:ck_source_file_safe_data_file_path"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The folder is 'documentation', not 'docs': the runtime-image check forbids any docs directory (the construction-level guarantee that docs/ never ships)."
+    ],
+    "tests": [
+      "tests/test_frozen_sources.py::test_documentation_records_its_origin_and_licence",
+      "tests/test_source_versions.py::test_registering_seals_every_source",
+      "tests/test_migrations_step8a.py::test_each_role_has_its_own_path_rule"
+    ]
+  },
+  {
+    "key": "curator_quote_checks",
+    "name": "The two checks on a Curator proposal",
+    "state": "in_force",
+    "statement": "A Curator proposal passes only if, in this order (`quotes.check`): (1) the value is allowed: a vocabulary value, a microstructure of vocabulary tokens joined by '+', or for the test temperature a finite number of °C (never JSON null, a boolean or a string); (2) the quote is 30 to 600 characters after collapsing runs of whitespace; (3) it occurs in one of the sealed version's documentation files after collapsing runs of whitespace on both sides (nothing else normalized: no case folding, no markup changes), beginning and ending at a word boundary there, code finding the document and the line; (4) it holds a listed term for the value (TERMS) as a whole word, after collapsing whitespace and setting aside 'ultimate tensile strength' (so 'tensile' there alone is not a test type), case-insensitive except B2 and L12; a microstructure joined by '+' needs every part; a test temperature is a complete signed number (sign and decimals included; no leading zero) equal to the value, never part of a larger number ('1,025', '1 025') and never an end of a range ('20 - 25', '20–25', '20 to 25', '20 °C to 25 °C'), followed by a Celsius unit in a form found in the frozen documents ('°C', after spaces or LaTeX '~', or LaTeX '\\SI{n}{\\degreeCelsius}'); (5) for a test condition (test type, temperature band, test temperature) it also holds a testing word as a whole word (test, tests, tested, testing, loaded, loading, strain rate), so a processing sentence such as 'cold rolled at room temperature' or 'deformed by cold rolling at room temperature' is refused. Otherwise the proposal is stored as refused with a code and leaves the field unassigned. The database applies the same checks again when a passed proposal is stored (its own copy of the lists, tested equal to the code's, and tested to agree with the code case by case), except the line number, which a curation file's check covers. None of the checks shows that the sentence supports the value: a person decides that.",
+    "value": {
+      "text": "value + quote found at word boundaries + whole-word listed term + testing word for test conditions; 30-600 characters",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Which Curator proposals a person may accept.",
+    "reason": "Owner's decision: a quote must exist in the sealed document and contain a listed term, a first filter; a refused paraphrase leaves the field unassigned, the safe direction.",
+    "evidence": [
+      "Owner, step 8a plan, Q2 (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:QUOTE_MIN_CHARS",
+          "equals": 30
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:QUOTE_MAX_CHARS",
+          "equals": 600
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:TERMS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:CASE_SENSITIVE_TERMS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:TESTING_WORDS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.quotes:EXCLUDED_PHRASES"
+        },
+        {
+          "ref": "sql:ck_curator_proposal_proposed_complete"
+        },
+        {
+          "ref": "sql:hc_curator_term_ok"
+        },
+        {
+          "ref": "sql:hc_quote_occurs"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "A Curator proposal passes only if (1) its quote occurs in one of the sealed version's documentation files after collapsing runs of whitespace to one space on both sides (nothing else is normalized: no case folding, no markup changes), code finding the document and the line where it begins, and the database checking the occurrence again when it is stored; the quote is 30 to 1500 characters after collapsing; and (2) the quote contains a listed term for the proposed value (TERMS, case-insensitive; for the test temperature the number as written; for a microstructure joined by '+', every part). Otherwise it is stored as refused with a code and leaves the field unassigned. Neither check shows that the sentence supports the value: a person decides that.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8a as built (draft lists by Claude Code). Changed after ChatGPT's review of step 8a (finding 5) and by the owner's term-check changes a-f, 2026-10-07."
+      },
+      {
+        "value": "A Curator proposal passes only if, in this order (`quotes.check`): (1) the value is allowed: a vocabulary value, a microstructure of vocabulary tokens joined by '+', or for the test temperature a finite number of °C (never JSON null, a boolean or a string); (2) the quote is 30 to 600 characters after collapsing runs of whitespace; (3) it occurs in one of the sealed version's documentation files after collapsing runs of whitespace on both sides (nothing else normalized: no case folding, no markup changes), beginning and ending at a word boundary there, code finding the document and the line; (4) it holds a listed term for the value (TERMS) as a whole word, after collapsing whitespace and setting aside 'ultimate tensile strength' (so 'tensile' there alone is not a test type), case-insensitive except B2 and L12; a microstructure joined by '+' needs every part; a test temperature is a complete signed number (sign and decimals included) equal to the value and followed by a Celsius unit in a form found in the frozen documents ('°C', after spaces or LaTeX '~', or LaTeX '\\SI{n}{\\degreeCelsius}'); (5) for a test condition (test type, temperature band, test temperature) it also holds a testing word as a whole word (test, tests, tested, testing, loaded, loading, strained, deformed, strain rate), so a processing sentence such as 'cold rolled at room temperature' is refused. Otherwise the proposal is stored as refused with a code and leaves the field unassigned. The database applies the same checks again when a passed proposal is stored (its own copy of the lists, tested equal to the code's, and tested to agree with the code case by case), except the line number, which a curation file's check covers. None of the checks shows that the sentence supports the value: a person decides that.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "After ChatGPT's first review and the owner's changes a-f (2026-10-07). Changed the same day after ChatGPT's re-check by the owner's decision: numbers that are part of a larger number or an end of a range are refused; 'deformed' and 'strained' removed from the testing words."
+      }
+    ],
+    "notes": [
+      "The term list itself (TERMS) was drafted by Claude Code in step 8a; the owner approved the check, and the list is for the owner's review with step 8a. Changing it is a register change.",
+      "The 30-1500 character bounds are Claude Code's defaults in step 8a, for the owner's review.",
+      "Safe refusals (owner, 2026-10-07, item f; each leaves the field unassigned, and the person can still assign a value by decision): a statement under 30 characters; a temperature given in kelvin (no conversion is made); a Celsius form not found in the frozen documents (such as '$^\\circ$C'); a range such as '20-25 °C'; LaTeX forms of a term (such as 'L1$_2$'); a sentence whose testing word is missing although it does describe the test.",
+      "Owner's changes of 2026-10-07: whole words everywhere (B2 not in 'Nb25', 'tension' not in 'extension', 'tensile' not on 'ultimate tensile strength' alone); FCC, BCC, HCP case-insensitive, B2 and L12 case-sensitive; testing word for test conditions; a temperature number followed by a Celsius unit; spelling variants (face and body centred or centered cubic, with or without hyphens; 'liquid helium' for cryogenic); at most 600 characters, beginning and ending at a word boundary.",
+      "The owner's two accepted proposals (5, test type tension, main.tex line 177; 2, phase class FCC, line 173) were re-checked under these rules and the database's checks on 2026-10-07 and still pass (tests/test_quote_checks.py::test_the_owners_two_accepted_proposals_still_pass)."
+    ],
+    "tests": [
+      "tests/test_curator.py::test_each_proposal_is_stored_as_code_decided_it",
+      "tests/test_curator.py::test_an_entry_that_fails_a_check_is_refused_with_its_code",
+      "tests/test_curator.py::test_the_quote_checks_collapse_whitespace_only",
+      "tests/test_migrations_step8a.py::test_a_proposal_that_did_not_pass_cannot_be_stored_as_passed",
+      "tests/test_quote_checks.py::test_the_owners_two_accepted_proposals_still_pass",
+      "tests/test_quote_checks.py::test_terms_match_whole_words_with_the_stated_case_rules",
+      "tests/test_quote_checks.py::test_whitespace_is_collapsed_for_terms_as_for_locating_the_quote",
+      "tests/test_quote_checks.py::test_test_conditions_need_a_testing_word",
+      "tests/test_quote_checks.py::test_a_temperature_is_the_whole_number_with_its_unit",
+      "tests/test_quote_checks.py::test_another_number_or_no_celsius_unit_is_refused",
+      "tests/test_quote_checks.py::test_spelling_variants_are_listed",
+      "tests/test_quote_checks.py::test_a_quote_is_at_most_600_characters",
+      "tests/test_quote_checks.py::test_a_quote_begins_and_ends_at_a_word_boundary",
+      "tests/test_quote_checks.py::test_the_recorded_safe_refusals",
+      "tests/test_migrations_step8a.py::test_a_value_that_does_not_match_its_term_is_refused",
+      "tests/test_migrations_step8a.py::test_a_passed_proposal_with_a_missing_part_is_refused",
+      "tests/test_migrations_step8a.py::test_the_databases_term_list_is_the_codes",
+      "tests/test_migrations_step8a.py::test_the_database_and_the_code_agree_on_every_case",
+      "tests/test_migrations_step8a.py::test_the_database_refuses_larger_numbers_and_ranges"
+    ]
+  },
+  {
+    "key": "curation_acceptance",
+    "name": "A Curator value takes effect only when a person accepts it",
+    "state": "in_force",
+    "statement": "A proposal that passed the checks takes effect only when a person accepts it (`hypocurate sources accept <proposal> --by <name>`; one decision per proposal, with the database's time; the command line takes the name as given and has no login). `seal-curation` seals the accepted values only, with quote, document, line, proposal, model and settings version, acceptor and time, as curation.json in a new sealed source version; rejected, refused, unanswered and not-stated proposals are left out (the field stays unassigned). Two accepted proposals for one field are not sealed. A curation file is checked against the version it is attached to before it is sealed (registration, seal-curation) and before it is applied: the base version's fingerprint must be that of the version's own files without the curation file; every quote must be found again in that version's documentation on the stated line with the stated term, and every value and term must pass the current checks; the acceptance fields must be present and valid. Anything else refuses the whole version. The validator does not prove that an approval is authentic: a well-formed file naming another acceptor passes it. The exact approved bytes are protected by the manifest fingerprint (the file the owner froze in data/, registered with its own base), and a newly sealed export rests on the accepted decisions recorded in the database where the curation happened. Adapters apply a curated value to every record of the version only where the record's field is not reported (never over a reported, converted or decided value), as 'assigned from source' with that citation. Runs use the newest sealed version; a run never calls the Curator. Values 'assigned by decision' stay owner decisions.",
+    "value": {
+      "text": "accepted by a person; sealed into the version; applied only to gaps",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Which values reach records from the Curator; record content and fingerprints of curated versions.",
+    "reason": "Owner's decision: no run depends on live model output for any record value; a proposal is only a proposal until a person accepts it.",
+    "evidence": [
+      "Owner, step 8a plan, Q2 (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.curation:seal_curation"
+        },
+        {
+          "ref": "python:hypocurate.sources.curated:apply_curation"
+        },
+        {
+          "ref": "python:hypocurate.sources.curated:check_curation"
+        },
+        {
+          "ref": "sql:uq_curator_decision_proposal_id"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "A proposal that passed the checks takes effect only when a person accepts it (`hypocurate sources accept <proposal> --by <name>`; one decision per proposal, with the database's time; the command line takes the name as given and has no login). `seal-curation` seals the accepted values only, with quote, document, line, proposal, model and settings version, acceptor and time, as curation.json in a new sealed source version; rejected, refused, unanswered and not-stated proposals are left out (the field stays unassigned). Two accepted proposals for one field are not sealed. Adapters apply a curated value to every record of the version only where the record's field is not reported (never over a reported, converted or decided value), as 'assigned from source' with that citation. Runs use the newest sealed version; a run never calls the Curator. Values 'assigned by decision' stay owner decisions.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8a as built; the curation file's check added after ChatGPT's review of step 8a (finding 1), 2026-10-07."
+      },
+      {
+        "value": "A proposal that passed the checks takes effect only when a person accepts it (`hypocurate sources accept <proposal> --by <name>`; one decision per proposal, with the database's time; the command line takes the name as given and has no login). `seal-curation` seals the accepted values only, with quote, document, line, proposal, model and settings version, acceptor and time, as curation.json in a new sealed source version; rejected, refused, unanswered and not-stated proposals are left out (the field stays unassigned). Two accepted proposals for one field are not sealed. A curation file is checked against the version it is attached to before it is sealed (registration, seal-curation) and before it is applied: the base version's fingerprint must be that of the version's own files without the curation file; every quote must be found again in that version's documentation on the stated line with the stated term, and every value and term must pass the current checks; the acceptance fields must be present and valid. Anything else refuses the whole version. These checks cannot show that a person really accepted the values: the exact approved export replayed on the same base (the file the owner froze in data/, pinned by its manifest fingerprint) is the only trusted import. Adapters apply a curated value to every record of the version only where the record's field is not reported (never over a reported, converted or decided value), as 'assigned from source' with that citation. Runs use the newest sealed version; a run never calls the Curator. Values 'assigned by decision' stay owner decisions.",
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "note": "Reworded the same day per ChatGPT's re-check (owner, 2026-10-07): the earlier sentence said the checks cannot show a real acceptance and called the frozen export the only trusted import; it now says plainly what protects approved bytes."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_curator.py::test_a_person_decides_once_and_only_on_a_proposal_that_passed",
+      "tests/test_curator.py::test_sealing_applies_accepted_values_only_where_the_table_gives_none",
+      "tests/test_curator.py::test_a_curated_version_is_reproducible_from_its_files_and_cannot_be_curated_again",
+      "tests/test_curator.py::test_two_accepted_proposals_for_one_field_are_not_sealed",
+      "tests/test_curator.py::test_a_curation_file_that_cannot_be_read_refuses_the_version",
+      "tests/test_curator.py::test_the_frozen_export_on_its_own_base_is_accepted",
+      "tests/test_curator.py::test_an_export_copied_onto_another_base_is_refused",
+      "tests/test_curator.py::test_an_export_that_does_not_check_out_is_refused",
+      "tests/test_curator.py::test_a_quote_that_fails_the_current_term_checks_is_refused_on_import"
+    ]
+  },
+  {
+    "key": "agent_models",
+    "name": "The model of each agent role",
+    "state": "in_force",
+    "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium.",
+    "value": {
+      "text": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every model call's model, cost bound and quality.",
+    "reason": "PRD 17, decision 2: a capable model for the Planner and the Analyst, a cheaper one for the Curator and the Critic.",
+    "evidence": [
+      "Owner, step 8a plan, Q7 (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "partly",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:MODELS",
+          "equals": {
+            "planner": "claude-opus-5-5",
+            "curator": "claude-sonnet-5-5",
+            "critic": "claude-haiku-4-5",
+            "analyst": "claude-opus-5-5"
+          }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:SETTINGS.curator.limits",
+          "equals": {
+            "max_tokens": 8000,
+            "max_output_chars": 20000
+          }
+        }
+      ],
+      "done": "The Curator's settings (step 8a).",
+      "pending": "The Planner's, the Critic's and the Analyst's settings (step 8b).",
+      "step": 8,
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_agent_core.py::test_the_price_table_names_the_owners_models",
+      "tests/test_curator.py::test_the_curators_complete_request_is_the_instruction_the_documentation_and_the_targets"
+    ]
+  },
+  {
+    "key": "model_prices",
+    "name": "The price table for model calls",
+    "state": "in_force",
+    "statement": "Cost is computed by code from the token usage the provider reports times a versioned price table (US dollars per million tokens: Opus 5.5 4 input / 20 output, Sonnet 5.5 2 / 10, Haiku 4.5 1 / 5; cache reads 0.20, 0.20, 0.10; cache writes 1.25 times input), stored with each call's table version. The provider reports tokens, not money. Before a request, the call's maximum cost is reserved: the request's UTF-8 JSON bytes as an upper bound of its tokens (a token is never shorter than a byte) plus 1000 tokens for the provider's framing, at the input price, and the request's output limit at the output price. Before the first live call the table is checked against Anthropic's published pricing; work stops if it differs.",
+    "value": {
+      "text": "anthropic-2026-09-25",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every model call's recorded cost and every cap check.",
+    "reason": "CLAUDE.md rule 12 and PRD 8: actual cost from the usage the provider reports, with the price table version stored.",
+    "evidence": [
+      "Prices from Anthropic's published pricing as cached on 2026-09-25 (step 8a planning); owner, step 8a plan (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.prices:PRICE_TABLE_VERSION",
+          "equals": "anthropic-2026-09-25"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.prices:FRAMING_ALLOWANCE_TOKENS",
+          "equals": 1000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.prices:PRICES"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "The cache prices for Haiku 4.5 (read 0.10) and every cache-write price are assumed from the usual ratios; the agents never request caching. They are checked with the rest of the table before the first live call.",
+      "Checked on 2026-10-06 against Anthropic's published pricing (https://platform.claude.com/docs/en/about-claude/pricing), before the first live call: every price in the table matches (Opus 5.5 4 / 5 / 0.20 / 20, Sonnet 5.5 2 / 2.50 / 0.20 / 10, Haiku 4.5 1 / 1.25 / 0.10 / 5 per million tokens for input / 5-minute cache write / cache hit / output), including the cache prices marked as assumed. The page notes that newer models' tokenizer gives about 30% more tokens; the reservation bound counts bytes, never fewer than tokens."
+    ],
+    "tests": [
+      "tests/test_agent_core.py::test_the_price_table_names_the_owners_models",
+      "tests/test_agent_core.py::test_a_request_is_reserved_sent_once_and_recorded_with_its_usage_and_cost"
+    ]
+  },
+  {
+    "key": "request_failure_policy",
+    "name": "What happens when an agent request fails",
+    "state": "in_force",
+    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off.",
+    "value": {
+      "text": "2 requests at most; retry / correct / stop by code",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every agent call's cost and outcome.",
+    "reason": "The step 8a failure table (owner, 2026-10-06): every failure mode has a defined, tested outcome.",
+    "evidence": [
+      "Owner, step 8a plan: the request-path failure table (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.interface:MAX_ATTEMPTS",
+          "equals": 2
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.lm:FAILURES"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a failed recording and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request: it goes to the process log only. DSPy's JSON fallback is off.",
+        "from": "2026-10-06",
+        "to": "2026-10-07",
+        "note": "Step 8a as built: a failed recording after a provider failure or a reply without usage escaped unclassified and was retried as malformed (ChatGPT's review of step 8a, finding 4); the process log held the exception's full text. Fixed 2026-10-07."
+      }
+    ],
+    "notes": [
+      "litellm cannot read a reply with no usage block and raises a connection error, so such a reply is treated as an unavailable provider (failed, counted at its maximum, tried once more); the code 'cost_unknown' is for a readable reply whose usage is empty."
+    ],
+    "tests": [
+      "tests/test_agent_core.py::test_an_unavailable_provider_is_tried_once_more_with_the_same_request",
+      "tests/test_agent_core.py::test_refused_credentials_or_requests_are_not_retried_and_no_provider_text_is_kept",
+      "tests/test_agent_core.py::test_an_unusable_answer_is_corrected_once_with_a_fixed_note_and_never_the_answer",
+      "tests/test_agent_core.py::test_a_refusal_is_not_retried",
+      "tests/test_agent_core.py::test_a_reply_without_usage_is_unreadable_failed_and_counted_at_its_maximum",
+      "tests/test_agent_core.py::test_a_readable_reply_with_empty_usage_is_cost_unknown",
+      "tests/test_agent_core.py::test_a_reply_whose_recording_fails_is_discarded_and_the_call_stays_open",
+      "tests/test_agent_core.py::test_no_database_transaction_is_open_while_a_request_is_in_flight",
+      "tests/test_agent_core.py::test_a_recording_failure_on_any_branch_stops_and_keeps_the_maximum",
+      "tests/test_agent_core.py::test_a_reservation_that_cannot_be_written_sends_nothing",
+      "tests/test_agent_core.py::test_provider_error_text_never_reaches_the_process_log",
+      "tests/test_agent_core.py::test_the_request_headers_carry_nothing_of_the_input"
+    ]
+  },
+  {
+    "key": "model_call_libraries",
+    "name": "How the model-call libraries are loaded",
+    "state": "in_force",
+    "statement": "DSPy and litellm are imported only through hypocurate.pipeline.agents.libraries, which first sets LITELLM_MODE=PRODUCTION (litellm otherwise reads a .env file at import: the file guard caught it reading the repository's .env) and LITELLM_LOCAL_MODEL_COST_MAP=True (no price map fetched over the network), then turns off litellm's retries and DSPy's caches. The guarded process drops import-path entries that do not exist before installing the file guard (owner, 2026-10-06), so importing the libraries logs no refusal while the tripwire still watches them.",
+    "value": {
+      "text": "LITELLM_MODE=PRODUCTION; no retries; no caches",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "What the agent libraries may read or fetch; the guarded process.",
+    "reason": "The file guard caught litellm reading .env; the owner chose to keep the libraries under the tripwire (no PRELOADED change).",
+    "evidence": [
+      "Step 8a milestone 1 (2026-10-06); owner's decision on the guarded runner."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.libraries:LIBRARY_ENVIRONMENT",
+          "equals": {
+            "LITELLM_MODE": "PRODUCTION",
+            "LITELLM_LOCAL_MODEL_COST_MAP": "True"
+          }
+        },
+        {
+          "ref": "python:hypocurate.access.guarded:existing_path_entries"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [],
+    "tests": [
+      "tests/test_agent_libraries.py::test_the_agent_libraries_import_under_the_guard_with_no_refusal",
+      "tests/test_agent_libraries.py::test_a_planted_env_file_read_by_a_library_is_still_refused_under_the_guard",
+      "tests/test_agent_libraries.py::test_the_libraries_never_read_a_dotenv_file_outside_the_guard",
+      "tests/test_agent_libraries.py::test_only_the_libraries_module_imports_dspy_or_litellm"
+    ]
+  },
+  {
+    "key": "temperature_bands",
+    "name": "Plans for other temperature bands",
+    "state": "in_force",
+    "statement": "One band per plan: room temperature, elevated or cryogenic. A plan for elevated or cryogenic names the claim's temperature range in its rules (temperature_range: min and max), above room temperature for elevated and below it for cryogenic; a room-temperature plan names none (the room-temperature rule is unchanged). Under such a plan, eligibility rule 3 lets the range decide a reported temperature (inside: in scope; outside: out of scope); a band alone, with no number, is 'scope not confirmed' when it is the plan's band and out of scope otherwise. Test-condition tags: 'elevated temperature' and 'cryogenic' (seeded by migration 0002).",
+    "value": {
+      "text": "room temperature, elevated, cryogenic; a range for the last two",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Which claims can be planned (criterion 14.3: BCC alloys at 1000 °C) and the scope of their records. The reference plan is unchanged.",
+    "reason": "Criterion 14.3's claim at 1000 °C had no valid plan under the room-temperature-only template.",
+    "evidence": [
+      "Owner, step 8a plan, Q4 (2026-10-06)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-06"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SUPPORTED_BANDS",
+          "equals": [
+            "room temperature",
+            "elevated",
+            "cryogenic"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.plan:RANGE_RULE",
+          "equals": "temperature_range"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:TEST_CONDITION_TAGS"
+        }
+      ],
+      "note": null
+    },
+    "history": [],
+    "notes": [
+      "Not reviewed by an expert: whether a band without a number should be 'scope not confirmed' is for Prof. El-Awady."
+    ],
+    "tests": [
+      "tests/test_temperature_range.py::test_the_reference_plan_is_unchanged",
+      "tests/test_temperature_range.py::test_a_plan_for_another_band_names_its_range",
+      "tests/test_temperature_range.py::test_invalid_temperature_plans_are_refused",
+      "tests/test_temperature_range.py::test_rule_3_under_an_elevated_plan",
+      "tests/test_temperature_range.py::test_rule_3_under_a_room_temperature_plan_is_unchanged"
+    ]
+  },
+  {
+    "key": "database_session_time_zone",
+    "name": "Database sessions run in UTC",
+    "state": "in_force",
+    "statement": "Every database connection sets its session time zone to 'UTC' by name when it connects. The driver then interprets timestamps without reading a time-zone file, which the file guard would refuse in a guarded process (with the server's 'Etc/UTC' it opened /usr/share/zoneinfo/Etc/UTC). The file guard is unchanged. Queries that depend on a zone state it ('AT TIME ZONE'), and the servers used so far run in UTC already, so no stored or computed value changes.",
+    "value": {
+      "text": "UTC",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "How timestamps are read; whether a guarded process logs a refused zone-file read.",
+    "reason": "Owner's decision after ChatGPT's review of step 8a: set the session time zone rather than widen the guard or accept a warning on every guarded run. psycopg special-cases the name 'UTC' and reads no zone file for it.",
+    "evidence": [
+      "ChatGPT's review of step 8a, operational point on the file guard (docs/reviews/step08a_review_chatgpt.md).",
+      "psycopg 3.3.6, psycopg/_tz.py: get_tzinfo maps b\"UTC\" to timezone.utc without ZoneInfo."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-07"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.engine:SESSION_TIME_ZONE",
+          "equals": "UTC"
+        }
+      ],
+      "note": null
+    },
+    "history": [
+      {
+        "value": "The server's own time zone ('Etc/UTC' in the local and test databases); in a guarded process the driver's zone-file read was refused and it fell back to UTC with a warning.",
+        "from": "2026-10-04",
+        "to": "2026-10-07",
+        "note": "Steps 1 to 8a as built."
+      }
+    ],
+    "notes": [],
+    "tests": [
+      "tests/test_access_files.py::test_a_guarded_timestamp_read_needs_no_zone_file"
     ]
   }
 ]

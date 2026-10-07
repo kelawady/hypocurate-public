@@ -96,4 +96,11 @@ TAG_STARTING_LISTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
 PROPERTY_TAGS = MappingProxyType({"yield_strength": "yield strength",
                                   "ultimate_tensile_strength": "ultimate tensile strength", "hardness": "hardness"})
 TEST_CONDITION_TAGS = MappingProxyType({("room temperature", "tension"): "room-temperature tension",
-                                        ("room temperature", "compression"): "room-temperature compression"})
+                                        ("room temperature", "compression"): "room-temperature compression",
+                                        # Step 8a (owner, 2026-10-06, Q4): values seeded by migration 0002.
+                                        ("elevated", "tension"): "elevated temperature",
+                                        ("elevated", "compression"): "elevated temperature",
+                                        ("cryogenic", "tension"): "cryogenic",
+                                        ("cryogenic", "compression"): "cryogenic"})
+# The bands a plan may name, one per plan (step 8a, owner 2026-10-06, Q4).
+SUPPORTED_BANDS = ("room temperature", "elevated", "cryogenic")

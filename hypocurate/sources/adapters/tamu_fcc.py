@@ -18,8 +18,10 @@ spreadsheet, the source of record (step 1).
   the owner agrees they are independent enough. This adapter refuses any other unit.
 - Values not in the file are set with one of two statuses (register entry
   'assigned_value_statuses'), each with its citation:
-  - `assigned_from_source`, where the source's own documentation states them (owner,
-    2026-10-05, step 4 question 3): test type `tension`, phase class `FCC`;
+  - `assigned_from_source`, where the source's own documentation states them: from step 8a
+    (version 3) these come only from the version's sealed curation, the Curator's proposals the
+    owner accepted (`sources.curated`; test type `tension`, phase class `FCC`, both quoted from
+    paper/main.tex); this adapter leaves them not reported;
   - `assigned_by_decision`, where the source does not state them and the owner decided
     (register entries 'tamu_test_temperature' and 'tamu_microstructure', 2026-10-05):
     temperature band `room temperature`, microstructure `FCC` (single-phase).
@@ -41,7 +43,9 @@ from hypocurate.sources.versions import SealedVersion
 
 # The adapter's version, stored with every record it extracts (record.extraction; step 6).
 # Raise it whenever what the adapter returns for the same file changes.
-ADAPTER_VERSION = "2"  # 2: the two assigned statuses; band and microstructure by decision (step 6)
+# 2: the two assigned statuses; band and microstructure by decision (step 6). 3 (step 8a): test type and
+# phase class no longer assigned here; a curated version supplies them (owner, 2026-10-06).
+ADAPTER_VERSION = "3"
 
 SHEET = "GS_MasterTable_Iterations "  # verbatim: the sheet name ends with a space
 HEADER = (
@@ -63,13 +67,6 @@ DATASET_REFERENCE = ("Mulukutla, M. et al. (2026). Revisiting Hall-Petch strengt
                      "doi:10.5281/zenodo.22798856")
 
 _REPO = "ArroyaveLab/2026-mulukutla-hall-petch@11390ee516c1a17cacdde318b40d5d6889d4007f"
-TEST_TYPE_CITATION = Citation(
-    f"{_REPO} paper/main.tex", "line 177 (Dataset and descriptors, Alloy Synthesis and characterization)",
-    "Quasistatic tensile testing was used to determine 0.2\\% offset YS, while Vickers indentation "
-    "tests provided the HV.")
-PHASE_CITATION = Citation(
-    f"{_REPO} paper/main.tex", "line 173 (Dataset and descriptors, Alloy Synthesis and characterization)",
-    "The dataset contains 94 FCC alloy conditions in the Al--Co--Cr--Cu--Fe--Mn--Ni--V system.")
 COMPOSITION_UNIT_CITATION = Citation(
     f"{_REPO} paper/main.tex", "line 399 (Results, Family 3)",
     "Al is not included in the 15\\% statement because it spans only 0--4~at.\\% and has a much wider "
@@ -90,6 +87,8 @@ MICROSTRUCTURE_DECISION = Citation(
 TEMPERATURE_NOT_REPORTED = ("no per-record temperature; the source states no test temperature for its "
                             "own measurements (the room-temperature band is assigned by decision)")
 NO_COLUMN = "the source has no column for this field"
+CURATED = ("the spreadsheet has no column for this field; the source's documentation states it, and a curated "
+           "version supplies it (step 8a)")
 
 
 def reported_text(value) -> str:
@@ -143,8 +142,8 @@ def _harmonize(cells: dict) -> tuple[dict[str, Value], str | None]:
     h["cold_work"] = _number(cells["Cold Work (%Reduction)"], "% reduction")
     h["recrystallization_temperature"] = _number(cells["Recrystallization Temp(℃)"], "°C")
     h["holding_time"] = _number(cells["Holding time (h)"], "h")
-    h["test_type"] = Value("tension", None, "assigned_from_source", citation=TEST_TYPE_CITATION)
-    h["phase_class"] = Value("FCC", None, "assigned_from_source", citation=PHASE_CITATION)
+    h["test_type"] = Value(None, None, "not_reported", CURATED)
+    h["phase_class"] = Value(None, None, "not_reported", CURATED)
     h["test_temperature"] = Value(None, "°C", "not_reported", TEMPERATURE_NOT_REPORTED)
     h["test_temperature_band"] = Value("room temperature", None, "assigned_by_decision",
                                        citation=TEMPERATURE_DECISION)
@@ -162,9 +161,10 @@ def read(version: SealedVersion) -> AdapterResult:
     if version.grouping_unit != "dataset":
         raise AdapterError(f"the Texas A&M adapter supports the grouping unit 'dataset' only "
                            f"(PRD 17, decision 9); version {version.id} has {version.grouping_unit!r}")
-    if len(version.files) != 1:
-        raise AdapterError(f"expected one spreadsheet, found {sorted(version.files)}")
-    (path, content), = version.files.items()
+    # Step 8a: a version may also hold documentation and a curation file; the adapter reads its data.
+    if len(version.data_files) != 1:
+        raise AdapterError(f"expected one spreadsheet, found {sorted(version.data_files)}")
+    (path, content), = version.data_files.items()
     try:
         workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=False)
     except (zipfile.BadZipFile, OSError, ValueError, KeyError) as error:

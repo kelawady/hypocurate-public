@@ -41,8 +41,9 @@ def checks_of(function_sql: str) -> list[str]:
     return re.findall(r"IF .*? END IF;", body(function_sql))
 
 
-def test_0004_is_the_head_and_follows_0003():
-    assert migrate.head_revision() == "0004" and M0004.down_revision == "0003"
+def test_0004_follows_0003():
+    """Step 8a: 0004 is no longer the head (0005 follows it; tests/test_migrations_step8a.py)."""
+    assert M0004.down_revision == "0003"
 
 
 @pytest.mark.parametrize("name", ["hc_analysis_result_insert", "hc_calibration_insert"])
@@ -124,4 +125,6 @@ def test_the_downgrade_refuses_while_step_7_results_use_0004(db):
     before = snapshot(db)
     with pytest.raises(IntegrityError, match="0004 cannot be downgraded while step 7 results use it"):
         migrate.downgrade(db, "0003")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0004"
+    # Step 8a: the database stays at the head (0005, which holds nothing here, is not undone either:
+    # the whole downgrade is one transaction).
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()

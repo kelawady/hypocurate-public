@@ -171,8 +171,6 @@ def sources_meta(conn: Connection, ctx: Context) -> list[dict]:
     settings from the sealed version the run recorded. The source registry's text never."""
     out = []
     for row in _chosen_sources(conn, ctx):
-        if ctx.role == "curator" and row.key != ctx.source_key:
-            continue
         d = SOURCES.get(row.key)
         values = {"key": row.key,
                   "name": d.name if d else vocab.UNRECOGNIZED,
@@ -237,25 +235,19 @@ def project(value: Any, schema: Any) -> Any:
     raise ValueError(f"unknown schema leaf {schema!r}")
 
 
-def plan_fields_to_extract(conn: Connection, ctx: Context) -> list[str]:
-    """Only names of the common fields, in order, without repeats."""
-    content = _rows(conn, "SELECT content FROM plan WHERE run_id = :r", r=ctx.run_id)[0].content
-    listed = project(content, PLAN_SCHEMA).get("fields_to_extract", []) if isinstance(content, Mapping) else []
-    return list(dict.fromkeys(listed))
-
-
-def source_content(conn: Connection, ctx: Context) -> dict:
-    """The sealed files of the Curator's one source, from the version its run recorded."""
-    if ctx.source_key is None:
+def source_documentation(conn: Connection, ctx: Context) -> dict:
+    """The documentation files of the one sealed version the Curator's invocation names, as text
+    (step 8a). Never a data file and never another version."""
+    if ctx.source_version_id is None:
         raise Refused("no_source")
-    vid = conn.execute(text(
-        "SELECT rs.source_version_id FROM run_source rs JOIN source s ON s.id = rs.source_id "
-        "WHERE rs.run_id = :r AND s.key = :k AND rs.source_version_id IS NOT NULL"),
-        dict(r=ctx.run_id, k=ctx.source_key)).scalar_one_or_none()
-    if vid is None:
-        raise Refused("source_not_recorded")
-    version = load_sealed_version(conn, vid)
-    return {"source": ctx.source_key, "files": dict(version.files)}
+    version = load_sealed_version(conn, ctx.source_version_id)
+    return {"source": version.source_key,
+            "documents": {path: content.decode("utf-8") for path, content in sorted(version.documentation.items())}}
+
+
+def curation_targets(conn: Connection, ctx: Context) -> dict:
+    """The fields the Curator may propose a value for, with their vocabularies (step 8a)."""
+    return {field: dict(spec) for field, spec in vocab.CURATION_TARGETS.items()}
 
 
 def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
@@ -543,8 +535,8 @@ def frozen_analysis_data(conn: Connection, ctx: Context) -> dict:
 
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "claim": claim, "domain": domain, "sources_meta": sources_meta, "tag_values": tag_values,
-    "record_counts": record_counts, "plan_fields_to_extract": plan_fields_to_extract,
-    "source_content": source_content, "record_metadata": record_metadata, "flags_kind": flags_kind,
+    "record_counts": record_counts, "source_documentation": source_documentation,
+    "curation_targets": curation_targets, "record_metadata": record_metadata, "flags_kind": flags_kind,
     "plan": plan, "records_full": records_full, "decisions": decisions, "flags_full": flags_full,
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,

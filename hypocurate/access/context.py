@@ -11,8 +11,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class AccessContext:
-    run_id: int
+    """A run context (run_id set), or, from step 8a, a registration context: no run, the Curator,
+    stage 'registration', the sealed source version its invocation names."""
+    run_id: int | None
     role: str
     stage: str
     source_key: str | None = None
     agent_setting_id: int | None = None
+    source_version_id: int | None = None
+    invocation_id: int | None = None

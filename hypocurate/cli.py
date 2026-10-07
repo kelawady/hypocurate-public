@@ -1,5 +1,6 @@
 """The command-line entry point (PRD Section 12). Step 2: `version` and `check-db`.
-Step 4: `sources register` and `sources test`."""
+Step 4: `sources register` and `sources test`. Step 8a: the curation workflow at registration
+(`sources curate | proposals | accept | reject | seal-curation | export-curation`)."""
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,21 @@ def main(argv: list[str] | None = None) -> int:
     test = sources_sub.add_parser("test", help="read a source and show sample records")
     test.add_argument("key")
     test.add_argument("-n", type=int, default=5, help="number of sample records (default 5)")
+    curate = sources_sub.add_parser("curate", help="ask the Curator for values the documentation states (costs money)")
+    curate.add_argument("key")
+    curate.add_argument("--ceiling", help="the most this curation may cost, in USD (refused above it)")
+    listing = sources_sub.add_parser("proposals", help="list the Curator's proposals and decisions")
+    listing.add_argument("key")
+    for name in ("accept", "reject"):
+        p = sources_sub.add_parser(name, help=f"{name} one proposal that passed the checks")
+        p.add_argument("proposal", type=int)
+        p.add_argument("--by", required=True, help="the name of the person deciding")
+        p.add_argument("--note")
+    seal = sources_sub.add_parser("seal-curation", help="seal the accepted values into a new source version")
+    seal.add_argument("key")
+    export = sources_sub.add_parser("export-curation", help="write the curated version's curation.json")
+    export.add_argument("key")
+    export.add_argument("--out", help="the file to write (default: print it)")
     args = parser.parse_args(argv)
 
     settings = load_settings(web=False)
@@ -41,6 +57,8 @@ def _sources(args, engine) -> int:
     from hypocurate.sources.record import AdapterError
     from hypocurate.sources.versions import SOURCES, RegistrationError, UnsealedVersion, register
 
+    if args.sources_command in ("curate", "proposals", "accept", "reject", "seal-curation", "export-curation"):
+        return _curation(args, engine)
     try:
         if args.sources_command == "register":
             for key in args.keys or list(SOURCES):
@@ -56,6 +74,44 @@ def _sources(args, engine) -> int:
     except (RegistrationError, UnsealedVersion, AdapterError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+
+
+def _curation(args, engine) -> int:
+    from hypocurate.access.guarded import GuardedRunError, run_guarded
+    from hypocurate.sources import curation
+    from hypocurate.sources.versions import UnsealedVersion
+
+    try:
+        if args.sources_command == "curate":
+            try:
+                out = run_guarded("hypocurate.sources.curation:curate_guarded",
+                                  {"key": args.key, "ceiling": args.ceiling}, timeout=900)
+            except GuardedRunError:
+                # The child's error text may hold anything; it stays out of the output.
+                print("error: the curation did not finish (see the process log)", file=sys.stderr)
+                return 1
+        elif args.sources_command == "proposals":
+            out = curation.proposals(engine, args.key)
+        elif args.sources_command in ("accept", "reject"):
+            out = curation.decide(engine, args.proposal, args.sources_command + "ed", args.by, args.note)
+        elif args.sources_command == "seal-curation":
+            r = curation.seal_curation(engine, args.key)
+            out = {"key": r.key, "version": r.version_id, "label": r.label, "fingerprint": r.fingerprint,
+                   "created": r.created}
+        else:
+            content = curation.curation_file(engine, args.key)
+            if args.out:
+                with open(args.out, "wb") as f:
+                    f.write(content)
+                out = {"written": args.out, "bytes": len(content)}
+            else:
+                sys.stdout.write(content.decode("utf-8"))
+                return 0
+    except (curation.CurationRefused, UnsealedVersion) as refused:
+        print(f"error: {refused}", file=sys.stderr)
+        return 1
+    print(json.dumps(out, indent=2, ensure_ascii=False, default=str))
+    return 0
 
 
 if __name__ == "__main__":

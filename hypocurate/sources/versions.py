@@ -32,7 +32,24 @@ from hypocurate.sources.manifest import REPO_ROOT, load_manifest
 DATA_DIR = REPO_ROOT / "data"
 MAX_FILE_BYTES = 5 * 1024 * 1024  # the source_file CHECK (owner decision, 2026-10-04)
 # The source_file path CHECK, in Python, so an unsafe path is refused before the database sees it.
+# A data file (0001's rule). Step 8a (migration 0005): the rule by role; a path tells its role.
 SAFE_STORED_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*[.](csv|xlsx)")
+DOCUMENTATION_PATH = re.compile(r"documentation/[A-Za-z0-9][A-Za-z0-9._-]*[.](tex|xml|md|txt)")
+CURATION_PATH = "curation.json"
+DOCUMENTATION_DIR = "documentation"
+
+
+def file_role(path: str) -> str:
+    """'data', 'documentation' or 'curation', from the path alone (the database's rule by role);
+    RegistrationError for a path no role allows."""
+    if isinstance(path, str):
+        if path == CURATION_PATH:
+            return "curation"
+        if DOCUMENTATION_PATH.fullmatch(path):
+            return "documentation"
+        if SAFE_STORED_PATH.fullmatch(path) and not path.startswith(DOCUMENTATION_DIR + "/"):
+            return "data"
+    raise RegistrationError(f"unsafe stored path {path!r}")
 
 
 class RegistrationError(Exception):
@@ -53,8 +70,7 @@ def files_digest(files: Mapping[str, bytes]) -> str:
     """SHA-256 of one line "<sha256>  <path>\\n" per file, sorted by path bytewise
     (the database sorts with COLLATE "C"). The same as `hc_files_digest`."""
     for path in files:
-        if not SAFE_STORED_PATH.fullmatch(path):
-            raise RegistrationError(f"unsafe stored path {path!r}")
+        file_role(path)
     listing = "".join(f"{sha256_hex(files[p])}  {p}\n" for p in sorted(files, key=lambda p: p.encode()))
     return sha256_hex(listing.encode("utf-8"))
 
@@ -101,6 +117,11 @@ class SourceDefinition:
     # Constructed test data (step 6): its records enter only a run marked as a test
     # (run.experiment_flags constructed_test_data; register 'constructed_test_runs').
     constructed: bool = False
+    # Step 8a (owner, 2026-10-06, Q1): the source's frozen documentation, stored with its data in the
+    # sealed version (paths inside `directory`, under documentation/), and, once the owner has
+    # accepted the Curator's proposals and the file is frozen, its curation file (curation.json).
+    documentation_files: tuple[str, ...] = ()
+    curation_file: str | None = None
 
 
 SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
@@ -110,6 +131,7 @@ SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
         address="https://github.com/CitrineInformatics/MPEA_dataset",
         properties_covered=("yield_strength", "ultimate_tensile_strength", "hardness", "grain_size"),
         enabled=True, directory="sources/mpea", data_files=("MPEA_dataset.csv",),
+        documentation_files=("documentation/Borg2020_PMC7722748.xml",),
         version_label="commit d31e2510cccc3fb9e79d43ad62652f64ef8c2c5e",
         manifest_section=("sources", "mpea")),
     "tamu_fcc": SourceDefinition(
@@ -122,6 +144,9 @@ SOURCES: Mapping[str, SourceDefinition] = MappingProxyType({
         enabled=True, directory="sources/tamu_fcc",
         # The spreadsheet is the source of record (step 1); only files the adapter reads are stored.
         data_files=("Grain_Size_Summary_v3.xlsx",),
+        documentation_files=("documentation/main.tex", "documentation/supplementary.tex"),
+        # Step 8a: the owner's accepted Curator values (test type, phase class), frozen.
+        curation_file="curation.json",
         version_label="v1.1.0, commit 11390ee516c1a17cacdde318b40d5d6889d4007f",
         manifest_section=("sources", "tamu_fcc")),
     "controlled_duplicates": SourceDefinition(
@@ -142,13 +167,14 @@ def _manifest_files(definition: SourceDefinition, manifest: dict) -> tuple[dict,
     for part in definition.manifest_section:
         section = section[part]
     obtained = section.get("retrieved") or section.get("built")
-    return {f["path"]: f for f in section["files"]}, obtained
+    return {f["path"]: f for f in section["files"] + section.get("documentation", []) + section.get("curation", [])}, obtained
 
 
 def read_definition_files(definition: SourceDefinition, data_dir: Path = DATA_DIR,
                           manifest: dict | None = None) -> tuple[dict[str, bytes], date]:
-    """Reads a source's data files from disk, checks each against its manifest entry
-    (SHA-256 and size) and returns {stored path: bytes} and the date obtained."""
+    """Reads a source's files from disk (its data files, and from step 8a its documentation and any
+    curation file), checks each against its manifest entry (SHA-256 and size) and returns
+    {stored path: bytes} and the date obtained."""
     from hypocurate.access import file_guard  # here, not at the top: the access layer imports this module
     if file_guard.installed():
         raise RegistrationError("source registration reads data/ and cannot run in a guarded pipeline "
@@ -157,9 +183,13 @@ def read_definition_files(definition: SourceDefinition, data_dir: Path = DATA_DI
     listed, obtained = _manifest_files(definition, manifest)
     source_dir = safe_path_within(data_dir, definition.directory)
     files: dict[str, bytes] = {}
-    for name in definition.data_files:
-        if not SAFE_STORED_PATH.fullmatch(name):
-            raise RegistrationError(f"unsafe stored path {name!r}")
+    names = definition.data_files + definition.documentation_files + (
+        (definition.curation_file,) if definition.curation_file else ())
+    for name in names:
+        expected = ("data" if name in definition.data_files else
+                    "documentation" if name in definition.documentation_files else "curation")
+        if file_role(name) != expected:  # raises RegistrationError for a path no role allows
+            raise RegistrationError(f"{name!r} is not a {expected} file path")
         path = safe_path_within(source_dir, name)
         manifest_path = f"data/{definition.directory}/{name}"
         entry = listed.get(manifest_path)
@@ -190,7 +220,17 @@ class Registered:
 INTERPRETATION = ("source_type", "data_kind", "grouping_unit")
 
 
-def _register_in(conn: Connection, d: SourceDefinition, files: dict[str, bytes], obtained: date) -> Registered:
+def _register_in(conn: Connection, d: SourceDefinition, files: dict[str, bytes], obtained: date,
+                 label: str | None = None) -> Registered:
+    """Registers and seals a version of `d` holding `files` (or finds the identical sealed one).
+    `label`: the version's label (default: the definition's); a curated version names its own."""
+    label = label or d.version_label
+    if CURATION_PATH in files:  # checked against the files it is sealed with (step 8a review, finding 1)
+        from hypocurate.sources.curated import CurationInvalid, check_curation
+        try:
+            check_curation(files, d.key, d.source_type, d.data_kind, d.grouping_unit)
+        except CurationInvalid as error:
+            raise RegistrationError(f"{CURATION_PATH}: not a curation of this version ({error})") from None
     digest = files_digest(files)
     identity = version_identity(digest, d.source_type, d.data_kind, d.grouping_unit)
     conn.execute(text(
@@ -218,17 +258,17 @@ def _register_in(conn: Connection, d: SourceDefinition, files: dict[str, bytes],
         return Registered(d.key, source_id, existing[0], existing[1], existing[2], identity, created=False)
     version_id = conn.execute(text(
         "INSERT INTO source_version (source_id, label, obtained_on) VALUES (:s, :l, :o) RETURNING id"),
-        dict(s=source_id, l=d.version_label, o=obtained)).scalar_one()
+        dict(s=source_id, l=label, o=obtained)).scalar_one()
     for path in sorted(files):
         conn.execute(text(
-            "INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, :p, :h, :c)"),
-            dict(v=version_id, p=path, h=sha256_hex(files[path]), c=files[path]))
+            "INSERT INTO source_file (source_version_id, path, sha256, content, role) VALUES (:v, :p, :h, :c, :r)"),
+            dict(v=version_id, p=path, h=sha256_hex(files[path]), c=files[path], r=file_role(path)))
     sealed = conn.execute(text(
         "UPDATE source_version SET sealed_at = now(), fingerprint = :fp WHERE id = :v "
         "RETURNING files_digest, fingerprint"), dict(v=version_id, fp=identity)).one()
     if sealed[0] != digest or sealed[1] != identity:
         raise RegistrationError("the database's files digest differs from the one computed here")
-    return Registered(d.key, source_id, version_id, d.version_label, digest, identity, created=True)
+    return Registered(d.key, source_id, version_id, label, digest, identity, created=True)
 
 
 def register(engine: Engine, key: str, data_dir: Path = DATA_DIR, manifest: dict | None = None) -> Registered:
@@ -259,6 +299,16 @@ class SealedVersion:
 
     def __post_init__(self):
         object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
+
+    @property
+    def data_files(self) -> Mapping[str, bytes]:
+        """The files an adapter reads (step 8a: a version may also hold documentation and curation)."""
+        return MappingProxyType({p: c for p, c in self.files.items() if file_role(p) == "data"})
+
+    @property
+    def documentation(self) -> Mapping[str, bytes]:
+        """The source's own documentation, which the Curator reads (step 8a)."""
+        return MappingProxyType({p: c for p, c in self.files.items() if file_role(p) == "documentation"})
 
     def verify(self) -> None:
         """Raises UnsealedVersion unless the version is sealed and its bytes give exactly
