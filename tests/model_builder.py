@@ -190,6 +190,15 @@ class World:
                 conn.execute(text("INSERT INTO run_tag VALUES (:r, :t)"), dict(r=rid, t=tag))
         return pid
 
+    def confirm_rules(self, rid, fp=FP, planner=None, narrowed=None, by="Ada Reviewer"):
+        """Step 9a (0007; owner, Q1, Q4): a run whose plan comes from the Planner or a narrower question waits, a named
+        person confirms exactly the plan to be locked (its fingerprint), and the run goes on to the lock."""
+        self.run_sql("UPDATE run SET status = 'waiting' WHERE id = :r", r=rid)
+        self.run_sql("INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, planner_stage_result_id, "
+                     "narrowing_stage_result_id, content, shown) VALUES (:r, :b, :fp, :p, :n, '{}', 'shown')",
+                     r=rid, b=by, fp=fp, p=planner, n=narrowed)
+        self.run_sql("UPDATE run SET status = 'running' WHERE id = :r", r=rid)
+
     def search(self, rid, source="mpea", status="searched", nothing_found=None, reason=None):
         self.run_sql("UPDATE run_source SET search_status = :st, nothing_found = :nf, failure_reason = :fr, "
                      "decided_at = now() WHERE run_id = :r AND source_id = :s",

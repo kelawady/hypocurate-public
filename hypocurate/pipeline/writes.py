@@ -67,6 +67,8 @@ CODES = {
     "decision_not_current": "the stored decision belongs to a different freeze than the run's",
     # Step 8b.
     "narrowed": "code's narrowing decision is partly sufficient: the original question locks no plan",
+    # Step 9a (owner, Q1): a run that waited locks only the plan whose fingerprint the person confirmed.
+    "not_confirmed": "no person's confirmation of exactly this plan (its fingerprint) before the rules lock",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
 # Step 7 (owner, 2026-10-05; register 'constructed_test_runs'): TEST_RUN_LABEL, on every stored

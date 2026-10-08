@@ -4,8 +4,8 @@ Code writes, from a scope and its exclusion rules, the question a run actually t
 size, each scope part in words (a band other than room temperature with its range), and each exclusion rule. For a
 run with the Planner, these are the Planner's reading of the claim: each part is marked as the claim states it or
 as assumed (the Planner's own marks, checked only in that a part marked assumed must hold the profile's default),
-and the label says the reading is not verified by code and that a person confirms it at the rules lock on the
-website (step 10). For a fixed-plan run, or a narrower question's run, the reading comes from that plan.
+and the label says the reading is not verified by code and, until a named person confirms it at the rules lock
+(step 9a), that no person has; once confirmed, it says by whom and when (owner, 2026-10-08). For a fixed-plan run, or a narrower question's run, the reading comes from that plan.
 
 The text is stored with the Planner's stage output (the Planner's reading) and, for a fixed or narrower plan,
 follows from the locked plan; the command line prints it beside the original claim before the run goes on to the
@@ -29,6 +29,8 @@ LABELS = {
     "narrower": "the narrower plan stored by the original question's narrowing decision",
 }
 PART_LABELS = {"phase_class": "phase class", "test_type": "test type"}
+# Owner, 2026-10-08 (step 9a, question 2): the label once a person has confirmed the reading at the rules lock.
+CONFIRMED_LABEL = "the Planner's reading of the claim; not verified by code; confirmed by {by} on {at}"
 STATED = "as the claim states"
 ASSUMED = "assumed: the claim does not state it"
 
@@ -100,14 +102,29 @@ def from_plan(plan: Mapping[str, Any], source: str) -> dict[str, str]:
 
 def stored(conn: Connection, run_id: int) -> dict | None:
     """The question as tested of a run: the Planner's stored reading, else the reading of its locked plan (fixed
-    or narrower), else the Planner's reading of a partly-sufficient original (no plan), else none."""
+    or narrower), else the Planner's reading of a partly-sufficient original (no plan), else none. Once a named
+    person confirmed it (step 9a), its label says by whom and when."""
     out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner' AND status = "
                             "'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
     if isinstance(out, dict) and out.get("question_as_tested"):
-        return out["question_as_tested"]
+        return _confirmed(conn, run_id, out["question_as_tested"])
     row = conn.execute(text("SELECT p.content, h.narrower_of_run_id FROM plan p JOIN run r ON r.id = p.run_id JOIN "
                             "hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = "
                             "hv.hypothesis_id WHERE p.run_id = :r"), dict(r=run_id)).one_or_none()
     if row is None:
         return None
-    return from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed")
+    return _confirmed(conn, run_id, from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed"))
+
+
+def _confirmed(conn: Connection, run_id: int, tested: dict) -> dict:
+    """The reading with its label once a person confirmed it (owner, 2026-10-08, question 2); else as it is."""
+    row = conn.execute(text("SELECT confirmed_by, to_char(confirmed_at AT TIME ZONE 'UTC', "
+                            "'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS at FROM rules_confirmation WHERE run_id = :r"),
+                       dict(r=run_id)).one_or_none()
+    if row is None:
+        return tested
+    if tested["label"] == LABELS["planner"]:
+        label = CONFIRMED_LABEL.format(by=row.confirmed_by, at=row.at)
+    else:
+        label = f"{tested['label']}; confirmed by {row.confirmed_by} on {row.at}"
+    return {**tested, "label": label}

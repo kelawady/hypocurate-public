@@ -225,6 +225,7 @@ def test_a_rules_lock_committed_while_a_read_waits_closes_the_planner(engine, ru
     if run_kind == "narrower_question":
         world = aw.build(engine, "before_lock")
         run_id, content = world.run, aw.planted_plan()
+        world.w.confirm_rules(run_id)  # step 9a (0007; owner, Q4): confirmed by a person before the race
         planner = bind(engine, run_id, world.settings["planner"])  # bound before the lock, as a running call is
         read = lambda: role_input(planner)  # noqa: E731
     else:

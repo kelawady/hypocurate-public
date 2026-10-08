@@ -3423,7 +3423,7 @@
     "key": "spending_caps",
     "name": "Spending caps",
     "state": "in_force",
-    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling the caller names, is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. The monthly cap counts the calls recorded in this database only.",
+    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default, and an insert trigger that replaces an explicit NULL, so even direct SQL cannot store a new run without one; runs before 0007 keep none). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
     "value": {
       "text": "$2 per run; $2 per curation; $50 per month",
       "unit": "USD"
@@ -3436,7 +3436,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3458,6 +3458,18 @@
         {
           "ref": "python:hypocurate.pipeline.agents.spend:MONTH_CAP_USD",
           "equals": 50
+        },
+        {
+          "ref": "sql:ck_run_spending_ceiling"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:spend_cap"
+        },
+        {
+          "ref": "sql:CEILING_DEFAULT"
+        },
+        {
+          "ref": "sql:hc_run_ceiling"
         }
       ],
       "note": null
@@ -3474,6 +3486,12 @@
         "from": "2026-10-06",
         "to": "2026-10-07",
         "note": "Step 8a as built: a registration call read its curation total before taking the month-wide lock, so two concurrent reservations could both pass the curation cap or a lower ceiling (ChatGPT's review of step 8a, finding 3). Fixed 2026-10-07."
+      },
+      {
+        "value": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling the caller names, is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. The monthly cap counts the calls recorded in this database only.",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Step 9a (owner, 2026-10-08, R5): the ceiling stored on the run; the monthly cap also blocks dispatch."
       }
     ],
     "notes": [],
@@ -3485,7 +3503,13 @@
       "tests/test_agent_core.py::test_a_reservation_waits_for_the_month_wide_lock",
       "tests/test_agent_core.py::test_two_reservations_on_one_invocation_cannot_both_pass_the_curation_cap",
       "tests/test_agent_core.py::test_two_reservations_on_one_invocation_cannot_both_pass_a_lower_ceiling",
-      "tests/test_agent_core.py::test_two_reservations_on_one_run_cannot_both_pass_the_run_cap"
+      "tests/test_agent_core.py::test_two_reservations_on_one_run_cannot_both_pass_the_run_cap",
+      "tests/test_queries_step9a.py::test_the_stored_ceiling_holds_when_the_caller_names_none",
+      "tests/test_queries_step9a.py::test_the_lower_of_the_stored_and_the_given_ceiling_holds",
+      "tests/test_queries_step9a.py::test_a_dispatch_without_a_ceiling_stores_the_run_cap",
+      "tests/test_migrations_step9a.py::test_a_run_dispatched_without_a_ceiling_stores_the_run_cap",
+      "tests/test_cli_step9a.py::test_confirm_takes_no_ceiling",
+      "tests/test_migrations_step9a.py::test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap"
     ]
   },
   {
@@ -4933,7 +4957,7 @@
     "key": "constructed_test_runs",
     "name": "Runs with constructed test data",
     "state": "in_force",
-    "statement": "Constructed test data (the controlled duplicate extract) enter only a run marked as a test (run.experiment_flags constructed_test_data, set at dispatch). An unmarked run refuses them, and logs the refusal, at record storage, inclusion and the freeze. A marked run may freeze, be analysed and complete normally with a verdict; every place its outcome, verdict or numbers are stored or shown carries 'test run: includes constructed data', and marked runs are excluded from every aggregate, count or list of real results.",
+    "statement": "Constructed test data (the controlled duplicate extract) enter only a run marked as a test (run.experiment_flags constructed_test_data, set at dispatch). Dispatch refuses a query naming a constructed source unless the run is marked (step 9a, owner Q6); an unmarked run that reaches them anyway refuses them, and logs the refusal, at record storage, inclusion and the freeze. A marked run may freeze, be analysed and complete normally with a verdict; every place its outcome, verdict or numbers are stored or shown carries 'test run: includes constructed data', and marked runs are excluded from every aggregate, count or list of real results.",
     "value": {
       "text": "marked at dispatch; refused otherwise",
       "unit": null
@@ -4946,7 +4970,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-05"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4974,7 +4998,14 @@
       "step": 10,
       "note": "The guard is in code; the database itself does not refuse a constructed record."
     },
-    "history": [],
+    "history": [
+      {
+        "value": "Constructed test data (the controlled duplicate extract) enter only a run marked as a test (run.experiment_flags constructed_test_data, set at dispatch). An unmarked run refuses them, and logs the refusal, at record storage, inclusion and the freeze. A marked run may freeze, be analysed and complete normally with a verdict; every place its outcome, verdict or numbers are stored or shown carries 'test run: includes constructed data', and marked runs are excluded from every aggregate, count or list of real results.",
+        "from": "2026-10-05",
+        "to": "2026-10-08",
+        "note": "Step 9a (owner, 2026-10-08, Q6): refused at dispatch; the storage guard stays as the backstop."
+      }
+    ],
     "notes": [
       "Backlog (owner, 2026-10-06; PRD 18 at the next PRD update): a database rule refusing a constructed source's records in a run not marked as a test. The guard stays in code in sprint 1.",
       "Step 6 review (2026-10-06), for a later step: a source whose definition is unknown to the code should fail closed (be treated as constructed, or refused), not pass the guard."
@@ -4983,7 +5014,8 @@
       "tests/test_analysis_stage.py::test_a_marked_run_carries_the_label_on_every_stored_result_and_stays_out_of_aggregates",
       "tests/test_analysis_stage.py::test_a_marked_run_with_no_dataset_frozen_is_labelled_too",
       "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records",
-      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test"
+      "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
+      "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test"
     ]
   },
   {
@@ -7325,7 +7357,7 @@
     "key": "question_as_tested",
     "name": "The question as tested, beside the claim",
     "state": "in_force",
-    "statement": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a person' (owner, F-Q2: the label says what is true now; the confirmation by a person comes in step 10). Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run ('the fixed reference plan; not read from the claim') or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
+    "statement": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a person' until a named person confirms it at the rules lock (step 9a), then 'the Planner's reading of the claim; not verified by code; confirmed by <name> on <UTC time>' (owner, 2026-10-08); another reading's label gains '; confirmed by <name> on <UTC time>'. Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run ('the fixed reference plan; not read from the claim') or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Since step 9a a run with the Planner, and a narrower question's run, wait at the lock for that confirmation (register 'rules_confirmation').",
     "value": {
       "text": "code-written; labelled the Planner's reading; confirmed by a person in step 10",
       "unit": null
@@ -7338,7 +7370,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7360,10 +7392,14 @@
         },
         {
           "ref": "python:hypocurate.pipeline.orchestrator:prepare"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reading:CONFIRMED_LABEL",
+          "equals": "the Planner's reading of the claim; not verified by code; confirmed by {by} on {at}"
         }
       ],
-      "done": "Step 8b fix round 1: the text and label written by code, stored with the Planner's stage output, the defaulted-mark check, printed by `run`/`dispatch` before the rules lock and by `show`.",
-      "pending": "A person confirms the reading at the rules lock on the website (step 10).",
+      "done": "Step 8b fix round 1: the text and label written by code, stored with the Planner's stage output, the defaulted-mark check, printed by `run`/`dispatch` before the rules lock and by `show`. Step 9a: confirmed by a named person at the rules lock from the command line (`confirm`); the label once confirmed.",
+      "pending": "The Confirm button on the website (step 10).",
       "step": 10,
       "note": null
     },
@@ -7373,6 +7409,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, F-Q2: labels say what is true in this version; no step 10 or website in the label."
+      },
+      {
+        "value": "Code writes the question a run tests from its scope and exclusion rules: the outcome against grain size, the alloy class, phase class, test type and temperature band with its range, and each exclusion rule. For a run with the Planner it is the Planner's reading of the claim, each part marked as the claim states it or as assumed, and is labelled 'the Planner's reading of the claim; not verified by code and, in this version, not confirmed by a person' (owner, F-Q2: the label says what is true now; the confirmation by a person comes in step 10). Code checks only that a part marked as assumed holds the profile's default; it does not check that the reading matches the claim's words. It is stored with the Planner's stage output; for a fixed-plan run ('the fixed reference plan; not read from the claim') or a narrower question's run it is the reading of that plan, labelled as such. The command line prints it beside the original claim after the Planner and the narrowing decision and before the rules lock (`run` and `dispatch` make two guarded calls, the second rebuilding the plan from what is stored), and `show` prints it. Until step 10 no person confirms it: the run goes on to the lock without a confirmation.",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Step 9a (owner, 2026-10-08): the confirmation at the rules lock, from the command line; the label once confirmed."
       }
     ],
     "notes": [],
@@ -7381,9 +7423,10 @@
       "tests/test_reading.py::test_each_exclusion_rule_in_words",
       "tests/test_planner_narrowing.py::test_the_planners_stage_stores_the_question_as_tested_labelled_as_its_reading",
       "tests/test_planner_narrowing.py::test_a_part_marked_defaulted_must_hold_the_default",
-      "tests/test_orchestrator.py::test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested",
+      "tests/test_orchestrator.py::test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested_and_waits",
       "tests/test_cli_runs.py::test_run_prints_the_claim_and_the_planners_reading_before_the_report_and_show_keeps_it",
-      "tests/test_cli_runs.py::test_a_fixed_plan_runs_reading_is_the_reference_plans"
+      "tests/test_cli_runs.py::test_a_fixed_plan_runs_reading_is_the_reference_plans",
+      "tests/test_confirmation.py::test_once_confirmed_the_question_as_tested_says_by_whom_and_when"
     ]
   },
   {
@@ -7853,7 +7896,7 @@
     "key": "run_order_and_failures",
     "name": "The run order and what a failure does to a run",
     "state": "in_force",
-    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9's recovery. No model call runs inside a database transaction.",
+    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or, after a named person's confirmation of the question as tested (the run waits for it; step 9a), the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan), which also waits for the confirmation. A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9b's recovery. Taken up again, the run reads each agent's latest stored stage whatever its status, so such a stop, a stage left running or a stored spending refusal has the same effect as when it happened (register 'resumable_run'). No model call runs inside a database transaction.",
     "value": {
       "text": "the step 8b run order and failure table",
       "unit": null
@@ -7867,7 +7910,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7914,6 +7957,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Step 8b fix round 1 (ChatGPT review, findings 1 and 3): a narrower question is recognised by its link; recording and reservation failures stop the run with no further request."
+      },
+      {
+        "value": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan). A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9's recovery. No model call runs inside a database transaction.",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Step 9a (owner, 2026-10-08, Q1 and Q5): the wait for a person's confirmation before the lock."
       }
     ]
   },
@@ -8073,5 +8122,274 @@
         "note": "Step 8b fix round 1 (owner's wording fixes): the p-value phrase without brackets; display() deleted."
       }
     ]
+  },
+  {
+    "key": "rules_confirmation",
+    "name": "The run waits at the rules lock for a named person",
+    "state": "in_force",
+    "statement": "A run whose plan comes from a model's answer waits before its rules lock, with status 'waiting', until a named person confirms the question as tested: a run with a Planner stage (after code's narrowing decision to proceed), and a narrower question's run (its outcome and exclusion rules come from its original's Planner answer). A fixed-plan run of an ordinary question (criterion 14.1a) never waits. Before anything is recorded the person is shown, from stored rows only: the original question, the question as tested, what was narrowed and why, each scope part marked stated or assumed, the outcome, the exclusion rules, the sufficiency option, the fingerprint of the plan to be locked, the source versions and the cost so far; the confirmation stores that content and the exact text shown. A confirmation is for one run and one named person (no bulk or automatic confirmation in step 9). It is refused when a source the run uses has a newer sealed version than the run's, or a source was registered after the run's dispatch (the run's own versions never change); nothing is redone. The database enforces this too: the confirmation takes one advisory lock that registering a source and sealing a version also take, then checks the registered sources, so a registration and a confirmation cannot slip past each other (fix round 1, finding 2). A run already confirmed is never made to wait again. The database refuses a plan from a model's answer unless its fingerprint is the confirmed one, and refuses every write to a waiting run; the dataset freeze stays automatic. Scoping: the database recognises a run that must wait by a Planner stage (any attempt) or a narrower link, so a run with no Planner stage and no narrower link (the test worlds of steps 6-8 that lock a plan directly) is not held to it; the orchestrator builds a Planner plan only from a stored Planner stage.",
+    "value": {
+      "text": "waits at the rules lock; one named person per run",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run whose plan comes from the Planner or a narrower question (PRD 3, 5.6, 9.4).",
+    "reason": "The second-model review of step 8b found claim interpretation unchecked; the owner chose a person's confirmation at the rules lock (Q1), for every plan built from a model's answer (Q5), bound to the plan locked and to the source versions the narrowing counted (A1), showing everything the plan rests on (A2).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (questions Q1-Q7, R1-R8, additions A1-A4; the go for 9a with the reasons' wording)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:WAITING_FOR",
+          "equals": "confirmation of the question as tested by a named person"
+        },
+        {
+          "ref": "python:hypocurate.db.models:CONFIRMED_BY_MAX",
+          "equals": 200
+        },
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:SOURCES_CHANGED"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:plan_to_lock"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:render"
+        },
+        {
+          "ref": "sql:hc_plan_rules_confirmed"
+        },
+        {
+          "ref": "sql:hc_rules_confirmation_insert"
+        },
+        {
+          "ref": "sql:hc_run_waiting"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:SOURCES_LOCK_KEY",
+          "equals": 29382745069413747
+        },
+        {
+          "ref": "sql:hc_sources_lock"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_confirmation.py::test_a_planner_run_waits_before_its_rules_lock_and_nothing_more_is_done",
+      "tests/test_confirmation.py::test_confirm_shows_every_item_and_stores_exactly_the_text_shown",
+      "tests/test_confirmation.py::test_a_newer_version_registered_while_the_run_waits_refuses_the_confirmation",
+      "tests/test_confirmation.py::test_no_code_confirms_in_bulk_or_by_itself",
+      "tests/test_migrations_step9a.py::test_a_planner_runs_plan_must_be_the_confirmed_plan",
+      "tests/test_migrations_step9a.py::test_a_confirmation_is_refused_when_the_counted_source_versions_are_not_the_runs",
+      "tests/test_migrations_step9a.py::test_a_plan_that_comes_from_no_model_answer_is_locked_without_a_confirmation",
+      "tests/test_migrations_step9a.py::test_a_confirmation_is_refused_after_a_source_change_since_the_narrowing",
+      "tests/test_migrations_step9a.py::test_a_seal_in_progress_holds_back_a_confirmation_which_then_refuses",
+      "tests/test_migrations_step9a.py::test_a_confirmation_in_progress_holds_back_a_seal"
+    ],
+    "history": [],
+    "notes": [
+      "Step 11 decides how the evaluation runs are confirmed (owner, 2026-10-08). The website's Confirm button is step 10."
+    ]
+  },
+  {
+    "key": "resumable_run",
+    "name": "A run is taken up again from what is stored",
+    "state": "in_force",
+    "statement": "The orchestrator decides every step from stored rows, never from memory, and reads each agent's latest stored stage whatever its status before deciding what comes next. An earlier stop stays a stop: a Planner, Critic or Analyst stage that ended with a recording or reservation failure, or is still running, stops the run again (no further request, nothing more written; the run stays running for step 9b's recovery); a stored spending refusal at the Planner or the Critic fails the run, and a Planner stage that failed for any other reason fails it as the Planner's failure, so the Planner is never asked again in 9a; an Analyst stage that failed for any other reason, a spending refusal included, leaves code's decision standing (A3, B2). A done Planner stage is used, not repeated; a run already confirmed, or past its lock, goes on to the lock or past it without waiting again; a stored narrowing decision is used; after the lock, records are stored only for sources still pending, and Checks, Inclusion, the freeze, the statistics and the completion run only if their stored result is absent; an agent stage that exists (the Critic's, the Analyst's) is never started again; a completed partly-sufficient original without its narrower question gets it, and never a second one (a database index allows one per run; a draft left by a stop is submitted). A run on its first pass takes exactly the steps it took before. Recovery after a crash (closing open stages and calls, the Planner's one repeat after an interruption) is step 9b; until then a stage left running stops the run.",
+    "value": {
+      "text": "next step from stored rows",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run that stops between steps (PRD 8 'Restart', 14.4).",
+    "reason": "Step 9: a run must be taken up where it stopped without repeating a paid or a stored step (owner, Q3).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (questions Q1-Q7, R1-R8, additions A1-A4; the go for 9a with the reasons' wording)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.orchestrator:proceed"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:create_narrower"
+        },
+        {
+          "ref": "sql:uq_hypothesis_narrower_of_run_id"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.orchestrator:LEFT_RUNNING",
+          "equals": "stage_left_running"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_resume_step9a.py::test_a_run_stopped_after_a_step_is_taken_up_from_the_next_and_gives_the_same_results",
+      "tests/test_resume_step9a.py::test_a_done_planner_stage_is_used_and_the_planner_is_not_asked_again",
+      "tests/test_resume_step9a.py::test_a_partly_sufficient_original_stopped_after_its_copy_gets_exactly_one_narrower_question",
+      "tests/test_migrations_step9a.py::test_a_run_has_at_most_one_narrower_question",
+      "tests/test_resume_step9a.py::test_a_failed_planner_reservation_stays_a_stop_and_the_planner_is_not_asked_again",
+      "tests/test_resume_step9a.py::test_a_stored_critic_accounting_or_spending_failure_stops_the_run_before_the_analyst",
+      "tests/test_resume_step9a.py::test_a_stored_analyst_accounting_failure_or_open_stage_is_never_completed",
+      "tests/test_resume_step9a.py::test_a_confirmed_run_stopped_around_the_lock_is_completed_through_run"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "run_cancel",
+    "name": "A person cancels a queued or waiting run",
+    "state": "in_force",
+    "statement": "A named person cancels a run that is queued or waiting; it fails with 'cancelled: cancelled by <name> before it started' or 'cancelled: cancelled by <name> while waiting for confirmation of the question as tested'. A started run cannot be cancelled in sprint 1; an ended run cannot be cancelled. The database refuses a failure reason beginning 'cancelled:' unless the run was queued or waiting; other failures from running stay allowed (fix round 1, finding 5).",
+    "value": {
+      "text": "queued or waiting only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Stopping a run (PRD 14.4; the owner's step 9 brief).",
+    "reason": "Owner's step 9 brief ('a person can cancel a queued or waiting run'); R3.",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (questions Q1-Q7, R1-R8, additions A1-A4; the go for 9a with the reasons' wording)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:CANCELLED"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_queries_step9a.py::test_a_queued_run_is_cancelled_with_the_persons_name",
+      "tests/test_queries_step9a.py::test_a_waiting_run_is_cancelled_with_the_persons_name",
+      "tests/test_queries_step9a.py::test_a_started_or_ended_run_is_not_cancelled",
+      "tests/test_migrations_step9a.py::test_a_cancelled_failure_is_allowed_only_from_queued_or_waiting"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "dispatch_again",
+    "name": "A query dispatched again as a new run",
+    "state": "in_force",
+    "statement": "A query whose runs have all ended is dispatched again as a new queued run of its dispatched version, recording what the version's latest run recorded (fixed plan, test mark); a spending ceiling only as given with the new dispatch. Refused, with 'another run of this query is queued, waiting or running', while any run of the query is open; the monthly cap and the test-data rule apply as at dispatch.",
+    "value": {
+      "text": "a new run once no run is open",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "PRD 8 and 14.4 ('dispatched again as a new run').",
+    "reason": "PRD 8, 14.4; owner's approval of R2.",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (questions Q1-Q7, R1-R8, additions A1-A4; the go for 9a with the reasons' wording)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:REASONS.already_open",
+          "equals": "another run of this query is queued, waiting or running"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_queries_step9a.py::test_a_failed_run_is_dispatched_again_as_a_new_run_with_what_the_first_recorded",
+      "tests/test_queries_step9a.py::test_dispatch_again_is_refused_while_another_run_of_the_query_is_open"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "dispatch_refusals",
+    "name": "Dispatch refused at the monthly cap and for unmarked test data",
+    "state": "in_force",
+    "statement": "Dispatch is refused when this calendar month's counted model calls (UTC; reported cost, or maximum while none is known) have reached the monthly cap: 'this month's model calls have reached the monthly cap ($50); dispatch is refused until next month, or until the owner raises the cap' (the owner's words). Dispatch is refused when a chosen source is constructed test data and the run is not marked as a test: '<source> is constructed test data; dispatch it only as a marked test run'; the storage guard stays as the backstop and still fails the whole run.",
+    "value": {
+      "text": "two refusals at dispatch",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every dispatch (PRD 8, 9.3; register 'constructed_test_runs').",
+    "reason": "PRD 8 ('a monthly cap blocks dispatch'); owner's answers R5 and Q6.",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (questions Q1-Q7, R1-R8, additions A1-A4; the go for 9a with the reasons' wording)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:REASONS.month_cap_reached",
+          "equals": "this month's model calls have reached the monthly cap ($50); dispatch is refused until next month, or until the owner raises the cap"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:REASONS.constructed_source_unmarked",
+          "equals": "{source} is constructed test data; dispatch it only as a marked test run"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_queries_step9a.py::test_dispatch_is_refused_once_the_months_calls_reach_the_monthly_cap",
+      "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test"
+    ],
+    "history": [],
+    "notes": []
   }
 ]

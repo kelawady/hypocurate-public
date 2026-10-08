@@ -64,6 +64,9 @@ def expected_triggers() -> set[tuple[str, str]]:
     names |= {(t, f) for t, _, f in m5.CHECKED}
     m6 = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0006").module  # step 8b
     names |= {(t, trigger) for t, _, trigger, _ in m6.CHECKED}
+    m7 = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0007").module  # step 9a
+    names |= {(t, f"hc_{t}_append_only") for t in m7.APPEND_ONLY} | {(t, f"hc_{t}_no_truncate") for t in m7.APPEND_ONLY}
+    names |= {(t, trigger) for t, _, trigger, _ in m7.CHECKED}
     return names
 
 

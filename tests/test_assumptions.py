@@ -262,9 +262,12 @@ def test_the_step_6_decisions_carry_the_owners_wording():
         # reworded sensitivity_one_change and eligibility_rule_order, each with its 2026-10-05 wording in history.
         changed = ("conflicts_not_pooled", "sensitivity_one_change", "eligibility_rule_order")
         # Step 8b (owner, 2026-10-07): code_role_access reworded for the narrowing role, its 2026-10-05 wording in history.
-        date = "2026-10-07" if key == "code_role_access" else "2026-10-06" if key in changed else "2026-10-05"
+        # Step 9a (owner, 2026-10-08, Q6): constructed_test_runs reworded for the refusal at dispatch, its 2026-10-05
+        # wording in history.
+        date = ("2026-10-08" if key == "constructed_test_runs" else "2026-10-07" if key == "code_role_access"
+                else "2026-10-06" if key in changed else "2026-10-05")
         assert e["decided"] == {"by": OWNER, "date": date} and e["expert_review"]["status"] == "not_reviewed"
-        if key in changed[1:] + ("code_role_access",):
+        if key in changed[1:] + ("code_role_access", "constructed_test_runs"):
             assert e["history"][-1]["from"] == "2026-10-05"
 
 

@@ -184,6 +184,7 @@ def planted_plan() -> dict:
 def lock(w: World, run: int) -> None:
     ys = PLANTED["yield_strength"]
     content = planted_plan()
+    w.confirm_rules(run)  # step 9a (0007; owner, Q4): a narrower question's plan is confirmed by a person first
     sql(w, "INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, min_alloys, "
            "min_groups, min_resid_df, power_assumptions) VALUES (:r, :j_c, :fp, 'fixed_minimum', 4, 1, 2, 1, :j_p)",
         r=run, j_c=content, fp=FP, j_p={"method": "information_only", "scatter": 60.0, "note": f"{ys}",
@@ -270,6 +271,7 @@ def build(engine, stage_name: str) -> AccessWorld:
     w.confirm(vid)
     w.dispatch_version(vid)
     earlier = w.running(vid=vid, sources=("mpea", "tamu_fcc"))
+    w.confirm_rules(earlier)  # step 9a (0007; owner, Q4)
     w.lock(earlier, content=planted_plan())
     store_value_records(w, earlier, OTHER)
     stage(w, earlier, "curator", "curator", f"saw {OTHER}")

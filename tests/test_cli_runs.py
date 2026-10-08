@@ -40,6 +40,21 @@ def hc(capsys, *argv):
     return code, out, err
 
 
+def hc_confirmed(capsys, *argv):
+    """`run` or `dispatch`; step 9a (0007; owner, Q1, Q4): a run that waits at the rules lock is confirmed by a named
+    person (`confirm <run> --by`), which prints what is confirmed and then the report. The output given back is the
+    command's dispatch line and reading, then the report printed by `confirm` (the same shape as before)."""
+    code, out, err = hc(capsys, *argv)
+    first, reading, rest = out.split("\n", 2)
+    if code != 0 or json.loads(rest).get("status") != "waiting":
+        return code, out, err
+    run_id = json.loads(first)["run"]
+    code, confirmed, err = hc(capsys, "confirm", str(run_id), "--by", "Ada Reviewer")
+    report = json.loads(confirmed[confirmed.index("\n{") + 1:])
+    report["stages"] = json.loads(rest)["stages"] + report["stages"]  # the stages of both commands, as before
+    return code, f"{first}\n{reading}\n{json.dumps(report, indent=2, ensure_ascii=False)}", err
+
+
 def report_of(out: str) -> dict:
     """The run's report: the dispatch line, then (fix round 1, decision B) the claim and the question as tested,
     printed before the run goes on to the rules lock, then the report."""
@@ -74,7 +89,7 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
 
 def test_14_1b_run_with_the_planner(engine, stub, capsys):
     stub.respond(responder(planner_body()))
-    code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+    code, out, err = hc_confirmed(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
     r = report_of(out)
     assert code == 0 and r["report"]["outcome_code"] == "sufficient" and "planner" in r["report"]["stages"]
     assert guard_refusals(engine, r["run"]) == []
@@ -82,7 +97,7 @@ def test_14_1b_run_with_the_planner(engine, stub, capsys):
 
 def test_14_3_the_bcc_claim_from_the_command_line(engine, stub, capsys):
     stub.respond(responder(BCC))
-    code, out, err = hc(capsys, "run", BCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+    code, out, err = hc_confirmed(capsys, "run", BCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
     r = report_of(out)
     assert code == 0 and r["report"]["outcome_code"] == "insufficient"
     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
@@ -100,7 +115,7 @@ def test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line(
     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
     assert shown["outcome"] == "partly sufficient in the sources searched" and shown["narrower_question"] == number
     assert shown["evidence_level_wording"] == "original question not tested; a narrower question was proposed"
-    code, out, err = hc(capsys, "dispatch", number, "--by", "Ada Reviewer")
+    code, out, err = hc_confirmed(capsys, "dispatch", number, "--by", "Ada Reviewer")
     n = report_of(out)
     assert code == 0 and n["report"]["outcome_code"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
     narrower = json.loads(hc(capsys, "show", str(n["run"]))[1])
@@ -267,7 +282,7 @@ def test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_tex
     shown = json.loads(out)
     assert_presented(out, shown, explanation)
     assert {k: v for k, v in r["report"].items() if k not in ("stages", "run_failure")} == shown
-    code, out, err = hc(capsys, "dispatch", r["report"]["narrower_question"], "--by", "Ada Reviewer")
+    code, out, err = hc_confirmed(capsys, "dispatch", r["report"]["narrower_question"], "--by", "Ada Reviewer")
     n = report_of(out)
     assert_presented(out.split("\n", 2)[2], n["report"], stored_explanation(engine, n["run"]))
     assert n["report"]["statement"][-1].startswith("Statement format ")

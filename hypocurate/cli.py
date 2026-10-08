@@ -51,8 +51,17 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--ceiling", help="the most this run's model calls may cost, in USD (refused above it)")
     dispatch = sub.add_parser("dispatch", help="dispatch a submitted query by its number and run it (may cost money)")
     dispatch.add_argument("number", help="the query number, e.g. Q-0002")
-    dispatch.add_argument("--by", required=True, help="the name of the person confirming the domain")
+    dispatch.add_argument("--by", help="the name of the person confirming the domain (not with --again)")
     dispatch.add_argument("--ceiling", help="the most this run's model calls may cost, in USD")
+    dispatch.add_argument("--again", action="store_true",
+                          help="a new run of a query whose earlier run ended (refused while another run is open)")
+    confirm = sub.add_parser("confirm", help="show a waiting run's question as tested; a named person confirms it, "
+                                             "and the run goes on (may cost money)")
+    confirm.add_argument("run", type=int)
+    confirm.add_argument("--by", required=True, help="the name of the person confirming")
+    cancel = sub.add_parser("cancel", help="cancel a queued or waiting run")
+    cancel.add_argument("run", type=int)
+    cancel.add_argument("--by", required=True, help="the name of the person cancelling")
     show = sub.add_parser("show", help="print a run's outcome and summary")
     show.add_argument("run", type=int)
     args = parser.parse_args(argv)
@@ -66,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         reachable = database_reachable(engine)
         print("database reachable" if reachable else "database NOT reachable")
         return 0 if reachable else 1
-    if args.command in ("run", "dispatch", "show"):
+    if args.command in ("run", "dispatch", "show", "confirm", "cancel"):
         from hypocurate.cli_runs import command
         return command(args, engine)
     return _sources(args, engine)

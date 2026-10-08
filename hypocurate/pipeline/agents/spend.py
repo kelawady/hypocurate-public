@@ -12,7 +12,8 @@ while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
 - the calendar month (UTC, by the database's start time): at most `MONTH_CAP_USD` over every call
   recorded in this database;
 - optionally a lower ceiling the caller names (the live curation call: $0.50, owner 2026-10-06),
-  over the same run or invocation.
+  over the same run or invocation; for a run, also the ceiling stored on the run at dispatch (step 9a, R5:
+  it holds after a crash or a restart), the lower of the two.
 A refusal sends nothing, is logged in `audit_log` in its own transaction (function 'model_call',
 result 'rejected', a fixed code) and raises `SpendingRefused`.
 
@@ -66,6 +67,11 @@ _MONTH_TOTAL = ("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_ca
                 "WHERE date_trunc('month', started_at AT TIME ZONE 'UTC') = date_trunc('month', now() AT TIME ZONE 'UTC')")
 
 
+def month_total(conn: Connection) -> Decimal:
+    """This calendar month's counted spend (UTC), as the monthly cap counts it (step 9a: dispatch reads it)."""
+    return conn.execute(text(_MONTH_TOTAL)).scalar_one()
+
+
 def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, ceiling: Decimal | None = None) -> int:
     """The new call's id, recorded as started; or SpendingRefused (logged)."""
     if not isinstance(max_cost, Decimal) or not max_cost > 0:
@@ -85,17 +91,20 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
         else:
             stage = "registration"
         conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=MONTH_LOCK_KEY))
+        limit = ceiling
         if inv.scope == "run":
             spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
                                       "WHERE run_id = :r"), dict(r=inv.run_id)).scalar_one()
             cap, cap_code = RUN_CAP_USD, "spending_cap_run"
+            stored = conn.execute(text("SELECT spending_ceiling FROM run WHERE id = :r"), dict(r=inv.run_id)).scalar_one()
+            limit = min(x for x in (ceiling, stored) if x is not None) if (ceiling, stored) != (None, None) else None
         else:
             spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
                                       "WHERE invocation_id = :i"), dict(i=invocation_id)).scalar_one()
             cap, cap_code = CURATION_CAP_USD, "spending_cap_curation"
         month = conn.execute(text(_MONTH_TOTAL)).scalar_one()
         code = (cap_code if spent + max_cost > cap else
-                "ceiling_reached" if ceiling is not None and spent + max_cost > ceiling else
+                "ceiling_reached" if limit is not None and spent + max_cost > limit else
                 "spending_cap_month" if month + max_cost > MONTH_CAP_USD else None)
         if code:
             return ("refused", code, inv, stage, {"spent": str(spent), "month": str(month)})

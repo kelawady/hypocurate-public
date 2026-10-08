@@ -59,7 +59,12 @@ def run_claim(engine, stub, claim=FCC_CLAIM, fixed_plan=False, analyst=None, pla
     queries.submit(engine, q.version_id)
     queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
     rid = queries.dispatch(engine, q.version_id, fixed_plan=fixed_plan)
-    return orchestrator.run(engine, rid, client_options=sp.client_options(stub))
+    report = orchestrator.run(engine, rid, client_options=sp.client_options(stub))
+    if report.status == "waiting":  # step 9a (0007; owner, Q1, Q4): a named person confirms, and the rest runs
+        from hypocurate.pipeline import confirmation
+        confirmation.confirm(engine, rid, by="Ada Reviewer")
+        report = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub))
+    return report
 
 
 def stored_stats(engine, rid):
@@ -110,7 +115,10 @@ def test_the_statement_is_present_when_the_analyst_fails_and_holds_nothing_it_wr
 def test_a_planner_run_s_statement_labels_the_planner_s_reading(engine, stub):
     report = run_claim(engine, stub, planner_answer=planner_body())
     lines = statement.build(engine, report.run_id)["lines"]
-    assert lines[1].startswith(f"Question as tested ({reading.LABELS['planner']}): yield strength against grain size")
+    # Step 9a (owner, 2026-10-08, question 2): once confirmed, the label says by whom and when.
+    assert lines[1].startswith("Question as tested (the Planner's reading of the claim; not verified by code; "
+                               "confirmed by Ada Reviewer on ")
+    assert " UTC): yield strength against grain size" in lines[1]
     assert reading.LABELS["planner"] == ("the Planner's reading of the claim; not verified by code and, in this "
                                          "version, not confirmed by a person")
     assert "test type tension (assumed: the claim does not state it)" in lines[1]

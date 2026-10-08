@@ -1,4 +1,5 @@
-"""The command line's `run`, `dispatch` and `show` (PRD Section 12; build step 8b).
+"""The command line's `run`, `dispatch` and `show` (PRD Section 12; build step 8b), and `confirm` and `cancel`
+(step 9a).
 
 `run` creates the query, submits it, records the named person's domain confirmation (A9), dispatches it and
 runs it in the guarded process (`access.guarded.run_guarded`, with the run's audit log for the guard's
@@ -8,6 +9,15 @@ database holds for a run: status, outcome and wordings, the pooled result unless
 results, the minimums, the kind of nothing found, the Analyst's explanation (or that it is unavailable),
 the narrower question and the run's tokens and cost. Errors print fixed codes and reasons; the guarded
 child's error text is never printed (it may quote anything).
+
+Step 9a (owner's approval of the step 9 plan, 2026-10-08; R1, R2, R3): a run whose plan comes from a model's answer
+(the Planner's, or a narrower question's) stops before its rules lock and waits for a named person: `run` and
+`dispatch` then print `show`'s output with what the run waits for and the command to confirm it. `confirm <run>
+--by NAME` prints what the person confirms (`confirmation.render`) before anything is recorded, records the
+confirmation with exactly that text, and runs the rest, printing `show`'s output. One run per command, never in
+bulk. `cancel <run> --by NAME` cancels a queued or waiting run. `dispatch Q-… --again` dispatches a new run of a
+query whose earlier run ended. `--ceiling` is stored on the run at dispatch (R5), and only there: `confirm` takes none
+(fix round 1, finding 4); none given stores the per-run cap (owner, 2026-10-08).
 """
 from __future__ import annotations
 
@@ -30,6 +40,12 @@ def command(args, engine: Engine) -> int:
                 return 1
             print(json.dumps(out, indent=2, ensure_ascii=False, default=str))
             return 0
+        if args.command == "cancel":
+            reason = queries.cancel(engine, args.run, by=args.by)
+            print(json.dumps({"run": args.run, "status": "failed", "failure": reason}, ensure_ascii=False))
+            return 0
+        if args.command == "confirm":  # fix round 1, finding 4: no ceiling here; it is stored at dispatch
+            return _confirm(engine, args.run, args.by)
         ceiling = _ceiling(args.ceiling)
         if args.command == "run":
             q = queries.create(engine, args.claim, [k.strip() for k in args.sources.split(",") if k.strip()],
@@ -37,12 +53,17 @@ def command(args, engine: Engine) -> int:
             queries.submit(engine, q.version_id)
             queries.confirm_domain(engine, q.version_id, by=args.by)
             run_id = queries.dispatch(engine, q.version_id, fixed_plan=args.fixed_plan,
-                                      constructed_test_data=args.test_data)
+                                      constructed_test_data=args.test_data, ceiling=ceiling)
             number = q.number
+        elif args.again:
+            run_id, number = queries.dispatch_again(engine, args.number, ceiling=ceiling), args.number
         else:
+            if args.by is None:
+                raise ValueError("--by names the person confirming the domain")
             vid = queries.submitted_version(engine, args.number)
             queries.confirm_domain(engine, vid, by=args.by)
-            run_id = queries.dispatch(engine, vid)  # a narrower question's plan follows from its link (finding 1)
+            # A narrower question's plan follows from its link (finding 1).
+            run_id = queries.dispatch(engine, vid, ceiling=ceiling)
             number = args.number
     except queries.QueryRefused as refused:
         print(f"error: {refused.code}: {refused.reason}", file=sys.stderr)
@@ -71,8 +92,8 @@ def _ceiling(value: str | None) -> Decimal | None:
 
 
 def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
-    """Two guarded calls: up to the rules lock, then on to the end. Between them the original claim and the
-    question as tested are printed (owner's decision B), before the run goes on."""
+    """Two guarded calls: up to the rules lock (or the wait for a person, step 9a), then on to the end. Between them
+    the original claim and the question as tested are printed (owner's decision B), before the run goes on."""
     from hypocurate.access.guarded import GuardedRunError, run_guarded
     payload = {"run_id": run_id, "ceiling": str(ceiling) if ceiling is not None else None}
     try:
@@ -88,13 +109,45 @@ def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
         print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
               f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
         return 1
+    return _print_shown(engine, run_id, report)
+
+
+def _print_shown(engine: Engine, run_id: int, report: dict) -> int:
     # One presentation everywhere (owner, after the re-check): the same output as `show` (code's statement first, then
     # the Analyst's text under its label), with the stages run and the run's failure, if any. The orchestration
-    # report's own explanation is never printed.
+    # report's own explanation is never printed. Step 9a: a waiting run's output says what it waits for and how to
+    # confirm it.
     shown = show(engine, run_id)
-    print(json.dumps({**shown, "stages": report.get("stages"), "run_failure": report.get("failure")},
-                     indent=2, ensure_ascii=False, default=str))
-    return 0 if shown["status"] in ("completed", "failed") else 1
+    out = {**shown, "stages": report.get("stages"), "run_failure": report.get("failure")}
+    if shown["status"] == "waiting":
+        out["next"] = f'hypocurate confirm {run_id} --by "<name>"'
+    print(json.dumps(out, indent=2, ensure_ascii=False, default=str))
+    return 0 if shown["status"] in ("completed", "failed", "waiting") else 1
+
+
+def _confirm(engine: Engine, run_id: int, by: str) -> int:
+    """Prints what is confirmed, records one named person's confirmation of exactly that, then runs the rest. The run's
+    ceiling is the one stored at dispatch (fix round 1, finding 4: a lower one given here would be lost on a restart)."""
+    from hypocurate.access.guarded import GuardedRunError, run_guarded
+    from hypocurate.pipeline import confirmation
+    with engine.connect() as conn:
+        status = conn.execute(text("SELECT status FROM run WHERE id = :r"), dict(r=run_id)).scalar_one_or_none()
+    if status is None:
+        raise queries.QueryRefused("unknown_run", f"no run {run_id}")
+    if status != "waiting":
+        raise queries.QueryRefused("not_waiting", f"run {run_id} is not waiting for confirmation (it is {status})")
+    content, words = confirmation.show(engine, run_id)
+    print(words, flush=True)
+    confirmation.confirm(engine, run_id, by, shown=content)
+    payload = {"run_id": run_id, "ceiling": None, "phase": "proceed"}
+    try:
+        report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", payload, timeout=3600,
+                             audit=(engine, run_id))
+    except GuardedRunError:
+        print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
+              f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
+        return 1
+    return _print_shown(engine, run_id, report)
 
 
 def _claim(engine: Engine, run_id: int) -> str:
@@ -182,4 +235,11 @@ def show(engine: Engine, run_id: int) -> dict | None:
         "flags": critic_flags(engine, run_id),
         "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
         "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,
+        # Step 9a: only for a waiting run, so every other run's output is as before.
+        **({"waiting_for": _waiting_for()} if run.status == "waiting" else {}),
     }
+
+
+def _waiting_for() -> str:
+    from hypocurate.pipeline.confirmation import WAITING_FOR
+    return WAITING_FOR

@@ -47,8 +47,9 @@ def w(db):
 
 # --- the migration -------------------------------------------------------------------------------
 
-def test_0006_is_the_head_and_follows_0005():
-    assert migrate.head_revision() == "0006" and m0006().down_revision == "0005"
+def test_0006_follows_0005():
+    # Step 9a: 0007 is now the head (tests/test_migrations_step9a.py).
+    assert m0006().down_revision == "0005"
 
 
 def test_0006_replaces_no_earlier_function():
@@ -104,7 +105,8 @@ def test_the_downgrade_refuses_while_a_query_uses_another_option(db):
     before = snapshot(db)
     with pytest.raises(Exception, match="0006 is in use"):
         migrate.downgrade(db, "0005")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0006"
+    # Step 9a: the database stays at the head, now 0007 (0007's own downgrade is undone with the refused transaction).
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()
 
 
 # --- the query's sufficiency option (A2) ---------------------------------------------------------
@@ -308,6 +310,7 @@ def test_a_narrower_questions_run_must_use_the_stored_plan(w):
 def test_a_narrower_questions_plan_equal_to_the_stored_narrower_plan_is_locked(w):
     vid = narrower_version(w, partly_original(w))
     rid = w.running(vid=vid)
+    w.confirm_rules(rid)  # step 9a (0007; owner, Q4): a narrower question's plan is confirmed by a person first
     w.lock(rid, content={"hypothesis_version": vid, **BODY})
     assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
 
@@ -354,6 +357,7 @@ def test_the_source_versions_are_compared_whatever_their_stored_order(w):
     w.complete(original, "partly_sufficient", level=1)
     vid = narrower_version(w, original)
     rid = w.running(vid=vid)
+    w.confirm_rules(rid)  # step 9a (0007; owner, Q4)
     w.lock(rid, content={"hypothesis_version": vid, **BODY})
     assert w.val("SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
 
