@@ -5,6 +5,8 @@ the orchestrator does, and then calling `proceed` (or `prepare`) as a later proc
 made by killing the worker."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import text
 
@@ -192,3 +194,174 @@ def test_a_run_whose_primary_set_is_empty_is_taken_up_after_inclusion_without_de
     report = orchestrator.proceed(engine, rid, **kw(stub))
     assert (report.status, report.outcome, report.failure) == ("completed", "insufficient", None)
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'inclusion'", r=rid) == 1
+
+
+# --- fix round 1, finding 1: a resume respects an earlier stop (owner, 2026-10-08) ---------------------------------
+# Before deciding the next step the orchestrator reads the latest stored stage whatever its status. A spending failure
+# or any RUN_STOPS reason stays a stop after a resume. Interrupted stages and the one Planner repeat are step 9b's.
+
+def agent_stage(engine, rid, stage, status, code=None):
+    """An agent stage as the request path leaves it (direct SQL): failed with its fixed code, or still running."""
+    with engine.begin() as conn:
+        attempt = conn.execute(text("SELECT coalesce(max(attempt), 0) + 1 FROM stage_result WHERE run_id = :r AND "
+                                    "stage = :s"), dict(r=rid, s=stage)).scalar()
+        sid = conn.execute(text("INSERT INTO stage_result (run_id, stage, role, attempt) VALUES (:r, :s, :s, :a) "
+                                "RETURNING id"), dict(r=rid, s=stage, a=attempt)).scalar()
+        if status != "running":
+            conn.execute(text("UPDATE stage_result SET status = :st, finished_at = now(), output = CAST(:o AS jsonb) "
+                              "WHERE id = :i"), dict(st=status, o=json.dumps({"code": code}), i=sid))
+    return sid
+
+
+def planner_run_running(engine, stub):
+    stub.respond(to.responder(to.planner_body()))
+    rid = to.dispatched(engine)
+    queries.start(engine, rid)
+    return rid
+
+
+def test_a_failed_planner_reservation_stays_a_stop_and_the_planner_is_not_asked_again(engine, stub, monkeypatch):
+    """The review's first case, through the real request path: the reservation cannot be written."""
+    from hypocurate.pipeline.agents import spend
+    stub.respond(to.responder(to.planner_body()))
+    rid = to.dispatched(engine)
+
+    def broken(*a, **k):
+        raise RuntimeError("the database could not take the reservation")
+
+    monkeypatch.setattr(spend, "reserve", broken)
+    first = orchestrator.run(engine, rid, **kw(stub))
+    assert first.failure.startswith("reservation_failed:") and first.status == "running"
+    monkeypatch.undo()
+    again = orchestrator.run(engine, rid, **kw(stub))
+    assert again.failure.startswith("reservation_failed:") and again.status == "running"
+    assert len(stub.requests) == 0  # never sent, before or after the resume
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=rid) == 1
+
+
+@pytest.mark.parametrize("code, failure", [("spending_cap_run", "spending_refused: "), ("ceiling_reached", "spending_refused: "),
+                                           ("malformed", "planner_failed: "), ("recording_failed", "recording_failed: "),
+                                           (None, "stage_left_running: ")])
+def test_a_stored_planner_failure_is_replayed_and_the_planner_is_never_repeated(engine, stub, code, failure):
+    rid = planner_run_running(engine, stub)
+    agent_stage(engine, rid, "planner", "running" if code is None else "failed", code)
+    report = orchestrator.run(engine, rid, **kw(stub))
+    assert report.failure.startswith(failure), report
+    assert len(stub.requests) == 0
+    stays_open = code in ("recording_failed", None)
+    assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == ("running" if stays_open else "failed")
+
+
+def fixed_run_after_checks(engine, stub):
+    rid = fixed_run_to_lock(engine, stub)
+    extract.store_records(engine, rid)
+    checks.run_checks(engine, rid)
+    return rid
+
+
+@pytest.mark.parametrize("code, failure, status", [("reservation_failed", "reservation_failed: ", "running"),
+                                                   ("recording_failed", "recording_failed: ", "running"),
+                                                   ("spending_cap_run", "spending_refused: ", "failed"),
+                                                   (None, "stage_left_running: ", "running")])
+def test_a_stored_critic_accounting_or_spending_failure_stops_the_run_before_the_analyst(engine, stub, code, failure,
+                                                                                         status):
+    rid = fixed_run_after_checks(engine, stub)
+    requests = len(stub.requests)
+    agent_stage(engine, rid, "critic", "running" if code is None else "failed", code)
+    report = orchestrator.run(engine, rid, **kw(stub))
+    assert report.failure.startswith(failure), report
+    assert len(stub.requests) == requests  # no Analyst request
+    assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == status
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage IN ('inclusion', 'analyst')",
+               r=rid) == 0
+
+
+def test_an_ordinary_critic_failure_still_lets_the_run_go_on(engine, stub):
+    """Guard: a Critic batch that failed for its answer leaves its flags unclassified and the run goes on (8b)."""
+    rid = fixed_run_after_checks(engine, stub)
+    agent_stage(engine, rid, "critic", "failed", "malformed")
+    assert orchestrator.run(engine, rid, **kw(stub)).status == "completed"
+
+
+def fixed_run_after_statistics(engine, stub):
+    from hypocurate.pipeline import analysis
+    from hypocurate.pipeline.agents import critic
+    rid = fixed_run_after_checks(engine, stub)
+    critic.run_critic(engine, rid, **kw(stub))
+    inclusion.decide_run(engine, rid)
+    checkpoints.freeze_dataset(engine, rid)
+    analysis.run_statistics(engine, rid)
+    return rid
+
+
+@pytest.mark.parametrize("code", ["recording_failed", "reservation_failed", None])
+def test_a_stored_analyst_accounting_failure_or_open_stage_is_never_completed(engine, stub, code):
+    rid = fixed_run_after_statistics(engine, stub)
+    requests = len(stub.requests)
+    agent_stage(engine, rid, "analyst", "running" if code is None else "failed", code)
+    report = orchestrator.run(engine, rid, **kw(stub))
+    assert report.failure and report.status == "running", report
+    assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
+    assert len(stub.requests) == requests
+
+
+@pytest.mark.parametrize("code", ["spending_cap_run", "wording_refused"])
+def test_an_ordinary_or_spending_analyst_failure_still_completes_with_codes_decision(engine, stub, code):
+    """Guard (A3, B2): any Analyst failure but an accounting one leaves code's decision standing."""
+    rid = fixed_run_after_statistics(engine, stub)
+    agent_stage(engine, rid, "analyst", "failed", code)
+    assert orchestrator.run(engine, rid, **kw(stub)).status == "completed"
+
+
+@pytest.mark.parametrize("code", ["recording_failed", None])
+def test_a_partly_sufficient_originals_analyst_accounting_failure_stops_before_the_copy(engine, stub, code):
+    from hypocurate.pipeline import narrowing
+    from hypocurate.pipeline.agents import planner
+    stub.respond(to.responder(to.PARTLY))
+    rid = to.dispatched(engine, claim=to.PARTLY_CLAIM)
+    queries.start(engine, rid)
+    narrowing.run_narrowing(engine, rid, planner.run_planner(engine, rid, **kw(stub)).answer)
+    requests = len(stub.requests)
+    agent_stage(engine, rid, "analyst", "running" if code is None else "failed", code)
+    report = orchestrator.run(engine, rid, **kw(stub))
+    assert report.failure and one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
+    assert one(engine, "SELECT count(*) FROM hypothesis WHERE narrower_of_run_id = :r", r=rid) == 0
+    assert len(stub.requests) == requests
+
+
+# --- fix round 1, finding 3: a confirmed run is taken up through run() without waiting again ------------------------
+
+def confirmed_run_stopped(engine, stub, kind, stop):
+    """A Planner run or a narrower question's run, confirmed, then stopped: still waiting (confirmed), running again
+    before the rules lock, or after it."""
+    if kind == "planner":
+        stub.respond(to.responder(to.planner_body()))
+        rid = to.dispatched(engine)
+    else:
+        stub.respond(to.responder(to.PARTLY))
+        original = to.dispatched(engine, claim=to.PARTLY_CLAIM)
+        number = orchestrator.run(engine, original, **kw(stub)).narrower_question
+        vid = queries.submitted_version(engine, number)
+        queries.confirm_domain(engine, vid, by="Ada Reviewer")
+        rid = queries.dispatch(engine, vid)
+    assert orchestrator.run(engine, rid, **kw(stub)).status == "waiting"
+    confirmation.confirm(engine, rid, by="Ada Reviewer")
+    if stop in ("before_lock", "after_lock"):
+        orchestrator._go_on(engine, rid)
+    if stop == "after_lock":
+        with engine.connect() as conn:
+            checkpoints.lock_rules(engine, rid, confirmation.plan_to_lock(conn, rid))
+    return rid
+
+
+@pytest.mark.parametrize("kind", ["planner", "narrower"])
+@pytest.mark.parametrize("stop", ["confirmed_waiting", "before_lock", "after_lock"])
+def test_a_confirmed_run_stopped_around_the_lock_is_completed_through_run(engine, stub, kind, stop):
+    rid = confirmed_run_stopped(engine, stub, kind, stop)
+    planner_requests = sum("[[ ## plan ## ]]" in r["raw"].decode() for r in stub.requests)
+    report = orchestrator.run(engine, rid, **kw(stub))
+    assert (report.status, report.outcome, report.failure) == ("completed", "sufficient", None), report
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 1
+    assert one(engine, "SELECT fingerprint FROM plan WHERE run_id = :r", r=rid) == \
+        one(engine, "SELECT plan_fingerprint FROM rules_confirmation WHERE run_id = :r", r=rid)
+    assert sum("[[ ## plan ## ]]" in r["raw"].decode() for r in stub.requests) == planner_requests  # no Planner again

@@ -114,6 +114,35 @@ def _stored(engine: Engine, run_id: int, stage: str, done: bool = True):
                             dict(r=run_id, s=stage)).one_or_none()
 
 
+LEFT_RUNNING = "stage_left_running"  # an agent stage still running: step 9b's recovery closes it
+
+
+def _stage_code(row) -> str:
+    """The fixed code a stored agent stage ended with; LEFT_RUNNING for a stage still running."""
+    if row.status == "running":
+        return LEFT_RUNNING
+    return (row.output or {}).get("code") if isinstance(row.output, dict) else None
+
+
+def _agent_stop(engine: Engine, run_id: int, stage: str) -> str | None:
+    """Fix round 1, finding 1: the code of a stop the role's latest stored stage holds (a recording or reservation
+    failure, or a stage left running), whatever its status; None when there is no such stop."""
+    latest = _stored(engine, run_id, stage, done=False)
+    if latest is None or latest.status in ("done", "skipped"):
+        return None
+    code = _stage_code(latest)
+    return code if code in RUN_STOPS or code == LEFT_RUNNING else None
+
+
+def _critic_failures(engine: Engine, run_id: int) -> list:
+    """The codes of the Critic's stored stages that did not end done or skipped, in order (as `run_critic` reports
+    its batches' failures)."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT id, status, output FROM stage_result WHERE run_id = :r AND stage = 'critic' "
+                                 "AND status NOT IN ('done', 'skipped') ORDER BY id"), dict(r=run_id)).all()
+    return [_stage_code(r) for r in rows]
+
+
 def _exists(engine: Engine, sql: str, run_id: int) -> bool:
     with engine.connect() as conn:
         return bool(conn.execute(text(f"SELECT EXISTS ({sql})"), dict(r=run_id)).scalar_one())
@@ -147,7 +176,16 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         decided = _stored(engine, run_id, "narrowing")
         report.narrower_question = queries.create_narrower(engine, run_id, decided.output["narrower_scope"]).number
         return _done(engine, report)
-    elif row.status != "running":  # waiting for a person, or ended: nothing to prepare
+    elif row.status != "running" and row.status != "waiting":  # ended: nothing to prepare
+        return _done(engine, report)
+    # Fix round 1, finding 3: a run already confirmed, or past its lock, goes on to `proceed` without waiting again.
+    if _exists(engine, "SELECT 1 FROM rules_confirmation WHERE run_id = :r UNION ALL SELECT 1 FROM plan WHERE run_id = :r",
+               run_id):
+        with engine.connect() as conn:
+            report.question_as_tested = reading.stored(conn, run_id)
+        report.ready = True
+        return _done(engine, report)
+    if row.status == "waiting":  # waiting for a person: not stuck, nothing to prepare
         return _done(engine, report)
     try:
         # A narrower question is recognised by its link to its original, never by the run's flag (fix round,
@@ -164,7 +202,12 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
             report.question_as_tested = reading.from_plan(confirmation.reference_plan(row), "fixed")
             report.ready = True
             return _done(engine, report)
-        stored = _stored(engine, run_id, "planner")
+        stored = _stored(engine, run_id, "planner", done=False)
+        if stored is not None and stored.status != "done":  # fix round 1, finding 1: an earlier stop stays a stop
+            code = _stage_code(stored)
+            if stored.status == "running" or code in RUN_STOPS:
+                return _stopped(engine, report, code)
+            return _failed(engine, report, "spending_refused" if code in SPENDING else "planner_failed", code)
         if stored is None:
             result = planner.run_planner(engine, run_id, **agent_kw)
             report.stages.append("planner")
@@ -188,6 +231,9 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if decision["result"] == "claim_not_one_plan":
             return _failed(engine, report, "claim_not_one_plan", decision["reason"])
         if decision["result"] == "partly_sufficient":
+            stop = _agent_stop(engine, run_id, "analyst")
+            if stop:
+                return _stopped(engine, report, stop)
             if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'analyst'", run_id):
                 if _explain(engine, report, agent_kw) in RUN_STOPS:
                     return _stopped(engine, report, report.explanation_failure)
@@ -231,12 +277,15 @@ def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'critic'", run_id):
             c = critic.run_critic(engine, run_id, **agent_kw)
             report.stages.append("critic")
-            stops = [f for f in c.failures if f in RUN_STOPS]
-            if stops:
-                return _stopped(engine, report, stops[0])
-            spent = [f for f in c.failures if f in SPENDING]
-            if spent:
-                return _failed(engine, report, "spending_refused", spent[0])
+            failures = c.failures
+        else:  # fix round 1, finding 1: the Critic's stored stages decide, as they did when it ran
+            failures = _critic_failures(engine, run_id)
+        stops = [f for f in failures if f in RUN_STOPS or f == LEFT_RUNNING]
+        if stops:
+            return _stopped(engine, report, stops[0])
+        spent = [f for f in failures if f in SPENDING]
+        if spent:
+            return _failed(engine, report, "spending_refused", spent[0])
         if _stored(engine, run_id, "inclusion") is None:
             inclusion.decide_run(engine, run_id)
         if _stored(engine, run_id, "dataset_freeze") is None and not _exists(
@@ -246,6 +295,9 @@ def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if _stored(engine, run_id, "statistics") is None:
             analysis.run_statistics(engine, run_id)
         report.stages += ["inclusion", "dataset freeze", "statistics"]
+        stop = _agent_stop(engine, run_id, "analyst")
+        if stop:
+            return _stopped(engine, report, stop)
         if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'analyst'", run_id):
             if _explain(engine, report, agent_kw) in RUN_STOPS:
                 return _stopped(engine, report, report.explanation_failure)
