@@ -95,7 +95,17 @@ def dispatched(engine, claim=FCC_CLAIM, fixed_plan=False, sufficiency="fixed_min
 
 
 def run(engine, rid, stub, **kw):
-    return orchestrator.run(engine, rid, client_options=sp.client_options(stub), **kw)
+    """The run to its end. Step 9a (0007; owner, Q1, Q4): a run whose plan comes from the Planner or a narrower
+    question waits at the rules lock; a named person confirms it here, and the rest runs (stages joined)."""
+    report = orchestrator.run(engine, rid, client_options=sp.client_options(stub), **kw)
+    if report.status != "waiting":
+        return report
+    from hypocurate.pipeline import confirmation
+    confirmation.confirm(engine, rid, by="Ada Reviewer")
+    rest = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub), **kw)
+    rest.stages = report.stages + rest.stages
+    rest.question_as_tested = report.question_as_tested
+    return rest
 
 
 def one(engine, sql, **params):
@@ -288,14 +298,17 @@ def test_finding_1_the_orchestrator_reads_the_narrower_link_not_the_runs_flag(en
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = 'planner'", r=narrower) == 0
 
 
-def test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested(engine, stub):
-    """What the command line prints between its two calls: the run is prepared and nothing is locked yet."""
+def test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested_and_waits(engine, stub):
+    """What the command line prints between its two calls: the run is prepared and nothing is locked yet. Step 9a
+    (owner, Q1): it now waits there for a named person; once confirmed, the rest runs from the rules lock."""
     stub.respond(responder(planner_body()))
     rid = dispatched(engine)
     prepared = orchestrator.prepare(engine, rid, client_options=sp.client_options(stub))
-    assert prepared.ready and prepared.status == "running"
+    assert not prepared.ready and prepared.status == "waiting"
     assert prepared.question_as_tested["source"] == "planner"
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
+    from hypocurate.pipeline import confirmation
+    confirmation.confirm(engine, rid, by="Ada Reviewer")
     rest = orchestrator.proceed(engine, rid, client_options=sp.client_options(stub))
     assert (rest.status, rest.outcome) == ("completed", "sufficient") and rest.stages[0] == "rules lock"
 
