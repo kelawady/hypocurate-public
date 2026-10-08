@@ -40,6 +40,8 @@ PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decis
 
 **Also from the re-check:** both live Critic records show the stored request inputs, not a captured wire request (noted under "Numbers").
 
+**Checks on this round's code (`520b363`):** whole suite 1,846 passed, locally and in the rebuilt test image (its package and tests identical to the repository's); the runtime image's guard checks pass; six new mutation checks (f46–f51: the not-fitted branch, the spread rule, both format lines, the run output and the label) all caught, control clean (52 in all across both rounds); the reference runs still byte-identical to `main`.
+
 ## Fix round 1 (2026-10-07)
 
 **Update.** ChatGPT reviewed the packet at `859e019` and found the step **not safe to merge**, with five findings (`docs/reviews/step08b_review_chatgpt.md`). This round fixes all five and applies the owner's two decisions (A: a results statement written by code; B: the Planner's reading). It also makes the owner's wording corrections and additions. Every change came with tests that failed on the code before it. The step is still **not merged**.
