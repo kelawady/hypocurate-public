@@ -34,7 +34,6 @@ import io
 import math
 import zipfile
 
-import openpyxl
 
 from hypocurate.sources import normalize as n
 from hypocurate.sources.record import (HARMONIZED_FIELDS, AdapterError, AdapterResult, Citation,
@@ -166,6 +165,9 @@ def read(version: SealedVersion) -> AdapterResult:
         raise AdapterError(f"expected one spreadsheet, found {sorted(version.data_files)}")
     (path, content), = version.data_files.items()
     try:
+        # Step 9b: imported here, not at module load: openpyxl imports numpy, and the worker parent, which imports
+        # this module through the access layer, never loads it (owner, Q2: memory on 512 MB).
+        import openpyxl
         workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=False)
     except (zipfile.BadZipFile, OSError, ValueError, KeyError) as error:
         raise AdapterError(f"{path} is not a readable spreadsheet: {error}") from None

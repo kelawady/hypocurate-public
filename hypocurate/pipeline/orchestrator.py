@@ -52,6 +52,7 @@ from hypocurate.pipeline import analysis, checkpoints, checks, completion, confi
 from hypocurate.pipeline import narrowing, queries, reading
 from hypocurate.pipeline.agents import analyst, critic, planner
 from hypocurate.pipeline.agents.lm import RUN_STOPS
+from hypocurate.pipeline.recovery import PLANNER_REPEATS, RECOVERABLE
 from hypocurate.pipeline.writes import Refused, write
 
 SPENDING = ("spending_cap_run", "spending_cap_month", "ceiling_reached")
@@ -67,6 +68,8 @@ REASONS = {
     "narrower_plan_missing": "the original's narrowing decision holds no narrower plan",
     "spending_refused": "a spending cap or ceiling was reached before the request was sent",
     "refused": "a checkpoint or write refused",
+    # Step 9b (owner, Q3): the Planner's request was lost a second time.
+    "interrupted": "the worker stopped during the Planner's request twice; dispatch the query again as a new run",
 }
 
 
@@ -124,14 +127,25 @@ def _stage_code(row) -> str:
     return (row.output or {}).get("code") if isinstance(row.output, dict) else None
 
 
-def _agent_stop(engine: Engine, run_id: int, stage: str) -> str | None:
+def _agent_stop(engine: Engine, run_id: int, stage: str, recovered: bool = False) -> str | None:
     """Fix round 1, finding 1: the code of a stop the role's latest stored stage holds (a recording or reservation
-    failure, or a stage left running), whatever its status; None when there is no such stop."""
+    failure, or a stage left running), whatever its status; None when there is no such stop. Step 9b: after recovery
+    a lost request (`recovery.RECOVERABLE`) is no stop: the run goes on without asking the role again."""
     latest = _stored(engine, run_id, stage, done=False)
     if latest is None or latest.status in ("done", "skipped"):
         return None
     code = _stage_code(latest)
+    if recovered and code in RECOVERABLE:
+        return None
     return code if code in RUN_STOPS or code == LEFT_RUNNING else None
+
+
+def _lost(engine: Engine, run_id: int, stage: str) -> int:
+    """How many of the role's stages ended with a lost request (`recovery.RECOVERABLE`)."""
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT count(*) FROM stage_result WHERE run_id = :r AND stage = :s AND status = "
+                                 "'failed' AND output->>'code' = ANY(:c)"),
+                            dict(r=run_id, s=stage, c=list(RECOVERABLE))).scalar_one()
 
 
 def _critic_failures(engine: Engine, run_id: int) -> list:
@@ -148,19 +162,21 @@ def _exists(engine: Engine, sql: str, run_id: int) -> bool:
         return bool(conn.execute(text(f"SELECT EXISTS ({sql})"), dict(r=run_id)).scalar_one())
 
 
-def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
+def run(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None,
+        recovered: bool = False) -> RunReport:
     """Runs the run to its end (completed or failed), to its wait for a person's confirmation, or leaves it running
     if a call stayed open: `prepare`, then, unless the run ended or waits there, `proceed`."""
-    report = prepare(engine, run_id, ceiling=ceiling, client_options=client_options)
+    report = prepare(engine, run_id, ceiling=ceiling, client_options=client_options, recovered=recovered)
     if not report.ready:
         return report
-    rest = proceed(engine, run_id, ceiling=ceiling, client_options=client_options)
+    rest = proceed(engine, run_id, ceiling=ceiling, client_options=client_options, recovered=recovered)
     rest.stages = report.stages + rest.stages
     rest.question_as_tested = report.question_as_tested
     return rest
 
 
-def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
+def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None,
+            recovered: bool = False) -> RunReport:
     """Up to the rules lock: start; the narrower question's plan check, the fixed plan, or the Planner and the
     narrowing decision (the partly-sufficient path ends here). A run whose plan comes from a model's answer then
     waits (step 9a). `ready` when the run goes on to `proceed` now; the question as tested is in the report (owner's
@@ -205,9 +221,14 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         stored = _stored(engine, run_id, "planner", done=False)
         if stored is not None and stored.status != "done":  # fix round 1, finding 1: an earlier stop stays a stop
             code = _stage_code(stored)
-            if stored.status == "running" or code in RUN_STOPS:
+            if recovered and code in RECOVERABLE:  # step 9b (owner, Q3): the Planner is repeated once
+                if _lost(engine, run_id, "planner") > PLANNER_REPEATS:
+                    return _failed(engine, report, "interrupted")
+                stored = None
+            elif stored.status == "running" or code in RUN_STOPS:
                 return _stopped(engine, report, code)
-            return _failed(engine, report, "spending_refused" if code in SPENDING else "planner_failed", code)
+            else:
+                return _failed(engine, report, "spending_refused" if code in SPENDING else "planner_failed", code)
         if stored is None:
             result = planner.run_planner(engine, run_id, **agent_kw)
             report.stages.append("planner")
@@ -231,7 +252,7 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if decision["result"] == "claim_not_one_plan":
             return _failed(engine, report, "claim_not_one_plan", decision["reason"])
         if decision["result"] == "partly_sufficient":
-            stop = _agent_stop(engine, run_id, "analyst")
+            stop = _agent_stop(engine, run_id, "analyst", recovered)
             if stop:
                 return _stopped(engine, report, stop)
             if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'analyst'", run_id):
@@ -247,7 +268,8 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         return _failed(engine, report, "refused", refused.code)
 
 
-def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None) -> RunReport:
+def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mapping[str, Any] | None = None,
+            recovered: bool = False) -> RunReport:
     """From the rules lock to the end. A waiting run goes on only once a person has confirmed it (it is then running
     again); a waiting run that no one confirmed is left as it is. The plan is `confirmation.plan_to_lock`'s, built
     again from what is stored, so nothing is carried between the two in memory. Each step after the lock runs only
@@ -280,7 +302,8 @@ def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
             failures = c.failures
         else:  # fix round 1, finding 1: the Critic's stored stages decide, as they did when it ran
             failures = _critic_failures(engine, run_id)
-        stops = [f for f in failures if f in RUN_STOPS or f == LEFT_RUNNING]
+        # Step 9b (owner, 2026-10-08): after recovery a lost Critic request is not repeated and the run goes on.
+        stops = [f for f in failures if (f in RUN_STOPS or f == LEFT_RUNNING) and not (recovered and f in RECOVERABLE)]
         if stops:
             return _stopped(engine, report, stops[0])
         spent = [f for f in failures if f in SPENDING]
@@ -295,7 +318,7 @@ def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if _stored(engine, run_id, "statistics") is None:
             analysis.run_statistics(engine, run_id)
         report.stages += ["inclusion", "dataset freeze", "statistics"]
-        stop = _agent_stop(engine, run_id, "analyst")
+        stop = _agent_stop(engine, run_id, "analyst", recovered)
         if stop:
             return _stopped(engine, report, stop)
         if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'analyst'", run_id):
@@ -397,4 +420,27 @@ def run_guarded(payload: dict) -> dict:
         r = phase(engine, int(payload["run_id"]), ceiling=ceiling, client_options=payload.get("client_options"))
         return json.loads(json.dumps(r.__dict__, default=str))
     finally:
+        engine.dispose()
+
+
+def work_guarded(payload: dict) -> dict:
+    """The worker's child (step 9b): holds the run's work lock on its own connection for its whole work (another child
+    of the same run is refused it and returns `busy`, writing nothing), then runs the phase. The lock goes when this
+    process ends, however it ends."""
+    from hypocurate.config import load_settings
+    from hypocurate.db.engine import make_engine
+    from hypocurate.pipeline import queue
+    engine = make_engine(load_settings(web=False).database_url)
+    run_id = int(payload["run_id"])
+    holder = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        holder.execute(text("SELECT set_config('application_name', :a, false)"), dict(a=f"hc-work-{run_id}"))
+        if not holder.execute(text("SELECT pg_try_advisory_lock(:k)"), dict(k=queue.work_key(run_id))).scalar():
+            return {"busy": True}
+        phase = {"prepare": prepare, "proceed": proceed}.get(payload.get("phase"), run)
+        r = phase(engine, run_id, client_options=payload.get("client_options"),
+                  recovered=bool(payload.get("recovered")))
+        return json.loads(json.dumps(r.__dict__, default=str))
+    finally:
+        holder.close()
         engine.dispose()
