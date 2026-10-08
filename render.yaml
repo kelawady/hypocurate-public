@@ -38,7 +38,7 @@ services:
     name: hypocurate-worker
     runtime: docker
     region: oregon
-    plan: 0.5c-512mb
+    plan: 1c-2g
     branch: main
     autoDeployTrigger: checksPass
     dockerfilePath: ./Dockerfile
