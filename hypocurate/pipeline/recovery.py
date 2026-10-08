@@ -42,6 +42,26 @@ EXHAUSTED = ("attempts_exhausted: the run stopped at {stage} {n} times without f
              "run")
 
 
+def finish_narrower_questions(engine: Engine) -> list[str]:
+    """The worker's sweep: an original completed as partly sufficient whose narrower question was not created (the
+    worker stopped between the copy and the question; no worker claims a completed run) gets it now, and a draft left
+    by such a stop is submitted. Never a second one (`queries.create_narrower`; one per run, 0007). Returns the numbers."""
+    from hypocurate.pipeline import queries
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT r.id, (SELECT s.output FROM stage_result s WHERE s.run_id = r.id AND s.stage = 'narrowing' AND "
+            "s.status = 'done' ORDER BY s.id DESC LIMIT 1) AS decision FROM run r WHERE r.status = 'completed' AND "
+            "r.outcome = 'partly_sufficient' AND (NOT EXISTS (SELECT 1 FROM hypothesis h WHERE h.narrower_of_run_id = "
+            "r.id) OR EXISTS (SELECT 1 FROM hypothesis h JOIN hypothesis_version hv ON hv.hypothesis_id = h.id WHERE "
+            "h.narrower_of_run_id = r.id AND hv.status = 'draft'))")).all()
+    done = []
+    for run_id, decision in rows:
+        if isinstance(decision, dict) and isinstance(decision.get("narrower_scope"), dict):
+            done.append(queries.create_narrower(engine, run_id, decision["narrower_scope"]).number)
+            LOG.info(json.dumps({"narrower_question_finished": run_id}))
+    return done
+
+
 def recover(engine: Engine, run_id: int) -> dict:
     """Recovery's bookkeeping for a running run that a worker has just claimed; what was found."""
 

@@ -3382,7 +3382,7 @@
     "key": "worker_poll_interval",
     "name": "Worker idle interval",
     "state": "in_force",
-    "statement": "The idle worker checks the database and sleeps 60 seconds between checks.",
+    "statement": "When the worker has nothing to claim, it looks for work again after 60 seconds (and at once on start), and logs whether the database answers (never its address).",
     "value": {
       "text": "60",
       "unit": "seconds"
@@ -3394,8 +3394,8 @@
       "Step 2 summary."
     ],
     "decided": {
-      "by": "owner (Khalid El-Awady), step 2",
-      "date": "2026-10-04"
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3407,16 +3407,24 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.worker:IDLE_SECONDS",
+          "ref": "python:hypocurate.pipeline.queue:SWEEP_SECONDS",
           "equals": 60
         }
       ],
       "note": null
     },
-    "history": [],
+    "history": [
+      {
+        "value": "The idle worker checks the database and sleeps 60 seconds between checks.",
+        "from": "2026-10-04",
+        "to": "2026-10-08",
+        "note": "Step 9b (owner's go, 2026-10-08): the step 2 idle loop is replaced by the worker; the interval keeps its value."
+      }
+    ],
     "notes": [],
     "tests": [
-      "tests/test_health.py::test_worker_idles_and_checks_the_database"
+      "tests/test_health.py::test_the_idle_worker_looks_for_work_every_sweep_and_checks_the_database",
+      "tests/test_health.py::test_worker_logs_an_unreachable_database"
     ]
   },
   {

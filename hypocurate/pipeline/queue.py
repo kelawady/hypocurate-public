@@ -85,7 +85,7 @@ class Lease:
     def close(self) -> None:
         """Lets go of the lock (by closing the session) and the connection."""
         try:
-            self._conn.execute(text("SELECT pg_advisory_unlock_all()"))
+            self._conn.execute(text("SELECT pg_advisory_unlock_all(), set_config('application_name', '', false)"))
         except Exception:  # noqa: BLE001 (closing the session lets go of it anyway)
             pass
         self._conn.close()

@@ -237,3 +237,17 @@ def test_a_repeat_that_would_pass_the_run_cap_is_refused_before_it_is_sent(engin
 def test_the_interrupted_explanation_uses_the_analysts_own_wording():
     from hypocurate.pipeline.agents.analyst import UNAVAILABLE
     assert recovery.ANALYST_INTERRUPTED == f"{UNAVAILABLE} (interrupted)"
+
+
+def test_the_sweep_finishes_a_narrower_question_left_by_a_stop_and_never_makes_a_second(engine, stub):
+    from hypocurate.pipeline import completion, narrowing
+    from hypocurate.pipeline.agents import analyst, planner
+    stub.respond(to.responder(to.PARTLY))
+    rid = to.dispatched(engine, claim=to.PARTLY_CLAIM)
+    queries.start(engine, rid)
+    narrowing.run_narrowing(engine, rid, planner.run_planner(engine, rid, **kw(stub)).answer)
+    analyst.run_analyst(engine, rid, **kw(stub))
+    completion.copy_partly_sufficient(engine, rid)  # the stop: completed, no narrower question
+    assert len(recovery.finish_narrower_questions(engine)) == 1
+    assert recovery.finish_narrower_questions(engine) == []
+    assert one(engine, "SELECT count(*) FROM hypothesis WHERE narrower_of_run_id = :r", r=rid) == 1

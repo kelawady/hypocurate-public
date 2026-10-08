@@ -122,20 +122,36 @@ def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Calla
         beat.stop()
 
 
-def run(once: bool = False, engine: Engine | None = None) -> int:
-    """The worker loop. SIGTERM (a deploy) and SIGINT stop it after its child is stopped and its claim released."""
+def run(once: bool = False, engine: Engine | None = None, max_cycles: int | None = None,
+        wait: Callable[[float], Any] | None = None) -> int:
+    """The worker loop. SIGTERM (a deploy) and SIGINT stop it after its child is stopped and its claim released.
+    Each cycle it finishes any narrower question left by a stop (`recovery.finish_narrower_questions`) and claims the
+    next run; idle, it logs whether the database answers (never its address) and looks again after `SWEEP_SECONDS`.
+    `max_cycles` and `wait` are for tests."""
     engine = engine or make_engine(load_settings(web=False).database_url)
     stop = threading.Event()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, lambda *_: stop.set())
+    wait = wait or stop.wait
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: stop.set())
     name = worker_name()
     log.info(json.dumps({"worker_started": name, "once": once}))
-    while not stop.is_set():
-        claim = queue.claim_next(engine, name)
+    cycles = 0
+    while not stop.is_set() and (max_cycles is None or cycles < max_cycles):
+        cycles += 1
+        try:
+            recovery.finish_narrower_questions(engine)
+            claim = queue.claim_next(engine, name)
+        except Exception as error:  # noqa: BLE001 (the database is away: say so, try again later)
+            log.error("worker idle: database NOT reachable (%s)", type(error).__name__)
+            claim = None
+        else:
+            if claim is None:
+                log.info("worker idle: nothing to claim; database reachable")
         if claim is None:
             if once:
                 break
-            stop.wait(queue.SWEEP_SECONDS)
+            wait(queue.SWEEP_SECONDS)
             continue
         work(engine, claim, stop=stop)
         if once:
