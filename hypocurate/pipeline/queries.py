@@ -14,6 +14,15 @@ Every write follows the locking protocol (README, "Database migrations"): `run_t
   role (`settings.RUN_ROLES`). A fixed-plan run (criterion 14.1a, or a narrower question's run, A8) records
   `fixed_plan`. The database refuses an unsupported domain with its own message (PRD 5.5, 14.3).
 - `start`: queued -> running.
+- Step 9a (owner's approval of the step 9 plan, 2026-10-08; the reasons' wording approved with the go for 9a):
+  - `dispatch` stores the run's spending ceiling (R5; read by `spend.reserve` on every request, so it holds after
+    a crash or a restart) and refuses when this month's counted model calls have reached the monthly cap (R5; PRD
+    8, 9.3), or when a chosen source is constructed test data and the run is not marked as a test (Q6; the
+    storage guard stays as the backstop);
+  - `dispatch_again`: a new queued run of a query whose earlier run ended (PRD 8, 14.4), recording what that run
+    recorded (fixed plan, test mark; a ceiling only as given), refused while another run of the query is open;
+  - `cancel`: a named person cancels a queued or a waiting run (R3); a started run cannot be cancelled in
+    sprint 1.
 - `create_narrower`: the narrower question of a run completed as partly sufficient (owner, Q10, A8): a
   separate query linked to that run, created as submitted, with its original's domain, sources and option,
   and a text built by code from `NARROWER_TEXT`.
@@ -22,6 +31,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Iterable, Mapping
 
 from sqlalchemy import Connection, Engine, text
@@ -34,6 +44,16 @@ REVIEWER_MAX = 200
 # The narrower question's text (owner, A8; register 'narrower_question_text'): code-built, never a model's.
 NARROWER_TEXT = "{original} (narrower question: {scope})"
 CONSTRUCTED_MARK = "constructed_test_data"
+OPEN_STATUSES = ("queued", "waiting", "running")
+# Step 9a: the fixed reasons (owner, 2026-10-08; the monthly cap's in the owner's own words).
+REASONS = {
+    "month_cap_reached": "this month's model calls have reached the monthly cap ($50); dispatch is refused until next "
+                         "month, or until the owner raises the cap",
+    "constructed_source_unmarked": "{source} is constructed test data; dispatch it only as a marked test run",
+    "already_open": "another run of this query is queued, waiting or running",
+}
+CANCELLED = {"queued": "cancelled: cancelled by {by} before it started",
+             "waiting": "cancelled: cancelled by {by} while waiting for confirmation of the question as tested"}
 
 
 class QueryRefused(Exception):
@@ -120,41 +140,125 @@ def confirm_domain(engine: Engine, version_id: int, by: str, domain: str | None 
     run_transaction(engine, body)
 
 
-def dispatch(engine: Engine, version_id: int, *, fixed_plan: bool = False, constructed_test_data: bool = False) -> int:
+def _ceiling(ceiling) -> Decimal | None:
+    if ceiling is None:
+        return None
+    if not isinstance(ceiling, Decimal) or not ceiling.is_finite() or not ceiling > 0:
+        raise QueryRefused("invalid_ceiling", "the ceiling is a positive amount of US dollars")
+    return ceiling
+
+
+def _dispatch_checks(conn: Connection, version_id: int, constructed_test_data: bool) -> None:
+    """Step 9a: the monthly cap (R5) and constructed test data (Q6), in the dispatching transaction."""
+    from hypocurate.pipeline.agents import spend
+    from hypocurate.sources.versions import SOURCES
+    if spend.month_total(conn) >= spend.MONTH_CAP_USD:
+        raise QueryRefused("month_cap_reached", REASONS["month_cap_reached"])
+    if not constructed_test_data:
+        for key in conn.execute(text("SELECT s.key FROM hypothesis_version_source hvs JOIN source s ON s.id = "
+                                     "hvs.source_id WHERE hvs.hypothesis_version_id = :v ORDER BY s.key"),
+                                dict(v=version_id)).scalars():
+            if key in SOURCES and SOURCES[key].constructed:
+                raise QueryRefused("constructed_source_unmarked",
+                                   REASONS["constructed_source_unmarked"].format(source=key))
+
+
+def dispatch(engine: Engine, version_id: int, *, fixed_plan: bool = False, constructed_test_data: bool = False,
+             ceiling: Decimal | None = None) -> int:
     """Dispatches the version; returns the queued run's id. `fixed_plan` asks for the reference plan (14.1a). A
     narrower question's run always uses the plan its original's narrowing decision stored: that comes from the
     question's link to its original, never from the caller's flag (step 8b fix round, finding 1; the database
-    refuses such a run without the flag, migration 0006)."""
+    refuses such a run without the flag, migration 0006). `ceiling`: stored on the run (step 9a, R5)."""
+    ceiling = _ceiling(ceiling)
     setting_ids = {role: agent_settings.ensure_setting(engine, role) for role in agent_settings.RUN_ROLES}
 
     def body(conn: Connection):
         _lock_version(conn, version_id)
-        narrower = conn.execute(text("SELECT h.narrower_of_run_id IS NOT NULL FROM hypothesis_version hv JOIN "
-                                     "hypothesis h ON h.id = hv.hypothesis_id WHERE hv.id = :v"),
-                                dict(v=version_id)).scalar_one()
+        _dispatch_checks(conn, version_id, constructed_test_data)
         conn.execute(text("UPDATE hypothesis_version SET status = 'dispatched', dispatched_at = now() WHERE id = :v"),
                      dict(v=version_id))
-        flags = json.dumps({CONSTRUCTED_MARK: True} if constructed_test_data else {})
-        rid = conn.execute(text("INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags) "
-                                "VALUES (:v, :f, CAST(:x AS jsonb)) RETURNING id"),
-                           dict(v=version_id, f=fixed_plan or narrower, x=flags)).scalar_one()
-        chosen = set(conn.execute(text("SELECT source_id FROM hypothesis_version_source WHERE hypothesis_version_id = :v"),
-                                  dict(v=version_id)).scalars())
-        for sid, key, latest in conn.execute(text(
-                "SELECT s.id, s.key, (SELECT sv.id FROM source_version sv WHERE sv.source_id = s.id "
-                "AND sv.sealed_at IS NOT NULL ORDER BY sv.id DESC LIMIT 1) FROM source s ORDER BY s.id")).all():
-            if sid in chosen:
-                if latest is None:
-                    raise QueryRefused("source_not_sealed", f"the chosen source {key!r} has no sealed version")
-                conn.execute(text("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
-                                  "VALUES (:r, :s, :sv, 'pending')"), dict(r=rid, s=sid, sv=latest))
-            else:
-                conn.execute(text("INSERT INTO run_source (run_id, source_id, search_status) "
-                                  "VALUES (:r, :s, 'not_selected')"), dict(r=rid, s=sid))
-        for role, setting in setting_ids.items():
-            conn.execute(text("INSERT INTO run_agent_setting (run_id, role, agent_setting_id) VALUES (:r, :o, :s)"),
-                         dict(r=rid, o=role, s=setting))
-        return rid
+        return _new_run(conn, version_id, fixed_plan, constructed_test_data, ceiling, setting_ids)
+
+    return run_transaction(engine, body)
+
+
+def _new_run(conn: Connection, version_id: int, fixed_plan: bool, constructed_test_data: bool,
+             ceiling: Decimal | None, setting_ids: Mapping[str, int]) -> int:
+    """The queued run of a dispatched version, with everything a run records at dispatch."""
+    narrower = conn.execute(text("SELECT h.narrower_of_run_id IS NOT NULL FROM hypothesis_version hv JOIN "
+                                 "hypothesis h ON h.id = hv.hypothesis_id WHERE hv.id = :v"),
+                            dict(v=version_id)).scalar_one()
+    flags = json.dumps({CONSTRUCTED_MARK: True} if constructed_test_data else {})
+    rid = conn.execute(text("INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags, spending_ceiling) "
+                            "VALUES (:v, :f, CAST(:x AS jsonb), :c) RETURNING id"),
+                       dict(v=version_id, f=fixed_plan or narrower, x=flags, c=ceiling)).scalar_one()
+    chosen = set(conn.execute(text("SELECT source_id FROM hypothesis_version_source WHERE hypothesis_version_id = :v"),
+                              dict(v=version_id)).scalars())
+    for sid, key, latest in conn.execute(text(
+            "SELECT s.id, s.key, (SELECT sv.id FROM source_version sv WHERE sv.source_id = s.id "
+            "AND sv.sealed_at IS NOT NULL ORDER BY sv.id DESC LIMIT 1) FROM source s ORDER BY s.id")).all():
+        if sid in chosen:
+            if latest is None:
+                raise QueryRefused("source_not_sealed", f"the chosen source {key!r} has no sealed version")
+            conn.execute(text("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
+                              "VALUES (:r, :s, :sv, 'pending')"), dict(r=rid, s=sid, sv=latest))
+        else:
+            conn.execute(text("INSERT INTO run_source (run_id, source_id, search_status) "
+                              "VALUES (:r, :s, 'not_selected')"), dict(r=rid, s=sid))
+    for role, setting in setting_ids.items():
+        conn.execute(text("INSERT INTO run_agent_setting (run_id, role, agent_setting_id) VALUES (:r, :o, :s)"),
+                     dict(r=rid, o=role, s=setting))
+    return rid
+
+
+def dispatch_again(engine: Engine, number: str, *, ceiling: Decimal | None = None) -> int:
+    """A new queued run of query `number`'s dispatched version, once no run of the query is open (PRD 8, 14.4). It
+    records what the version's latest run recorded (fixed plan, test mark), and the ceiling only as given now."""
+    ceiling = _ceiling(ceiling)
+    with engine.connect() as conn:
+        vid = conn.execute(text(
+            "SELECT hv.id FROM hypothesis h JOIN hypothesis_version hv ON hv.hypothesis_id = h.id "
+            "WHERE h.number = :n AND hv.status = 'dispatched' ORDER BY hv.version_number DESC LIMIT 1"),
+            dict(n=number)).scalar_one_or_none()
+    if vid is None:
+        raise QueryRefused("not_dispatched", f"query {number} has no dispatched version to dispatch again")
+    setting_ids = {role: agent_settings.ensure_setting(engine, role) for role in agent_settings.RUN_ROLES}
+
+    def body(conn: Connection):
+        _lock_version(conn, vid)
+        if conn.execute(text("SELECT EXISTS (SELECT 1 FROM run r JOIN hypothesis_version hv ON hv.id = "
+                             "r.hypothesis_version_id WHERE hv.hypothesis_id = (SELECT hypothesis_id FROM "
+                             "hypothesis_version WHERE id = :v) AND r.status IN ('queued', 'waiting', 'running'))"),
+                        dict(v=vid)).scalar_one():
+            raise QueryRefused("already_open", REASONS["already_open"])
+        last = conn.execute(text("SELECT fixed_plan, experiment_flags FROM run WHERE hypothesis_version_id = :v "
+                                 "ORDER BY id DESC LIMIT 1"), dict(v=vid)).one()
+        marked = isinstance(last.experiment_flags, dict) and last.experiment_flags.get(CONSTRUCTED_MARK) is True
+        _dispatch_checks(conn, vid, marked)
+        return _new_run(conn, vid, last.fixed_plan, marked, ceiling, setting_ids)
+
+    return run_transaction(engine, body)
+
+
+def cancel(engine: Engine, run_id: int, by: str) -> str:
+    """A named person cancels a queued or a waiting run (R3); returns the reason recorded. Refused for any other
+    status (a started run cannot be cancelled in sprint 1)."""
+    name = by.strip() if isinstance(by, str) else ""
+    if not name or len(name) > REVIEWER_MAX:
+        raise QueryRefused("name_required", f"a cancel names the person (1 to {REVIEWER_MAX} characters)")
+
+    def body(conn: Connection):
+        conn.execute(text(f"SET LOCAL lock_timeout = {LOCK_TIMEOUT_MS}"))
+        if conn.execute(text("SELECT count(*) FROM run WHERE id = :r"), dict(r=run_id)).scalar_one() == 0:
+            raise QueryRefused("unknown_run", f"no run {run_id}")
+        status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id)).scalar_one()
+        if status not in CANCELLED:
+            raise QueryRefused("not_cancellable", f"run {run_id} is {status}; only a queued or a waiting run can be "
+                                                  "cancelled (a started run cannot be cancelled in sprint 1)")
+        reason = CANCELLED[status].format(by=name)
+        conn.execute(text("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r"),
+                     dict(f=reason, r=run_id))
+        return reason
 
     return run_transaction(engine, body)
 
@@ -184,7 +288,18 @@ def scope_in_words(scope: Mapping) -> str:
 
 
 def create_narrower(engine: Engine, original_run: int, narrower_scope: Mapping) -> Query:
-    """The narrower question of a run completed as partly sufficient, created as submitted (Q10)."""
+    """The narrower question of a run completed as partly sufficient, created as submitted (Q10). Step 9a: taken up
+    again after a stop, it finishes what was begun (a draft left by a stop is submitted) and never creates a second
+    one (the database allows one per run, 0007)."""
+    with engine.connect() as conn:
+        existing = conn.execute(text(
+            "SELECT h.id, h.number, hv.id AS vid, hv.status FROM hypothesis h JOIN hypothesis_version hv ON "
+            "hv.hypothesis_id = h.id WHERE h.narrower_of_run_id = :r ORDER BY hv.version_number LIMIT 1"),
+            dict(r=original_run)).one_or_none()
+    if existing is not None:
+        if existing.status == "draft":
+            submit(engine, existing.vid)
+        return Query(existing.id, existing.number, existing.vid)
     with engine.connect() as conn:
         row = conn.execute(text(
             "SELECT hv.text, d.key AS domain, hv.sufficiency_option, hv.id AS vid FROM run r "
