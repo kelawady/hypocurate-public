@@ -7904,7 +7904,7 @@
     "key": "run_order_and_failures",
     "name": "The run order and what a failure does to a run",
     "state": "in_force",
-    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or, after a named person's confirmation of the question as tested (the run waits for it; step 9a), the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan), which also waits for the confirmation. A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9b's recovery. Taken up again, the run reads each agent's latest stored stage whatever its status, so such a stop, a stage left running or a stored spending refusal has the same effect as when it happened (register 'resumable_run'). No model call runs inside a database transaction.",
+    "statement": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or, after a named person's confirmation of the question as tested (the run waits for it; step 9a), the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan), which also waits for the confirmation. A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until recovery takes it up (register 'recovery_policy', step 9b). Taken up again, the run reads each agent's latest stored stage whatever its status, so such a stop, a stage left running or a stored spending refusal has the same effect as when it happened (register 'resumable_run'). No model call runs inside a database transaction.",
     "value": {
       "text": "the step 8b run order and failure table",
       "unit": null
@@ -7971,6 +7971,12 @@
         "from": "2026-10-07",
         "to": "2026-10-08",
         "note": "Step 9a (owner, 2026-10-08, Q1 and Q5): the wait for a person's confirmation before the lock."
+      },
+      {
+        "value": "A run goes: Planner, narrowing decision (code), then either the partly-sufficient path or, after a named person's confirmation of the question as tested (the run waits for it; step 9a), the rules lock, records, Checks, Critic, Inclusion, dataset freeze, statistics, Analyst and the copy of code's decision. A fixed-plan run bypasses the Planner (criterion 14.1a); so does a narrower question's run, recognised by its link to its original (its stored plan), which also waits for the confirmation. A Planner failure, a domain mismatch, a claim that is not one plan, a refused checkpoint or write, changed source versions for a narrower question, and a spending refusal at the Planner or the Critic fail the run with a stated reason. A Critic failure leaves flags unclassified and the run goes on. Any Analyst failure, a spending refusal included, leaves code's decision standing: the run completes with 'explanation unavailable' (a departure from PRD 14.4's 'marked failed' for a cap reached at the Analyst, by the owner's decision). A recording or reservation failure at any agent stops the run at once: no further model request (no further Critic batch, no Analyst), nothing more written, no narrower question created; the run stays running (a call whose recording failed stays started) until step 9b's recovery. Taken up again, the run reads each agent's latest stored stage whatever its status, so such a stop, a stage left running or a stored spending refusal has the same effect as when it happened (register 'resumable_run'). No model call runs inside a database transaction.",
+        "from": "2026-10-08",
+        "to": "2026-10-08",
+        "note": "Step 9b: recovery is built."
       }
     ]
   },
@@ -8216,7 +8222,7 @@
     "key": "resumable_run",
     "name": "A run is taken up again from what is stored",
     "state": "in_force",
-    "statement": "The orchestrator decides every step from stored rows, never from memory, and reads each agent's latest stored stage whatever its status before deciding what comes next. An earlier stop stays a stop: a Planner, Critic or Analyst stage that ended with a recording or reservation failure, or is still running, stops the run again (no further request, nothing more written; the run stays running for step 9b's recovery); a stored spending refusal at the Planner or the Critic fails the run, and a Planner stage that failed for any other reason fails it as the Planner's failure, so the Planner is never asked again in 9a; an Analyst stage that failed for any other reason, a spending refusal included, leaves code's decision standing (A3, B2). A done Planner stage is used, not repeated; a run already confirmed, or past its lock, goes on to the lock or past it without waiting again; a stored narrowing decision is used; after the lock, records are stored only for sources still pending, and Checks, Inclusion, the freeze, the statistics and the completion run only if their stored result is absent; an agent stage that exists (the Critic's, the Analyst's) is never started again; a completed partly-sufficient original without its narrower question gets it, and never a second one (a database index allows one per run; a draft left by a stop is submitted). A run on its first pass takes exactly the steps it took before. Recovery after a crash (closing open stages and calls, the Planner's one repeat after an interruption) is step 9b; until then a stage left running stops the run.",
+    "statement": "The orchestrator decides every step from stored rows, never from memory, and reads each agent's latest stored stage whatever its status before deciding what comes next. An earlier stop stays a stop: a Planner, Critic or Analyst stage that ended with a recording or reservation failure, or is still running, stops the run again (no further request, nothing more written; the run stays running for step 9b's recovery); a stored spending refusal at the Planner or the Critic fails the run, and a Planner stage that failed for any other reason fails it as the Planner's failure, so the Planner is never asked again in 9a; an Analyst stage that failed for any other reason, a spending refusal included, leaves code's decision standing (A3, B2). A done Planner stage is used, not repeated; a run already confirmed, or past its lock, goes on to the lock or past it without waiting again; a stored narrowing decision is used; after the lock, records are stored only for sources still pending, and Checks, Inclusion, the freeze, the statistics and the completion run only if their stored result is absent; an agent stage that exists (the Critic's, the Analyst's) is never started again; a completed partly-sufficient original without its narrower question gets it, and never a second one (a database index allows one per run; a draft left by a stop is submitted). A run on its first pass takes exactly the steps it took before. Recovery after a crash (closing open stages and calls, the Planner's one repeat) is register 'recovery_policy' (step 9b); without a recovery a stage left running stops the run.",
     "value": {
       "text": "next step from stored rows",
       "unit": null
@@ -8266,7 +8272,14 @@
       "tests/test_resume_step9a.py::test_a_stored_analyst_accounting_failure_or_open_stage_is_never_completed",
       "tests/test_resume_step9a.py::test_a_confirmed_run_stopped_around_the_lock_is_completed_through_run"
     ],
-    "history": [],
+    "history": [
+      {
+        "value": "The orchestrator decides every step from stored rows, never from memory, and reads each agent's latest stored stage whatever its status before deciding what comes next. An earlier stop stays a stop: a Planner, Critic or Analyst stage that ended with a recording or reservation failure, or is still running, stops the run again (no further request, nothing more written; the run stays running for step 9b's recovery); a stored spending refusal at the Planner or the Critic fails the run, and a Planner stage that failed for any other reason fails it as the Planner's failure, so the Planner is never asked again in 9a; an Analyst stage that failed for any other reason, a spending refusal included, leaves code's decision standing (A3, B2). A done Planner stage is used, not repeated; a run already confirmed, or past its lock, goes on to the lock or past it without waiting again; a stored narrowing decision is used; after the lock, records are stored only for sources still pending, and Checks, Inclusion, the freeze, the statistics and the completion run only if their stored result is absent; an agent stage that exists (the Critic's, the Analyst's) is never started again; a completed partly-sufficient original without its narrower question gets it, and never a second one (a database index allows one per run; a draft left by a stop is submitted). A run on its first pass takes exactly the steps it took before. Recovery after a crash (closing open stages and calls, the Planner's one repeat after an interruption) is step 9b; until then a stage left running stops the run.",
+        "from": "2026-10-08",
+        "to": "2026-10-08",
+        "note": "Step 9b: recovery is built."
+      }
+    ],
     "notes": []
   },
   {
@@ -8396,6 +8409,245 @@
     "tests": [
       "tests/test_queries_step9a.py::test_dispatch_is_refused_once_the_months_calls_reach_the_monthly_cap",
       "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "queue_and_claims",
+    "name": "The queue: claims and the heartbeat",
+    "state": "in_force",
+    "statement": "A worker claims one run at a time: on its own autocommit lease connection it takes, without waiting, a session advisory lock on the run (CLAIM) and checks that the run's WORK lock is free; then, in one transaction under the run's lock, it re-checks the run, closes a stale open claim as 'lost', records its claim (run_claim; one open claim per run) and starts the run (queued, or a confirmed waiting run, becomes running). The guarded child holds the run's WORK lock for its whole work; an orphan child holding it keeps every worker off the run. A claim's heartbeat is written every 15 seconds by a thread of the worker on the claim row, never the run row, so it never waits behind the run's lock (a named exception to the locking protocol, like audit rows). A claim is taken to be dead when its heartbeat is older than 120 seconds; a claim released for recovery or at shutdown is claimable at once. Running runs are taken up first, then confirmed waiting runs, then queued runs in the order of dispatch. The worker parent never imports dspy, litellm or scipy (it does load numpy, through the source adapters' spreadsheet library).",
+    "value": {
+      "text": "heartbeat 15 s; dead after 120 s",
+      "unit": "seconds"
+    },
+    "category": "operational",
+    "affects": "Every run worked by the worker or the command line (PRD 8 'Queue', 'Restart').",
+    "reason": "PRD 8; the owner's approval of R6 and of the claims design (step 9 plan).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queue:HEARTBEAT_SECONDS",
+          "equals": 15
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queue:STALE_SECONDS",
+          "equals": 120
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queue:RELEASE_REASONS",
+          "equals": [
+            "finished",
+            "waiting",
+            "stopped_for_recovery",
+            "child_failed",
+            "child_stuck",
+            "shutdown",
+            "lost"
+          ]
+        },
+        {
+          "ref": "sql:uq_run_claim_open"
+        },
+        {
+          "ref": "sql:hc_run_claim_update"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_queue.py::test_two_workers_never_hold_one_run",
+      "tests/test_queue.py::test_claims_at_the_same_moment_give_the_run_to_one_worker",
+      "tests/test_queue.py::test_a_run_whose_work_lock_is_held_by_an_orphan_child_is_not_claimed",
+      "tests/test_queue.py::test_a_running_run_with_a_live_claim_is_left_alone_and_a_stale_one_is_taken_over",
+      "tests/test_migrations_step9b.py::test_the_heartbeat_is_the_databases_time_and_needs_no_run_lock",
+      "tests/test_worker.py::test_two_workers_and_one_run_give_one_claim_and_no_repeated_request",
+      "tests/test_worker.py::test_the_worker_parent_loads_no_model_or_statistics_library"
+    ],
+    "history": [],
+    "notes": [
+      "Measured on 0.5 CPU / 512 MB in the runtime image (2026-10-08): worker parent peak 78.8 MiB; guarded child 387.9 MiB; the container's cgroup peak reached its 512 MiB limit (it counts reclaimable file cache). The upgrade (1c-2g) is the owner's decision (Q2)."
+    ]
+  },
+  {
+    "key": "stuck_child_limits",
+    "name": "A stuck child",
+    "state": "in_force",
+    "statement": "The worker kills its child, releases the claim as 'child_stuck' and lets recovery take the run up when the run has written nothing (a status change, a stage or call started or finished, a source searched, a record stored, the confirmation, the lock, the freeze) for 900 seconds, or after 1,800 seconds in all. 900 seconds covers one agent call's two requests at the 300-second request timeout plus 300 seconds of margin. A deploy (SIGTERM) stops the child and releases the claim as 'shutdown'.",
+    "value": {
+      "text": "900 s without a write; 1,800 s in all",
+      "unit": "seconds"
+    },
+    "category": "operational",
+    "affects": "Every run worked by the worker.",
+    "reason": "Owner's addition A4 (step 9 plan). Live runs took 10-41 s; on 0.5 CPU a fixed-plan run took 21.1 s, the statistics stage 3.2 s at 2,000 simulations and 8.7 s at 10,000 (measured 2026-10-08).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queue:STALL_SECONDS",
+          "equals": 900
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queue:RUN_TIMEOUT_SECONDS",
+          "equals": 1800
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.lm:DEFAULT_TIMEOUT_SECONDS",
+          "equals": 300
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_worker.py::test_a_stuck_child_is_stopped_and_its_claim_released_for_recovery",
+      "tests/test_worker.py::test_the_whole_run_limit_stops_a_child_that_keeps_writing_too_long",
+      "tests/test_worker.py::test_sigterm_shuts_the_worker_down_releasing_its_claim_and_stopping_its_child",
+      "tests/test_queue.py::test_the_time_since_the_last_write_counts_stage_and_call_rows"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "recovery_policy",
+    "name": "Recovery when a run is taken up again",
+    "state": "in_force",
+    "statement": "When a worker claims a run that is already running, recovery first closes every open model call as 'interrupted' (counted at its reserved maximum under every cap) and every running stage as failed ('interrupted'); a run taken up more than 3 times fails ('attempts_exhausted'). It writes no plan, record, set, freeze or confirmation. The run then goes on by the normal path, by cause (owner, 2026-10-08): an interruption, a recording failure or any database failure while saving a call follows the per-role rule (the Planner is repeated once, a second loss fails the run; the Critic's remaining batches are skipped; after the Analyst the run completes with 'explanation unavailable'); a spending refusal stays a stop, exactly as in 9a (the Planner and the Critic fail the run, the Analyst completes it; no further request, never a later paid stage). The worker also finishes a narrower question that a stop left uncreated (never a second).",
+    "value": {
+      "text": "3 recoveries; the Planner repeated once",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run left open by a crash, a stop or a deploy (PRD 8, 14.4).",
+    "reason": "Owner's answer Q3 (step 9 plan) and the owner's answer on recovery, split by cause (2026-10-08).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.recovery:MAX_RECOVERIES",
+          "equals": 3
+        },
+        {
+          "ref": "python:hypocurate.pipeline.recovery:PLANNER_REPEATS",
+          "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.pipeline.recovery:RECOVERABLE",
+          "equals": [
+            "interrupted",
+            "recording_failed",
+            "reservation_failed"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.recovery:ANALYST_INTERRUPTED",
+          "equals": "explanation unavailable (interrupted)"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_recovery.py::test_a_lost_planner_request_is_repeated_once",
+      "tests/test_recovery.py::test_a_second_lost_planner_request_fails_the_run_with_the_reason",
+      "tests/test_recovery.py::test_a_critic_spending_refusal_stays_a_stop_and_the_analyst_is_never_asked",
+      "tests/test_recovery.py::test_a_lost_analyst_request_completes_the_run_with_the_explanation_unavailable",
+      "tests/test_recovery.py::test_a_run_recovered_more_than_max_recoveries_times_fails",
+      "tests/test_kill_matrix.py::test_a_worker_killed_at_a_code_stage_is_taken_up_with_the_same_results",
+      "tests/test_kill_matrix.py::test_a_worker_killed_mid_planner_repeats_the_planner_once",
+      "tests/test_kill_matrix.py::test_14_4_a_worker_stopped_mid_run_and_restarted_finishes_the_run"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "guarded_child_dies_with_parent",
+    "name": "The guarded child dies with its worker",
+    "state": "in_force",
+    "statement": "The worker's main thread starts the guarded child (guarded.start_guarded refuses any other thread) and passes its pid; the child sets PR_SET_PDEATHSIG(SIGKILL) first thing, then exits at once if its parent is not that process any more (the parent died before the signal was set). The child holds the run's work lock on its own connection, so even an orphan keeps every worker off the run until it ends. run_guarded (the command line before step 9b) is unchanged.",
+    "value": {
+      "text": "SIGKILL with the parent",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every guarded child the worker starts.",
+    "reason": "Owner's addition A3 (step 9 plan).",
+    "evidence": [
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-08"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.guarded:PR_SET_PDEATHSIG",
+          "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.access.guarded:PARENT_GONE_EXIT",
+          "equals": 3
+        },
+        {
+          "ref": "python:hypocurate.access.guarded:start_guarded"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_guarded_parent.py::test_the_child_dies_within_two_seconds_when_its_parent_is_killed",
+      "tests/test_guarded_parent.py::test_the_child_outlives_a_thread_of_its_parent_that_exits",
+      "tests/test_guarded_parent.py::test_a_child_is_started_only_from_the_main_thread",
+      "tests/test_guarded_parent.py::test_a_child_whose_parent_is_already_gone_exits_at_once",
+      "tests/test_worker.py::test_killing_the_worker_kills_its_child_and_frees_the_runs_locks"
     ],
     "history": [],
     "notes": []
