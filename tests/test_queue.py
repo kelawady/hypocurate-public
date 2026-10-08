@@ -177,3 +177,32 @@ def test_the_keys_never_meet_other_locks():
     assert len(keys) == 4 and not keys & {MONTH_LOCK_KEY, SOURCES_LOCK_KEY}
     with pytest.raises(ValueError):
         queue.claim_key(2 ** 32)
+
+
+# --- added after the mutation checks (q02, q03): each guard reached on its own ---------------------------------
+
+def test_the_claim_transaction_itself_refuses_a_run_with_a_live_claim(w):
+    """Mutation q02: the candidate query leaves out a run with a live claim, so the claim transaction's own re-check
+    (the race between the query and the transaction) is reached directly here."""
+    rid = w.run()
+    first = queue.claim_next(w.e, "host:1")
+    try:
+        assert queue._take(w.e, rid, "host:2", queue.STALE_SECONDS) is None
+        assert one(w.e, "SELECT count(*) FROM run_claim WHERE run_id = :r", r=rid) == 1
+    finally:
+        first.lease.close()
+
+
+def test_the_claim_transaction_itself_refuses_an_unconfirmed_waiting_run(w):
+    rid = waiting_run(w)
+    assert queue._take(w.e, rid, "host:1", queue.STALE_SECONDS) is None
+    assert one(w.e, "SELECT status FROM run WHERE id = :r", r=rid) == "waiting"
+
+
+def test_an_unconfirmed_waiting_run_is_not_even_a_candidate(w):
+    """Mutation q03: the candidate query's own rule (the claim transaction would refuse it too)."""
+    rid = waiting_run(w)
+    confirmed = waiting_run(w, confirmed=True)
+    with w.e.connect() as conn:
+        listed = [r for (r,) in conn.execute(queue._CANDIDATES, dict(stale=queue.STALE_SECONDS, only=None)).all()]
+    assert confirmed in listed and rid not in listed
