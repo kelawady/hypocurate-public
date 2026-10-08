@@ -58,7 +58,7 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
     code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer")
     assert code == 0, err
     r = report_of(out)
-    assert r["query"].startswith("Q-") and r["report"]["status"] == "completed" and r["report"]["outcome"] == "sufficient"
+    assert r["query"].startswith("Q-") and r["report"]["status"] == "completed" and r["report"]["outcome_code"] == "sufficient"
     assert guard_refusals(engine, r["run"]) == []
     code, out, err = hc(capsys, "show", str(r["run"]))
     shown = json.loads(out)
@@ -67,8 +67,8 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
     pooled = next(x for x in shown["results"] if x["scope"] == "pooled")
     assert (pooled["n_records"], pooled["n_alloys"], pooled["n_groups"], pooled["resid_df"]) == (97, 22, 20, 74)
     assert round(pooled["estimate"], 1) == 424.9 and round(pooled["std_error"], 1) == 64.4
-    assert shown["explanation_label"] == ("written by a language model; values inserted from the run record; "
-                                         "narrative not verified")  # decision A (fix round 1)
+    assert shown["analyst_text"]["label"] == ("written by a language model; values inserted from the run record; "
+                                             "narrative not verified")  # decision A (fix round 1)
     assert shown["tokens_and_cost"] is not None
 
 
@@ -76,7 +76,7 @@ def test_14_1b_run_with_the_planner(engine, stub, capsys):
     stub.respond(responder(planner_body()))
     code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
     r = report_of(out)
-    assert code == 0 and r["report"]["outcome"] == "sufficient" and "planner" in r["report"]["stages"]
+    assert code == 0 and r["report"]["outcome_code"] == "sufficient" and "planner" in r["report"]["stages"]
     assert guard_refusals(engine, r["run"]) == []
 
 
@@ -84,7 +84,7 @@ def test_14_3_the_bcc_claim_from_the_command_line(engine, stub, capsys):
     stub.respond(responder(BCC))
     code, out, err = hc(capsys, "run", BCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
     r = report_of(out)
-    assert code == 0 and r["report"]["outcome"] == "insufficient"
+    assert code == 0 and r["report"]["outcome_code"] == "insufficient"
     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
     assert shown["outcome"] == "insufficient in the sources searched" and shown["verdict"] is None
     assert shown["results"] == [] and shown["nothing_found"] == "missing_evidence"
@@ -95,14 +95,14 @@ def test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line(
     stub.respond(responder(PARTLY))
     code, out, err = hc(capsys, "run", PARTLY_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
     r = report_of(out)
-    assert code == 0 and r["report"]["outcome"] == "partly_sufficient"
+    assert code == 0 and r["report"]["outcome_code"] == "partly_sufficient"
     number = r["report"]["narrower_question"]
     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
     assert shown["outcome"] == "partly sufficient in the sources searched" and shown["narrower_question"] == number
     assert shown["evidence_level_wording"] == "original question not tested; a narrower question was proposed"
     code, out, err = hc(capsys, "dispatch", number, "--by", "Ada Reviewer")
     n = report_of(out)
-    assert code == 0 and n["report"]["outcome"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
+    assert code == 0 and n["report"]["outcome_code"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
     narrower = json.loads(hc(capsys, "show", str(n["run"]))[1])
     assert narrower["narrower_question_of"] == r["query"] and narrower["plan"] == "from the narrowing decision"
 
@@ -232,3 +232,51 @@ def test_a_fixed_plan_runs_reading_is_the_reference_plans(engine, stub, capsys):
     assert r["reading"]["question_as_tested"]["label"] == reading.LABELS["fixed"]
     code, out, err = hc(capsys, "show", str(r["run"]))
     assert json.loads(out)["question_as_tested"] == r["reading"]["question_as_tested"]
+
+
+# --- one presentation everywhere (owner, after the re-check) -----------------------------------------------------
+
+def assert_presented(out: str, shown: dict, explanation: str | None) -> None:
+    """Code's statement first, then the Analyst's text only under its label; its text nowhere else in the output."""
+    from hypocurate.pipeline.agents.analyst import LABEL
+    keys = list(shown)
+    assert keys[:2] == ["statement", "analyst_text"], keys[:3]
+    assert shown["statement"][0].startswith("Question as asked: ")
+    assert "explanation" not in shown and "explanation_label" not in shown
+    if explanation:
+        assert shown["analyst_text"] == {"label": LABEL, "text": explanation}
+        assert out.count(json.dumps(explanation, ensure_ascii=False)[1:-1]) == 1
+
+
+def stored_explanation(engine, run_id):
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT output->>'report' FROM stage_result WHERE run_id = :r AND stage = 'analyst' "
+                                 "ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar()
+
+
+def test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text(engine, stub, capsys):
+    """Re-check: `run` printed the orchestration report's explanation without the label or the statement."""
+    stub.respond(responder(PARTLY))
+    code, out, err = hc(capsys, "run", PARTLY_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+    assert code == 0, err
+    r = report_of(out)
+    explanation = stored_explanation(engine, r["run"])
+    assert explanation
+    assert_presented(out.split("\n", 2)[2], r["report"], explanation)
+    code, out, err = hc(capsys, "show", str(r["run"]))
+    shown = json.loads(out)
+    assert_presented(out, shown, explanation)
+    assert {k: v for k, v in r["report"].items() if k not in ("stages", "run_failure")} == shown
+    code, out, err = hc(capsys, "dispatch", r["report"]["narrower_question"], "--by", "Ada Reviewer")
+    n = report_of(out)
+    assert_presented(out.split("\n", 2)[2], n["report"], stored_explanation(engine, n["run"]))
+    assert n["report"]["statement"][-1].startswith("Statement format ")
+
+
+def test_a_run_whose_analyst_failed_prints_the_statement_and_says_the_text_is_unavailable(engine, stub, capsys):
+    stub.respond(responder(analyst=lambda raw: "The data do not exist {outcome_wording}."))
+    code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer")
+    r = report_of(out)
+    assert r["report"]["statement"][0].startswith("Question as asked: ")
+    assert r["report"]["analyst_text"] == {"unavailable": "explanation unavailable (wording_refused)"}
+    assert "do not exist" not in out

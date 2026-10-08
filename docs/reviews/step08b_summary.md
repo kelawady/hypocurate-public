@@ -1,6 +1,6 @@
 # Build step 8b — summary for review
 
-Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: second-model review "not safe to merge"; fix round 1 built (next section); whole suite 1,836 locally and in the rebuilt test image; pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
+Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: re-check "not safe to merge" (four issues in the results statement); fixed (next section); pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
 
 PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decision and the partly-sufficient path, the Critic, the Analyst, the orchestrator, and the command line's `run`, `dispatch` and `show`, with criteria 14.1 and 14.3 passing from the command line. Part 8a (merged and live, schema 0005) built the agent core, the Curator, the spending caps and the temperature bands.
 
@@ -16,6 +16,29 @@ PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decis
 8. The gap facts: the kind of "nothing found" classified by code.
 
 **Not changed:** `render.yaml`, `.github/workflows/`, the Dockerfile, Compose, and the dependency locks (checked with `git diff --name-only d76c86a..HEAD`). No PRD document is changed; corrections are listed at the end.
+
+## Fix round 2: the re-check (2026-10-08)
+
+**Update.** ChatGPT's re-check (`docs/reviews/step08b_recheck_chatgpt.md`) closed the five original findings. It found four issues in the results statement and its presentation, which blocked the merge. Each is fixed with tests that failed on the code before (shown below). The step is still **not merged**.
+
+| Issue | What was wrong | What changed |
+|---|---|---|
+| Not-fitted outcome | A completed run whose coefficient cannot be fitted crashed the renderer (`display.coefficient(None)`). The fixture claiming every outcome lacked it. | An explicit branch: no number of the coefficient is formatted. The line says no coefficient could be fitted and how many records of the set could not be used. The fixture now covers every outcome and evidence level 1–6, including the not-fitted and the concentrated coefficient-only results, and a test renders each. |
+| Concentration | The spread line needed a p-value, so a coefficient-only result failing check 2 for concentrated evidence hid the figures that explain it. | The spread line is shown whenever its figures exist (not when the result is withheld). It is compared only with the run's own informative-group count, with no threshold. |
+| Format version (owner's decision) | The recorded format did not select the renderer, so the claim that the wording follows the recorded format was unsupported. | The statement is always rendered in the current format and ends with "Statement format N." It adds "This run was completed under format M." when that differs, or says the format was not recorded. Format raised to 2 (the wording changed). The register and this summary are corrected, and the test that kept earlier fingerprints is replaced by a pin of the current format only. |
+| One presentation | `run` and `dispatch` printed the orchestration report's explanation with no label and no statement. | `run` and `dispatch` print exactly `show`'s output: code's statement first, then `analyst_text` (the Analyst's text under its label, or that it is unavailable), plus the stages and any run failure. Tests check each command's output and that the Analyst's text appears once, only under its label. |
+
+**Tests that failed on the code before:**
+- **Statement (7):** the not-fitted branch (it raised the reproduced `TypeError`), the concentrated spread, the three format cases, the coverage of every outcome and level, and the current-format pin.
+- **CLI (2):** the one-presentation test and the test for a run whose Analyst failed.
+
+**Changed expectations (reasons):**
+- **Format line:** the statement tests for the reference run, nothing frozen, partly sufficient and the other kinds now end with the format line.
+- **Spread line:** the coefficient-only kind now shows it (was asserted absent).
+- **Format in `show`:** `show`'s format field is `statement_format` (`current`, `recorded`); it was `statement_format_version`.
+- **CLI:** the tests read `outcome_code` from the run output, which is now `show`'s, where `outcome` is the wording. `show`'s `explanation` / `explanation_label` became `analyst_text`.
+
+**Also from the re-check:** both live Critic records show the stored request inputs, not a captured wire request (noted under "Numbers").
 
 ## Fix round 1 (2026-10-07)
 
@@ -43,13 +66,12 @@ The statement is **not stored as text**. It is rendered from the stored results 
 
 **The owner's conditions, all built and tested:**
 - **Pure function:** `statement.facts` reads the stored rows into plain values. It strips the stored lists of record ids. `statement.render` is a pure function of those values and orders sources and sensitivity sets itself. Two runs of one version, with other records and other ids, give the same text, and shuffled stored lists give the same text.
-- **Format version:** the format has a version, `statement.FORMAT_VERSION` (1), in one named place. The completing code records it on the run (`run.statement_format_version`, 0006). It can be set only in the update that completes the run, and never changed after. `show` gives the rendered and recorded versions.
-- **Wording pinned:** a fixture of stored facts for each outcome kind (`tests/fixtures/statement_facts.json`) has its rendered text pinned per version. A wording change fails until the version is raised.
+- **Format version:** the format has a version, `statement.FORMAT_VERSION`, in one named place (now 2). The completing code records it on the run (`run.statement_format_version`, 0006). It can be set only in the update that completes the run, and never changed after.
+- **Wording pinned:** a fixture of stored facts covering every outcome and evidence level (`tests/fixtures/statement_facts.json`) has the current format's rendered text pinned. A wording change fails until the version is raised.
 
-**What follows:**
+**What follows (corrected after the re-check):**
 - The numbers cannot change, because they come only from stored results.
-- The wording follows the format version.
-- A run completed by code that did not record a version (the previous release's, or the 12 live runs in the development database) shows "not recorded".
+- **The wording is always the current format's.** The recorded format does not select the wording; an earlier version of this summary and the register claimed it did, which was unsupported (the re-check, item 5). The statement ends with "Statement format N." When the run was completed under another format, it adds "This run was completed under format M."; when none was recorded (the previous release's code, the 12 live runs in the development database), that the format was not recorded.
 
 ### Further change after the first live Critic call (owner's decision, 2026-10-07)
 
@@ -140,6 +162,7 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
 - **Mutation checks:** 46 deliberate faults in the new safeguards and wording rules (41, then 5 for the Critic's scope and instruction), each with a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
 - **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
+- **About both live Critic records (the re-check, item 8):** they show the request inputs code stored with the Critic's stage (what the request is built from), not a captured wire request.
 - **One live Critic call** (owner's go; fresh scratch database; constructed data marked as such; ceiling $0.25): Haiku 4.5, 1,330 input and 833 output tokens, **$0.005495** (reserved maximum $0.045779). Two `invalid_value` flags were sent, each naming one record. The request held no compared value (code also checked it for each): only each flag's kind and category and its record's metadata (alloy, composition, paper DOI, categories, field statuses). Both entries were accepted (class 'different specimens or conditions'); none was refused; one attempt. A second run of the same version with no classes gave identical decisions, sets, freeze record and fingerprint, statistics and gap facts. Live spending is now $1.0333 (`docs/reviews/step08b_live_record.json`, `fix_round_1_critic_check`).
 
 ### Open

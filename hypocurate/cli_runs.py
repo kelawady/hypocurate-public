@@ -83,14 +83,18 @@ def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
         if report.get("ready"):
             rest = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "proceed"},
                                timeout=3600, audit=(engine, run_id))
-            report = {**rest, "stages": report["stages"] + rest["stages"],
-                      "question_as_tested": report.get("question_as_tested")}
+            report = {**rest, "stages": report["stages"] + rest["stages"]}
     except GuardedRunError:
         print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
               f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
         return 1
-    print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0 if report.get("status") in ("completed", "failed") else 1
+    # One presentation everywhere (owner, after the re-check): the same output as `show` (code's statement first, then
+    # the Analyst's text under its label), with the stages run and the run's failure, if any. The orchestration
+    # report's own explanation is never printed.
+    shown = show(engine, run_id)
+    print(json.dumps({**shown, "stages": report.get("stages"), "run_failure": report.get("failure")},
+                     indent=2, ensure_ascii=False, default=str))
+    return 0 if shown["status"] in ("completed", "failed") else 1
 
 
 def _claim(engine: Engine, run_id: int) -> str:
@@ -105,6 +109,16 @@ def question_as_tested(engine: Engine, run_id: int) -> dict | None:
         return reading.stored(conn, run_id)
 
 
+def analyst_text(explained) -> dict:
+    """The Analyst's stored explanation, always with its label; or that it is unavailable (code's own words)."""
+    from hypocurate.pipeline.agents import analyst
+    if isinstance(explained, dict) and explained.get("report"):
+        return {"label": analyst.LABEL, "text": explained["report"]}
+    if isinstance(explained, dict):
+        return {"unavailable": explained.get("shown") or analyst.UNAVAILABLE}
+    return {"unavailable": analyst.UNAVAILABLE}
+
+
 def critic_flags(engine: Engine, run_id: int) -> list[dict]:
     """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
     from hypocurate.pipeline.agents import critic
@@ -114,7 +128,6 @@ def critic_flags(engine: Engine, run_id: int) -> list[dict]:
 def show(engine: Engine, run_id: int) -> dict | None:
     from hypocurate.pipeline import statement
     from hypocurate.pipeline import statistics as st
-    from hypocurate.pipeline.agents import analyst
     with engine.connect() as conn:
         run = conn.execute(text(
             "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
@@ -141,15 +154,13 @@ def show(engine: Engine, run_id: int) -> dict | None:
                                 dict(r=run.narrower_of_run_id)).scalar_one_or_none() if run.narrower_of_run_id else None
         cost = conn.execute(text("SELECT * FROM model_call_totals_by_run WHERE run_id = :r"), dict(r=run_id)).one_or_none()
     decision = (stats or {}).get("decision") or (narrowing or {}).get("decision") or {}
-    if isinstance(explained, dict) and explained.get("report"):
-        explanation = explained["report"]
-    elif isinstance(explained, dict):
-        explanation = explained.get("shown") or "explanation unavailable"
-    else:
-        explanation = None
     built = statement.build(engine, run_id)  # decision A: code's statement, for every completed run
     return {
-        "run": run.id, "query": run.number, "claim": run.text,
+        # One presentation everywhere (owner, after the re-check): code's statement first, then the Analyst's text,
+        # only with the statement and only under its label; `run` and `dispatch` print this same output.
+        "statement": built["lines"] if built else None,
+        "analyst_text": analyst_text(explained) if built else None,
+        "run": run.id, "query": run.number, "claim": run.text, "outcome_code": run.outcome,
         "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
         "narrower_question_of": original, "narrower_question": narrower,
         # A8: a narrower question's plan is shown as coming from its original's narrowing decision.
@@ -166,13 +177,9 @@ def show(engine: Engine, run_id: int) -> dict | None:
                                          "resid_df", "minimums_met")} for r in results if r["withheld"]],
         "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
         "sources": (gap or {}).get("sources"),
-        "statement": built["lines"] if built else None,
+        "statement_format": ({"current": built["format_version"], "recorded": built["recorded_format_version"]}
+                             if built else None),
         "flags": critic_flags(engine, run_id),
-        # Owner, 2026-10-07: the statement is shown with its format version (rendered; recorded at completion).
-        "statement_format_version": ({"rendered": built["format_version"], "recorded": built["recorded_format_version"]}
-                                     if built else None),
-        "explanation": explanation, "explanation_label": analyst.LABEL
-        if isinstance(explained, dict) and explained.get("report") else None,
         "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
         "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,
     }

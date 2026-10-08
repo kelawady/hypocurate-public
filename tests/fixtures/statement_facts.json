@@ -1992,6 +1992,907 @@
   },
   "verdict": null
  },
+ "coefficient_only_concentrated": {
+  "alpha": 0.05,
+  "alternative": "k > 0",
+  "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+  "evidence_level": 4,
+  "exploratory": false,
+  "found": {
+   "mpea": 4
+  },
+  "gap": {
+   "eligibility_rules": {
+    "in_scope": 4
+   },
+   "kind": null,
+   "minimums": {
+    "alloys": {
+     "count": 2,
+     "met": false,
+     "minimum": 5
+    },
+    "groups": {
+     "count": 2,
+     "met": false,
+     "minimum": 10
+    },
+    "records": {
+     "count": 4,
+     "met": false,
+     "minimum": 30
+    },
+    "resid_df": {
+     "count": 1,
+     "met": false,
+     "minimum": 10
+    }
+   },
+   "minimums_missed": [
+    "alloys",
+    "groups",
+    "records",
+    "resid_df"
+   ],
+   "records_lacking_fields": {
+    "mpea": {
+     "composition": 0,
+     "grain_size": 0,
+     "microstructure": 0,
+     "phase_class": 0,
+     "test_temperature": 0,
+     "test_temperature_band": 4,
+     "test_type": 0,
+     "ultimate_tensile_strength": 0,
+     "yield_strength": 0
+    }
+   },
+   "sources": [
+    {
+     "kind": null,
+     "nothing_found": null,
+     "search_status": "searched",
+     "source": "mpea"
+    }
+   ],
+   "test_run_label": null
+  },
+  "outcome": "insufficient",
+  "recorded_format_version": 2,
+  "statistics": {
+   "alpha": 0.05,
+   "analyses": [
+    {
+     "alpha": 0.05,
+     "analysis": "pooled",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "pooled",
+     "set": "primary",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "per_source:mpea",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": "not_enough_data",
+     "label_reason": "no_p_value",
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "per_source",
+     "set": "primary",
+     "significant": null,
+     "source": "mpea",
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:no_exclusions",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "no_exclusions",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:tension_and_compression",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "tension_and_compression",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:six_batches_as_groups",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "six_batches_as_groups",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:same_alloy_1_at_pct",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "same_alloy_1_at_pct",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:source_only_assignments",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "source_only_assignments",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:scope_not_confirmed_included",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "scope_not_confirmed_included",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:possible_duplicates_separate",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "possible_duplicates_separate",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:conflicts_survivor_value",
+     "calibration": {
+      "estimated": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "evidence_concentrated",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0001434090076295,
+      "largest_paper_share": 0.9999283006369838,
+      "n_alloys": 2,
+      "n_alloys_not_used": 0,
+      "n_groups": 2,
+      "n_groups_informative": 2,
+      "n_records": 4,
+      "n_records_in_set": 4,
+      "n_records_not_used": 0,
+      "resid_df": 1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 666.6470912382376,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "evidence_concentrated",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 2,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 2,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 4,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "conflicts_survivor_value",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:without_most_influential_paper",
+     "calibration": {
+      "estimated": {
+       "reason": "insufficient_groups",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "insufficient_groups",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": true,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 1.0,
+      "largest_paper_share": 1.0,
+      "n_alloys": 1,
+      "n_alloys_not_used": 0,
+      "n_groups": 1,
+      "n_groups_informative": 1,
+      "n_records": 2,
+      "n_records_in_set": 2,
+      "n_records_not_used": 0,
+      "resid_df": 0
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": 393.64571354284357,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "insufficient_groups",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 1,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 1,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 2,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "without_most_influential_paper",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    }
+   ],
+   "decision": {
+    "evidence_level": 4,
+    "evidence_level_wording": "inference invalid: coefficient only",
+    "exploratory": false,
+    "freeze_fingerprint": "dbb8ea8a3da5c3feba4fe54445fffee90c69409a92222e8a932ae409538f193a",
+    "label": null,
+    "outcome": "insufficient",
+    "outcome_wording": "insufficient in the sources searched",
+    "state": "coefficient_only",
+    "verdict": null,
+    "verdict_wording": null
+   },
+   "freeze_fingerprint": "dbb8ea8a3da5c3feba4fe54445fffee90c69409a92222e8a932ae409538f193a",
+   "model": "hall_petch_alloy_intercepts",
+   "not_analysed": [],
+   "sufficiency_option": "use_available",
+   "test": "one-sided t test of k > 0 against t with (informative groups - 1) degrees of freedom; cluster-robust standard error by group with the small-sample correction over informative groups",
+   "test_run_label": null,
+   "withheld": false
+  },
+  "tested": {
+   "label": "the fixed reference plan; not read from the claim",
+   "source": "fixed",
+   "text": "yield strength against grain size, in multi-principal-element (high-entropy) alloys; phase class FCC; test type tension; room temperature, 20 to 25 °C; excluding records with a grain size below 0.1 µm"
+  },
+  "verdict": null
+ },
  "exploratory": {
   "alpha": 0.05,
   "alternative": "k > 0",
@@ -3462,6 +4363,907 @@
    "text": "yield strength against grain size, in multi-principal-element (high-entropy) alloys; phase class FCC; test type tension; room temperature, 20 to 25 °C; excluding records with a grain size below 0.1 µm"
   },
   "verdict": "supported"
+ },
+ "not_fitted": {
+  "alpha": 0.05,
+  "alternative": "k > 0",
+  "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+  "evidence_level": 2,
+  "exploratory": false,
+  "found": {
+   "mpea": 4
+  },
+  "gap": {
+   "eligibility_rules": {
+    "in_scope": 4
+   },
+   "kind": null,
+   "minimums": {
+    "alloys": {
+     "count": 0,
+     "met": false,
+     "minimum": 5
+    },
+    "groups": {
+     "count": 0,
+     "met": false,
+     "minimum": 10
+    },
+    "records": {
+     "count": 0,
+     "met": false,
+     "minimum": 30
+    },
+    "resid_df": {
+     "count": -1,
+     "met": false,
+     "minimum": 10
+    }
+   },
+   "minimums_missed": [
+    "alloys",
+    "groups",
+    "records",
+    "resid_df"
+   ],
+   "records_lacking_fields": {
+    "mpea": {
+     "composition": 0,
+     "grain_size": 0,
+     "microstructure": 0,
+     "phase_class": 0,
+     "test_temperature": 0,
+     "test_temperature_band": 4,
+     "test_type": 0,
+     "ultimate_tensile_strength": 0,
+     "yield_strength": 0
+    }
+   },
+   "sources": [
+    {
+     "kind": null,
+     "nothing_found": null,
+     "search_status": "searched",
+     "source": "mpea"
+    }
+   ],
+   "test_run_label": null
+  },
+  "outcome": "insufficient",
+  "recorded_format_version": 2,
+  "statistics": {
+   "alpha": 0.05,
+   "analyses": [
+    {
+     "alpha": 0.05,
+     "analysis": "pooled",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "pooled",
+     "set": "primary",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "per_source:mpea",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": "not_enough_data",
+     "label_reason": "no_p_value",
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "per_source",
+     "set": "primary",
+     "significant": null,
+     "source": "mpea",
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:no_exclusions",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "no_exclusions",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:tension_and_compression",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "tension_and_compression",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:six_batches_as_groups",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "six_batches_as_groups",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:same_alloy_1_at_pct",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "same_alloy_1_at_pct",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:source_only_assignments",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "source_only_assignments",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:scope_not_confirmed_included",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "scope_not_confirmed_included",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:possible_duplicates_separate",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "possible_duplicates_separate",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:conflicts_survivor_value",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "conflicts_survivor_value",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    },
+    {
+     "alpha": 0.05,
+     "analysis": "sensitivity:without_most_influential_paper",
+     "calibration": {
+      "estimated": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      },
+      "fixed": {
+       "reason": "coefficient_not_fitted",
+       "status": "unavailable"
+      }
+     },
+     "checks": {
+      "coefficient_fitted": false,
+      "inference_valid": false
+     },
+     "counts": {
+      "effective_papers": 0.0,
+      "largest_paper_share": null,
+      "n_alloys": 0,
+      "n_alloys_not_used": 1,
+      "n_groups": 0,
+      "n_groups_informative": 0,
+      "n_records": 0,
+      "n_records_in_set": 4,
+      "n_records_not_used": 4,
+      "resid_df": -1
+     },
+     "detection": null,
+     "detection_note": null,
+     "df": null,
+     "estimate": null,
+     "estimated_power": null,
+     "estimated_power_estimated_noise": null,
+     "inference_reason": "coefficient_not_fitted",
+     "label": null,
+     "label_reason": null,
+     "minimums": {
+      "alloys": {
+       "count": 0,
+       "met": false,
+       "minimum": 5
+      },
+      "groups": {
+       "count": 0,
+       "met": false,
+       "minimum": 10
+      },
+      "records": {
+       "count": 0,
+       "met": false,
+       "minimum": 30
+      },
+      "resid_df": {
+       "count": -1,
+       "met": false,
+       "minimum": 10
+      }
+     },
+     "minimums_met": false,
+     "p_value": null,
+     "p_value_description": null,
+     "power_label": null,
+     "scope": "sensitivity",
+     "set": "without_most_influential_paper",
+     "significant": null,
+     "source": null,
+     "std_error": null,
+     "t": null,
+     "uninformative_groups": [],
+     "withheld": false
+    }
+   ],
+   "decision": {
+    "evidence_level": 2,
+    "evidence_level_wording": "coefficient cannot be fitted",
+    "exploratory": false,
+    "freeze_fingerprint": "2cae97984688a1c28e7e6933511f98d3f94760b850d450cc4311bd291db8922f",
+    "label": null,
+    "outcome": "insufficient",
+    "outcome_wording": "insufficient in the sources searched",
+    "state": "not_fitted",
+    "verdict": null,
+    "verdict_wording": null
+   },
+   "freeze_fingerprint": "2cae97984688a1c28e7e6933511f98d3f94760b850d450cc4311bd291db8922f",
+   "model": "hall_petch_alloy_intercepts",
+   "not_analysed": [],
+   "sufficiency_option": "use_available",
+   "test": "one-sided t test of k > 0 against t with (informative groups - 1) degrees of freedom; cluster-robust standard error by group with the small-sample correction over informative groups",
+   "test_run_label": null,
+   "withheld": false
+  },
+  "tested": {
+   "label": "the fixed reference plan; not read from the claim",
+   "source": "fixed",
+   "text": "yield strength against grain size, in multi-principal-element (high-entropy) alloys; phase class FCC; test type tension; room temperature, 20 to 25 °C; excluding records with a grain size below 0.1 µm"
+  },
+  "verdict": null
  },
  "nothing_frozen": {
   "alpha": 0.05,

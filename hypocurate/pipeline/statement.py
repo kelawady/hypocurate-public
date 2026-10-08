@@ -20,9 +20,11 @@ per part of the question and the narrower question, which a person must dispatch
 The statement is rendered from the stored rows whenever it is shown (owner, 2026-10-07): `facts` reads them into a
 plain dictionary with no record identity, and `render` is a pure function of that dictionary, ordering sources and
 sensitivity sets itself, so the same stored rows always give the same text whatever the record ids or the order the
-rows come in. Its numbers come only from stored results and cannot change; its wording follows `FORMAT_VERSION`,
-which the completing code records on the run and which is shown with the statement; a change of wording is a new
-version (tests/test_statement.py pins the rendered text of each version). It is present for every completed run,
+rows come in. Its numbers come only from stored results and cannot change. Its wording is always the current format's
+(`FORMAT_VERSION`), never the format the run was completed under (owner's decision after the re-check): the statement
+ends with "Statement format N." and, when the run was completed under another format (recorded on the run), "This
+run was completed under format M." A change of wording is a new format (tests/test_statement.py pins the current
+format's rendered text). It is present for every completed run,
 whatever happened to the Analyst, and holds nothing a model wrote. The Analyst's explanation is stored and shown
 separately, under its own label (`agents.analyst.LABEL`).
 """
@@ -39,7 +41,10 @@ from hypocurate.pipeline import display, queries, reading
 from hypocurate.pipeline import statistics as st
 
 # The statement's format: change it with any change of wording (owner, 2026-10-07; register 'results_statement').
-FORMAT_VERSION = 1
+# Every statement is rendered with the current format, whatever format its run was completed under (owner, after the
+# re-check): the format is shown, with the run's own when it differs. 2: the not-fitted branch, the spread line
+# whenever its figures exist, and the format lines (re-check, 2026-10-07).
+FORMAT_VERSION = 2
 ASSOCIATION = "The result is an association under the stated model in the sources searched; it does not show cause."
 OVER_CONFIDENT = ("The simulation check found the method over-confident on data with this structure; that describes "
                   "the method on data like these, not the error of this particular p-value.")
@@ -157,6 +162,30 @@ def _sensitivity_line(sets: list[Mapping], pooled: Mapping, alpha: float) -> str
             f"{display.coefficient(min(estimated))} to {display.coefficient(max(estimated))}.")
 
 
+def pooled_not_fitted(pooled: Mapping) -> bool:
+    """Validity check 1 failed: no coefficient was fitted, so no number of it exists to show (re-check)."""
+    return pooled.get("estimate") is None
+
+
+def _spread_line(c: Mapping) -> str | None:
+    """The spread of the slope information, compared only with the run's own informative-group count."""
+    if c.get("effective_papers") is None or c.get("largest_paper_share") is None or not c.get("n_groups_informative"):
+        return None
+    return (f"Spread of the slope information: an effective number of groups of "
+            f"{display.two_decimals(c['effective_papers'])} out of {c['n_groups_informative']} informative groups; "
+            f"largest share {display.percent(c['largest_paper_share'])}.")
+
+
+def format_lines(recorded: int | None) -> list[str]:
+    """The format the statement is rendered in, and the run's own when it differs (owner, after the re-check)."""
+    lines = [f"Statement format {FORMAT_VERSION}."]
+    if recorded is None:
+        lines.append("The format this run was completed under was not recorded.")
+    elif recorded != FORMAT_VERSION:
+        lines.append(f"This run was completed under format {recorded}.")
+    return lines
+
+
 def _analysis_lines(f: Mapping) -> list[str]:
     stats, gap, alpha = f["statistics"], f["gap"], f["alpha"]
     analyses = _ordered(stats.get("analyses") or [])
@@ -173,6 +202,17 @@ def _analysis_lines(f: Mapping) -> list[str]:
         lines.append("No estimate is shown: the minimums were not met.")
         lines.append(counts_against_minimums(analyses[0].get("minimums") or {}))
         lines += _found_lines(f["found"], gap)
+    elif pooled_not_fitted(analyses[0]):
+        pooled = analyses[0]
+        c = pooled.get("counts") or {}
+        reason = str(pooled.get("inference_reason") or "coefficient not fitted").replace("_", " ")
+        lines.append(f"No coefficient could be fitted ({reason}): no estimate, no uncertainty, no p-value and no "
+                     f"verdict; of the {c.get('n_records_in_set')} records in the set, {c.get('n_records_not_used')} "
+                     f"could not be used ({c.get('n_alloys_not_used')} alloys).")
+        spread = _spread_line(c)
+        if spread:
+            lines.append(spread)
+        lines.append(an.GROUP_DEFINITION)
     else:
         pooled = analyses[0]
         sets = [e for e in analyses if e.get("scope") == "sensitivity"]
@@ -193,10 +233,9 @@ def _analysis_lines(f: Mapping) -> list[str]:
         note = an.direction_note(pooled.get("estimate"), f["alternative"])
         if note:
             lines.append(_cap(note) + ".")
-        if inference:
-            lines.append(f"Spread of the slope information: an effective number of groups of "
-                         f"{display.two_decimals(c['effective_papers'])} out of {c['n_groups_informative']} informative "
-                         f"groups; largest share {display.percent(c['largest_paper_share'])}.")
+        spread = _spread_line(c)  # whenever its figures exist, with or without inference (re-check)
+        if spread:
+            lines.append(spread)
         lines.append(an.GROUP_DEFINITION)
         if inference:
             sensitivity = _sensitivity_line(sets, pooled, alpha)
@@ -245,13 +284,13 @@ def render(f: Mapping) -> list[str]:
         d = f["narrowing"].get("decision") or {}
         lines.append(f"Outcome: {d.get('outcome_wording')}. The original question was not tested and has no verdict.")
         lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
-        return lines + _partly_lines(f)
+        return lines + _partly_lines(f) + format_lines(f["recorded_format_version"])
     d = f["statistics"].get("decision") or {}
     label = f" ({d['label']})" if d.get("label") else ""
     verdict = f"Verdict: {d['verdict_wording']}." if f["verdict"] else "No verdict."
     lines.append(f"Outcome: {d.get('outcome_wording')}{label}. {verdict}")
     lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
-    return lines + _analysis_lines(f)
+    return lines + _analysis_lines(f) + format_lines(f["recorded_format_version"])
 
 
 def build(engine: Engine, run_id: int) -> dict | None:

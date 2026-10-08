@@ -7611,7 +7611,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement').",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement'). Every output of a completed run (`run`, `dispatch`, `show`) gives code's statement first and the Analyst's text only after it and only under that label (owner, after the re-check).",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7621,11 +7621,12 @@
     "reason": "Owner's Q8: the number check is written for reuse by the Commentator.",
     "evidence": [
       "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8.",
-      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
+      "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decision, 2026-10-08."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7687,7 +7688,8 @@
       "tests/test_analyst.py::test_a_text_breaking_each_rule_is_refused",
       "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text",
       "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored",
-      "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure"
+      "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure",
+      "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text"
     ],
     "history": [
       {
@@ -7725,6 +7727,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Step 8b fix round 1 (finding 4, decision A): the label and the limits of the checks stated; count_groups removed."
+      },
+      {
+        "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement').",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Re-check: `run` and `dispatch` printed the explanation without the label or statement."
       }
     ]
   },
@@ -7732,7 +7740,7 @@
     "key": "results_statement",
     "name": "The results statement written by code",
     "state": "in_force",
-    "statement": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change; its wording follows the statement's format version (FORMAT_VERSION, one named place), which the completing code records on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it) and which is shown with the statement. A change of wording is a new format version: a test pins the rendered text of every outcome kind for each version. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+    "statement": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change. Its wording is always the current format's (FORMAT_VERSION, one named place), never the format the run was completed under (owner, after the re-check): the statement ends with 'Statement format N.' and, when the run was completed under another format, 'This run was completed under format M.' (or that it was not recorded). The completing code records the format on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it). A change of wording is a new format: a test pins the current format's rendered text of every outcome kind and evidence level. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', whenever its figures exist, also for a coefficient without inference; compared only with the run's own informative-group count, no threshold, never with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only; when no coefficient could be fitted, no number of it is shown, only that it could not be fitted and how many records of the set could not be used. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
     "value": {
       "text": "code-written from stored facts; always present on a completed run",
       "unit": null
@@ -7741,11 +7749,12 @@
     "affects": "What every completed run says, independently of the Analyst.",
     "reason": "The second-model review (finding 4) found the Analyst's numerical guarantees stronger than its checks: numbers written in words pass. The owner put every numerical assertion in a statement written by code and labelled the Analyst's text as unverified narrative.",
     "evidence": [
-      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
+      "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decisions, 2026-10-08."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7771,7 +7780,7 @@
         },
         {
           "ref": "python:hypocurate.pipeline.statement:FORMAT_VERSION",
-          "equals": 1
+          "equals": 2
         },
         {
           "ref": "python:hypocurate.pipeline.statement:render"
@@ -7781,6 +7790,9 @@
         },
         {
           "ref": "sql:ck_run_statement_format_version"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statement:format_lines"
         }
       ],
       "note": null
@@ -7791,6 +7803,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07: rendered at display from stored results as a pure function; format version recorded on the run and shown; wording follows the version."
+      },
+      {
+        "value": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change; its wording follows the statement's format version (FORMAT_VERSION, one named place), which the completing code records on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it) and which is shown with the statement. A change of wording is a new format version: a test pins the rendered text of every outcome kind for each version. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Second-model re-check (docs/reviews/step08b_recheck_chatgpt.md) and the owner's decisions: rendered in the current format always (the earlier claim that the wording follows the recorded format was unsupported); not-fitted branch; spread whenever its figures exist."
       }
     ],
     "notes": [],
@@ -7806,11 +7824,17 @@
       "tests/test_statement.py::test_the_order_of_the_stored_results_does_not_change_the_text",
       "tests/test_statement.py::test_the_facts_never_hold_the_stored_lists_of_record_ids",
       "tests/test_statement.py::test_each_completion_records_the_format_version_and_show_gives_it",
-      "tests/test_statement.py::test_the_wording_of_each_format_version_is_pinned",
       "tests/test_migrations_step8b.py::test_the_format_version_is_recorded_only_in_the_update_that_completes_the_run",
       "tests/test_migrations_step8b.py::test_a_run_completed_without_a_format_version_keeps_none",
       "tests/test_migrations_step8b.py::test_a_failed_run_never_gets_a_format_version",
-      "tests/test_statement.py::test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists"
+      "tests/test_statement.py::test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists",
+      "tests/test_statement.py::test_the_wording_of_the_current_format_is_pinned",
+      "tests/test_statement.py::test_the_fixture_covers_every_outcome_and_evidence_level_and_each_renders",
+      "tests/test_statement.py::test_a_run_whose_coefficient_cannot_be_fitted_shows_no_number_of_it",
+      "tests/test_statement.py::test_a_concentrated_coefficient_only_result_shows_its_spread",
+      "tests/test_statement.py::test_the_statement_is_always_in_the_current_format_and_says_when_the_run_was_under_another",
+      "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text",
+      "tests/test_cli_runs.py::test_a_run_whose_analyst_failed_prints_the_statement_and_says_the_text_is_unavailable"
     ]
   },
   {
