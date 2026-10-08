@@ -1,6 +1,26 @@
 # Build step 9a — summary for review
 
-Date: 2026-10-08. Branch: `step-09a-waiting` (from `main` at `ed46b48`). **Status: built, whole suite passing; pushed for the second-model review; not merged** (the owner's end point for 9a: "full suite, summary, packet, push the branch, stop. No merge").
+> **Update, 2026-10-08: fix round 1.** ChatGPT's review (`step09a_review_chatgpt.md`) found the step **not safe to merge**, with five findings. The owner accepted all five and decided that every run stores its effective ceiling at dispatch. Each fix came with tests that failed on the code before it.
+>
+> | Finding | What was wrong | What changed |
+> |---|---|---|
+> | 1 | A resume read only done stages: it could ask the Planner again after a failed reservation, run the Analyst after a Critic accounting failure, or complete after an Analyst one. | Before each agent step the orchestrator reads the role's latest stored stage, whatever its status. An earlier stop stays a stop; a stored spending refusal still fails the run. |
+> | 2 | The database did not check the sources' freshness, and the Python check could race a registration. | The confirmation trigger refuses a newer sealed version of a source the run uses, or a source registered after dispatch. A confirmation, a source registration and a version seal share one advisory lock; `confirm` takes it before its own check. |
+> | 3 | `run()` could not take up a confirmed run: `prepare()` tried to wait again. | `prepare()` recognises a confirmation or a locked plan and goes on to `proceed()`. |
+> | 4 | A ceiling given at confirmation was lost on a restart. | `confirm --ceiling` is removed: the ceiling is set only at dispatch. |
+> | 5 | "Cancel only when queued or waiting" was not a database rule. | The database refuses a failure reason beginning "cancelled:" unless the run was queued or waiting. |
+> | Owner | — | Every new run stores its ceiling. None given means the per-run cap ($2), set by code and by the column's default; older runs stay empty. |
+>
+> **Checks on this round's code (`7fc5ee3`):**
+> - The whole suite passes: 2,019 tests, locally and in the rebuilt test image.
+> - 35 of this round's new tests failed on the reviewed code; the rest are guards by design.
+> - Mutation checks: 18 of 18 new faults and 39 of 39 earlier ones caught, both control runs clean.
+> - The reference runs are byte-identical to `main`. The whole runs differ only by `spending_ceiling` (now 2, the owner's decision) and the confirmed label.
+> - Both images were rebuilt, and their package is identical to the repository's. The Codespace restarted during the checks; the images had to be rebuilt after a pruned build cache.
+>
+> 0007 was amended in place (unmerged; never applied to the live database). The details, the tests that failed before, the mutation checks and the register changes are in `step09a_fix_packet.md`. The sections below describe the state after the fixes. Where a passage was corrected, it says so.
+
+Date: 2026-10-08. Branch: `step-09a-waiting` (from `main` at `ed46b48`). **Status: fix round 1 done; pushed for the second review; not merged** (the owner's end point for 9a: "full suite, summary, packet, push the branch, stop. No merge").
 
 PRD Section 15, step 9 ("Worker and queue"), first part. The owner split step 9 into two parts, each reviewed and merged separately:
 - **9a (this part):** the wait at the rules lock and the confirmation by a named person; cancel; dispatch again; the spending ceiling stored on the run; two new dispatch refusals; an orchestrator that takes every step from stored rows. The command line only.
@@ -68,7 +88,9 @@ Planning answers, one question at a time:
 | No stage, model call, invocation, plan, record or result is written to a waiting run (only its status may change; audit rows are written in every state). | 0001's rules, which require `running` |
 | `rules_confirmation`, append-only, one per run, at the database's time. It is only for a waiting run and names a person (1–200 characters). It holds the plan fingerprint (plan format), the content (a JSON object) and the text shown (not empty). A Planner run's confirmation names its done Planner stage and its latest narrowing decision; a narrower question's names neither. The source versions the narrowing counted must equal the run's (A1). | table, CHECKs, `hc_rules_confirmation_insert` |
 | A plan for a run with a Planner stage, or for a narrower question, needs a confirmation of exactly its fingerprint. | `hc_plan_rules_confirmed` (trigger `hc_plan_insert_rules_confirmed`) |
-| `run.spending_ceiling`: positive and finite, set at dispatch, never changed. | CHECK, `hc_run_waiting` |
+| `run.spending_ceiling`: positive and finite, set at dispatch, never changed. *Fix round 1 (owner):* its default is the per-run cap, set after the column is added (older runs stay empty). | CHECK, default, `hc_run_waiting` |
+| *Fix round 1:* a failure reason beginning "cancelled:" only from queued or waiting (finding 5). | `hc_run_waiting` |
+| *Fix round 1:* a confirmation, a source registration and a version seal take one advisory lock; the confirmation refuses a newer sealed version of a source the run uses, or a source registered after dispatch (finding 2). | `hc_rules_confirmation_insert`, `hc_sources_lock` |
 | At most one narrower question per original run. | unique index `uq_hypothesis_narrower_of_run_id` |
 
 **The previous release's code with 0007:** it never sets `waiting` and writes no confirmation or ceiling. Its Planner runs and narrower questions are refused at the lock, deliberately; its fixed-plan runs are unaffected. The owner checks the live database for runs in progress before the deploy (R7).
@@ -98,7 +120,7 @@ The command line prints this text before anything is recorded. The confirmation 
 **Sources while waiting** (A1):
 - A waiting run uses exactly the sealed versions recorded at dispatch; 0001 refuses any change to them.
 - `confirm` is refused when a chosen source has a newer sealed version, or a source was registered after dispatch. The reason reads: "`<source>` has a newer version (or was registered) since this run's narrowing; cancel this run and dispatch the query again". Nothing is redone or written.
-- The database refuses a confirmation whose narrowing counted other versions.
+- The database refuses a confirmation whose narrowing counted other versions. *Corrected (fix round 1, finding 2):* it now also refuses a newer sealed version of a source the run uses, or a source registered after dispatch, under a lock shared with registration and sealing.
 
 **One run, one named person:**
 - `confirmation.confirm(engine, run_id, by, shown)` takes one run and a name.
@@ -134,7 +156,7 @@ A started or ended run is refused (`not_cancellable`).
 
 **Dispatch again** (`queries.dispatch_again`, `dispatch Q-… --again`):
 - a new queued run of the query's dispatched version, with the latest run's fixed-plan flag and test mark;
-- a ceiling only as given now;
+- a ceiling only as given now; *corrected (fix round 1, owner):* none given stores the per-run cap;
 - refused, with "another run of this query is queued, waiting or running", while any run of the query is open.
 
 **The ceiling** (`--ceiling`) is stored on the run at dispatch. `spend.reserve` applies the lower of the stored ceiling and any ceiling the caller gives, so it holds after a crash or a restart.
@@ -146,7 +168,7 @@ A started or ended run is refused (`not_cancellable`).
 ## The command line
 
 - **`run`, `dispatch`:** on the Planner or narrower path, after the claim and question-as-tested line, they print `show`'s output with `waiting_for` and `next` (`hypocurate confirm <run> --by "<name>"`). The exit code is 0.
-- **`confirm <run> --by NAME [--ceiling]`:** prints what is confirmed, records it, runs the rest in the guarded process, and prints `show`'s output.
+- **`confirm <run> --by NAME`** (*corrected, finding 4:* no `--ceiling`)**:** prints what is confirmed, records it, runs the rest in the guarded process, and prints `show`'s output.
 - **`cancel <run> --by NAME`.**
 - **`dispatch Q-… --again [--ceiling]`.**
 - **`show`** gains `waiting_for`, but only for a waiting run, so every other run's output is as before.
