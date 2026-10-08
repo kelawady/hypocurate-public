@@ -1,6 +1,8 @@
 """The command-line entry point (PRD Section 12). Step 2: `version` and `check-db`.
 Step 4: `sources register` and `sources test`. Step 8a: the curation workflow at registration
-(`sources curate | proposals | accept | reject | seal-curation | export-curation`)."""
+(`sources curate | proposals | accept | reject | seal-curation | export-curation`). Step 8b: `run`, `dispatch`
+and `show` (owner, A9, Q10): a query is created, submitted, confirmed by a named person and dispatched here,
+and the run itself executes in the guarded process (`access.guarded`); the child's error text is never printed."""
 from __future__ import annotations
 
 import argparse
@@ -38,6 +40,21 @@ def main(argv: list[str] | None = None) -> int:
     export = sources_sub.add_parser("export-curation", help="write the curated version's curation.json")
     export.add_argument("key")
     export.add_argument("--out", help="the file to write (default: print it)")
+    run = sub.add_parser("run", help="create, dispatch and run a query to its end (may cost money: model calls)")
+    run.add_argument("claim", help="the hypothesis in words")
+    run.add_argument("--sources", required=True, help="comma-separated source keys, e.g. mpea,tamu_fcc")
+    run.add_argument("--by", required=True, help="the name of the person confirming the domain")
+    run.add_argument("--domain", default="grain_size_strengthening")
+    run.add_argument("--sufficiency", default="fixed_minimum", choices=("fixed_minimum", "use_available"))
+    run.add_argument("--fixed-plan", action="store_true", help="the reference plan, Planner bypassed (14.1a)")
+    run.add_argument("--test-data", action="store_true", help="mark the run as a test with constructed data")
+    run.add_argument("--ceiling", help="the most this run's model calls may cost, in USD (refused above it)")
+    dispatch = sub.add_parser("dispatch", help="dispatch a submitted query by its number and run it (may cost money)")
+    dispatch.add_argument("number", help="the query number, e.g. Q-0002")
+    dispatch.add_argument("--by", required=True, help="the name of the person confirming the domain")
+    dispatch.add_argument("--ceiling", help="the most this run's model calls may cost, in USD")
+    show = sub.add_parser("show", help="print a run's outcome and summary")
+    show.add_argument("run", type=int)
     args = parser.parse_args(argv)
 
     settings = load_settings(web=False)
@@ -49,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         reachable = database_reachable(engine)
         print("database reachable" if reachable else "database NOT reachable")
         return 0 if reachable else 1
+    if args.command in ("run", "dispatch", "show"):
+        from hypocurate.cli_runs import command
+        return command(args, engine)
     return _sources(args, engine)
 
 

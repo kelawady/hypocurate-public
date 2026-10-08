@@ -393,9 +393,13 @@ def decisions(conn: Connection, ctx: Context) -> dict:
         sets.setdefault(key, [])
         if record_id is not None:
             sets[key].append(record_id)
-    return {"records": [{"record": rec, "eligible": eligible, "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
-                        for rec, eligible, rule in _rows(
-                conn, "SELECT record_id, eligible, rule FROM run_record WHERE run_id = :r ORDER BY record_id",
+    # Step 8b (owner, 2026-10-07): each record's source key, so code can tell which sources contributed.
+    return {"records": [{"record": rec, "source": vocab.code(source, vocab.SOURCE_KEYS), "eligible": eligible,
+                         "rule": vocab.code(rule, vocab.ELIGIBILITY_RULES)}
+                        for rec, source, eligible, rule in _rows(
+                conn, "SELECT rr.record_id, s.key, rr.eligible, rr.rule FROM run_record rr "
+                      "JOIN record rec ON rec.id = rr.record_id JOIN source_version sv ON sv.id = rec.source_version_id "
+                      "JOIN source s ON s.id = sv.source_id WHERE rr.run_id = :r ORDER BY rr.record_id",
                 r=ctx.run_id)],
             "sets": sets}
 
@@ -533,6 +537,88 @@ def frozen_analysis_data(conn: Connection, ctx: Context) -> dict:
             else None, "sets": sets, "records": records}
 
 
+# --- Step 8b: the narrowing decision's counts and the Analyst's facts ---------------------------
+
+# The fields a candidate-count cell names (owner, Q5): the claim's countable parts and what makes a
+# record usable (grain size and the outcome at an accepted status). Alloy class is not countable.
+CANDIDATE_CATEGORIES = ("phase_class", "test_type", "test_temperature_band")
+CANDIDATE_STATUS_FIELDS = CANDIDATE_CATEGORIES + ("test_temperature", "grain_size") + tuple(sorted(OUTCOME_FIELDS))
+
+
+def candidate_counts(conn: Connection, ctx: Context) -> list[dict]:
+    """For the narrowing decision (code; step 8b), before the lock: per chosen source, read through its
+    adapter from the sealed version recorded at dispatch (records are stored only after the lock),
+    counts of records per cell. A cell is the categories (through their vocabularies), the reported
+    test temperature, the status of each field in CANDIDATE_STATUS_FIELDS, and whether a grain size is
+    present. Counts and statuses only: no outcome value, no composition, no free text."""
+    out = []
+    for row in _chosen_sources(conn, ctx):
+        version = load_sealed_version(conn, row.source_version_id)
+        try:
+            result = adapters.read(version)
+        except (AdapterError, UnsealedVersion):
+            out.append({"source": row.key, "version_fingerprint": version.fingerprint, "readable": False})
+            continue
+        cells: Counter = Counter()
+        for r in result.records:
+            h = {f: v.to_json() for f, v in r.harmonized.items()}
+            cells[json.dumps({
+                "categories": {f: _category(f, h.get(f)) for f in CANDIDATE_CATEGORIES},
+                "test_temperature": _number(h.get("test_temperature")),
+                "status": {f: _status(h.get(f)) for f in CANDIDATE_STATUS_FIELDS},
+                "grain_size_present": _number(h.get("grain_size")) is not None,
+            }, sort_keys=True)] += 1
+        out.append({"source": row.key, "version_fingerprint": version.fingerprint, "readable": True,
+                    "n_records": len(result.records),
+                    "cells": [{**json.loads(cell), "n": n} for cell, n in sorted(cells.items())]})
+    return out
+
+
+def _done_output(conn: Connection, run_id: int, stage: str) -> Mapping | None:
+    out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s AND status = 'done' "
+                            "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
+    return out if isinstance(out, Mapping) else None
+
+
+def analyst_facts(conn: Connection, ctx: Context) -> dict:
+    """The Analyst's facts (step 8b; owner, Q6 and 2026-10-07): named facts built by code from what it stored
+    (`pipeline.analyst_names`), each a finished display string or phrase the Analyst refers to as {name}. Refused
+    when the stored facts its stage needs are missing."""
+    from hypocurate.pipeline import analyst_names as an
+    number = conn.execute(text("SELECT h.number, r.fixed_plan, h.narrower_of_run_id FROM run r JOIN hypothesis_version hv "
+                               "ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
+                               "WHERE r.id = :r"), dict(r=ctx.run_id)).one()
+    if ctx.stage == "narrowed":
+        n = _done_output(conn, ctx.run_id, "narrowing")
+        if n is None or n.get("result") != "partly_sufficient":
+            raise Refused("facts_missing")
+        names = an.narrowing_names(n)
+        kind = "narrowing"
+    else:
+        stats, gap = _done_output(conn, ctx.run_id, "statistics"), _done_output(conn, ctx.run_id, "gap_facts")
+        if stats is None or gap is None:
+            raise Refused("facts_missing")
+        p = _rows(conn, "SELECT content, sufficiency_option, min_records, min_alloys, min_groups, min_resid_df "
+                        "FROM plan WHERE run_id = :r", r=ctx.run_id)[0]
+        content = project(p.content, PLAN_SCHEMA) or {}
+        plan_facts = {"alpha": (content.get("model") or {}).get("alpha"),
+                      "alternative": (content.get("model") or {}).get("alternative"),
+                      "sufficiency_option": p.sufficiency_option,
+                      "minimums": {"records": p.min_records, "alloys": p.min_alloys, "groups": p.min_groups,
+                                   "resid_df": p.min_resid_df}}
+        if number.fixed_plan:
+            note = {"scope_source": an.NARROWER_PLAN_SENTENCE if number.narrower_of_run_id else an.FIXED_PLAN_SENTENCE}
+        else:
+            planner = _done_output(conn, ctx.run_id, "planner") or {}
+            answer = planner.get("answer") or {}
+            note = an.scope_notes(answer.get("claim_scope"), answer.get("stated"))
+        names = an.analysis_names(stats, gap, plan_facts, note)
+        kind = "analysis" if ctx.stage == "analysis" else "no_dataset_frozen"
+    names["query_number"] = str(number.number)
+    an.check_names(names)
+    return {"kind": kind, "names": dict(sorted(names.items()))}
+
+
 READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "claim": claim, "domain": domain, "sources_meta": sources_meta, "tag_values": tag_values,
     "record_counts": record_counts, "source_documentation": source_documentation,
@@ -541,5 +627,6 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "results": results, "coverage": coverage, "stage_outputs": stage_outputs, "run_cost": run_cost,
     "stored_record_counts": stored_record_counts, "condition_summaries": condition_summaries,
     "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
-    "frozen_analysis_data": frozen_analysis_data,
+    "frozen_analysis_data": frozen_analysis_data, "candidate_counts": candidate_counts,
+    "analyst_facts": analyst_facts,
 }

@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parent.parent
 # World stage -> the access stage it is at.
 WORLD_STAGES = {"queued": "none", "failed": "none", "before_lock": "before_lock", "curation": "curation",
                 "analysis": "analysis", "closed_without_freeze": "closed_without_freeze", "final": "final",
-                "final_without_freeze": "final_without_freeze"}
+                "final_without_freeze": "final_without_freeze", "narrowed": "narrowed"}
 
 
 @pytest.fixture
@@ -57,9 +57,10 @@ def test_the_allow_list_matches_the_owners_table():
     """The table approved by the owner on 2026-10-05 (step 5 plan), field for field."""
     assert ROLES == ("planner", "curator", "critic", "analyst", "commentator")
     assert set(ALLOWED) == set(ROLES)
+    # Step 8b (owner, 2026-10-07): the Analyst also at 'narrowed' (A4); the Commentator reads nothing (A6).
     assert {r: set(s) for r, s in ALLOWED.items()} == {
         "planner": {"before_lock"}, "curator": {"registration"}, "critic": {"curation"},
-        "analyst": {"analysis", "closed_without_freeze"}, "commentator": {"final", "final_without_freeze"}}
+        "analyst": {"analysis", "closed_without_freeze", "narrowed"}, "commentator": set()}
     assert allowed("planner", "before_lock") == {"claim", "domain", "sources_meta", "tag_values", "record_counts"}
     # Owner, 2026-10-06 (step 8a, Q2): the Curator reads a source version's documentation at
     # registration, never in a run.
@@ -67,16 +68,13 @@ def test_the_allow_list_matches_the_owners_table():
     assert all(allowed("curator", stage) == frozenset() for stage in STAGES if stage != "registration")
     assert all(allowed(role, "registration") == frozenset() for role in ROLES if role != "curator")
     assert allowed("critic", "curation") == {"sources_meta", "record_metadata", "flags_kind"}
-    analysis = {"claim", "domain", "sources_meta", "plan", "records_full", "decisions", "flags_full", "results",
-                "coverage", "stage_outputs", "run_cost"}
-    assert allowed("analyst", "analysis") == analysis
-    gap = {"claim", "domain", "sources_meta", "plan", "coverage", "stored_record_counts", "decisions", "flags_kind",
-           "condition_summaries"}
-    assert allowed("analyst", "closed_without_freeze") == gap
-    assert allowed("commentator", "final") == analysis
-    # Owner, 2026-10-05 (before the step 5 review): with no dataset frozen, the Commentator gets
-    # only the gap-report input, the Analyst's gap report and the run's outcome.
-    assert allowed("commentator", "final_without_freeze") == gap | {"gap_report", "outcome"}
+    # Step 8b (owner, Q6): the Analyst receives stored facts only, the same five fields at each stage.
+    analyst = {"claim", "domain", "sources_meta", "coverage", "analyst_facts"}
+    for stage in ("analysis", "closed_without_freeze", "narrowed"):
+        assert allowed("analyst", stage) == analyst, stage
+    # Owner, 2026-10-07 (A6): the Commentator reads nothing at any stage until step 12.
+    assert all(allowed("commentator", stage) == frozenset() for stage in STAGES)
+    assert all(allowed(role, "narrowed") == frozenset() for role in ROLES if role != "analyst")
     for stage in STAGES:
         if stage != "before_lock":
             assert allowed("planner", stage) == frozenset()
@@ -92,8 +90,10 @@ def test_no_outcome_reaching_field_is_listed_for_the_planner_the_critic_or_the_g
     outcome_bearing = {"records_full", "flags_full", "results", "stage_outputs", "source_documentation", "plan"}
     for role, stage in (("planner", "before_lock"), ("critic", "curation")):
         assert not allowed(role, stage) & outcome_bearing, role
-    assert not allowed("analyst", "closed_without_freeze") & (outcome_bearing - {"plan"})
-    assert not allowed("commentator", "final_without_freeze") & (outcome_bearing - {"plan"})
+    # Step 8b: the Analyst gets none of these at any stage (its facts are named keys of stored results).
+    for stage in ("analysis", "closed_without_freeze", "narrowed"):
+        assert not allowed("analyst", stage) & outcome_bearing, stage
+    assert all(not allowed("commentator", stage) for stage in STAGES)  # A6
 
 
 # --- Every role, every stage, every field ------------------------------------------------
@@ -229,35 +229,41 @@ def test_the_dataset_freeze_changes_what_each_role_may_see(engine):
     analyst = access(engine, world, "analyst", "analysis")
     assert critic.get("flags_kind")
     with pytest.raises(AccessDenied):
-        analyst.get("records_full")
+        analyst.get("analyst_facts")
     primary = w.analysis_set(world.run)
     for rec in world.records:
         w.decide(world.run, rec)
         w.add(primary, rec)
     w.freeze(world.run, len(world.records))
+    aw.stored_facts(w, world.run, frozen=True)  # step 8b: the Analyst reads code's stored facts
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         critic.get("flags_kind")
-    assert len(analyst.get("records_full")) == len(world.records)
+    assert analyst.get("analyst_facts")["names"]["pooled_estimate"] == "424.9 MPa·µm^0.5"  # step 8b: a named display string
 
 
 def test_ending_without_a_freeze_opens_only_the_gap_report_input(engine):
     world = aw.build(engine, "curation")
     gap = access(engine, world, "analyst", "closed_without_freeze")
     with pytest.raises(AccessDenied):
-        gap.get("condition_summaries")
+        gap.get("analyst_facts")
     for rec in world.records:
         world.w.decide(world.run, rec)
     aw.sql(world.w, "INSERT INTO calibration_result (run_id, status, reason) "
                     "VALUES (:r, 'unavailable', 'no_dataset_frozen')", r=world.run)
-    assert gap.get("condition_summaries")["overall"]["n_records"] == len(world.records)
-    for field in ("records_full", "flags_full", "results", "stage_outputs"):
+    aw.stored_facts(world.w, world.run, frozen=False)  # step 8b: the Analyst reads code's stored facts
+    assert gap.get("analyst_facts")["kind"] == "no_dataset_frozen"
+    # Step 8b (Q6): the step-5 gap-report fields are no longer on the Analyst's list.
+    for field in ("records_full", "flags_full", "results", "stage_outputs", "condition_summaries", "plan",
+                  "decisions", "flags_kind", "stored_record_counts"):
         with pytest.raises(AccessDenied):
             gap.get(field)
     with pytest.raises(AccessDenied):
         access(engine, world, "critic", "curation").get("flags_kind")
 
 
-def test_completion_without_a_freeze_moves_access_to_the_commentator_only(engine):
+def test_completion_without_a_freeze_closes_the_analyst_and_gives_the_commentator_nothing(engine):
+    """Step 8b (A6; was ..._moves_access_to_the_commentator_only): completion still closes the Analyst's
+    access; the Commentator reads nothing until step 12, before or after completion."""
     world = aw.build(engine, "closed_without_freeze")
     gap = access(engine, world, "analyst", "closed_without_freeze")
     commentator = access(engine, world, "commentator", "final_without_freeze")
@@ -267,36 +273,49 @@ def test_completion_without_a_freeze_moves_access_to_the_commentator_only(engine
     world.w.complete(world.run, "insufficient")
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         gap.get("claim")
-    assert commentator.get("outcome") == {"status": "completed", "outcome": "insufficient", "verdict": None,
-                                          "exploratory": False}
+    with pytest.raises(AccessDenied) as denied:
+        commentator.get("outcome")
+    assert denied.value.code == "not_on_list"
     with pytest.raises(AccessDenied, match="no longer at the stage"):
         access(engine, world, "commentator", "final").get("results")
 
 
-def test_completion_after_a_freeze_moves_access_to_the_commentator_only(engine):
+def test_completion_after_a_freeze_closes_the_analyst_and_gives_the_commentator_nothing(engine):
+    """Step 8b (A6; was ..._moves_access_to_the_commentator_only)."""
     world = aw.build(engine, "analysis")
     analyst = access(engine, world, "analyst", "analysis")
     commentator = access(engine, world, "commentator", "final")
     with pytest.raises(AccessDenied):
         commentator.get("results")
-    assert analyst.get("results")
-    world.w.complete(world.run, "partly_sufficient")
+    assert analyst.get("analyst_facts")
+    # Step 8b (0006; owner, A5): a run with a plan never completes as partly sufficient.
+    world.w.complete(world.run, "insufficient", level=4)
     with pytest.raises(AccessDenied, match="no longer at the stage"):
-        analyst.get("results")
-    assert commentator.get("results")["run"]["outcome"] == "partly_sufficient"
+        analyst.get("analyst_facts")
+    with pytest.raises(AccessDenied) as denied:
+        commentator.get("results")
+    assert denied.value.code == "not_on_list"
 
 
-def test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_report_and_the_outcome(engine):
-    """Owner, 2026-10-05: no outcome values and no row-level records."""
-    world = aw.build(engine, "final_without_freeze")
-    got = role_input(access(engine, world, "commentator", "final_without_freeze"))
-    assert set(got) == allowed("analyst", "closed_without_freeze") | {"gap_report", "outcome"}
-    assert got["gap_report"] == [{"stage": "analyst", "attempt": 1, "status": "done",
-                                  "output": {"note": aw.GAP_REPORT, "nested": {"values": [aw.GAP_REPORT]}}}]
-    assert got["outcome"]["outcome"] == "insufficient" and got["outcome"]["verdict"] is None
-    for field in ("records_full", "flags_full", "results", "stage_outputs", "run_cost", "record_metadata"):
-        with pytest.raises(AccessDenied):
-            access(engine, world, "commentator", "final_without_freeze").get(field)
+@pytest.mark.parametrize("world_stage", ["final", "final_without_freeze", "analysis", "narrowed"])
+def test_a_commentator_binding_reads_nothing_at_any_stage(engine, world_stage):
+    """Owner, 2026-10-07 (A6; replaces test_the_commentator_without_a_freeze_gets_the_gap_report_input_the_
+    report_and_the_outcome): until step 12 the Commentator reads nothing, every field refused and logged,
+    and its complete input is refused (never empty)."""
+    world = aw.build(engine, world_stage)
+    stage = {"final": "final", "final_without_freeze": "final_without_freeze", "analysis": "analysis",
+             "narrowed": "narrowed"}[world_stage]
+    commentator = access(engine, world, "commentator", stage)
+    before = len(audit(engine, world.run))
+    for field in sorted(FIELDS):
+        with pytest.raises(AccessDenied) as denied:
+            commentator.get(field)
+        assert denied.value.code == "not_on_list"
+    rows = audit(engine, world.run)[before:]
+    assert len(rows) == len(FIELDS) and not any(r.allowed for r in rows)
+    with pytest.raises(AccessDenied) as denied:
+        role_input(commentator)
+    assert denied.value.code == "empty_list"
 
 
 def test_experiment_flags_relax_nothing(engine):
@@ -304,7 +323,8 @@ def test_experiment_flags_relax_nothing(engine):
     world = aw.build(engine, "queued")
     w = world.w
     vid = w.val("SELECT hypothesis_version_id FROM run WHERE id = :r", r=world.run)
-    flagged = aw.val(w, "INSERT INTO run (hypothesis_version_id, experiment_flags) VALUES (:v, :j_f) RETURNING id",
+    flagged = aw.val(w, "INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags) "
+                              "VALUES (:v, true, :j_f) RETURNING id",  # a narrower question's run (0006)
                      v=vid, j_f={"relax_access": True, "access": "all", "unlock": ["planner", "critic"]})
     w.run_sql("INSERT INTO run_source (run_id, source_id, source_version_id, search_status) "
               "VALUES (:r, :s, :sv, 'pending')", r=flagged, s=w.source["mpea"], sv=w.version["mpea"])
@@ -391,8 +411,9 @@ def test_flags_kind_has_no_numbers(engine):
 
 
 def test_the_plan_is_projected_by_its_named_parts(engine):
-    world = aw.build(engine, "analysis")
-    got = access(engine, world, "analyst", "analysis").get("plan")
+    """Step 8b: read as Inclusion (code), since no agent's list holds the plan any more (Q6, A6)."""
+    world = aw.build(engine, "curation")
+    got = access(engine, world, "inclusion", "curation").get("plan")
     u = "unrecognized"
     assert got["content"] == {
         "variables": {"outcome": {"field": "yield_strength"},
@@ -436,8 +457,12 @@ def test_record_counts_are_counts_from_the_sealed_source(engine):
 
 
 def test_condition_summaries_are_ranges_and_counts_of_conditions_only(engine):
+    """Step 8b: no role's list holds this field until step 12 (Q6, A6); its reader is tested directly."""
+    from hypocurate.access.context import AccessContext
+    from hypocurate.access.fields import condition_summaries
     world = aw.build(engine, "closed_without_freeze")
-    got = access(engine, world, "analyst", "closed_without_freeze").get("condition_summaries")
+    with engine.connect() as conn:
+        got = condition_summaries(conn, AccessContext(world.run, "analyst", "closed_without_freeze"))
     assert set(got) == {"overall", "per_alloy"}
     overall = got["overall"]
     assert set(overall) == {"n_records", "grain_size", "test_temperature", "test_type", "phase_class"}

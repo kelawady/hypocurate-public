@@ -217,17 +217,35 @@ def _outcome(read):
         return ("denied", denied.code)
 
 
-def test_a_rules_lock_committed_while_a_read_waits_closes_the_planner(engine):
-    world = aw.build(engine, "before_lock")
-    planner = bind(engine, world.run, world.settings["planner"])
+@pytest.mark.parametrize("run_kind", ["narrower_question", "ordinary"])
+def test_a_rules_lock_committed_while_a_read_waits_closes_the_planner(engine, run_kind):
+    """Step 8b fix round 1: the access fixture's main run is a narrower question's, whose plan must be the narrower
+    plan its original stored (0006); the lock inserts that plan. The same race on an ordinary run (any plan) keeps
+    the common path covered."""
+    if run_kind == "narrower_question":
+        world = aw.build(engine, "before_lock")
+        run_id, content = world.run, aw.planted_plan()
+        planner = bind(engine, run_id, world.settings["planner"])  # bound before the lock, as a running call is
+        read = lambda: role_input(planner)  # noqa: E731
+    else:
+        from model_builder import World
+        w = World(engine)
+        run_id = w.running(agents=True)
+        assert w.val("SELECT h.narrower_of_run_id FROM run r JOIN hypothesis_version hv ON hv.id = "
+                     "r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE r.id = :r",
+                     r=run_id) is None
+        planner, content = bind(engine, run_id, w.agent_setting("planner")), {}
+        read = lambda: planner.get("claim")  # noqa: E731
 
     def rules_lock(conn):
-        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=world.run))
+        conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id))
         conn.execute(text("INSERT INTO plan (run_id, content, fingerprint, sufficiency_option, min_records, "
-                          "min_alloys, min_groups, min_resid_df) VALUES (:r, '{}', :fp, 'fixed_minimum', 4, 1, 2, 1)"),
-                     dict(r=world.run, fp=aw.FP))
+                          "min_alloys, min_groups, min_resid_df) VALUES (:r, CAST(:c AS jsonb), :fp, 'fixed_minimum', "
+                          "4, 1, 2, 1)"), dict(r=run_id, c=__import__("json").dumps(content), fp=aw.FP))
 
-    assert _race(engine, engine.test_url, lambda: role_input(planner), rules_lock) == ("denied", "stage_mismatch")
+    assert _race(engine, engine.test_url, read, rules_lock) == ("denied", "stage_mismatch")
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar() == 1
 
 
 def test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_analyst(engine):
@@ -246,8 +264,9 @@ def test_a_freeze_committed_while_reads_wait_closes_the_critic_and_opens_the_ana
 
     assert _race(engine, engine.test_url, lambda: critic.get("flags_kind"), freeze) == ("denied", "stage_mismatch")
     analyst = access_for(engine, world.run, "analyst", "analysis")
-    kind, got = _outcome(lambda: analyst.get("records_full"))
-    assert kind == "allowed" and len(got) == len(world.records)
+    # Step 8b (Q6): the Analyst's list no longer holds records_full; coverage is on it at every stage.
+    kind, got = _outcome(lambda: analyst.get("coverage"))
+    assert kind == "allowed" and [s["source"] for s in got["sources"]] == ["mpea", "tamu_fcc"]
 
 
 # --- Vocabularies and unrecognized counts -------------------------------------------------------
@@ -298,8 +317,11 @@ def test_the_gap_report_input_has_codes_not_failure_text(engine):
     got = role_input(bind(engine, world.run, world.settings["analyst"]))
     assert got["coverage"]["sources"][1]["search_status"] == "failed"
     assert set(got["coverage"]["sources"][1]) == {"source", "search_status", "nothing_found", "unrecognized"}
-    rules = {d["rule"] for d in got["decisions"]["records"]}
-    assert rules == {"in_scope", "unrecognized"}
+    # Step 8b (Q6): eligibility decisions no longer reach the Analyst directly; the rule codes reach it only
+    # as the gap facts code stored (counts per rule code, from the `decisions` field read by the code role
+    # gap_facts, whose codes are tested in test_access_statistics.py).
+    assert "decisions" not in got and set(got["analyst_facts"]) == {"kind", "names"}
+    assert got["analyst_facts"]["names"]["minimums_missed"] == "none"  # the world's stored gap facts
     assert set(allowed("analyst", "closed_without_freeze")) == set(got)
 
 

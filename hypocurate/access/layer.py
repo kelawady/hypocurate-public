@@ -78,7 +78,8 @@ LOG = logging.getLogger("hypocurate.access")
 # Fixed codes and their fixed reasons: nothing a caller passes is copied into a reason.
 DENIALS = {
     "unknown_role": "the role is not one of the five agent roles or the code roles",
-    "not_a_code_role": "only the code roles (Inclusion, Checks, Statistics, gap facts) are bound without an agent setting",
+    "not_a_code_role": "only the code roles (Inclusion, Checks, Statistics, gap facts, narrowing) are bound without "
+                       "an agent setting",
     "unknown_stage": "the stage is not one of the access stages",
     "stage_mismatch": "the run is no longer at the stage this access was bound to",
     "not_on_list": "the field is not on the role's list at the run's stage",
@@ -90,6 +91,7 @@ DENIALS = {
     "checks_not_done": "no completed Checks result for this run",
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
     "not_frozen": "no dataset is frozen for this run",
+    "facts_missing": "the stored facts the Analyst's stage needs are not there (step 8b)",
 }
 FAILURES = ("unknown_run", "unknown_invocation", "lock_timeout", "reader_error", "database_error", "file_guard")
 FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}

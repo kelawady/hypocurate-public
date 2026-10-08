@@ -39,6 +39,10 @@ LOG = logging.getLogger("hypocurate.pipeline")
 DEFAULT_TIMEOUT_SECONDS = 300
 # code -> (fixed text, what the runner does: "retry" (the same request again), "correct" (again, with
 # the fixed corrective note), or "stop").
+# The accounting failures that stop the whole run, not only the call (step 8b fix round, finding 3): after either,
+# no further model request is made for the run (no further Critic batch, no Analyst), and the run is left running,
+# with a call whose recording failed still started, for step 9's recovery.
+RUN_STOPS = ("recording_failed", "reservation_failed")
 FAILURES: Mapping[str, tuple[str, str]] = {
     "provider_unavailable": ("the provider could not be reached or did not answer in time", "retry"),
     "model_auth": ("the provider refused the credentials", "stop"),
@@ -57,6 +61,14 @@ FAILURES: Mapping[str, tuple[str, str]] = {
     "spending_cap_month": ("the monthly spending cap would be exceeded", "stop"),
     "ceiling_reached": ("the ceiling set for this call would be exceeded", "stop"),
     "invocation_unknown": ("no such invocation", "stop"),
+    # Step 8b: the roles' own checks of an answer that could be read (each corrected once).
+    "invalid_plan": ("the plan is not valid for the supported template or does not match the claim's scope", "correct"),
+    "numbers_unmatched": ("a number in the text is not one of the facts given, as given", "correct"),
+    "wording_refused": ("the text uses wording that is not allowed", "correct"),
+    # Owner, 2026-10-07: the Analyst's placeholders.
+    "unknown_name": ("a placeholder names no fact given", "correct"),
+    "digit_outside_placeholder": ("a digit was written outside a placeholder; every number is a placeholder", "correct"),
+    "result_phrases_missing": ("with a verdict, the pooled p-value phrase and paper-figures phrase must be used", "correct"),
 }
 
 

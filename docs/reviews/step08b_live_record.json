@@ -1,0 +1,1005 @@
+{
+ "note": "Step 8b live calls on the local development database (2026-10-07), exported for the review packet. Every model call with its tokens and cost; each run's outcome and the Analyst's stage. The diagnostic call's raw answer is not included (owner: local scratch file only). Fix round 1 adds one Critic call (fix_round_1_critic_check), included in total_actual_cost. A second Critic call (fix_round_1_critic_check_2) is included in total_actual_cost.",
+ "runs": [
+  {
+   "run": 1,
+   "query": "Q-0001",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": false,
+   "failure": null,
+   "calls": [
+    {
+     "role": "planner",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 3304,
+     "output_tokens": 344,
+     "cost": "0.020096",
+     "max_cost": "0.195756"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14371,
+     "output_tokens": 1478,
+     "cost": "0.087044",
+     "max_cost": "0.307676"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14417,
+     "output_tokens": 956,
+     "cost": "0.076788",
+     "max_cost": "0.308348"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "malformed",
+     "wording_refused"
+    ],
+    "code": "wording_refused",
+    "failure_details": null,
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 2,
+   "query": "Q-0002",
+   "claim": "Grain refinement still strengthens BCC multi-principal-element alloys at 1000 °C",
+   "status": "completed",
+   "outcome": "insufficient",
+   "verdict": null,
+   "evidence_level": 1,
+   "fixed_plan": false,
+   "failure": null,
+   "calls": [
+    {
+     "role": "planner",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 3308,
+     "output_tokens": 450,
+     "cost": "0.022232",
+     "max_cost": "0.195764"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2252,
+     "output_tokens": 958,
+     "cost": "0.028168",
+     "max_cost": "0.188208"
+    }
+   ],
+   "analyst": {
+    "status": "done",
+    "attempts": [
+     "ok"
+    ],
+    "code": null,
+    "failure_details": null,
+    "report": "For query Q-0002, \"Grain refinement still strengthens BCC multi-principal-element alloys at 1000 °C,\" the outcome is **insufficient in the sources searched**. No dataset was frozen, so no analysis was run and there is no verdict. The evidence level is 1 (\"no dataset frozen\").\n\n**What was searched.** Two sources were searched, and both returned records:\n- the MPEA dataset (Borg et al. 2020)\n- the Texas A&M FCC dataset (Mulukutla et al. 2026)\n\nThe plan limited the scope to:\n- multi-principal-element (high-entropy) alloys\n- BCC phase class\n- the elevated temperature band\n- tension tests\n\nThe planned model was a Hall-Petch fit with alloy intercepts. Yield strength (MPa) was the outcome, and grain size (µm) was the predictor, transformed to its inverse square root.\n\n**Why records were not usable.** Under the eligibility rules, 1543 records were out of scope and 96 had a missing value. Many records lacked key fields:\n- **MPEA:** grain size was missing in 1308 records, test temperature band in 1545, test temperature in 181, test type in 395, yield strength in 478, ultimate tensile strength in 1006, and microstructure in 143.\n- **Texas A&M FCC:** test temperature and ultimate tensile strength were each missing in 94 records, and yield strength in 1.\n\n**Minimums not met.** A test needs all four fixed minimums to be met. None were:\n\n| Minimum | Required | Found |\n|---|---|---|\n| Records | 30 | 0 |\n| Groups | 10 | 0 |\n| Alloys | 5 | 0 |\n| Residual degrees of freedom | 10 | -1 |\n\n**What a test would need.** Records of BCC multi-principal-element alloys tested in tension in the elevated temperature band, each reporting both grain size and yield strength. These would need to come from enough groups and alloys to reach the minimums above. Such records were not found in the sources searched.",
+    "template": null
+   }
+  },
+  {
+   "run": 3,
+   "query": "Q-0003",
+   "claim": "In FCC multi-principal-element alloys tested in tension, yield strength rises as grain size falls, both at room temperature and at cryogenic temperatures (-196 °C)",
+   "status": "failed",
+   "outcome": null,
+   "verdict": null,
+   "evidence_level": null,
+   "fixed_plan": false,
+   "failure": "claim_not_one_plan: the claim covers more than one temperature band, test type or alloy class; submit one question per band, test type and alloy class (narrower_missing)",
+   "calls": [
+    {
+     "role": "planner",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 3334,
+     "output_tokens": 398,
+     "cost": "0.021296",
+     "max_cost": "0.196096"
+    }
+   ],
+   "analyst": null
+  },
+  {
+   "run": 4,
+   "query": "Q-0004",
+   "claim": "In FCC multi-principal-element alloys tested in tension, yield strength rises as grain size falls, both at room temperature and at cryogenic temperatures (-196 °C)",
+   "status": "completed",
+   "outcome": "partly_sufficient",
+   "verdict": null,
+   "evidence_level": 1,
+   "fixed_plan": false,
+   "failure": null,
+   "calls": [
+    {
+     "role": "planner",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 3299,
+     "output_tokens": 306,
+     "cost": "0.019316",
+     "max_cost": "0.195672"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 1803,
+     "output_tokens": 804,
+     "cost": "0.023292",
+     "max_cost": "0.18406"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 1851,
+     "output_tokens": 847,
+     "cost": "0.024344",
+     "max_cost": "0.18472"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "wording_refused",
+     "malformed"
+    ],
+    "code": "malformed",
+    "failure_details": null,
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 5,
+   "query": "Q-0005",
+   "claim": "In FCC multi-principal-element alloys tested in tension, yield strength rises as grain size falls, both at room temperature and at cryogenic temperatures (-196 °C) (narrower question: phase class FCC; test type tension; room temperature)",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14445,
+     "output_tokens": 1449,
+     "cost": "0.08676",
+     "max_cost": "0.30852"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14493,
+     "output_tokens": 1453,
+     "cost": "0.087032",
+     "max_cost": "0.30918"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "wording_refused",
+     "malformed"
+    ],
+    "code": "malformed",
+    "failure_details": null,
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 6,
+   "query": "Q-0006",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14380,
+     "output_tokens": 1206,
+     "cost": "0.08164",
+     "max_cost": "0.30782"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "wording_refused"
+    ],
+    "code": "wording_refused",
+    "failure_details": [
+     {
+      "attempt": 1,
+      "problems": [
+       "a p-value without 'approximate' in its sentence",
+       "a p-value without 'approximate' in its sentence",
+       "a p-value without 'approximate' in its sentence"
+      ]
+     }
+    ],
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 7,
+   "query": "Q-0007",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14210,
+     "output_tokens": 1445,
+     "cost": "0.08574",
+     "max_cost": "0.306496"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 14258,
+     "output_tokens": 1756,
+     "cost": "0.092152",
+     "max_cost": "0.307156"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "wording_refused",
+     "numbers_unmatched"
+    ],
+    "code": "numbers_unmatched",
+    "failure_details": [
+     {
+      "attempt": 1,
+      "problems": [
+       "a p-value outside its ready-made phrase"
+      ]
+     },
+     {
+      "attempt": 2,
+      "problems": [
+       "numbers_unmatched"
+      ]
+     }
+    ],
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 8,
+   "query": "Q-0008",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2698,
+     "output_tokens": 1505,
+     "cost": "0.040892",
+     "max_cost": "0.192464"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2746,
+     "output_tokens": 1326,
+     "cost": "0.037504",
+     "max_cost": "0.193124"
+    }
+   ],
+   "analyst": {
+    "status": "failed",
+    "attempts": [
+     "wording_refused",
+     "wording_refused"
+    ],
+    "code": "wording_refused",
+    "failure_details": [
+     {
+      "attempt": 1,
+      "problems": [
+       "paper figures outside their ready-made phrase",
+       "a p-value outside its ready-made phrase"
+      ]
+     },
+     {
+      "attempt": 2,
+      "problems": [
+       "paper figures outside their ready-made phrase",
+       "a p-value outside its ready-made phrase"
+      ]
+     }
+    ],
+    "report": null,
+    "template": null
+   }
+  },
+  {
+   "run": 9,
+   "query": "Q-0009",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2699,
+     "output_tokens": 1469,
+     "cost": "0.040176",
+     "max_cost": "0.19246"
+    }
+   ],
+   "analyst": {
+    "status": "done",
+    "attempts": [
+     "ok"
+    ],
+    "code": null,
+    "failure_details": null,
+    "report": "For query Q-0009, the outcome is sufficient in the sources searched, and the verdict is supported under the stated model, in the sources searched. The scope came from the fixed reference plan; the scope was not read from the claim, so parts of the scope, such as test conditions and which records count as in scope, were not stated by the claim itself. The pooled analysis used 97 records on 22 alloys in 20 groups. It gave a pooled estimate of 424.9 with a standard error of 64.4, which points in the direction the claim describes. The pooled result has p ≈ 1.3e-6 (approximate, nominal, one-sided), based on 20 informative papers, an effective number of papers of 3.94, a largest share of 38.7% and 19 degrees of freedom. The effective number of papers is a measure of how evenly the slope information is spread across groups. It is not a count of independent papers, and here it is much smaller than the number of groups, which means a few groups carry most of the information.\n\nTwo sources were searched. In the searched MPEA dataset, 76 records on 13 alloys in 19 groups gave an estimate of 424.1 with a standard error of 62.2, labelled agrees, with p ≈ 1.1e-6 (approximate, nominal, one-sided) and 19 informative papers, an effective number of papers of 3.93, a largest share of 38.7% and 18 degrees of freedom. Many MPEA records could not be used. For example, 1308 lacked grain size and 478 lacked yield strength. The searched Texas A&M FCC dataset contributed 21 records on 9 alloys, but they all fall in 1 group. Its estimate of 1173.3 therefore could not be used for inference on its own: inference was not valid because of insufficient groups, and it is labelled not enough data.\n\nThe sufficiency rule was the fixed minimum. Each minimum was met:\n* Records: 97 against a minimum of 30 (met).\n* Alloys: 22 against 5 (met).\n* Groups: 20 against 10 (met).\n* Residual degrees of freedom: 74 against 10 (met).\n\nMinimums missed: none.\n\nIn the sensitivity checks, all 9 of 9 alternative sets agreed, with 0 conflicting and 0 short of data. Estimates ranged from 393.5 (without the group with the largest share of slope information) to 432.4 (scope not confirmed included). Dropping the group with the largest share left 89 records and gave an estimate of 393.5, with p ≈ 1.9e-4 (approximate, nominal, one-sided) and 19 informative papers, an effective number of papers of 3.24, a largest share of 52.1% and 18 degrees of freedom.\n\nA simulation check is an important caution. Under estimated settings, the method's false-positive rate was 8.2% (from 7.1% to 9.5%) against a nominal level of 0.05. Detection was 97.5%. Under fixed settings, the false-positive rate was 8.9%, with detection of 100.0%. In both cases the conclusion was that the method is over-confident on this data structure under the stated assumptions. For this reason the p-values are best read as nominal and somewhat optimistic. The association holds under the stated model in the sources searched, but it does not show that smaller grains produce the higher strength. Evidence level: 6 (sufficient with a verdict).",
+    "template": "For query {query_number}, the outcome is {outcome_wording}, and the verdict is {verdict_wording}. The scope came from {scope_source}, so parts of the scope, such as test conditions and which records count as in scope, were not stated by the claim itself. The pooled analysis used {pooled_records} records on {pooled_alloys} alloys in {pooled_groups} groups. It gave a pooled estimate of {pooled_estimate} with a standard error of {pooled_std_error}, which points in the direction the claim describes. The pooled result has {pooled_p_phrase}, based on {pooled_figures_phrase}. The effective number of papers is a measure of how evenly the slope information is spread across groups. It is not a count of independent papers, and here it is much smaller than the number of groups, which means a few groups carry most of the information.\n\nTwo sources were searched. In the {mpea_search} MPEA dataset, {mpea_records} records on {mpea_alloys} alloys in {mpea_groups} groups gave an estimate of {mpea_estimate} with a standard error of {mpea_std_error}, labelled {mpea_label}, with {mpea_p_phrase} and {mpea_figures_phrase}. Many MPEA records could not be used. For example, {mpea_lacking_grain_size} lacked grain size and {mpea_lacking_yield_strength} lacked yield strength. The {tamu_fcc_search} Texas A&M FCC dataset contributed {tamu_fcc_records} records on {tamu_fcc_alloys} alloys, but they all fall in {tamu_fcc_groups} group. Its estimate of {tamu_fcc_estimate} therefore could not be used for inference on its own: inference was {tamu_fcc_inference} because of {tamu_fcc_inference_reason}, and it is labelled {tamu_fcc_label}.\n\nThe sufficiency rule was the {sufficiency_option}. Each minimum was met:\n* Records: {count_records} against a minimum of {minimum_records} ({met_records}).\n* Alloys: {count_alloys} against {minimum_alloys} ({met_alloys}).\n* Groups: {count_groups} against {minimum_groups} ({met_groups}).\n* Residual degrees of freedom: {count_resid_df} against {minimum_resid_df} ({met_resid_df}).\n\nMinimums missed: {minimums_missed}.\n\nIn the sensitivity checks, all {sensitivity_agrees} of {sensitivity_sets} alternative sets agreed, with {sensitivity_conflicts} conflicting and {sensitivity_not_enough_data} short of data. Estimates ranged from {sensitivity_smallest_estimate} ({sensitivity_smallest_set}) to {sensitivity_largest_estimate} ({sensitivity_largest_set}). Dropping the group with the largest share left {without_largest_share_records} records and gave an estimate of {without_largest_share_estimate}, with {without_largest_share_p_phrase} and {without_largest_share_figures_phrase}.\n\nA simulation check is an important caution. Under estimated settings, the method's false-positive rate was {estimated_false_positive} (from {estimated_false_positive_low} to {estimated_false_positive_high}) against a nominal level of {alpha}. Detection was {estimated_detection}. Under fixed settings, the false-positive rate was {fixed_false_positive}, with detection of {fixed_detection}. In both cases the conclusion was that {estimated_flag}. For this reason the p-values are best read as nominal and somewhat optimistic. The association holds under the stated model in the sources searched, but it does not show that smaller grains produce the higher strength. Evidence level: {evidence_level} ({evidence_level_wording})."
+   }
+  },
+  {
+   "run": 10,
+   "query": "Q-0010",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2699,
+     "output_tokens": 1424,
+     "cost": "0.039276",
+     "max_cost": "0.19246"
+    },
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2747,
+     "output_tokens": 1083,
+     "cost": "0.032648",
+     "max_cost": "0.19312"
+    }
+   ],
+   "analyst": {
+    "status": "done",
+    "attempts": [
+     "wording_refused",
+     "ok"
+    ],
+    "code": null,
+    "failure_details": null,
+    "report": "The outcome for this claim is sufficient in the sources searched, and the verdict is supported under the stated model, in the sources searched. Across both sources together, the pooled estimate of the slope linking yield strength to finer grain size is 424.9, with a standard error of 64.4, giving p ≈ 1.3e-6 (approximate, nominal, one-sided). This rests on 20 informative papers, an effective number of papers of 3.94, a largest share of 38.7% and 19 degrees of freedom. The effective number of papers describes how evenly the slope information is spread across groups. It is not a count of separate papers. The scope used here came from the fixed reference plan; the scope was not read from the claim, so the claim itself did not state the scope. The result is an association under the stated model, not a demonstration of the claim.\n\nBy source, the MPEA dataset gave an estimate of 424.1 (standard error 62.2, p ≈ 1.1e-6 (approximate, nominal, one-sided)). It used 76 records from 19 groups and 13 alloys, based on 19 informative papers, an effective number of papers of 3.93, a largest share of 38.7% and 18 degrees of freedom, and is labelled agrees. Many MPEA records could not be used: 1308 lacked grain size and 478 lacked yield strength. The Texas A&M FCC dataset gave an estimate of 1173.3, but it came from only 1 group, so inference was not valid (insufficient groups). That source is labelled not enough data.\n\nThe checks passed the fixed minimums. The analysis had 97 records against a minimum of 30, 20 groups against 10, 22 alloys against 5, and 74 residual degrees of freedom against 10. Minimums missed: none. Removing the group with the largest share of slope information gave 393.5 (p ≈ 1.9e-4 (approximate, nominal, one-sided), 19 informative papers, an effective number of papers of 3.24, a largest share of 52.1% and 18 degrees of freedom). Across 9 sensitivity sets, 9 agreed and 0 conflicted. The estimates ranged from 393.5 to 432.4.\n\nA simulation check found a false-positive rate of 8.0% under fixed settings and 8.6% under estimated settings, at an alpha of 0.05. Under both settings, the method is over-confident on this data structure under the stated assumptions. The p-values should therefore be read as approximate and somewhat optimistic. The evidence level is 6, which corresponds to sufficient with a verdict.",
+    "template": "The outcome for this claim is {outcome_wording}, and the verdict is {verdict_wording}. Across both sources together, the pooled estimate of the slope linking yield strength to finer grain size is {pooled_estimate}, with a standard error of {pooled_std_error}, giving {pooled_p_phrase}. This rests on {pooled_figures_phrase}. The effective number of papers describes how evenly the slope information is spread across groups. It is not a count of separate papers. The scope used here came from {scope_source}, so the claim itself did not state the scope. The result is an association under the stated model, not a demonstration of the claim.\n\nBy source, the MPEA dataset gave an estimate of {mpea_estimate} (standard error {mpea_std_error}, {mpea_p_phrase}). It used {mpea_records} records from {mpea_groups} groups and {mpea_alloys} alloys, based on {mpea_figures_phrase}, and is labelled {mpea_label}. Many MPEA records could not be used: {mpea_lacking_grain_size} lacked grain size and {mpea_lacking_yield_strength} lacked yield strength. The Texas A&M FCC dataset gave an estimate of {tamu_fcc_estimate}, but it came from only {tamu_fcc_groups} group, so inference was {tamu_fcc_inference} ({tamu_fcc_inference_reason}). That source is labelled {tamu_fcc_label}.\n\nThe checks passed the fixed minimums. The analysis had {count_records} records against a minimum of {minimum_records}, {count_groups} groups against {minimum_groups}, {count_alloys} alloys against {minimum_alloys}, and {count_resid_df} residual degrees of freedom against {minimum_resid_df}. Minimums missed: {minimums_missed}. Removing the group with the largest share of slope information gave {without_largest_share_estimate} ({without_largest_share_p_phrase}, {without_largest_share_figures_phrase}). Across {sensitivity_sets} sensitivity sets, {sensitivity_agrees} agreed and {sensitivity_conflicts} conflicted. The estimates ranged from {sensitivity_smallest_estimate} to {sensitivity_largest_estimate}.\n\nA simulation check found a false-positive rate of {fixed_false_positive} under fixed settings and {estimated_false_positive} under estimated settings, at an alpha of {alpha}. Under both settings, {fixed_flag}. The p-values should therefore be read as approximate and somewhat optimistic. The evidence level is {evidence_level}, which corresponds to {evidence_level_wording}."
+   }
+  },
+  {
+   "run": 11,
+   "query": "Q-0011",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 2699,
+     "output_tokens": 1356,
+     "cost": "0.037916",
+     "max_cost": "0.192456"
+    }
+   ],
+   "analyst": {
+    "status": "done",
+    "attempts": [
+     "ok"
+    ],
+    "code": null,
+    "failure_details": null,
+    "report": "For query Q-0011, the outcome is sufficient in the sources searched, and the verdict is supported under the stated model, in the sources searched. The evidence level is 6 (sufficient with a verdict). The scope came from the fixed reference plan; the scope was not read from the claim, so it was not taken from the wording of the claim. The pooled slope estimate, which relates yield strength to grain size, is 424.9 with a standard error of 64.4 and p ≈ 1.3e-6 (approximate, nominal, one-sided). It is based on 97 records from 22 alloys, with 20 informative papers, an effective number of papers of 3.94, a largest share of 38.7% and 19 degrees of freedom. The effective number of papers describes how the slope information is spread across groups. It is not a count of independent papers. This is an association under the stated model. It does not show that grain size drives strength, and it does not prove the claim.\n\nThe sufficiency rule used was the fixed minimum. Records were met (minimum 30, found 97). Alloys were met (minimum 5, found 22). Groups were met (minimum 10, found 20). Residual degrees of freedom were met (minimum 10, found 74). Minimums missed: none.\n\nAlmost all of the usable data came from the MPEA dataset. That source gave an estimate of 424.1 (standard error 62.2, p ≈ 1.1e-6 (approximate, nominal, one-sided), 19 informative papers, an effective number of papers of 3.93, a largest share of 38.7% and 18 degrees of freedom), and its label is agrees. Many MPEA entries could not be used. For example, 1308 entries lacked grain size and 478 lacked yield strength.\n\nThe Texas A&M FCC dataset was searched but was labelled not enough data. It gave 21 records but only 1 group, so inference was not valid (insufficient groups).\n\nSensitivity checks also supported the result. Of 9 alternative data sets, 9 agreed, 0 conflicted and 0 lacked enough data. Estimates ranged from 393.5 (\"without the group with the largest share of slope information\") to 432.4 (\"scope not confirmed included\"). Dropping the group with the largest share of slope information gave 393.5 with p ≈ 1.9e-4 (approximate, nominal, one-sided) and 19 informative papers, an effective number of papers of 3.24, a largest share of 52.1% and 18 degrees of freedom.\n\nSimulation checks raise a caution. With fixed assumptions, the false positive rate was 8.6% (range 7.4% to 9.9%). With estimated assumptions, it was 7.5% (range 6.4% to 8.8%). Both are above the nominal level of 0.05, and in each case the flag reads: the method is over-confident on this data structure under the stated assumptions. Detection rates were high, at 100.0% and 97.6%. For these reasons the p-values should be read as approximate.",
+    "template": "For query {query_number}, the outcome is {outcome_wording}, and the verdict is {verdict_wording}. The evidence level is {evidence_level} ({evidence_level_wording}). The scope came from {scope_source}, so it was not taken from the wording of the claim. The pooled slope estimate, which relates yield strength to grain size, is {pooled_estimate} with a standard error of {pooled_std_error} and {pooled_p_phrase}. It is based on {pooled_records} records from {pooled_alloys} alloys, with {pooled_figures_phrase}. The effective number of papers describes how the slope information is spread across groups. It is not a count of independent papers. This is an association under the stated model. It does not show that grain size drives strength, and it does not prove the claim.\n\nThe sufficiency rule used was the {sufficiency_option}. Records were {met_records} (minimum {minimum_records}, found {count_records}). Alloys were {met_alloys} (minimum {minimum_alloys}, found {count_alloys}). Groups were {met_groups} (minimum {minimum_groups}, found {count_groups}). Residual degrees of freedom were {met_resid_df} (minimum {minimum_resid_df}, found {count_resid_df}). Minimums missed: {minimums_missed}.\n\nAlmost all of the usable data came from the MPEA dataset. That source gave an estimate of {mpea_estimate} (standard error {mpea_std_error}, {mpea_p_phrase}, {mpea_figures_phrase}), and its label is {mpea_label}. Many MPEA entries could not be used. For example, {mpea_lacking_grain_size} entries lacked grain size and {mpea_lacking_yield_strength} lacked yield strength.\n\nThe Texas A&M FCC dataset was searched but was labelled {tamu_fcc_label}. It gave {tamu_fcc_records} records but only {tamu_fcc_groups} group, so inference was {tamu_fcc_inference} ({tamu_fcc_inference_reason}).\n\nSensitivity checks also supported the result. Of {sensitivity_sets} alternative data sets, {sensitivity_agrees} agreed, {sensitivity_conflicts} conflicted and {sensitivity_not_enough_data} lacked enough data. Estimates ranged from {sensitivity_smallest_estimate} (\"{sensitivity_smallest_set}\") to {sensitivity_largest_estimate} (\"{sensitivity_largest_set}\"). Dropping the group with the largest share of slope information gave {without_largest_share_estimate} with {without_largest_share_p_phrase} and {without_largest_share_figures_phrase}.\n\nSimulation checks raise a caution. With fixed assumptions, the false positive rate was {fixed_false_positive} (range {fixed_false_positive_low} to {fixed_false_positive_high}). With estimated assumptions, it was {estimated_false_positive} (range {estimated_false_positive_low} to {estimated_false_positive_high}). Both are above the nominal level of {alpha}, and in each case the flag reads: {estimated_flag}. Detection rates were high, at {fixed_detection} and {estimated_detection}. For these reasons the p-values should be read as approximate."
+   }
+  },
+  {
+   "run": 12,
+   "query": "Q-0012",
+   "claim": "In FCC multi-principal-element alloys, yield strength rises as grain size falls",
+   "status": "completed",
+   "outcome": "sufficient",
+   "verdict": "supported",
+   "evidence_level": 6,
+   "fixed_plan": true,
+   "failure": null,
+   "calls": [
+    {
+     "role": "analyst",
+     "model": "claude-opus-5-5",
+     "status": "succeeded",
+     "input_tokens": 3361,
+     "output_tokens": 1500,
+     "cost": "0.043444",
+     "max_cost": "0.1995"
+    }
+   ],
+   "analyst": {
+    "status": "done",
+    "attempts": [
+     "ok"
+    ],
+    "code": null,
+    "failure_details": [],
+    "report": "The claim is that in FCC multi-principal-element alloys, yield strength is higher when grain size is smaller. The outcome is sufficient in the sources searched, and the verdict is supported under the stated model, in the sources searched. The main cautions are these. The simulation check found the method over-confident on this data structure. The effective number of groups is small. A single group carries a large share of the slope information. So the nominal p-value should be read as more favourable than it really is.\n\nThe test fitted yield strength (MPa) as a baseline for each alloy plus one coefficient, shared by all alloys, times the inverse square root of grain size (µm); the estimate is that coefficient, in MPa·µm^0.5. The pooled estimate is 424.9 MPa·µm^0.5, with a standard error of 64.4 MPa·µm^0.5, giving p ≈ 1.3e-6 (approximate, nominal, one-sided); the estimate is positive, the direction the claim describes. The pooled fit used 97 records on 22 alloys, with 20 informative groups, an effective number of groups of 3.94, a largest share of 38.7% and 19 degrees of freedom. A group is a paper, or, for a source that is a single dataset, the whole dataset. The effective number of groups shows how concentrated the slope information is across groups. It is not a count of independent groups. The scope was set by the fixed reference plan and was not read from the claim.\n\nTwo sources were searched.\n\n* **MPEA dataset:** This source supplied most of the data, with 76 records on 13 alloys from 19 groups. On its own it gave 424.1 MPa·µm^0.5 (p ≈ 1.1e-6 (approximate, nominal, one-sided)), which is in agreement with the pooled result. Many of its records could not be used because they lacked a needed field. For example, 1308 lacked grain size and 478 lacked yield strength.\n* **Texas A&M FCC dataset:** This source supplied 21 records on 9 alloys. Because it is a single dataset, it counts as 1 group. It is therefore too few groups to test alone, and its own estimate of 1173.3 MPa·µm^0.5 is not a valid separate test (insufficient groups).\n\nThe sensitivity checks re-ran the test on 9 alternative data sets. 9 agreed with the pooled result and 0 conflicted. The estimates ranged from 393.5 MPa·µm^0.5 (without the group with the largest share of slope information) to 432.4 MPa·µm^0.5 (scope not confirmed included). Dropping the group with the largest share gave 393.5 MPa·µm^0.5 (p ≈ 1.9e-4 (approximate, nominal, one-sided)), with 19 informative groups, an effective number of groups of 3.24, a largest share of 52.1% and 18 degrees of freedom. This is still in agreement with the pooled result, but the information then becomes even more concentrated in one remaining group.\n\nIn the simulation check, with noise levels estimated from the data, the test was significant in 7.7% of simulations with no effect (6.6% to 9.0%, a 95% simulation interval covering simulation uncertainty only); with fixed illustrative noise levels, the test was significant in 8.5% of simulations with no effect (7.3% to 9.8%, a 95% simulation interval covering simulation uncertainty only), against a nominal level of 5.0%. Under both, the method is over-confident on this data structure under the stated assumptions. This means that when there is truly no effect, the test flags one more often than its nominal level of 5.0%. The check also gives detection rates when a real effect is present:\n\n* With noise levels estimated from the data, the detection rate was 97.2%.\n* With fixed illustrative noise levels, the detection rate was 100.0%.\n\nA test requires fixed minimums: at least 30 records, 10 groups, 5 alloys and 10 residual degrees of freedom. The data provided 97 records, 20 groups, 22 alloys and 74 residual degrees of freedom, so every minimum was met and none was missed. Even so, the result describes an association under the stated model in the sources searched. It does not establish the claim. More independent groups with spread-out slope information would make the result less dependent on any one group.",
+    "template": "The claim is that in FCC multi-principal-element alloys, yield strength is higher when grain size is smaller. The outcome is {outcome_wording}, and the verdict is {verdict_wording}. The main cautions are these. The simulation check found the method over-confident on this data structure. The effective number of groups is small. A single group carries a large share of the slope information. So the nominal p-value should be read as more favourable than it really is.\n\n{model_sentence} The pooled estimate is {pooled_estimate}, with a standard error of {pooled_std_error}, giving {pooled_p_phrase}; {direction_note}. The pooled fit used {pooled_records} records on {pooled_alloys} alloys, with {pooled_figures_phrase}. {group_definition} The effective number of groups shows how concentrated the slope information is across groups. It is not a count of independent groups. {scope_source}\n\nTwo sources were searched.\n\n* **MPEA dataset:** This source supplied most of the data, with {mpea_records} records on {mpea_alloys} alloys from {mpea_groups} groups. On its own it gave {mpea_estimate} ({mpea_p_phrase}), which is {mpea_label}. Many of its records could not be used because they lacked a needed field. For example, {mpea_lacking_grain_size} lacked grain size and {mpea_lacking_yield_strength} lacked yield strength.\n* **Texas A&M FCC dataset:** This source supplied {tamu_fcc_records} records on {tamu_fcc_alloys} alloys. Because it is a single dataset, it counts as {tamu_fcc_groups} group. It is therefore {tamu_fcc_label}, and its own estimate of {tamu_fcc_estimate} is not a valid separate test ({tamu_fcc_inference_reason}).\n\nThe sensitivity checks re-ran the test on {sensitivity_sets} alternative data sets. {sensitivity_agrees} agreed with the pooled result and {sensitivity_conflicts} conflicted. The estimates ranged from {sensitivity_smallest_estimate} ({sensitivity_smallest_set}) to {sensitivity_largest_estimate} ({sensitivity_largest_set}). Dropping the group with the largest share gave {without_largest_share_estimate} ({without_largest_share_p_phrase}), with {without_largest_share_figures_phrase}. This is still {without_largest_share_label}, but the information then becomes even more concentrated in one remaining group.\n\n{calibration_summary} This means that when there is truly no effect, the test flags one more often than its nominal level of {nominal_level}. The check also gives detection rates when a real effect is present:\n\n* With {estimated_calibration_name}, the detection rate was {estimated_detection}.\n* With {fixed_calibration_name}, the detection rate was {fixed_detection}.\n\nA test requires fixed minimums: at least {minimum_records} records, {minimum_groups} groups, {minimum_alloys} alloys and {minimum_resid_df} residual degrees of freedom. The data provided {count_records} records, {count_groups} groups, {count_alloys} alloys and {count_resid_df} residual degrees of freedom, so every minimum was met and none was missed. Even so, the result describes an association under the stated model in the sources searched. It does not establish the claim. More independent groups with spread-out slope information would make the result less dependent on any one group."
+   }
+  }
+ ],
+ "total_actual_cost": 1.050974,
+ "total_reserved_maximum": "4.851056",
+ "calls": 21,
+ "fix_round_1_critic_check": {
+  "note": "Fix round 1 (owner's go, 2026-10-07): one live Critic call on a fresh local scratch database (not the development database), constructed test data marked as such, fixed plan, no Planner and no Analyst; ceiling $0.25. 'stages[].input' is the request content code built from the Critic's access-layer input (with the instruction of settings version 1); 'decisions_unchanged' compares the run with a second run of the same version whose flags have no class (tests/test_critic.py::decided: decisions, sets, freeze record and fingerprint, statistics, gap facts). Harness: ~/hc-work/step08b/fix/live_critic.py (quoted in the fix packet).",
+  "database": "hc_live_critic_live_1791410589",
+  "run": 1,
+  "comparison_run": 2,
+  "ceiling": "0.25",
+  "critic_setting": {
+   "version": 1,
+   "model": "claude-haiku-4-5",
+   "limits": {
+    "max_tokens": 8000,
+    "max_output_chars": 30000,
+    "max_flags_per_call": 100
+   },
+   "settings": {
+    "reasoning_effort": "low"
+   }
+  },
+  "flags": [
+   {
+    "id": 1,
+    "kind": "invalid_value",
+    "category": "physically impossible"
+   },
+   {
+    "id": 2,
+    "kind": "invalid_value",
+    "category": "physically impossible"
+   }
+  ],
+  "result": {
+   "classified": 2,
+   "refused": {},
+   "failures": []
+  },
+  "stages": [
+   {
+    "id": 2,
+    "status": "done",
+    "input": {
+     "flags": "[{\"category\": \"physically impossible\", \"id\": \"1\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 7, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.001\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}, {\"category\": \"physically impossible\", \"id\": \"2\", \"kind\": \"invalid_value\", \"records\": [{\"alloy\": \"Co33.3Cr33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": null, \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Cr\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 8, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.test.2026.002\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"not_reported\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}]}]",
+     "classes": "{\"cannot_tell\": \"cannot tell from the metadata\", \"different_specimens_or_conditions\": \"different specimens or conditions\", \"possible_transcription_or_unit_error\": \"possible transcription or unit error\", \"same_measurement\": \"same measurement reported twice\"}",
+     "sources": "[{\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"mpea\", \"licence\": \"Apache-2.0\", \"name\": \"MPEA dataset (Borg et al. 2020)\", \"source_type\": \"uploaded_table\"}]"
+    },
+    "output": {
+     "refused": {},
+     "attempts": [
+      "ok"
+     ],
+     "classified": {
+      "1": {
+       "class": "different_specimens_or_conditions",
+       "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+      },
+      "2": {
+       "class": "different_specimens_or_conditions",
+       "reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+      }
+     }
+    }
+   }
+  ],
+  "model_calls": [
+   {
+    "id": 1,
+    "model": "claude-haiku-4-5",
+    "status": "succeeded",
+    "input_tokens": 1330,
+    "output_tokens": 833,
+    "cost": "0.005495",
+    "max_cost": "0.045779",
+    "cached_tokens": 0,
+    "error": null
+   }
+  ],
+  "classes": [
+   {
+    "id": 1,
+    "kind": "invalid_value",
+    "category": "physically impossible",
+    "critic_class": "different_specimens_or_conditions",
+    "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.001 vs 10.1016/j.test.2026.002), indicating different measurement campaigns, though alloy composition and test type are identical."
+   },
+   {
+    "id": 2,
+    "kind": "invalid_value",
+    "category": "physically impossible",
+    "critic_class": "different_specimens_or_conditions",
+    "critic_reason": "Records are from different papers (DOIs: 10.1016/j.test.2026.002 vs 10.1016/j.test.2026.001), indicating different measurement campaigns, though alloy composition and test type are identical."
+   }
+  ],
+  "compared_numbers_in_request": [],
+  "decisions_unchanged": true,
+  "freeze_fingerprints": [
+   "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5",
+   "de70e3206a832620bfac5995e12b2c300fbe23a7d2e551c77c18fcc517710ba5"
+  ]
+ },
+ "fix_round_1_critic_check_2": {
+  "note": "Fix round 1, after the owner's decision on the Critic (only flags naming two or more records; each flag stands alone, a new instruction): one live Critic call (owner's go, 2026-10-07) on a fresh local scratch database, MPEA with the controlled duplicate extract, marked as constructed test data, fixed plan, no Planner and no Analyst; ceiling $0.25. Graded afterwards against the test-side key tests/fixtures/controlled_duplicates/critic_key.csv (approved by the owner before the call; read only after it; absent from the request, checked). 'stages[].input' is the request content code built. Harness: ~/hc-work/step08b/fix/live_critic2.py (quoted in the fix packet).",
+  "database": "hc_live_critic2_live_1791412642",
+  "run": 1,
+  "comparison_run": 2,
+  "ceiling": "0.25",
+  "critic_setting": {
+   "version": 1,
+   "model": "claude-haiku-4-5",
+   "limits": {
+    "max_tokens": 8000,
+    "max_output_chars": 30000,
+    "max_flags_per_call": 100
+   },
+   "settings": {
+    "reasoning_effort": "low"
+   }
+  },
+  "flags": [
+   {
+    "id": 1,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:0",
+     "mpea:MPEA_dataset.csv:row:1315"
+    ]
+   },
+   {
+    "id": 2,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:1",
+     "mpea:MPEA_dataset.csv:row:812"
+    ]
+   },
+   {
+    "id": 3,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:2",
+     "mpea:MPEA_dataset.csv:row:1316"
+    ]
+   },
+   {
+    "id": 4,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:3",
+     "mpea:MPEA_dataset.csv:row:1007"
+    ]
+   },
+   {
+    "id": 5,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:4",
+     "mpea:MPEA_dataset.csv:row:998"
+    ]
+   },
+   {
+    "id": 6,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:5",
+     "mpea:MPEA_dataset.csv:row:1085"
+    ]
+   },
+   {
+    "id": 7,
+    "kind": "values_disagree",
+    "category": "differ beyond tolerance",
+    "records": [
+     "controlled_duplicates:extract.csv:row:6",
+     "mpea:MPEA_dataset.csv:row:1278"
+    ]
+   },
+   {
+    "id": 8,
+    "kind": "values_disagree",
+    "category": "differ beyond tolerance",
+    "records": [
+     "controlled_duplicates:extract.csv:row:7",
+     "mpea:MPEA_dataset.csv:row:986"
+    ]
+   },
+   {
+    "id": 9,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:12",
+     "mpea:MPEA_dataset.csv:row:1036"
+    ]
+   },
+   {
+    "id": 10,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "records": [
+     "controlled_duplicates:extract.csv:row:13",
+     "mpea:MPEA_dataset.csv:row:813"
+    ]
+   }
+  ],
+  "result": {
+   "classified": 10,
+   "refused": {},
+   "failures": []
+  },
+  "stages": [
+   {
+    "id": 2,
+    "status": "done",
+    "input": {
+     "flags": "=== Flag 1: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1332, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 1 ===\n\n=== Flag 2: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 2, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 829, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 2 ===\n\n=== Flag 3: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 3, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1333, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1007/s11661-019-05231-y\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 3 ===\n\n=== Flag 4: judge this flag on its own ===\nkind: exact_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co44.4Cr11.1Ni44.4\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 44.44444444444444, \"Cr\": 11.11111111111111, \"Ni\": 44.44444444444444}, \"id\": 4, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co44.4Cr11.1Ni44.4\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 44.44444444444444, \"Cr\": 11.11111111111111, \"Ni\": 44.44444444444444}, \"id\": 1024, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 4 ===\n\n=== Flag 5: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Fe33.3Mn33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Fe\": 33.333333333333336, \"Mn\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 5, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": null, \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Fe33.3Mn33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Fe\": 33.333333333333336, \"Mn\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 1015, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.actamat.2019.04.017\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 5 ===\n\n=== Flag 6: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co10Cr15Fe35Mn5Ni25V10\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.006997900629809, \"Cr\": 15.010496850944715, \"Fe\": 34.98950314905528, \"Mn\": 5.0034989503149045, \"Ni\": 24.98250524842547, \"V\": 10.006997900629809}, \"id\": 6, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": null, \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co10Cr15Fe35Mn5Ni25V10\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.006997900629809, \"Cr\": 15.010496850944715, \"Fe\": 34.98950314905528, \"Mn\": 5.0034989503149045, \"Ni\": 24.98250524842547, \"V\": 10.006997900629809}, \"id\": 1102, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2018.12.077\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 6 ===\n\n=== Flag 7: judge this flag on its own ===\nkind: values_disagree\ncategory: differ beyond tolerance\nrecords named by this flag (2):\n{\"alloy\": \"Co10Cr10Fe40Mn40\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.0, \"Cr\": 10.0, \"Fe\": 40.0, \"Mn\": 40.0}, \"id\": 7, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.138039\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co10Cr10Fe40Mn40\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 10.0, \"Cr\": 10.0, \"Fe\": 40.0, \"Mn\": 40.0}, \"id\": 1295, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.138039\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 7 ===\n\n=== Flag 8: judge this flag on its own ===\nkind: values_disagree\ncategory: differ beyond tolerance\nrecords named by this flag (2):\n{\"alloy\": \"Co33.3Fe33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Fe\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 8, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.intermet.2019.106477\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co33.3Fe33.3Ni33.3\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 33.333333333333336, \"Fe\": 33.333333333333336, \"Ni\": 33.333333333333336}, \"id\": 1003, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.intermet.2019.106477\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"converted\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 8 ===\n\n=== Flag 9: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 13, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.04.025\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"not_reported\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co20Cr20Fe20Mn20Ni20\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 20.0, \"Cr\": 20.0, \"Fe\": 20.0, \"Mn\": 20.0, \"Ni\": 20.0}, \"id\": 1053, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.msea.2019.04.025\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 9 ===\n\n=== Flag 10: judge this flag on its own ===\nkind: possible_duplicate\ncategory: identical values\nrecords named by this flag (2):\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 14, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"controlled_duplicates\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"not_reported\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n{\"alloy\": \"Co34Cr20Fe6Mo6Ni34\", \"categories\": {\"microstructure\": \"FCC\", \"phase_class\": \"FCC\", \"processing_method\": \"WROUGHT\", \"test_temperature_band\": null, \"test_type\": \"tension\"}, \"composition\": {\"Co\": 34.013605442176875, \"Cr\": 20.0, \"Fe\": 5.986394557823129, \"Mo\": 5.986394557823129, \"Ni\": 34.013605442176875}, \"id\": 830, \"item_index\": 0, \"kind\": \"measured\", \"paper_doi\": \"10.1016/j.ijplas.2018.10.005\", \"source\": \"mpea\", \"status\": {\"cold_work\": \"not_reported\", \"composition\": \"converted\", \"grain_size\": \"converted\", \"grain_size_sd\": \"not_reported\", \"hardness\": \"not_reported\", \"hardness_sd\": \"not_reported\", \"holding_time\": \"not_reported\", \"microstructure\": \"converted\", \"phase_class\": \"converted\", \"processing_method\": \"converted\", \"recrystallization_temperature\": \"not_reported\", \"test_temperature\": \"converted\", \"test_temperature_band\": \"not_reported\", \"test_type\": \"converted\", \"ultimate_tensile_strength\": \"not_reported\", \"yield_strength\": \"converted\", \"yield_strength_sd\": \"not_reported\"}}\n=== end of flag 10 ===",
+     "classes": "{\"cannot_tell\": \"cannot tell from the metadata\", \"different_specimens_or_conditions\": \"different specimens or conditions\", \"possible_transcription_or_unit_error\": \"possible transcription or unit error\", \"same_measurement\": \"same measurement reported twice\"}",
+     "sources": "[{\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"controlled_duplicates\", \"licence\": \"Apache-2.0 (derived from the MPEA dataset)\", \"name\": \"Controlled duplicate extract (constructed test data; never pooled into a real analysis)\", \"source_type\": \"uploaded_table\"}, {\"data_kind\": \"measured\", \"fields_available\": [\"yield_strength\", \"ultimate_tensile_strength\", \"hardness\", \"grain_size\"], \"grouping_unit\": \"paper\", \"key\": \"mpea\", \"licence\": \"Apache-2.0\", \"name\": \"MPEA dataset (Borg et al. 2020)\", \"source_type\": \"uploaded_table\"}]"
+    },
+    "output": {
+     "refused": {},
+     "attempts": [
+      "ok"
+     ],
+     "not_sent": [],
+     "classified": {
+      "1": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      },
+      "2": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      },
+      "3": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      },
+      "4": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      },
+      "5": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source"
+      },
+      "6": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record"
+      },
+      "7": {
+       "class": "cannot_tell",
+       "reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+      },
+      "8": {
+       "class": "cannot_tell",
+       "reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+      },
+      "9": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      },
+      "10": {
+       "class": "same_measurement",
+       "reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+      }
+     }
+    }
+   }
+  ],
+  "model_calls": [
+   {
+    "id": 1,
+    "model": "claude-haiku-4-5",
+    "status": "succeeded",
+    "input_tokens": 7953,
+    "output_tokens": 1954,
+    "cost": "0.017723",
+    "max_cost": "0.067433",
+    "cached_tokens": 0,
+    "error": null
+   }
+  ],
+  "classes": [
+   {
+    "id": 1,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   },
+   {
+    "id": 2,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   },
+   {
+    "id": 3,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   },
+   {
+    "id": 4,
+    "kind": "exact_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   },
+   {
+    "id": 5,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source"
+   },
+   {
+    "id": 6,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record"
+   },
+   {
+    "id": 7,
+    "kind": "values_disagree",
+    "category": "differ beyond tolerance",
+    "critic_class": "cannot_tell",
+    "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+   },
+   {
+    "id": 8,
+    "kind": "values_disagree",
+    "category": "differ beyond tolerance",
+    "critic_class": "cannot_tell",
+    "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata"
+   },
+   {
+    "id": 9,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   },
+   {
+    "id": 10,
+    "kind": "possible_duplicate",
+    "category": "identical values",
+    "critic_class": "same_measurement",
+    "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources"
+   }
+  ],
+  "compared_numbers_in_request": [],
+  "decisions_unchanged": true,
+  "freeze_fingerprints": [
+   "e175c543e3e4eaea9cdf8ae7b1dfcc6f4e6cff079ac82ab883a4f33d779577fc",
+   "e175c543e3e4eaea9cdf8ae7b1dfcc6f4e6cff079ac82ab883a4f33d779577fc"
+  ],
+  "grading": {
+   "rows": [
+    {
+     "flag": 1,
+     "kind": "exact_duplicate",
+     "extract_row": 1,
+     "case": "exact_duplicate_verbatim",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "same_measurement",
+     "acceptable": [],
+     "grade": "correct"
+    },
+    {
+     "flag": 2,
+     "kind": "exact_duplicate",
+     "extract_row": 2,
+     "case": "exact_duplicate_verbatim",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "same_measurement",
+     "acceptable": [],
+     "grade": "correct"
+    },
+    {
+     "flag": 3,
+     "kind": "exact_duplicate",
+     "extract_row": 3,
+     "case": "exact_duplicate_renamed_alloy",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "same_measurement",
+     "acceptable": [],
+     "grade": "correct"
+    },
+    {
+     "flag": 4,
+     "kind": "exact_duplicate",
+     "extract_row": 4,
+     "case": "exact_duplicate_renamed_alloy",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "same_measurement",
+     "acceptable": [],
+     "grade": "correct"
+    },
+    {
+     "flag": 5,
+     "kind": "possible_duplicate",
+     "extract_row": 5,
+     "case": "possible_duplicate_unknown_paper",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in one record but mpea record provides paper source",
+     "expected_class": "cannot_tell",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "acceptable"
+    },
+    {
+     "flag": 6,
+     "kind": "possible_duplicate",
+     "extract_row": 6,
+     "case": "possible_duplicate_unknown_paper",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, and test conditions; DOI missing in controlled_duplicates but present in mpea record",
+     "expected_class": "cannot_tell",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "acceptable"
+    },
+    {
+     "flag": 7,
+     "kind": "values_disagree",
+     "extract_row": 7,
+     "case": "conflict_value_differs",
+     "critic_class": "cannot_tell",
+     "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata",
+     "expected_class": "possible_transcription_or_unit_error",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "abstention"
+    },
+    {
+     "flag": 8,
+     "kind": "values_disagree",
+     "extract_row": 8,
+     "case": "conflict_value_differs",
+     "critic_class": "cannot_tell",
+     "critic_reason": "Metadata shows identical alloy, composition, DOI and conditions, but values differ beyond tolerance; cause unknown from metadata",
+     "expected_class": "possible_transcription_or_unit_error",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "abstention"
+    },
+    {
+     "flag": 9,
+     "kind": "possible_duplicate",
+     "extract_row": 13,
+     "case": "missing_test_condition",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "cannot_tell",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "acceptable"
+    },
+    {
+     "flag": 10,
+     "kind": "possible_duplicate",
+     "extract_row": 14,
+     "case": "missing_test_condition",
+     "critic_class": "same_measurement",
+     "critic_reason": "Identical alloy, composition, paper DOI, and test conditions from controlled_duplicates and mpea sources",
+     "expected_class": "cannot_tell",
+     "acceptable": [
+      "same_measurement"
+     ],
+     "grade": "acceptable"
+    }
+   ],
+   "totals": {
+    "correct": 4,
+    "acceptable": 4,
+    "abstention": 2,
+    "wrong": 0,
+    "unanswered": 0
+   }
+  }
+ }
+}

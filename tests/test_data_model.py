@@ -5,7 +5,7 @@ by a CHECK name the constraint."""
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from hypocurate.db.models import MAX_FILE_BYTES
+from hypocurate.db.models import MAX_FILE_BYTES, SUFFICIENCY_OPTIONS
 from model_builder import EXTRACTION, FP, World, files_digest, sha
 
 
@@ -127,7 +127,7 @@ def test_queries_versions_and_runs_are_never_deleted(w, table):
 
 def partly_sufficient_run(w):
     rid = w.running()
-    w.complete(rid, "partly_sufficient")
+    w.partly(rid)  # step 8b (0006): with code's narrowing decision stored, no plan
     return rid
 
 
@@ -148,6 +148,7 @@ def test_narrower_question_links_only_to_a_partly_sufficient_run(w):
 
 def test_a_partly_sufficient_run_has_no_verdict(w):
     rid = w.running()
+    w.narrowing(rid)  # step 8b (0006): so that only the verdict rule can fail
     w.rejected("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
                "verdict = 'supported', evidence_level = 6 WHERE id = :r", "ck_run_verdict_iff_sufficient", r=rid)
 
@@ -217,8 +218,14 @@ def test_a_failed_run_states_its_reason(w):
 @pytest.mark.parametrize("outcome, verdict", [("sufficient", None), ("insufficient", "supported"),
                                               ("partly_sufficient", "not_supported")])
 def test_verdict_if_and_only_if_sufficient(w, outcome, verdict):
-    rid, sets, _ = w.frozen()
-    w.result(rid, sets["primary"])  # a valid pooled result, so only the verdict rule can fail
+    if outcome == "partly_sufficient":
+        # Step 8b (0006; owner, A5): partly sufficient only with no plan and code's narrowing decision,
+        # so only the verdict rule can fail.
+        rid = w.running()
+        w.narrowing(rid)
+    else:
+        rid, sets, _ = w.frozen()
+        w.result(rid, sets["primary"])  # a valid pooled result, so only the verdict rule can fail
     with pytest.raises(IntegrityError, match="ck_run_verdict_iff_sufficient"):
         w.complete(rid, outcome, verdict)
 
@@ -256,7 +263,12 @@ def test_coefficient_only_completes_as_insufficient_without_a_verdict(w):
 @pytest.mark.parametrize("outcome", ["insufficient", "partly_sufficient", "failed"])
 def test_other_endings_need_no_pooled_result(w, outcome):
     rid = w.running()
-    w.fail(rid) if outcome == "failed" else w.complete(rid, outcome)
+    if outcome == "failed":
+        w.fail(rid)
+    elif outcome == "partly_sufficient":
+        w.partly(rid)  # step 8b (0006): with code's narrowing decision stored, no plan
+    else:
+        w.complete(rid, outcome)
     assert w.val("SELECT count(*) FROM analysis_result WHERE run_id = :r", r=rid) == 0
 
 
@@ -321,14 +333,16 @@ def test_sensitivity_analysis_keys(w, keys, match):
 
 
 @pytest.mark.parametrize("option, mins, match", [
-    ("power_based", (30, 5, 10, 10), "ck_plan_sufficiency_option"),
+    # Step 8b (0006): a query cannot have this option, so the plan's differs from the query's and the new
+    # trigger refuses first; 0001's CHECK behind it is reached in test_migrations_step8b.py.
+    ("power_based", (30, 5, 10, 10), "the plan's sufficiency option is the query's"),
     ("fixed_minimum", (0, 5, 10, 10), "ck_plan_minimums_positive"),
     ("use_available", (30, 5, 10, 0), "ck_plan_minimums_positive"),
 ])
 def test_sufficiency_option_and_minimums(w, option, mins, match):
     """Power-based is not a gate in sprint 1 (owner's addition 1); minimums are kept under both options."""
     with pytest.raises(IntegrityError, match=match):
-        w.lock(w.running(), option=option, mins=mins)
+        w.lock(w.running(sufficiency=option if option in SUFFICIENCY_OPTIONS else "fixed_minimum"), option=option, mins=mins)
 
 
 def test_power_assumptions_are_an_information_field(w):
@@ -758,7 +772,7 @@ def test_no_curation_once_the_run_has_ended(w, ending):
         "WHERE extraction_run_id = :r AND source_item_key = 'undecided'",
         "INSERT INTO analysis_set_record VALUES (:s, :c)",
         "INSERT INTO flag (run_id, kind, category) VALUES (:r, 'k', 'c')",
-        "UPDATE flag SET critic_class = 'comparable', classified_at = now() WHERE id = :f",
+        "UPDATE flag SET critic_class = 'different_specimens_or_conditions', classified_at = now() WHERE id = :f",
         "INSERT INTO flag_record VALUES (:f, :c)",
         "UPDATE run_source SET search_status = 'searched', decided_at = now() WHERE run_id = :r AND search_status = 'pending'",
     ]:
@@ -861,9 +875,9 @@ def test_a_flag_is_classified_once_before_the_freeze(w):
     rid = w.running()
     f = flag(w, rid)
     w.rejected("UPDATE flag SET compared_values = '{}' WHERE id = :f", "classification", f=f)
-    w.run_sql("UPDATE flag SET critic_class = 'comparable', critic_reason = 'same test', classified_at = now() "
+    w.run_sql("UPDATE flag SET critic_class = 'different_specimens_or_conditions', critic_reason = 'same test', classified_at = now() "
               "WHERE id = :f", f=f)
-    w.rejected("UPDATE flag SET critic_class = 'other', classified_at = now() WHERE id = :f", "classified once", f=f)
+    w.rejected("UPDATE flag SET critic_class = 'cannot_tell', classified_at = now() WHERE id = :f", "classified once", f=f)
     w.rejected("DELETE FROM flag", "never deleted")
 
 

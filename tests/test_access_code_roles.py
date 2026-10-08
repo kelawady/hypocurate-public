@@ -50,11 +50,14 @@ STEP6_ROLES = ("inclusion", "checks")
 
 def test_the_code_lists_match_the_owners_decision():
     # Step 7 (owner, 2026-10-05): Statistics and the gap facts added (changed from step 6's two).
-    assert CODE_ROLES == ("inclusion", "checks", "statistics", "gap_facts") and ALL_ROLES == ROLES + CODE_ROLES
-    assert not set(CODE_ROLES) & set(ALLOWED)  # the agent table is unchanged
+    # Step 8b (owner, 2026-10-07, Q5): the narrowing decision, before the lock, on structure counts only.
+    assert CODE_ROLES == ("inclusion", "checks", "statistics", "gap_facts", "narrowing")
+    assert ALL_ROLES == ROLES + CODE_ROLES
+    assert not set(CODE_ROLES) & set(ALLOWED)  # no agent role is a code role
     assert {r: set(s) for r, s in CODE_ALLOWED.items()} == {
         "inclusion": {"curation"}, "checks": {"curation"}, "statistics": {"analysis"},
-        "gap_facts": {"analysis", "closed_without_freeze"}}
+        "gap_facts": {"analysis", "closed_without_freeze"}, "narrowing": {"before_lock"}}
+    assert allowed("narrowing", "before_lock") == {"candidate_counts"}
     # set_flags: step 6 review, finding 2 (each sensitivity set's matching flags, codes and ids only).
     assert allowed("inclusion", "curation") == {"plan", "record_conditions", "flags_kind", "set_flags"}
     assert allowed("checks", "curation") == {"plan", "records_full"}

@@ -348,3 +348,36 @@ def test_survivor_is_stated(t):
         assert "conflicts_survivor_value" in t["survivor_reason"] and "rule 2:" in t["survivor_reason"]
     else:
         assert t["survivor_in_primary"] == "no pair: both kept"
+
+
+# --- the Critic's answer key (fix round 1, owner 2026-10-07): test side only ------------------------------------
+
+KEY = FIXTURES / "critic_key.csv"
+
+
+def key_markers() -> set[str]:
+    import csv
+    rows = list(csv.DictReader(KEY.open(encoding="utf-8")))
+    return {"critic_key", "expected_class", "acceptable_classes"} | {r["basis"] for r in rows} | {r["case"] for r in rows}
+
+
+def test_the_critic_answer_key_covers_every_flagged_row_and_only_allowed_classes():
+    import csv
+    from hypocurate.access.vocabulary import CRITIC_CLASSES
+    rows = list(csv.DictReader(KEY.open(encoding="utf-8")))
+    assert [int(r["extract_row"]) for r in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 13, 14]
+    truth = {t["extract_row"]: t for t in TRUTH_ROWS}
+    for r in rows:
+        assert r["case"] == truth[r["extract_row"]]["case"]
+        assert r["expected_class"] in CRITIC_CLASSES
+        assert all(c in CRITIC_CLASSES for c in filter(None, r["acceptable_classes"].split(";")))
+
+
+def test_the_critic_answer_key_is_not_under_data_or_the_package():
+    markers = key_markers()
+    for root in ("data", "hypocurate"):
+        assert not list((REPO_ROOT / root).rglob("*key*.csv"))
+        for path in (REPO_ROOT / root).rglob("*"):
+            if path.is_file() and path.suffix in (".py", ".json", ".csv", ".md", ".txt", ".yaml", ".toml"):
+                text_ = path.read_text(encoding="utf-8", errors="ignore")
+                assert not [m for m in markers if m in text_], path

@@ -13,8 +13,8 @@ isolation as a precondition.
 Allowed fields, not blocked fields: a role receives exactly the fields listed for it at
 the run's stage, and nothing else. Each field is built from named keys only
 (`hypocurate.access.fields`), never by copying a row and removing what is forbidden. Text
-in the blinded views (the Planner, the Critic, the gap report and the Commentator without
-a freeze) comes from fixed vocabularies (`vocabulary.py`) or is replaced by a marker; the
+in the blinded views (the Planner, the Critic, and the Analyst's facts without a freeze;
+step 8b) comes from fixed vocabularies (`vocabulary.py`) or is replaced by a marker; the
 plan is projected recursively by `PLAN_SCHEMA`. What these views still disclose by design
 is listed in `ACCEPTED_DISCLOSURES`; timing is not protected.
 
@@ -46,7 +46,8 @@ ROLES = ("planner", "curator", "critic", "analyst", "commentator")
 # agents. They read through access objects too, bound by `dispatch.bind_code`, so their reads
 # are logged. No agent setting can bind as one of them. Step 7 (owner, 2026-10-05; a safeguard
 # change, reviewed by a second model): Statistics and the gap facts.
-CODE_ROLES = ("inclusion", "checks", "statistics", "gap_facts")
+# Step 8b (owner, 2026-10-07): the narrowing decision, before any lock, on counts of structure only.
+CODE_ROLES = ("inclusion", "checks", "statistics", "gap_facts", "narrowing")
 ALL_ROLES = ROLES + CODE_ROLES
 
 # none: queued or failed. before_lock: running, no plan. curation: plan locked, no dataset
@@ -55,8 +56,10 @@ ALL_ROLES = ROLES + CODE_ROLES
 # final: completed after a dataset freeze. final_without_freeze: completed with no dataset frozen.
 # registration (step 8a, owner 2026-10-06): not a run stage; the Curator reads one sealed source
 # version, bound by a registration invocation (`dispatch.bind_invocation`), with no run.
+# narrowed (step 8b, owner 2026-10-07, A4): running, no plan, and code's narrowing decision of partly
+# sufficient stored; no plan can be locked from here (lock_rules needs before_lock; migration 0006).
 STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final", "final_without_freeze",
-          "registration")
+          "registration", "narrowed")
 
 FIELDS = MappingProxyType({
     "claim": "The claim in words: query number, version number, text, and whether it is a narrower question.",
@@ -109,6 +112,20 @@ FIELDS = MappingProxyType({
                          "field's status, grain size and test temperature, and the category values from their "
                          "vocabularies. No outcome value, no value as reported, no free text.",
     "outcome": "The run's status, outcome, verdict and exploratory label.",
+    "candidate_counts": "For the narrowing decision (code; step 8b), before the lock, per chosen source from its "
+                        "sealed version (its key and fingerprint): counts of records per combination of phase class, "
+                        "test type and temperature band (from their vocabularies), reported test temperature, the "
+                        "status of each of those fields, of grain size and of each outcome field, and whether a grain "
+                        "size is present. Counts and statuses only: no outcome value, no composition, no free text.",
+    "analyst_facts": "For the Analyst (step 8b, owner Q6 and 2026-10-07): named facts built by code from what it "
+                     "stored (pipeline.analyst_names), each a finished display string or ready-made phrase the "
+                     "Analyst refers to as {name}: the decision and its wordings; the plan's threshold, option and "
+                     "minimums, and per scope part whether the claim stated it or the Planner assumed it; the pooled "
+                     "result and its counts against each minimum; per source its result and label; both "
+                     "calibrations; a summary of the sensitivity sets built by code; the gap facts; at 'narrowed' "
+                     "the claim's parts, their counts and the narrower scope. Below the minimums no estimate, "
+                     "standard error, p-value or paper figures. Never a record-level value or identity, a Critic's "
+                     "class or reason, or a stage's text.",
     "frozen_analysis_data": "For Statistics (code; step 7), once the dataset is frozen: the freeze's "
                             "fingerprint; the frozen sets (keys from the vocabulary, record ids); and per "
                             "record in any frozen set, and only those: id, source, stable identity "
@@ -117,10 +134,9 @@ FIELDS = MappingProxyType({
                             "No record outside the frozen sets, no value as reported, no free text.",
 })
 
-_ANALYSIS = frozenset({"claim", "domain", "sources_meta", "plan", "records_full", "decisions", "flags_full",
-                       "results", "coverage", "stage_outputs", "run_cost"})
-_GAP_REPORT = frozenset({"claim", "domain", "sources_meta", "plan", "coverage", "stored_record_counts",
-                         "decisions", "flags_kind", "condition_summaries"})
+# Step 8b (owner, 2026-10-07, Q6): the Analyst receives stored facts only, the same list at each of its
+# stages; what `analyst_facts` holds depends on the stage (see FIELDS).
+_ANALYST = frozenset({"claim", "domain", "sources_meta", "coverage", "analyst_facts"})
 
 ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
     "planner": MappingProxyType({
@@ -135,17 +151,15 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
         "curation": frozenset({"sources_meta", "record_metadata", "flags_kind"}),
     }),
     "analyst": MappingProxyType({
-        "analysis": _ANALYSIS,
-        # Owner, 2026-10-05: the gap report gets everything except outcomes, plus condition summaries.
-        "closed_without_freeze": _GAP_REPORT,
+        "analysis": _ANALYST,
+        "closed_without_freeze": _ANALYST,
+        # A4: the partly-sufficient original, before any lock; `analyst_facts` holds the narrowing facts only.
+        "narrowed": _ANALYST,
     }),
-    "commentator": MappingProxyType({
-        "final": _ANALYSIS,
-        # Owner, 2026-10-05: with no dataset frozen, only what the Analyst received for the gap
-        # report, plus the Analyst's gap report and the run's outcome. No outcome values, no
-        # row-level records.
-        "final_without_freeze": _GAP_REPORT | {"gap_report", "outcome"},
-    }),
+    # Owner, 2026-10-07 (A6): the Commentator reads nothing at any stage until step 12, when the role is
+    # built and its lists are decided and reviewed. Its step 5 lists are kept in the register entry
+    # 'access_allow_lists' as the starting point.
+    "commentator": MappingProxyType({}),
 })
 
 
@@ -163,6 +177,8 @@ CODE_ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
         "analysis": frozenset({"plan", "decisions", "stored_record_counts", "coverage"}),
         "closed_without_freeze": frozenset({"plan", "decisions", "stored_record_counts", "coverage"}),
     }),
+    # Step 8b (owner, 2026-10-07, Q5): before any lock, counts of structure only.
+    "narrowing": MappingProxyType({"before_lock": frozenset({"candidate_counts"})}),
 })
 
 
@@ -258,11 +274,9 @@ POWER_SCHEMA = MappingProxyType({"method": POWER_METHODS, "within_paper_similari
 ACCEPTED_DISCLOSURES = (
     "counts by field status (for example how many yield strengths a source reports or cannot read)",
     "flag kinds and categories (for example that two values differ beyond the tolerance)",
-    "condition summaries, which reveal an exact grain size or temperature when a group has one record",
     "compositions and alloy labels derived from them",
     "DOIs with DOI syntax, which may contain digits",
     "text written or approved by people: the claim, the approved tag values, source names and licences in code",
     "numbers in the locked plan (thresholds, minimums), written before any record exists",
-    "the Analyst's gap report, passed to the Commentator on a run with no dataset frozen",
     "timing of calls and the existence of refusals",
 )

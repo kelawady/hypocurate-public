@@ -88,6 +88,16 @@ SENSITIVITY_KEYS = frozenset({"tension_and_compression", "six_batches_as_groups"
                               "conflicts_survivor_value", "without_most_influential_paper"})
 ANALYSIS_SET_KEYS = frozenset({"primary"}) | SENSITIVITY_KEYS
 
+# The Critic's classes of a flag (step 8b; owner, 2026-10-07, A7): code -> the wording shown to people.
+# The database holds the same codes (migration 0006, ck_flag_critic_class). No code decision reads them.
+CRITIC_CLASSES: Mapping[str, str] = {
+    "same_measurement": "same measurement reported twice",
+    "different_specimens_or_conditions": "different specimens or conditions",
+    "possible_transcription_or_unit_error": "possible transcription or unit error",
+    "cannot_tell": "cannot tell from the metadata",
+}
+CRITIC_REASON_MAX = 300  # characters; shown to people only (A7)
+
 
 # Codes in the locked plan's rules (step 6): the registered sources, grouping units, value
 # statuses, domain profiles, and whether single phase is required.

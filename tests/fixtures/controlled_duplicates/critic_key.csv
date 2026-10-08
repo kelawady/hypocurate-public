@@ -1,0 +1,11 @@
+extract_row,case,flag_kind,expected_class,acceptable_classes,basis
+1,exact_duplicate_verbatim,exact_duplicate,same_measurement,,"truth.csv: exact duplicate, the same measurement reported by two sources (byte-for-byte copy)"
+2,exact_duplicate_verbatim,exact_duplicate,same_measurement,,"truth.csv: exact duplicate, the same measurement reported by two sources (byte-for-byte copy)"
+3,exact_duplicate_renamed_alloy,exact_duplicate,same_measurement,,"truth.csv: exact duplicate; the formula is written differently, the composition is identical"
+4,exact_duplicate_renamed_alloy,exact_duplicate,same_measurement,,"truth.csv: exact duplicate; the formula is written differently, the composition is identical"
+5,possible_duplicate_unknown_paper,possible_duplicate,cannot_tell,same_measurement,"truth.csv: possible duplicate that cannot be resolved (paper reference blank); by construction a copy, so 'same measurement' is acceptable"
+6,possible_duplicate_unknown_paper,possible_duplicate,cannot_tell,same_measurement,"truth.csv: possible duplicate that cannot be resolved (paper reference blank); by construction a copy, so 'same measurement' is acceptable"
+7,conflict_value_differs,values_disagree,possible_transcription_or_unit_error,same_measurement,"truth.csv: conflicting reports of the same measurement (yield strength x 1.3 in the copy); same paper, alloy, grain size and conditions"
+8,conflict_value_differs,values_disagree,possible_transcription_or_unit_error,same_measurement,"truth.csv: conflicting reports of the same measurement (yield strength x 1.3 in the copy); same paper, alloy, grain size and conditions"
+13,missing_test_condition,possible_duplicate,cannot_tell,same_measurement,"truth.csv: neither the scope nor the same measurement can be confirmed (test temperature blank); by construction a copy, so 'same measurement' is acceptable"
+14,missing_test_condition,possible_duplicate,cannot_tell,same_measurement,"truth.csv: neither the scope nor the same measurement can be confirmed (test temperature blank); by construction a copy, so 'same measurement' is acceptable"

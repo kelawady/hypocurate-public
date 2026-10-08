@@ -48,7 +48,10 @@ SCRATCH_ENV = ("TMPDIR", "MPLCONFIGDIR", "XDG_CACHE_HOME")
 # installation the guard refuses the ctypes audit events it intercepts (a new library load, a
 # symbol lookup, a foreign call); it does not stop preloaded ctypes from reading process memory
 # directly, which raises no such event (a documented limit; see file_guard).
-PRELOADED = ("psycopg",)
+# Step 8b (owner, 2026-10-07): scipy too, for the same reason: importing it makes a ctypes foreign call at
+# load time (scipy/_lib/_ccallback_c.pyx), which the guard refuses; the run's statistics import scipy.stats.
+# After installation every ctypes event is still refused. (statsmodels is test-only and never imported here.)
+PRELOADED = ("psycopg", "scipy")
 
 
 class GuardedRunError(Exception):

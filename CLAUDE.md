@@ -24,6 +24,8 @@ The full specification is `docs/PRD_sprint1.md`. Read the relevant section befor
 11. **Assumptions register.** Any new assumption or changed default is entered in `hypocurate/assumptions.json` in the same merge, with its reason, who decided it and when, and its earlier value in the history. The page /assumptions is generated from that file only.
 12. **One named place per default.** Code reads a default from one named setting (a module constant, a source definition, a plan default or a database constraint), never from a literal scattered through the code. A register entry applied in code ("yes" or "partly") names that setting; `tests/test_assumptions.py` fails if it does not exist or holds a different value. That is a reference and value check only: it does not show that the entry's wording matches what the code does. Behaviour is covered by the regression tests the entry names, and the register test checks only that they exist.
 
+13. **Run the whole suite locally before every push**, not only the files a change touched, and push only when it passes (owner, 2026-10-07, after a push that failed on GitHub with a test the changed files did not include). The GitHub run is a second check, not the first.
+
 ## Rules the code must never break
 
 1. **Code decides; agents advise.** Inclusion of records, flags, the choice of test, data sufficiency and the verdict are computed by code. No language model output may set them.

@@ -52,6 +52,28 @@ def test_a_planted_env_file_read_by_a_library_is_still_refused_under_the_guard(t
     assert any(str(planted) in line for line in _guard_lines(caplog))
 
 
+def test_the_statistics_libraries_import_under_the_guard_with_no_refusal(caplog):
+    """Step 8b (owner, 2026-10-07): scipy is preloaded (PRELOADED), since importing it makes a ctypes foreign
+    call at load time; then what a guarded run imports loads with no refusal, and loads no statsmodels (test-only),
+    pandas or patsy."""
+    caplog.set_level(logging.WARNING, logger="hypocurate.access")
+    assert run_guarded(PROBE, [{"op": "statistics_libraries"}], env=dict(os.environ), timeout=300) == ["ok"]
+    assert _guard_lines(caplog) == []
+
+
+def test_after_the_statistics_libraries_a_ctypes_call_and_a_planted_env_read_are_still_refused(tmp_path, caplog):
+    """Preloading scipy changes what the guard sees only for that import."""
+    caplog.set_level(logging.WARNING, logger="hypocurate.access")
+    planted = tmp_path / ".env"
+    planted.write_text("PLANTED_SECRET=do-not-read\n")
+    result = run_guarded(PROBE, [{"op": "statistics_libraries"}, {"op": "ctypes_string_at"}, {"op": "ctypes"},
+                                 {"op": "dotenv", "path": str(planted)}], env=dict(os.environ), timeout=300)
+    assert result[0] == "ok"
+    assert result[1] == "refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code"
+    assert result[2] == "refused: file guard: ctypes.dlopen is outside the approved inputs of pipeline code"
+    assert result[3].startswith("refused: file guard: reading"), result
+
+
 def test_missing_path_entries_are_dropped_and_the_others_kept(tmp_path):
     present = tmp_path / "present"
     present.mkdir()

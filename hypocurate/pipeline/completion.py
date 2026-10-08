@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, Engine, text
 
+from hypocurate.pipeline.statement import FORMAT_VERSION as STATEMENT_FORMAT
 from hypocurate.pipeline.writes import Refused, write
+
+# Each completion records the format version of the results statement it will be shown with (fix round 1).
 
 ROLE = "completion"
 
@@ -39,9 +42,39 @@ def copy_decision(engine: Engine, run_id: int) -> dict:
         if decision.get("freeze_fingerprint") != snapshot:
             raise Refused("copy_decision", "decision_not_current")
         conn.execute(text("UPDATE run SET status = 'completed', completed_at = now(), outcome = :o, verdict = :v, "
-                          "exploratory = :x, evidence_level = :e WHERE id = :r"),
+                          "exploratory = :x, evidence_level = :e, statement_format_version = :f WHERE id = :r"),
                      dict(o=decision["outcome"], v=decision["verdict"], x=decision["exploratory"],
-                          e=decision["evidence_level"], r=run_id))
+                          e=decision["evidence_level"], f=STATEMENT_FORMAT, r=run_id))
         return decision
 
     return write(engine, run_id, ROLE, "copy_decision", body)
+
+
+def copy_partly_sufficient(engine: Engine, run_id: int) -> dict:
+    """Completes a partly-sufficient original question (step 8b; owner, Q5, A1): only copies the decision
+    stored by code's narrowing decision (outcome 'partly_sufficient', no verdict, level 1), after checking
+    that the run is at 'narrowed' and that the source versions the counts were taken on are the run's
+    (sealed versions never change, so the same versions give the same counts). The database checks again
+    (migration 0006: no plan, no record, a done narrowing decision of partly sufficient)."""
+
+    def body(conn: Connection, stage: str):
+        if stage != "narrowed":
+            raise Refused("copy_partly_sufficient", "stage_mismatch")
+        output = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'narrowing' "
+                                   "AND status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+        decision = output.get("decision") if isinstance(output, dict) else None
+        if not isinstance(decision, dict) or decision.get("outcome") != "partly_sufficient":
+            raise Refused("copy_partly_sufficient", "decision_missing")
+        stored = sorted((s["source"], s["version_fingerprint"]) for s in output.get("sources") or [])
+        current = sorted(conn.execute(text(
+            "SELECT s.key, sv.fingerprint FROM run_source rs JOIN source s ON s.id = rs.source_id "
+            "JOIN source_version sv ON sv.id = rs.source_version_id WHERE rs.run_id = :r"), dict(r=run_id)).all())
+        if stored != [tuple(c) for c in current]:
+            raise Refused("copy_partly_sufficient", "decision_not_current")
+        conn.execute(text("UPDATE run SET status = 'completed', completed_at = now(), outcome = 'partly_sufficient', "
+                          "verdict = NULL, exploratory = false, evidence_level = :e, statement_format_version = :f "
+                          "WHERE id = :r"),
+                     dict(e=decision["evidence_level"], f=STATEMENT_FORMAT, r=run_id))
+        return decision
+
+    return write(engine, run_id, ROLE, "copy_partly_sufficient", body)

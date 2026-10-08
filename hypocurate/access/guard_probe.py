@@ -165,6 +165,21 @@ def _agent_libraries(_: Any) -> str:
     return "ok"
 
 
+def _statistics_libraries(_: Any) -> str:
+    """Loads what a guarded run imports (step 8b): the pipeline's statistics, analysis and orchestrator modules
+    and the agent libraries; reports which of the test-only or indirect libraries got loaded (none may be:
+    statsmodels is test-only, pandas only a dependency of dspy in the runtime lock)."""
+    import importlib
+    import sys
+    for name in ("hypocurate.pipeline.statistics", "hypocurate.pipeline.calibration", "hypocurate.pipeline.analysis",
+                 "hypocurate.pipeline.orchestrator"):
+        importlib.import_module(name)
+    from hypocurate.pipeline.agents import libraries
+    libraries.load()
+    loaded = sorted(m for m in ("statsmodels", "pandas", "patsy") if m in sys.modules)
+    return "ok" if not loaded else "loaded " + ", ".join(loaded)
+
+
 def _dotenv(action: dict) -> str:
     """A library reading a `.env` file (step 8a): what the tripwire must still catch."""
     import dotenv
@@ -181,7 +196,7 @@ ACTIONS: dict[str, Callable[[dict], str]] = {
     "ctypes_from_address": _ctypes_from_address,
     "register": _register,
     "role_input": _role_input, "sleep": _sleep,
-    "agent_libraries": _agent_libraries, "dotenv": _dotenv,
+    "agent_libraries": _agent_libraries, "dotenv": _dotenv, "statistics_libraries": _statistics_libraries,
 }
 
 

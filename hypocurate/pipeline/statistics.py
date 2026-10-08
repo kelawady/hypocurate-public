@@ -118,6 +118,9 @@ EVIDENCE_LEVELS = MappingProxyType({
     2: "coefficient cannot be fitted",
     1: "no dataset frozen",
 })
+# Owner's addition 1 (2026-10-06; step 8b): a partly-sufficient original question is at level 1, shown as
+# this wording (it was never tested; code's narrowing decision proposed a narrower question).
+PARTLY_SUFFICIENT_WORDING = "original question not tested; a narrower question was proposed"
 STATE_LEVELS = MappingProxyType({"sufficient": 6, "exploratory": 5, "coefficient_only": 4, "below_minimums": 3,
                                  "not_fitted": 2, "no_dataset_frozen": 1})
 

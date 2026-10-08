@@ -60,7 +60,7 @@ def test_every_category_has_entries_and_keys_are_unique():
 # Step 7 completed tamu_grouping_unit, papers_independent, validity_checks, fixed_minimums,
 # grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
 # the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
-PARTLY = {"constructed_test_runs", "agent_models"}  # step 8a: the other roles' settings come in step 8b
+PARTLY = {"constructed_test_runs", "question_as_tested"}  # step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -261,9 +261,10 @@ def test_the_step_6_decisions_carry_the_owners_wording():
         # conflicts_not_pooled was made a fixed rule by the owner on 2026-10-06; step 7b (owner, 2026-10-06)
         # reworded sensitivity_one_change and eligibility_rule_order, each with its 2026-10-05 wording in history.
         changed = ("conflicts_not_pooled", "sensitivity_one_change", "eligibility_rule_order")
-        date = "2026-10-06" if key in changed else "2026-10-05"
+        # Step 8b (owner, 2026-10-07): code_role_access reworded for the narrowing role, its 2026-10-05 wording in history.
+        date = "2026-10-07" if key == "code_role_access" else "2026-10-06" if key in changed else "2026-10-05"
         assert e["decided"] == {"by": OWNER, "date": date} and e["expert_review"]["status"] == "not_reviewed"
-        if key in changed[1:]:
+        if key in changed[1:] + ("code_role_access",):
             assert e["history"][-1]["from"] == "2026-10-05"
 
 

@@ -65,6 +65,8 @@ CODES = {
     "statistics_failed": "the statistics could not be computed for this run (the error is in the refusal's message)",
     "decision_missing": "no stored decision for this run",
     "decision_not_current": "the stored decision belongs to a different freeze than the run's",
+    # Step 8b.
+    "narrowed": "code's narrowing decision is partly sufficient: the original question locks no plan",
 }
 CONSTRUCTED_MARK = "constructed_test_data"
 # Step 7 (owner, 2026-10-05; register 'constructed_test_runs'): TEST_RUN_LABEL, on every stored
