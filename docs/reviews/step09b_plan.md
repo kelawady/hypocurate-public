@@ -27,7 +27,18 @@ and continue; a test seems wrong or would need weakening → stop that item and 
 **Open question for the owner (asked 2026-10-08, needed by b3):** when recovery finds a stored recording or
 reservation failure (a 9a stop), does it apply the Q3 per-role rule (recommended: close and count the call at its
 maximum, then Planner once more / Critic skipped / Analyst "explanation unavailable"), or fail the run with a stated
-reason? *Answer: (pending)*
+reason? **Answer (owner, 2026-10-08), split by cause:**
+- **A recording failure, or any database failure while saving a call** (`recording_failed`, and `reservation_failed`, the
+  database failing to save the reservation): apply the Q3 per-role rule, as for an interruption. Close the call, count
+  it at its reserved maximum, then repeat the Planner once, skip the Critic's remaining batches, or complete with
+  "explanation unavailable" after the Analyst.
+- **A spending refusal (a cap was reached):** it stays a stop, exactly as in 9a. Recovery only finishes the bookkeeping
+  and ends the run the way 9a already does: the Analyst completes the run; the Planner and the Critic stop it. It never
+  sends another request and never moves on to a later paid stage.
+- **Tests:** one for each case at each of the three agents, including that a spending refusal at the Critic still
+  prevents the Analyst's request after recovery.
+- The two possible b5 items (memory near 512 MB; the statistics stage at ~10,000 simulations not fitting the limits)
+  are fine as described: stop that item, report the numbers and options, carry on with the rest.
 
 ## Recovery: what happens at each stage
 
@@ -53,7 +64,8 @@ normal path (the 9a orchestrator, which takes every step from stored rows) and i
 | Locked: sources pending, Checks, Inclusion, freeze, statistics | Resumed from the first stage not done (9a) | Each one transaction, detectable, deterministic |
 | Critic mid-batch, or between batches | Not repeated; remaining flags "not classified"; on to Inclusion | No decision reads the class (Q3) |
 | Analyst mid-call (after statistics) | Not repeated; completed with "explanation unavailable (interrupted)" | A3/B2, Q3 |
-| A recording or reservation failure stored (9a stop) | (the open question above) | |
+| A recording or reservation failure stored (9a stop) | The Q3 per-role rule, as for an interruption (owner's answer) | The call is counted at its maximum; a database failure is not the run's fault |
+| A spending refusal stored | Stays a stop, as in 9a: the Planner and the Critic fail the run; the Analyst completes it. No further request | A cap was reached (owner's answer) |
 | A run recovered more than 3 times (`MAX_RECOVERIES`) | Failed: `attempts_exhausted: the run stopped at <stage> <n> times without finishing; dispatch it again as a new run` | A run is never left running for good |
 
 ## Claims, heartbeat, and "dead"
@@ -112,4 +124,4 @@ the heartbeat exception to the locking protocol.
 
 ## Progress
 
-- [ ] b0  - [ ] b1  - [ ] b2  - [ ] b3  - [ ] b4  - [ ] b5  - [ ] b6
+- [x] b0 (dumps from main c7458d0 in ~/hc-work/step09b/refdump/main, SHA256SUMS; a second dump identical; the confirmation time in labels normalised)  - [ ] b1  - [ ] b2  - [ ] b3  - [ ] b4  - [ ] b5  - [ ] b6
