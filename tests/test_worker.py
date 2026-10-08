@@ -97,9 +97,12 @@ def wait_until(predicate, seconds=60):
 
 
 def test_the_worker_parent_loads_no_model_or_statistics_library():
-    """Owner, Q2 (memory on 512 MB): the parent imports the queue, the guarded runner and recovery only."""
+    """Owner, Q2 (memory on 512 MB; the plan: "the parent never imports dspy, litellm or scipy"). numpy is not on the
+    list: the parent imports the access package (for the guarded runner), whose source adapters import openpyxl,
+    which imports numpy. Keeping it out would mean loading openpyxl after the child's file guard is installed, which
+    the guard refuses (it reads /etc/mime.types). The memory measurement (b5) includes it."""
     code = ("import sys, hypocurate.worker, hypocurate.pipeline.queue, hypocurate.pipeline.recovery; "
-            "print([m for m in ('dspy', 'litellm', 'scipy', 'numpy', 'statsmodels') if m in sys.modules])")
+            "print([m for m in ('dspy', 'litellm', 'scipy', 'statsmodels') if m in sys.modules])")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert out.stdout.strip() == "[]", out.stderr
 
