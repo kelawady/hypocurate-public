@@ -355,3 +355,28 @@ def test_the_request_on_the_controlled_duplicate_file_holds_no_answer_material(m
     content = json.dumps([json.loads(r["raw"]) for r in stub.requests], ensure_ascii=False)
     leaked = [m for m in _row_specific_markers() | key_markers() if m and m in content]
     assert leaked == []
+
+
+# --- the Critic's output is labelled wherever it is shown (owner, 2026-10-08, after the confirmation round) -------
+
+ADVICE = "Language-model advice; classification and reason not verified; not used in decisions."
+
+
+def test_every_shown_critic_classification_carries_the_unverified_advice_label(engine, stub):
+    """flag_display and `show` (whose output `run` and `dispatch` print) put the label beside each class and reason;
+    a flag with no class (single-record, or not classified) shows code's own words and no label."""
+    from hypocurate import cli_runs
+    rid = checked_run(engine, version(engine))
+    multi = multi_flag_ids(engine, rid)
+    stub.respond(lambda raw: reply({str(f): {"class": "same_measurement", "reason": "same paper and alloy"}
+                                    for f in multi}))
+    run_critic(engine, rid, stub)
+    for shown in (critic.flag_display(engine, rid), cli_runs.show(engine, rid)["flags"]):
+        by_flag = {x["flag"]: x for x in shown}
+        for f in multi:
+            assert by_flag[f]["critic"] == "same measurement reported twice: same paper and alloy"
+            assert by_flag[f]["critic_label"] == ADVICE
+        for f, x in by_flag.items():
+            if f not in multi:
+                assert x["critic"] == "not classified: single-record flag" and "critic_label" not in x
+    assert critic.ADVICE_LABEL == ADVICE

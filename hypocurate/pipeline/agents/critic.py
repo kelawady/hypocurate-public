@@ -53,6 +53,8 @@ def signature(instruction: str):
 # single-record flag keeps code's own kind and category, its class stays empty, and it is shown as NOT_SENT.
 MIN_RECORDS = 2
 NOT_SENT = "not classified: single-record flag"
+# Owner, 2026-10-08 (after the confirmation round): shown beside every class and reason the Critic gave.
+ADVICE_LABEL = "Language-model advice; classification and reason not verified; not used in decisions."
 
 
 def sent(critic_input: Mapping[str, Any]) -> list[Mapping]:
@@ -207,7 +209,8 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
 
 def flag_display(engine: Engine, run_id: int) -> list[dict]:
     """Each flag of a run as shown to people: code's kind and category, how many records it names, and the
-    Critic's class and reason, or NOT_SENT for a single-record flag, or 'not classified' (shown, never decided on)."""
+    Critic's class and reason with ADVICE_LABEL beside them, or NOT_SENT for a single-record flag, or 'not classified'
+    (shown, never decided on)."""
     with engine.connect() as conn:
         rows = conn.execute(text(
             "SELECT f.id, f.kind, f.category, f.critic_class, f.critic_reason, "
@@ -222,5 +225,8 @@ def flag_display(engine: Engine, run_id: int) -> list[dict]:
                 CRITIC_CLASSES[r.critic_class]
         else:
             critic_words = "not classified"
-        out.append({"flag": r.id, "kind": r.kind, "category": r.category, "records": r.n, "critic": critic_words})
+        shown = {"flag": r.id, "kind": r.kind, "category": r.category, "records": r.n, "critic": critic_words}
+        if r.n >= MIN_RECORDS and r.critic_class:
+            shown["critic_label"] = ADVICE_LABEL
+        out.append(shown)
     return out

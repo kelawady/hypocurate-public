@@ -1,6 +1,6 @@
 # Build step 8b — summary for review
 
-Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: re-check "not safe to merge" (four issues in the results statement); fixed (next section); pushed; not merged** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
+Date: 2026-10-07. Branch: `step-08b-agents` (from `main` at `d76c86a`). **Status: confirmation round fixed (next section); merged by the owner's decision without another review round, once the GitHub run on the new head is green** (owner's instruction: "When built: full suite, summary, review packet, push, and stop. Do not merge."). Plan, every owner answer and the progress checklist: the step 8b plan file (quoted in the packet, section 11).
 
 PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decision and the partly-sufficient path, the Critic, the Analyst, the orchestrator, and the command line's `run`, `dispatch` and `show`, with criteria 14.1 and 14.3 passing from the command line. Part 8a (merged and live, schema 0005) built the agent core, the Curator, the spending caps and the temperature bands.
 
@@ -16,6 +16,19 @@ PRD Section 15, step 8 ("Agents"), second part: the Planner, the narrowing decis
 8. The gap facts: the kind of "nothing found" classified by code.
 
 **Not changed:** `render.yaml`, `.github/workflows/`, the Dockerfile, Compose, and the dependency locks (checked with `git diff --name-only d76c86a..HEAD`). No PRD document is changed; corrections are listed at the end.
+
+## Confirmation round and the merge decision (2026-10-08)
+
+ChatGPT's confirmation round (`docs/reviews/step08b_confirm_chatgpt.md`) closed the four presentation fixes. One issue remained: wherever the Critic's class and reason are shown, nothing says they are unverified. "Same measurement reported twice" could look like an established finding. The reviewer added that "zero wrong" under the grading scheme does not establish reliability, and asked for no further tuning or live call.
+
+**Owner's decision, verbatim:** "This is my decision: once the fix below is in with its test and the GitHub run on the new head is green, merge without another review round."
+
+**The fix:**
+- `critic.ADVICE_LABEL` = "Language-model advice; classification and reason not verified; not used in decisions."
+- `flag_display` puts it beside every class and reason the Critic gave (`critic_label`). `show` passes it through, and so do `run` and `dispatch`, which print `show`'s output.
+- A flag with no class (single-record, or not classified) shows code's own words and no label.
+- **Test:** `tests/test_critic.py::test_every_shown_critic_classification_carries_the_unverified_advice_label`. It failed on the code before the fix (`KeyError: 'critic_label'`).
+- **Register:** `critic_classes` reworded, with the earlier wording in its history.
 
 ## Fix round 2: the re-check (2026-10-08)
 

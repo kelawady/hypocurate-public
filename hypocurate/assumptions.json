@@ -7390,7 +7390,7 @@
     "key": "critic_classes",
     "name": "The Critic's classes and reason",
     "state": "in_force",
-    "statement": "The Critic classifies each flag code raised that names two or more records (register 'critic_scope') with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them. Owner, 2026-10-07 (fix round 1, after the first live call compared two single-record flags with each other): the instruction says each flag stands alone, to be judged only on the records it names, never by comparing records across flags (a new settings version), and the request renders each flag as its own separated block.",
+    "statement": "The Critic classifies each flag code raised that names two or more records (register 'critic_scope') with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them. Owner, 2026-10-07 (fix round 1, after the first live call compared two single-record flags with each other): the instruction says each flag stands alone, to be judged only on the records it names, never by comparing records across flags (a new settings version), and the request renders each flag as its own separated block. Wherever a class and reason are shown (`show`, and so `run` and `dispatch`), the label 'Language-model advice; classification and reason not verified; not used in decisions.' is shown beside them (owner, 2026-10-08, after the second-model confirmation round).",
     "value": {
       "text": "four classes; reason for people only; read by no decision",
       "unit": null
@@ -7399,11 +7399,12 @@
     "affects": "Flags' classification shown to people (PRD 3 step 6).",
     "reason": "PRD 4: the Critic never chooses between values; owner's standing requirement that no code decision reads the class.",
     "evidence": [
-      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer A7."
+      "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer A7.",
+      "Step 8b confirmation round (docs/reviews/step08b_confirm_chatgpt.md); owner's decision, 2026-10-08."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-08"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7429,6 +7430,10 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:CRITIC_INSTRUCTION"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.critic:ADVICE_LABEL",
+          "equals": "Language-model advice; classification and reason not verified; not used in decisions."
         }
       ],
       "note": null
@@ -7445,7 +7450,8 @@
       "tests/test_migrations_step8b.py::test_a_class_outside_the_list_or_an_unbounded_reason_is_refused",
       "tests/test_critic.py::test_a_class_of_the_wrong_type_leaves_that_entry_unclassified",
       "tests/test_critic.py::test_every_wrong_type_at_every_position_is_refused_entry_by_entry",
-      "tests/test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"
+      "tests/test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so",
+      "tests/test_critic.py::test_every_shown_critic_classification_carries_the_unverified_advice_label"
     ],
     "history": [
       {
@@ -7453,6 +7459,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Fix round 1: scope to multi-record flags; each flag stands alone (new instruction)."
+      },
+      {
+        "value": "The Critic classifies each flag code raised that names two or more records (register 'critic_scope') with one of four classes: same measurement reported twice, different specimens or conditions, possible transcription or unit error, cannot tell from the metadata; with a reason of at most 300 characters, shown to people only and never truncated. It receives each flag's kind, category and record ids and the named records' metadata, never the numbers compared. An entry that fails code's check stays unclassified; a failed call leaves every flag of its batch unclassified and the run goes on. No code decision reads the class or the reason: Inclusion, the freeze, Statistics, the narrowing and completion read flags only through fields that do not carry them. Owner, 2026-10-07 (fix round 1, after the first live call compared two single-record flags with each other): the instruction says each flag stands alone, to be judged only on the records it names, never by comparing records across flags (a new settings version), and the request renders each flag as its own separated block.",
+        "from": "2026-10-07",
+        "to": "2026-10-08",
+        "note": "Confirmation round (docs/reviews/step08b_confirm_chatgpt.md): the unverified-advice label."
       }
     ]
   },
