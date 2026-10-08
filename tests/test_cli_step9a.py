@@ -120,3 +120,14 @@ def test_dispatch_without_again_still_names_the_reviewer(engine, capsys):
     queries.submit(engine, q.version_id)
     code, out, err = hc(capsys, "dispatch", q.number)
     assert code == 1 and "--by names the person confirming the domain" in err
+
+
+def test_confirm_takes_no_ceiling(engine, capsys):
+    """Fix round 1, finding 4: the ceiling is set only at dispatch (stored on the run); confirm has no --ceiling."""
+    import inspect
+    import pytest
+    from hypocurate import cli, cli_runs
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["confirm", "1", "--by", "Ada Reviewer", "--ceiling", "0.10"])
+    assert stopped.value.code == 2
+    assert list(inspect.signature(cli_runs._confirm).parameters) == ["engine", "run_id", "by"]

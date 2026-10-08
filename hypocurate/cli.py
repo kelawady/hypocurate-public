@@ -59,7 +59,6 @@ def main(argv: list[str] | None = None) -> int:
                                              "and the run goes on (may cost money)")
     confirm.add_argument("run", type=int)
     confirm.add_argument("--by", required=True, help="the name of the person confirming")
-    confirm.add_argument("--ceiling", help="the most this run's model calls may cost, in USD")
     cancel = sub.add_parser("cancel", help="cancel a queued or waiting run")
     cancel.add_argument("run", type=int)
     cancel.add_argument("--by", required=True, help="the name of the person cancelling")

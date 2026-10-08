@@ -16,7 +16,8 @@ Step 9a (owner's approval of the step 9 plan, 2026-10-08; R1, R2, R3): a run who
 --by NAME` prints what the person confirms (`confirmation.render`) before anything is recorded, records the
 confirmation with exactly that text, and runs the rest, printing `show`'s output. One run per command, never in
 bulk. `cancel <run> --by NAME` cancels a queued or waiting run. `dispatch Q-… --again` dispatches a new run of a
-query whose earlier run ended. `--ceiling` is stored on the run at dispatch (R5).
+query whose earlier run ended. `--ceiling` is stored on the run at dispatch (R5), and only there: `confirm` takes none
+(fix round 1, finding 4); none given stores the per-run cap (owner, 2026-10-08).
 """
 from __future__ import annotations
 
@@ -43,9 +44,9 @@ def command(args, engine: Engine) -> int:
             reason = queries.cancel(engine, args.run, by=args.by)
             print(json.dumps({"run": args.run, "status": "failed", "failure": reason}, ensure_ascii=False))
             return 0
+        if args.command == "confirm":  # fix round 1, finding 4: no ceiling here; it is stored at dispatch
+            return _confirm(engine, args.run, args.by)
         ceiling = _ceiling(args.ceiling)
-        if args.command == "confirm":
-            return _confirm(engine, args.run, args.by, ceiling)
         if args.command == "run":
             q = queries.create(engine, args.claim, [k.strip() for k in args.sources.split(",") if k.strip()],
                                domain=args.domain, sufficiency=args.sufficiency)
@@ -124,8 +125,9 @@ def _print_shown(engine: Engine, run_id: int, report: dict) -> int:
     return 0 if shown["status"] in ("completed", "failed", "waiting") else 1
 
 
-def _confirm(engine: Engine, run_id: int, by: str, ceiling: Decimal | None) -> int:
-    """Prints what is confirmed, records one named person's confirmation of exactly that, then runs the rest."""
+def _confirm(engine: Engine, run_id: int, by: str) -> int:
+    """Prints what is confirmed, records one named person's confirmation of exactly that, then runs the rest. The run's
+    ceiling is the one stored at dispatch (fix round 1, finding 4: a lower one given here would be lost on a restart)."""
     from hypocurate.access.guarded import GuardedRunError, run_guarded
     from hypocurate.pipeline import confirmation
     with engine.connect() as conn:
@@ -137,7 +139,7 @@ def _confirm(engine: Engine, run_id: int, by: str, ceiling: Decimal | None) -> i
     content, words = confirmation.show(engine, run_id)
     print(words, flush=True)
     confirmation.confirm(engine, run_id, by, shown=content)
-    payload = {"run_id": run_id, "ceiling": str(ceiling) if ceiling is not None else None, "phase": "proceed"}
+    payload = {"run_id": run_id, "ceiling": None, "phase": "proceed"}
     try:
         report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", payload, timeout=3600,
                              audit=(engine, run_id))
