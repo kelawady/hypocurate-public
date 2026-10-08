@@ -305,3 +305,47 @@ def test_once_confirmed_the_question_as_tested_says_by_whom_and_when(engine, stu
     assert after.startswith(LABEL) and after.endswith(" UTC")
     proceed(engine, rid, stub)
     assert cli_runs.show(engine, rid)["question_as_tested"]["label"] == after
+
+
+# --- added after the mutation checks (c03, c06, o04) --------------------------------------------------------
+
+def test_a_running_run_is_refused_by_codes_own_check(engine, stub):
+    """Mutation c03: code refuses a run that is not waiting itself (the database's refusal is the backstop)."""
+    from hypocurate.pipeline import narrowing
+    from hypocurate.pipeline.agents import planner
+    stub.respond(to.responder(to.planner_body()))
+    rid = to.dispatched(engine)
+    queries.start(engine, rid)
+    narrowing.run_narrowing(engine, rid, planner.run_planner(engine, rid, client_options=sp.client_options(stub)).answer)
+    assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
+    with pytest.raises(queries.QueryRefused) as refused:
+        confirmation.confirm(engine, rid, by="Ada Reviewer")
+    assert (refused.value.code, refused.value.reason) == (
+        "not_waiting", f"run {rid} is not waiting for confirmation (it is running)")
+
+
+def test_the_cost_shown_is_the_runs_counted_and_reported_cost(engine, stub):
+    """Mutation c06: the cost so far is the run's own total, counted as the caps count it."""
+    from decimal import Decimal
+    rid = waiting(engine, stub)
+    content, words = confirmation.show(engine, rid)
+    with engine.connect() as conn:
+        cap, reported = conn.execute(text("SELECT cap_cost, reported_cost FROM model_call_totals_by_run WHERE run_id = "
+                                          ":r"), dict(r=rid)).one()
+    assert Decimal(content["cost_so_far"]["counted_usd"]) == cap > 0
+    assert Decimal(content["cost_so_far"]["reported_usd"]) == reported > 0
+    assert f"Cost so far: ${cap:.6f} counted toward the caps (reported ${reported:.6f}; 1 model calls" in words
+
+
+def test_code_locks_only_the_confirmed_plan_and_says_so(engine, stub):
+    """Mutation o04: a confirmation of another fingerprint (written past the code by direct SQL) stops the run with
+    code's own reason before the lock is tried; the database's backstop is not what refuses it."""
+    rid = waiting(engine, stub)
+    content, _ = confirmation.show(engine, rid)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, planner_stage_result_id, "
+                          "narrowing_stage_result_id, content, shown) VALUES (:r, 'Ada Reviewer', :fp, :p, :n, '{}', 'x')"),
+                     dict(r=rid, fp="e" * 64, p=content["planner_stage_result_id"], n=content["narrowing_stage_result_id"]))
+    report = proceed(engine, rid, stub)
+    assert report.status == "failed" and report.failure == "refused: a checkpoint or write refused (not_confirmed)"
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
