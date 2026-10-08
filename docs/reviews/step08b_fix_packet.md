@@ -1,15 +1,41 @@
-# Build step 8b — fix packet, round 1
+# Build step 8b — fix packet, rounds 1 and 2 (for a final confirmation)
 
 Date: 2026-10-07. Branch: `step-08b-agents`. Reviewed head: `859e019` (ChatGPT: "not safe to merge",
-`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `538b2c1`. Generated from the files on disk by a script
+`docs/reviews/step08b_review_chatgpt.md`). Head when generated: `497020b`. Generated from the files on disk by a script
 (`~/hc-work/step08b/fix/fixpacket.py`, quoted in the last section), so every diff and output below is quoted exactly.
 
 Sections: 1 the fix-round summary (the first section of `docs/reviews/step08b_summary.md`); 2 the code diff since the
 reviewed head; 3 new test files; 4 changed tests (diff); 5 the register changes; 6 the mutation checks; 7 the suite,
 the images and GitHub; 8 the reference comparison with `main`; 9 the review text; 10 the plan file and the scripts.
 
-## 1. The fix round
+## 1. The fix rounds (round 2 first: the re-check; then round 1)
 
+## Fix round 2: the re-check (2026-10-08)
+
+**Update.** ChatGPT's re-check (`docs/reviews/step08b_recheck_chatgpt.md`) closed the five original findings. It found four issues in the results statement and its presentation, which blocked the merge. Each is fixed with tests that failed on the code before (shown below). The step is still **not merged**.
+
+| Issue | What was wrong | What changed |
+|---|---|---|
+| Not-fitted outcome | A completed run whose coefficient cannot be fitted crashed the renderer (`display.coefficient(None)`). The fixture claiming every outcome lacked it. | An explicit branch: no number of the coefficient is formatted. The line says no coefficient could be fitted and how many records of the set could not be used. The fixture now covers every outcome and evidence level 1–6, including the not-fitted and the concentrated coefficient-only results, and a test renders each. |
+| Concentration | The spread line needed a p-value, so a coefficient-only result failing check 2 for concentrated evidence hid the figures that explain it. | The spread line is shown whenever its figures exist (not when the result is withheld). It is compared only with the run's own informative-group count, with no threshold. |
+| Format version (owner's decision) | The recorded format did not select the renderer, so the claim that the wording follows the recorded format was unsupported. | The statement is always rendered in the current format and ends with "Statement format N." It adds "This run was completed under format M." when that differs, or says the format was not recorded. Format raised to 2 (the wording changed). The register and this summary are corrected, and the test that kept earlier fingerprints is replaced by a pin of the current format only. |
+| One presentation | `run` and `dispatch` printed the orchestration report's explanation with no label and no statement. | `run` and `dispatch` print exactly `show`'s output: code's statement first, then `analyst_text` (the Analyst's text under its label, or that it is unavailable), plus the stages and any run failure. Tests check each command's output and that the Analyst's text appears once, only under its label. |
+
+**Tests that failed on the code before:**
+- **Statement (7):** the not-fitted branch (it raised the reproduced `TypeError`), the concentrated spread, the three format cases, the coverage of every outcome and level, and the current-format pin.
+- **CLI (2):** the one-presentation test and the test for a run whose Analyst failed.
+
+**Changed expectations (reasons):**
+- **Format line:** the statement tests for the reference run, nothing frozen, partly sufficient and the other kinds now end with the format line.
+- **Spread line:** the coefficient-only kind now shows it (was asserted absent).
+- **Format in `show`:** `show`'s format field is `statement_format` (`current`, `recorded`); it was `statement_format_version`.
+- **CLI:** the tests read `outcome_code` from the run output, which is now `show`'s, where `outcome` is the wording. `show`'s `explanation` / `explanation_label` became `analyst_text`.
+
+**Also from the re-check:** both live Critic records show the stored request inputs, not a captured wire request (noted under "Numbers").
+
+**Checks on this round's code (`520b363`):** whole suite 1,846 passed, locally and in the rebuilt test image (its package and tests identical to the repository's); the runtime image's guard checks pass; six new mutation checks (f46–f51: the not-fitted branch, the spread rule, both format lines, the run output and the label) all caught, control clean (52 in all across both rounds); the reference runs still byte-identical to `main`.
+
+## Fix round 1 (2026-10-07)
 
 **Update.** ChatGPT reviewed the packet at `859e019` and found the step **not safe to merge**, with five findings (`docs/reviews/step08b_review_chatgpt.md`). This round fixes all five and applies the owner's two decisions (A: a results statement written by code; B: the Planner's reading). It also makes the owner's wording corrections and additions. Every change came with tests that failed on the code before it. The step is still **not merged**.
 
@@ -35,13 +61,12 @@ The statement is **not stored as text**. It is rendered from the stored results 
 
 **The owner's conditions, all built and tested:**
 - **Pure function:** `statement.facts` reads the stored rows into plain values. It strips the stored lists of record ids. `statement.render` is a pure function of those values and orders sources and sensitivity sets itself. Two runs of one version, with other records and other ids, give the same text, and shuffled stored lists give the same text.
-- **Format version:** the format has a version, `statement.FORMAT_VERSION` (1), in one named place. The completing code records it on the run (`run.statement_format_version`, 0006). It can be set only in the update that completes the run, and never changed after. `show` gives the rendered and recorded versions.
-- **Wording pinned:** a fixture of stored facts for each outcome kind (`tests/fixtures/statement_facts.json`) has its rendered text pinned per version. A wording change fails until the version is raised.
+- **Format version:** the format has a version, `statement.FORMAT_VERSION`, in one named place (now 2). The completing code records it on the run (`run.statement_format_version`, 0006). It can be set only in the update that completes the run, and never changed after.
+- **Wording pinned:** a fixture of stored facts covering every outcome and evidence level (`tests/fixtures/statement_facts.json`) has the current format's rendered text pinned. A wording change fails until the version is raised.
 
-**What follows:**
+**What follows (corrected after the re-check):**
 - The numbers cannot change, because they come only from stored results.
-- The wording follows the format version.
-- A run completed by code that did not record a version (the previous release's, or the 12 live runs in the development database) shows "not recorded".
+- **The wording is always the current format's.** The recorded format does not select the wording; an earlier version of this summary and the register claimed it did, which was unsupported (the re-check, item 5). The statement ends with "Statement format N." When the run was completed under another format, it adds "This run was completed under format M."; when none was recorded (the previous release's code, the 12 live runs in the development database), that the format was not recorded.
 
 ### Further change after the first live Critic call (owner's decision, 2026-10-07)
 
@@ -132,6 +157,7 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - **The runtime image**, rebuilt on the same code: every guard check passes; it holds no `tests/` or `docs/`. The build cache was cleared after the rebuild (owner's standing instruction).
 - **Mutation checks:** 46 deliberate faults in the new safeguards and wording rules (41, then 5 for the Critic's scope and instruction), each with a control run; results in the fix packet, section 6. Two faults survived the first run: f21 (`proceed` without the narrowing-decision condition) and f35 (the per-source lines in stored order: the order test used a run with an estimate, which lists no sources). A test case was added for each and both are caught; the control run is clean.
 - **The reference runs** of `test_reference_numbers.py` are **byte-identical to `main`**: decisions with their freeze fingerprints, analyses with calibrations, the not-analysed list and record counts. Nothing changed.
+- **About both live Critic records (the re-check, item 8):** they show the request inputs code stored with the Critic's stage (what the request is built from), not a captured wire request.
 - **One live Critic call** (owner's go; fresh scratch database; constructed data marked as such; ceiling $0.25): Haiku 4.5, 1,330 input and 833 output tokens, **$0.005495** (reserved maximum $0.045779). Two `invalid_value` flags were sent, each naming one record. The request held no compared value (code also checked it for each): only each flag's kind and category and its record's metadata (alloy, composition, paper DOI, categories, field statuses). Both entries were accepted (class 'different specimens or conditions'); none was refused; one attempt. A second run of the same version with no classes gave identical decisions, sets, freeze record and fingerprint, statistics and gap facts. Live spending is now $1.0333 (`docs/reviews/step08b_live_record.json`, `fix_round_1_critic_check`).
 
 ### Open
@@ -141,11 +167,12 @@ No test was weakened, skipped or deleted except the one replaced, as listed. Fix
 - The Analyst's narrative is unverified by design; it is labelled as such.
 - **The Critic's reasoning is not checked either** (addressed in part by the owner's further change above; the second call's reasons for flags 9–10 still misstate the metadata). In the live call each flag named one record (its own tensile strength below its yield strength), but the Critic compared the two flags with each other and chose 'different specimens or conditions'; for a single physically impossible record, 'possible transcription or unit error' fits. No decision reads the class (shown again by this call), and the class and reason are shown to people only, but code checks only the answer's form, not its reasoning.
 
+
 ## 2. Code diff (`859e019..HEAD`, the package; the register is in section 5)
 
 ````diff
 diff --git a/hypocurate/cli_runs.py b/hypocurate/cli_runs.py
-index adcfd8e..a04bb92 100644
+index adcfd8e..e887787 100644
 --- a/hypocurate/cli_runs.py
 +++ b/hypocurate/cli_runs.py
 @@ -42,11 +42,7 @@ def command(args, engine: Engine) -> int:
@@ -161,7 +188,7 @@ index adcfd8e..a04bb92 100644
              number = args.number
      except queries.QueryRefused as refused:
          print(f"error: {refused.code}: {refused.reason}", file=sys.stderr)
-@@ -75,11 +71,20 @@ def _ceiling(value: str | None) -> Decimal | None:
+@@ -75,20 +71,62 @@ def _ceiling(value: str | None) -> Decimal | None:
  
  
  def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
@@ -179,15 +206,22 @@ index adcfd8e..a04bb92 100644
 +        if report.get("ready"):
 +            rest = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "proceed"},
 +                               timeout=3600, audit=(engine, run_id))
-+            report = {**rest, "stages": report["stages"] + rest["stages"],
-+                      "question_as_tested": report.get("question_as_tested")}
++            report = {**rest, "stages": report["stages"] + rest["stages"]}
      except GuardedRunError:
          print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
                f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
-@@ -88,8 +93,28 @@ def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
-     return 0 if report.get("status") in ("completed", "failed") else 1
- 
- 
+         return 1
+-    print(json.dumps(report, indent=2, ensure_ascii=False))
+-    return 0 if report.get("status") in ("completed", "failed") else 1
++    # One presentation everywhere (owner, after the re-check): the same output as `show` (code's statement first, then
++    # the Analyst's text under its label), with the stages run and the run's failure, if any. The orchestration
++    # report's own explanation is never printed.
++    shown = show(engine, run_id)
++    print(json.dumps({**shown, "stages": report.get("stages"), "run_failure": report.get("failure")},
++                     indent=2, ensure_ascii=False, default=str))
++    return 0 if shown["status"] in ("completed", "failed") else 1
++
++
 +def _claim(engine: Engine, run_id: int) -> str:
 +    with engine.connect() as conn:
 +        return conn.execute(text("SELECT hv.text FROM run r JOIN hypothesis_version hv ON hv.id = "
@@ -200,27 +234,45 @@ index adcfd8e..a04bb92 100644
 +        return reading.stored(conn, run_id)
 +
 +
++def analyst_text(explained) -> dict:
++    """The Analyst's stored explanation, always with its label; or that it is unavailable (code's own words)."""
++    from hypocurate.pipeline.agents import analyst
++    if isinstance(explained, dict) and explained.get("report"):
++        return {"label": analyst.LABEL, "text": explained["report"]}
++    if isinstance(explained, dict):
++        return {"unavailable": explained.get("shown") or analyst.UNAVAILABLE}
++    return {"unavailable": analyst.UNAVAILABLE}
++
++
 +def critic_flags(engine: Engine, run_id: int) -> list[dict]:
 +    """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
 +    from hypocurate.pipeline.agents import critic
 +    return critic.flag_display(engine, run_id)
-+
-+
+ 
+ 
  def show(engine: Engine, run_id: int) -> dict | None:
 +    from hypocurate.pipeline import statement
      from hypocurate.pipeline import statistics as st
-+    from hypocurate.pipeline.agents import analyst
      with engine.connect() as conn:
          run = conn.execute(text(
-             "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
-@@ -122,10 +147,15 @@ def show(engine: Engine, run_id: int) -> dict | None:
-         explanation = explained.get("shown") or "explanation unavailable"
-     else:
-         explanation = None
+@@ -116,16 +154,19 @@ def show(engine: Engine, run_id: int) -> dict | None:
+                                 dict(r=run.narrower_of_run_id)).scalar_one_or_none() if run.narrower_of_run_id else None
+         cost = conn.execute(text("SELECT * FROM model_call_totals_by_run WHERE run_id = :r"), dict(r=run_id)).one_or_none()
+     decision = (stats or {}).get("decision") or (narrowing or {}).get("decision") or {}
+-    if isinstance(explained, dict) and explained.get("report"):
+-        explanation = explained["report"]
+-    elif isinstance(explained, dict):
+-        explanation = explained.get("shown") or "explanation unavailable"
+-    else:
+-        explanation = None
 +    built = statement.build(engine, run_id)  # decision A: code's statement, for every completed run
      return {
 -        "run": run.id, "query": run.number, "claim": run.text, "status": run.status,
-+        "run": run.id, "query": run.number, "claim": run.text,
++        # One presentation everywhere (owner, after the re-check): code's statement first, then the Analyst's text,
++        # only with the statement and only under its label; `run` and `dispatch` print this same output.
++        "statement": built["lines"] if built else None,
++        "analyst_text": analyst_text(explained) if built else None,
++        "run": run.id, "query": run.number, "claim": run.text, "outcome_code": run.outcome,
 +        "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
          "narrower_question_of": original, "narrower_question": narrower,
 -        "plan": "fixed" if run.fixed_plan else "the Planner's", "sufficiency_option": run.sufficiency_option,
@@ -231,20 +283,18 @@ index adcfd8e..a04bb92 100644
          "outcome": decision.get("outcome_wording") if run.status == "completed" else None,
          "verdict": decision.get("verdict_wording") if run.verdict else None,
          "exploratory": run.exploratory, "evidence_level": run.evidence_level,
-@@ -136,7 +166,12 @@ def show(engine: Engine, run_id: int) -> dict | None:
+@@ -136,8 +177,9 @@ def show(engine: Engine, run_id: int) -> dict | None:
                                           "resid_df", "minimums_met")} for r in results if r["withheld"]],
          "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
          "sources": (gap or {}).get("sources"),
 -        "explanation": explanation, "explanation_label": "model explanation; numbers checked against the run record"
-+        "statement": built["lines"] if built else None,
+-        if isinstance(explained, dict) and explained.get("report") else None,
++        "statement_format": ({"current": built["format_version"], "recorded": built["recorded_format_version"]}
++                             if built else None),
 +        "flags": critic_flags(engine, run_id),
-+        # Owner, 2026-10-07: the statement is shown with its format version (rendered; recorded at completion).
-+        "statement_format_version": ({"rendered": built["format_version"], "recorded": built["recorded_format_version"]}
-+                                     if built else None),
-+        "explanation": explanation, "explanation_label": analyst.LABEL
-         if isinstance(explained, dict) and explained.get("report") else None,
          "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
          "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,
+     }
 diff --git a/hypocurate/db/migrations/versions/0006_query_option_and_partly_sufficient.py b/hypocurate/db/migrations/versions/0006_query_option_and_partly_sufficient.py
 index 8547c0b..56cdfb5 100644
 --- a/hypocurate/db/migrations/versions/0006_query_option_and_partly_sufficient.py
@@ -1338,10 +1388,10 @@ index 0000000..869b3fe
 +    return from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed")
 diff --git a/hypocurate/pipeline/statement.py b/hypocurate/pipeline/statement.py
 new file mode 100644
-index 0000000..ca3dcef
+index 0000000..b3d6c34
 --- /dev/null
 +++ b/hypocurate/pipeline/statement.py
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,305 @@
 +"""The results statement (step 8b fix round 1; owner's decision A, with the owner's changes of 2026-10-07; register
 +'results_statement').
 +
@@ -1364,9 +1414,11 @@ index 0000000..ca3dcef
 +The statement is rendered from the stored rows whenever it is shown (owner, 2026-10-07): `facts` reads them into a
 +plain dictionary with no record identity, and `render` is a pure function of that dictionary, ordering sources and
 +sensitivity sets itself, so the same stored rows always give the same text whatever the record ids or the order the
-+rows come in. Its numbers come only from stored results and cannot change; its wording follows `FORMAT_VERSION`,
-+which the completing code records on the run and which is shown with the statement; a change of wording is a new
-+version (tests/test_statement.py pins the rendered text of each version). It is present for every completed run,
++rows come in. Its numbers come only from stored results and cannot change. Its wording is always the current format's
++(`FORMAT_VERSION`), never the format the run was completed under (owner's decision after the re-check): the statement
++ends with "Statement format N." and, when the run was completed under another format (recorded on the run), "This
++run was completed under format M." A change of wording is a new format (tests/test_statement.py pins the current
++format's rendered text). It is present for every completed run,
 +whatever happened to the Analyst, and holds nothing a model wrote. The Analyst's explanation is stored and shown
 +separately, under its own label (`agents.analyst.LABEL`).
 +"""
@@ -1383,7 +1435,10 @@ index 0000000..ca3dcef
 +from hypocurate.pipeline import statistics as st
 +
 +# The statement's format: change it with any change of wording (owner, 2026-10-07; register 'results_statement').
-+FORMAT_VERSION = 1
++# Every statement is rendered with the current format, whatever format its run was completed under (owner, after the
++# re-check): the format is shown, with the run's own when it differs. 2: the not-fitted branch, the spread line
++# whenever its figures exist, and the format lines (re-check, 2026-10-07).
++FORMAT_VERSION = 2
 +ASSOCIATION = "The result is an association under the stated model in the sources searched; it does not show cause."
 +OVER_CONFIDENT = ("The simulation check found the method over-confident on data with this structure; that describes "
 +                  "the method on data like these, not the error of this particular p-value.")
@@ -1501,6 +1556,30 @@ index 0000000..ca3dcef
 +            f"{display.coefficient(min(estimated))} to {display.coefficient(max(estimated))}.")
 +
 +
++def pooled_not_fitted(pooled: Mapping) -> bool:
++    """Validity check 1 failed: no coefficient was fitted, so no number of it exists to show (re-check)."""
++    return pooled.get("estimate") is None
++
++
++def _spread_line(c: Mapping) -> str | None:
++    """The spread of the slope information, compared only with the run's own informative-group count."""
++    if c.get("effective_papers") is None or c.get("largest_paper_share") is None or not c.get("n_groups_informative"):
++        return None
++    return (f"Spread of the slope information: an effective number of groups of "
++            f"{display.two_decimals(c['effective_papers'])} out of {c['n_groups_informative']} informative groups; "
++            f"largest share {display.percent(c['largest_paper_share'])}.")
++
++
++def format_lines(recorded: int | None) -> list[str]:
++    """The format the statement is rendered in, and the run's own when it differs (owner, after the re-check)."""
++    lines = [f"Statement format {FORMAT_VERSION}."]
++    if recorded is None:
++        lines.append("The format this run was completed under was not recorded.")
++    elif recorded != FORMAT_VERSION:
++        lines.append(f"This run was completed under format {recorded}.")
++    return lines
++
++
 +def _analysis_lines(f: Mapping) -> list[str]:
 +    stats, gap, alpha = f["statistics"], f["gap"], f["alpha"]
 +    analyses = _ordered(stats.get("analyses") or [])
@@ -1517,6 +1596,17 @@ index 0000000..ca3dcef
 +        lines.append("No estimate is shown: the minimums were not met.")
 +        lines.append(counts_against_minimums(analyses[0].get("minimums") or {}))
 +        lines += _found_lines(f["found"], gap)
++    elif pooled_not_fitted(analyses[0]):
++        pooled = analyses[0]
++        c = pooled.get("counts") or {}
++        reason = str(pooled.get("inference_reason") or "coefficient not fitted").replace("_", " ")
++        lines.append(f"No coefficient could be fitted ({reason}): no estimate, no uncertainty, no p-value and no "
++                     f"verdict; of the {c.get('n_records_in_set')} records in the set, {c.get('n_records_not_used')} "
++                     f"could not be used ({c.get('n_alloys_not_used')} alloys).")
++        spread = _spread_line(c)
++        if spread:
++            lines.append(spread)
++        lines.append(an.GROUP_DEFINITION)
 +    else:
 +        pooled = analyses[0]
 +        sets = [e for e in analyses if e.get("scope") == "sensitivity"]
@@ -1537,10 +1627,9 @@ index 0000000..ca3dcef
 +        note = an.direction_note(pooled.get("estimate"), f["alternative"])
 +        if note:
 +            lines.append(_cap(note) + ".")
-+        if inference:
-+            lines.append(f"Spread of the slope information: an effective number of groups of "
-+                         f"{display.two_decimals(c['effective_papers'])} out of {c['n_groups_informative']} informative "
-+                         f"groups; largest share {display.percent(c['largest_paper_share'])}.")
++        spread = _spread_line(c)  # whenever its figures exist, with or without inference (re-check)
++        if spread:
++            lines.append(spread)
 +        lines.append(an.GROUP_DEFINITION)
 +        if inference:
 +            sensitivity = _sensitivity_line(sets, pooled, alpha)
@@ -1589,13 +1678,13 @@ index 0000000..ca3dcef
 +        d = f["narrowing"].get("decision") or {}
 +        lines.append(f"Outcome: {d.get('outcome_wording')}. The original question was not tested and has no verdict.")
 +        lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
-+        return lines + _partly_lines(f)
++        return lines + _partly_lines(f) + format_lines(f["recorded_format_version"])
 +    d = f["statistics"].get("decision") or {}
 +    label = f" ({d['label']})" if d.get("label") else ""
 +    verdict = f"Verdict: {d['verdict_wording']}." if f["verdict"] else "No verdict."
 +    lines.append(f"Outcome: {d.get('outcome_wording')}{label}. {verdict}")
 +    lines.append(f"Evidence level: {f['evidence_level']} ({d.get('evidence_level_wording')}).")
-+    return lines + _analysis_lines(f)
++    return lines + _analysis_lines(f) + format_lines(f["recorded_format_version"])
 +
 +
 +def build(engine: Engine, run_id: int) -> dict | None:
@@ -1684,7 +1773,7 @@ def variants(answer: Any) -> Iterator[tuple[tuple, Any, Any]]:
 
 ### `tests/fixtures/statement_facts.json`
 
-(data fixture, 223,498 bytes; not quoted)
+(data fixture, 265,812 bytes; not quoted)
 
 ### `tests/test_orchestrator_flagged.py`
 
@@ -2131,6 +2220,7 @@ def test_the_reference_run_s_statement(engine, stub):
         f"  - {statement.ASSOCIATION}",
         f"  - {statement.OVER_CONFIDENT}",
         "  - Texas A&M FCC dataset (Mulukutla et al. 2026): not testable alone (too few groups).",
+        f"Statement format {statement.FORMAT_VERSION}.",   # completed under the current format: nothing more
     ]
     assert calibration.count(analyst_names.display.INTERVAL_NOTE) == 1  # the interval described once (owner)
 
@@ -2167,7 +2257,7 @@ def test_nothing_frozen_shows_each_count_against_its_minimum_and_the_records_fou
     mpea = next(x for x in lines if x.startswith("  MPEA dataset"))
     assert mpea.startswith(f"  MPEA dataset (Borg et al. 2020): {found['mpea']:,} records found; ")
     assert "lack a grain size" in mpea and "lack a yield strength" in mpea
-    assert lines[-1] == "Main cautions: none beyond those above."
+    assert lines[-2:] == ["Main cautions: none beyond those above.", f"Statement format {statement.FORMAT_VERSION}."]
 
 
 def test_partly_sufficient_shows_the_counts_per_part_and_the_narrower_question_to_dispatch(engine, stub):
@@ -2178,7 +2268,8 @@ def test_partly_sufficient_shows_the_counts_per_part_and_the_narrower_question_t
     assert lines[3] == "Evidence level: 1 (original question not tested; a narrower question was proposed)."
     parts = next(x for x in lines if x.startswith("Records with a grain size and the outcome"))
     assert "candidates before any eligibility decision" in parts and "cryogenic" in parts and ": 0" in parts
-    assert lines[-1] == (f"Narrower question {report.narrower_question}: phase class FCC; test type tension; room "
+    assert lines[-1] == f"Statement format {statement.FORMAT_VERSION}."  # owner, after the re-check
+    assert lines[-2] == (f"Narrower question {report.narrower_question}: phase class FCC; test type tension; room "
                          "temperature. It is not run until a person dispatches it.")
 
 
@@ -2201,8 +2292,10 @@ def test_the_other_kinds(bare, case):
         assert lines[2] == "Outcome: insufficient in the sources searched. No verdict."
         assert any(x.startswith("Pooled estimate: 298.5 MPa·µm^0.5, the coefficient only (insufficient groups): no "
                                 "uncertainty, no p-value and no verdict; 6 records on 3 alloys") for x in lines)
-        assert "Spread of the slope information" not in text_ and "p ≈" not in text_
-        assert lines[-1] == "Main cautions: none beyond those above."
+        # Re-check (owner): the spread is shown whenever its figures exist, also without inference (was: absent).
+        assert ("Spread of the slope information: an effective number of groups of 1.00 out of 1 informative groups; "
+                "largest share 100.0%.") in lines and "p ≈" not in text_
+        assert lines[-2:] == ["Main cautions: none beyond those above.", f"Statement format {statement.FORMAT_VERSION}."]
     else:
         assert lines[2] == ("Outcome: insufficient in the sources searched (data found; not enough to test). "
                             "No verdict.")
@@ -2221,9 +2314,10 @@ def test_a_failed_run_has_no_statement(engine, stub):
 # --- a pure function of the stored rows, with a format version (owner, 2026-10-07) ------------------------------
 
 FIXTURE = Path(__file__).parent / "fixtures" / "statement_facts.json"
-# The rendered text of every case in FIXTURE, per format version: a change of wording changes this fingerprint, so it
-# must come with a new FORMAT_VERSION (and a new entry here; the old ones stay).
-RENDERED = {1: "6b667638eb8a8db4d19476b0b40a09e87df994df080811dc69d6fbfbac2bf596"}
+# The rendered text of every case in FIXTURE under the current format. A change of wording changes this fingerprint
+# and must come with a new FORMAT_VERSION. Only the current format is rendered (owner, after the re-check): a run
+# completed under an earlier format is shown with the current wording and a line naming its own format.
+RENDERED_CURRENT = (2, "43e07bf2cdcf01076fa38386b2f0e87bb376eec2227cd27aca7c24d05297f312")
 
 
 def facts_of(engine, rid):
@@ -2276,8 +2370,7 @@ def test_each_completion_records_the_format_version_and_show_gives_it(engine, st
                                     dict(r=report.run_id)).scalar()
         assert recorded == statement.FORMAT_VERSION
         shown = cli_runs.show(engine, report.run_id)
-        assert shown["statement_format_version"] == {"rendered": statement.FORMAT_VERSION,
-                                                     "recorded": statement.FORMAT_VERSION}
+        assert shown["statement_format"] == {"current": statement.FORMAT_VERSION, "recorded": statement.FORMAT_VERSION}
         assert shown["statement"] == statement.build(engine, report.run_id)["lines"]
 
 
@@ -2287,19 +2380,69 @@ def rendered_fingerprint() -> str:
     return hashlib.sha256(text_.encode("utf-8")).hexdigest()
 
 
-def test_the_wording_of_each_format_version_is_pinned():
-    """Every case of the fixture (each kind of outcome, from stored facts) rendered with the current code: its
-    fingerprint is the one recorded for the current FORMAT_VERSION. Changing any wording fails this test until the
-    version is raised and its fingerprint added."""
-    cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    assert set(cases) >= {"sufficient", "planner", "exploratory", "coefficient_only", "below_minimums",
-                          "nothing_frozen", "partly_sufficient"}
+ALL_KINDS = ("sufficient", "planner", "exploratory", "coefficient_only", "coefficient_only_concentrated",
+             "below_minimums", "not_fitted", "nothing_frozen", "partly_sufficient")
+
+
+def test_the_wording_of_the_current_format_is_pinned():
+    """Every case of the fixture rendered with the current code has the fingerprint pinned for the current format;
+    changing any wording fails this test until FORMAT_VERSION is raised and the fingerprint replaced."""
     assert "records_found" not in FIXTURE.read_text(encoding="utf-8")
-    assert statement.FORMAT_VERSION in RENDERED and rendered_fingerprint() == RENDERED[statement.FORMAT_VERSION]
+    assert RENDERED_CURRENT == (statement.FORMAT_VERSION, rendered_fingerprint())
 
 
-@pytest.mark.parametrize("case", ["sufficient", "planner", "exploratory", "coefficient_only", "below_minimums",
-                                  "nothing_frozen", "partly_sufficient"])
+def test_the_fixture_covers_every_outcome_and_evidence_level_and_each_renders():
+    """Re-check: the fixture claimed every outcome but lacked the not-fitted one (whose rendering raised)."""
+    cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert set(cases) == set(ALL_KINDS)
+    assert {f["evidence_level"] for f in cases.values()} == {1, 2, 3, 4, 5, 6}
+    assert {f["outcome"] for f in cases.values()} == {"sufficient", "insufficient", "partly_sufficient"}
+    reasons = {(f.get("statistics") or {}).get("analyses", [{}])[0].get("inference_reason") for f in cases.values()
+               if (f.get("statistics") or {}).get("analyses")}
+    assert {"coefficient_not_fitted", "insufficient_groups", "evidence_concentrated"} <= reasons
+    for name, f in cases.items():
+        lines = statement.render(f)
+        assert lines[0].startswith("Question as asked: ") and lines[-1].startswith(("Statement format ", "This run ",
+                                                                                     "The format ")), name
+
+
+def test_a_run_whose_coefficient_cannot_be_fitted_shows_no_number_of_it():
+    f = json.loads(FIXTURE.read_text(encoding="utf-8"))["not_fitted"]
+    lines = statement.render(f)
+    text_ = "\n".join(lines)
+    assert "Evidence level: 2 (coefficient cannot be fitted)." in lines
+    assert ("No coefficient could be fitted (coefficient not fitted): no estimate, no uncertainty, no p-value and no "
+            "verdict; of the 4 records in the set, 4 could not be used (1 alloys).") in lines
+    assert "MPa·µm^0.5" not in text_ and "p ≈" not in text_ and "Pooled estimate" not in text_
+    assert analyst_names.MODEL_SENTENCE not in lines
+
+
+def test_a_concentrated_coefficient_only_result_shows_its_spread():
+    """Re-check: the spread is shown whenever its figures exist, compared only with the run's own count."""
+    f = json.loads(FIXTURE.read_text(encoding="utf-8"))["coefficient_only_concentrated"]
+    lines = statement.render(f)
+    assert any(x.startswith("Pooled estimate: ") and "the coefficient only (evidence concentrated): no uncertainty, "
+               "no p-value and no verdict" in x for x in lines)
+    assert "Spread of the slope information: an effective number of groups of 1.00 out of 2 informative groups; " \
+           "largest share 100.0%." in lines
+
+
+@pytest.mark.parametrize("recorded, tail", [
+    (None, ["Statement format {v}.", "The format this run was completed under was not recorded."]),
+    (1, ["Statement format {v}.", "This run was completed under format 1."]),
+    ("current", ["Statement format {v}."])])
+def test_the_statement_is_always_in_the_current_format_and_says_when_the_run_was_under_another(recorded, tail):
+    """Owner, after the re-check: the current format always; the run's own format named when it differs."""
+    f = json.loads(FIXTURE.read_text(encoding="utf-8"))["sufficient"]
+    f["recorded_format_version"] = statement.FORMAT_VERSION if recorded == "current" else recorded
+    v = statement.FORMAT_VERSION
+    assert v != 1
+    lines = statement.render(f)
+    assert lines[-len(tail):] == [x.format(v=v) for x in tail]
+    assert lines[:-len(tail)] == statement.render({**f, "recorded_format_version": v})[:-1]
+
+
+@pytest.mark.parametrize("case", ALL_KINDS)
 def test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists(case):
     """Mutation f35 (fix round 1): the order test above uses a run with an estimate, which lists no sources' records;
     here every kind, the nothing-frozen one with two sources, has each stored list reversed."""
@@ -2646,7 +2789,7 @@ index 0d65b72..60d4156 100644
  
  def test_the_owners_eight_decisions_are_recorded_as_decided():
 diff --git a/tests/test_cli_runs.py b/tests/test_cli_runs.py
-index 2378e41..364f1e7 100644
+index 2378e41..90b4fe4 100644
 --- a/tests/test_cli_runs.py
 +++ b/tests/test_cli_runs.py
 @@ -41,9 +41,10 @@ def hc(capsys, *argv):
@@ -2663,26 +2806,64 @@ index 2378e41..364f1e7 100644
  
  
  def guard_refusals(engine, run_id):
+@@ -57,7 +58,7 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
+     code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer")
+     assert code == 0, err
+     r = report_of(out)
+-    assert r["query"].startswith("Q-") and r["report"]["status"] == "completed" and r["report"]["outcome"] == "sufficient"
++    assert r["query"].startswith("Q-") and r["report"]["status"] == "completed" and r["report"]["outcome_code"] == "sufficient"
+     assert guard_refusals(engine, r["run"]) == []
+     code, out, err = hc(capsys, "show", str(r["run"]))
+     shown = json.loads(out)
 @@ -66,7 +67,8 @@ def test_14_1a_run_with_the_fixed_plan_and_show_it(engine, stub, capsys):
      pooled = next(x for x in shown["results"] if x["scope"] == "pooled")
      assert (pooled["n_records"], pooled["n_alloys"], pooled["n_groups"], pooled["resid_df"]) == (97, 22, 20, 74)
      assert round(pooled["estimate"], 1) == 424.9 and round(pooled["std_error"], 1) == 64.4
 -    assert shown["explanation_label"] == "model explanation; numbers checked against the run record"
-+    assert shown["explanation_label"] == ("written by a language model; values inserted from the run record; "
-+                                         "narrative not verified")  # decision A (fix round 1)
++    assert shown["analyst_text"]["label"] == ("written by a language model; values inserted from the run record; "
++                                             "narrative not verified")  # decision A (fix round 1)
      assert shown["tokens_and_cost"] is not None
  
  
-@@ -102,7 +104,7 @@ def test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line(
+@@ -74,7 +76,7 @@ def test_14_1b_run_with_the_planner(engine, stub, capsys):
+     stub.respond(responder(planner_body()))
+     code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+     r = report_of(out)
+-    assert code == 0 and r["report"]["outcome"] == "sufficient" and "planner" in r["report"]["stages"]
++    assert code == 0 and r["report"]["outcome_code"] == "sufficient" and "planner" in r["report"]["stages"]
+     assert guard_refusals(engine, r["run"]) == []
+ 
+ 
+@@ -82,7 +84,7 @@ def test_14_3_the_bcc_claim_from_the_command_line(engine, stub, capsys):
+     stub.respond(responder(BCC))
+     code, out, err = hc(capsys, "run", BCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+     r = report_of(out)
+-    assert code == 0 and r["report"]["outcome"] == "insufficient"
++    assert code == 0 and r["report"]["outcome_code"] == "insufficient"
+     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
+     assert shown["outcome"] == "insufficient in the sources searched" and shown["verdict"] is None
+     assert shown["results"] == [] and shown["nothing_found"] == "missing_evidence"
+@@ -93,16 +95,16 @@ def test_14_3_partly_sufficient_and_the_narrower_question_from_the_command_line(
+     stub.respond(responder(PARTLY))
+     code, out, err = hc(capsys, "run", PARTLY_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
+     r = report_of(out)
+-    assert code == 0 and r["report"]["outcome"] == "partly_sufficient"
++    assert code == 0 and r["report"]["outcome_code"] == "partly_sufficient"
+     number = r["report"]["narrower_question"]
+     shown = json.loads(hc(capsys, "show", str(r["run"]))[1])
+     assert shown["outcome"] == "partly sufficient in the sources searched" and shown["narrower_question"] == number
+     assert shown["evidence_level_wording"] == "original question not tested; a narrower question was proposed"
+     code, out, err = hc(capsys, "dispatch", number, "--by", "Ada Reviewer")
      n = report_of(out)
-     assert code == 0 and n["report"]["outcome"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
+-    assert code == 0 and n["report"]["outcome"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
++    assert code == 0 and n["report"]["outcome_code"] == "sufficient" and n["report"]["stages"][0] == "fixed plan"
      narrower = json.loads(hc(capsys, "show", str(n["run"]))[1])
 -    assert narrower["narrower_question_of"] == r["query"] and narrower["plan"] == "fixed"
 +    assert narrower["narrower_question_of"] == r["query"] and narrower["plan"] == "from the narrowing decision"
  
  
  @pytest.fixture
-@@ -204,3 +206,29 @@ def test_14_1_the_controlled_duplicates_in_a_marked_test_run(engine, stub, capsy
+@@ -204,3 +206,77 @@ def test_14_1_the_controlled_duplicates_in_a_marked_test_run(engine, stub, capsy
      assert once > 0 and stored > once  # kept in the store, counted once
      assert label == ["test run: includes constructed data"]
      assert any("[[ ## classification ## ]]" in r["raw"].decode() for r in stub.requests)  # the Critic was asked
@@ -2712,6 +2893,54 @@ index 2378e41..364f1e7 100644
 +    assert r["reading"]["question_as_tested"]["label"] == reading.LABELS["fixed"]
 +    code, out, err = hc(capsys, "show", str(r["run"]))
 +    assert json.loads(out)["question_as_tested"] == r["reading"]["question_as_tested"]
++
++
++# --- one presentation everywhere (owner, after the re-check) -----------------------------------------------------
++
++def assert_presented(out: str, shown: dict, explanation: str | None) -> None:
++    """Code's statement first, then the Analyst's text only under its label; its text nowhere else in the output."""
++    from hypocurate.pipeline.agents.analyst import LABEL
++    keys = list(shown)
++    assert keys[:2] == ["statement", "analyst_text"], keys[:3]
++    assert shown["statement"][0].startswith("Question as asked: ")
++    assert "explanation" not in shown and "explanation_label" not in shown
++    if explanation:
++        assert shown["analyst_text"] == {"label": LABEL, "text": explanation}
++        assert out.count(json.dumps(explanation, ensure_ascii=False)[1:-1]) == 1
++
++
++def stored_explanation(engine, run_id):
++    with engine.connect() as conn:
++        return conn.execute(text("SELECT output->>'report' FROM stage_result WHERE run_id = :r AND stage = 'analyst' "
++                                 "ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar()
++
++
++def test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text(engine, stub, capsys):
++    """Re-check: `run` printed the orchestration report's explanation without the label or the statement."""
++    stub.respond(responder(PARTLY))
++    code, out, err = hc(capsys, "run", PARTLY_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")
++    assert code == 0, err
++    r = report_of(out)
++    explanation = stored_explanation(engine, r["run"])
++    assert explanation
++    assert_presented(out.split("\n", 2)[2], r["report"], explanation)
++    code, out, err = hc(capsys, "show", str(r["run"]))
++    shown = json.loads(out)
++    assert_presented(out, shown, explanation)
++    assert {k: v for k, v in r["report"].items() if k not in ("stages", "run_failure")} == shown
++    code, out, err = hc(capsys, "dispatch", r["report"]["narrower_question"], "--by", "Ada Reviewer")
++    n = report_of(out)
++    assert_presented(out.split("\n", 2)[2], n["report"], stored_explanation(engine, n["run"]))
++    assert n["report"]["statement"][-1].startswith("Statement format ")
++
++
++def test_a_run_whose_analyst_failed_prints_the_statement_and_says_the_text_is_unavailable(engine, stub, capsys):
++    stub.respond(responder(analyst=lambda raw: "The data do not exist {outcome_wording}."))
++    code, out, err = hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer")
++    r = report_of(out)
++    assert r["report"]["statement"][0].startswith("Question as asked: ")
++    assert r["report"]["analyst_text"] == {"unavailable": "explanation unavailable (wording_refused)"}
++    assert "do not exist" not in out
 diff --git a/tests/test_controlled_duplicates.py b/tests/test_controlled_duplicates.py
 index 30ab97f..1cad1c6 100644
 --- a/tests/test_controlled_duplicates.py
@@ -3633,7 +3862,7 @@ index 63a339b..06c0c71 100644
  "key": "results_statement",
  "name": "The results statement written by code",
  "state": "in_force",
- "statement": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change; its wording follows the statement's format version (FORMAT_VERSION, one named place), which the completing code records on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it) and which is shown with the statement. A change of wording is a new format version: a test pins the rendered text of every outcome kind for each version. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+ "statement": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change. Its wording is always the current format's (FORMAT_VERSION, one named place), never the format the run was completed under (owner, after the re-check): the statement ends with 'Statement format N.' and, when the run was completed under another format, 'This run was completed under format M.' (or that it was not recorded). The completing code records the format on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it). A change of wording is a new format: a test pins the current format's rendered text of every outcome kind and evidence level. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', whenever its figures exist, also for a coefficient without inference; compared only with the run's own informative-group count, no threshold, never with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only; when no coefficient could be fitted, no number of it is shown, only that it could not be fitted and how many records of the set could not be used. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
  "value": {
   "text": "code-written from stored facts; always present on a completed run",
   "unit": null
@@ -3642,11 +3871,12 @@ index 63a339b..06c0c71 100644
  "affects": "What every completed run says, independently of the Analyst.",
  "reason": "The second-model review (finding 4) found the Analyst's numerical guarantees stronger than its checks: numbers written in words pass. The owner put every numerical assertion in a statement written by code and labelled the Analyst's text as unverified narrative.",
  "evidence": [
-  "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+  "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
+  "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decisions, 2026-10-08."
  ],
  "decided": {
   "by": "owner (Khalid El-Awady)",
-  "date": "2026-10-07"
+  "date": "2026-10-08"
  },
  "expert_review": {
   "status": "not_reviewed",
@@ -3672,7 +3902,7 @@ index 63a339b..06c0c71 100644
    },
    {
     "ref": "python:hypocurate.pipeline.statement:FORMAT_VERSION",
-    "equals": 1
+    "equals": 2
    },
    {
     "ref": "python:hypocurate.pipeline.statement:render"
@@ -3682,6 +3912,9 @@ index 63a339b..06c0c71 100644
    },
    {
     "ref": "sql:ck_run_statement_format_version"
+   },
+   {
+    "ref": "python:hypocurate.pipeline.statement:format_lines"
    }
   ],
   "note": null
@@ -3692,6 +3925,12 @@ index 63a339b..06c0c71 100644
    "from": "2026-10-07",
    "to": "2026-10-07",
    "note": "Owner, 2026-10-07: rendered at display from stored results as a pure function; format version recorded on the run and shown; wording follows the version."
+  },
+  {
+   "value": "Every completed run has a short statement written by code from what code stored. It is rendered at display from the stored results (owner, 2026-10-07): a pure function of the stored rows, which never hold a record identity for it, so the same rows always give the same text whatever the record ids or their order (tested); its numbers come only from stored results and cannot change; its wording follows the statement's format version (FORMAT_VERSION, one named place), which the completing code records on the run (run.statement_format_version, set only in the update that completes the run and never changed; null for a run completed by code that did not set it) and which is shown with the statement. A change of wording is a new format version: a test pins the rendered text of every outcome kind for each version. It is present whatever happened to the Analyst and holds nothing a model wrote. It gives: the question as asked (the claim's words) and as tested (register 'question_as_tested'); the outcome and verdict wording (with the label, exploratory or 'data found; not enough to test'); the evidence level with its wording; when an estimate is shown, the model sentence, the pooled estimate with its unit, its standard error, the p-value phrase, the record and alloy counts and the four paper figures together, the direction note, the spread of the slope information ('an effective number of groups of E out of N informative groups; largest share S', always with an inference, no threshold, never compared with a minimum), the group definition, one sensitivity line (sets in agreement, range of estimates with units) and the calibration summary; a coefficient without inference is shown as the coefficient only. Below the minimums and when nothing was frozen, each count against its minimum and, per source, the records found and how many lack a grain size or a yield strength. A partly-sufficient original shows its candidate counts per part (before any eligibility decision), the narrower question's number and that a person must dispatch it. Main cautions, by fixed rules: with a verdict, always that the result is an association under the stated model in the sources searched and does not show cause; a calibration finding the method over-confident (which describes the method on data like these, not the error of this particular p-value); with a p-value only, a source or a sensitivity set not in agreement with the pooled result; an exploratory result.",
+   "from": "2026-10-07",
+   "to": "2026-10-08",
+   "note": "Second-model re-check (docs/reviews/step08b_recheck_chatgpt.md) and the owner's decisions: rendered in the current format always (the earlier claim that the wording follows the recorded format was unsupported); not-fitted branch; spread whenever its figures exist."
   }
  ],
  "notes": [],
@@ -3707,11 +3946,17 @@ index 63a339b..06c0c71 100644
   "tests/test_statement.py::test_the_order_of_the_stored_results_does_not_change_the_text",
   "tests/test_statement.py::test_the_facts_never_hold_the_stored_lists_of_record_ids",
   "tests/test_statement.py::test_each_completion_records_the_format_version_and_show_gives_it",
-  "tests/test_statement.py::test_the_wording_of_each_format_version_is_pinned",
   "tests/test_migrations_step8b.py::test_the_format_version_is_recorded_only_in_the_update_that_completes_the_run",
   "tests/test_migrations_step8b.py::test_a_run_completed_without_a_format_version_keeps_none",
   "tests/test_migrations_step8b.py::test_a_failed_run_never_gets_a_format_version",
-  "tests/test_statement.py::test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists"
+  "tests/test_statement.py::test_every_kind_renders_the_same_whatever_the_order_of_its_stored_lists",
+  "tests/test_statement.py::test_the_wording_of_the_current_format_is_pinned",
+  "tests/test_statement.py::test_the_fixture_covers_every_outcome_and_evidence_level_and_each_renders",
+  "tests/test_statement.py::test_a_run_whose_coefficient_cannot_be_fitted_shows_no_number_of_it",
+  "tests/test_statement.py::test_a_concentrated_coefficient_only_result_shows_its_spread",
+  "tests/test_statement.py::test_the_statement_is_always_in_the_current_format_and_says_when_the_run_was_under_another",
+  "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text",
+  "tests/test_cli_runs.py::test_a_run_whose_analyst_failed_prints_the_statement_and_says_the_text_is_unavailable"
  ]
 }
 ```
@@ -4312,7 +4557,7 @@ index 63a339b..06c0c71 100644
  "key": "analyst_text_checks",
  "name": "The Analyst's number and wording checks",
  "state": "in_force",
- "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement').",
+ "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement'). Every output of a completed run (`run`, `dispatch`, `show`) gives code's statement first and the Analyst's text only after it and only under that label (owner, after the re-check).",
  "value": {
   "text": "numbers as given; wording rules",
   "unit": null
@@ -4322,11 +4567,12 @@ index 63a339b..06c0c71 100644
  "reason": "Owner's Q8: the number check is written for reuse by the Commentator.",
  "evidence": [
   "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8.",
-  "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+  "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
+  "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decision, 2026-10-08."
  ],
  "decided": {
   "by": "owner (Khalid El-Awady)",
-  "date": "2026-10-07"
+  "date": "2026-10-08"
  },
  "expert_review": {
   "status": "not_reviewed",
@@ -4388,7 +4634,8 @@ index 63a339b..06c0c71 100644
   "tests/test_analyst.py::test_a_text_breaking_each_rule_is_refused",
   "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text",
   "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored",
-  "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure"
+  "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure",
+  "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text"
  ],
  "history": [
   {
@@ -4426,6 +4673,12 @@ index 63a339b..06c0c71 100644
    "from": "2026-10-07",
    "to": "2026-10-07",
    "note": "Step 8b fix round 1 (finding 4, decision A): the label and the limits of the checks stated; count_groups removed."
+  },
+  {
+   "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement').",
+   "from": "2026-10-07",
+   "to": "2026-10-08",
+   "note": "Re-check: `run` and `dispatch` printed the explanation without the label or statement."
   }
  ]
 }
@@ -4629,6 +4882,14 @@ f43      CAUGHT  1 failed in 8.63s
 f44      CAUGHT  1 failed in 8.51s
 f45      CAUGHT  1 failed in 8.75s
 control  clean  150 passed in 109.40s (0:01:49)
+--- fix round 2 (the re-check), run on 520b363 ---
+f46      CAUGHT  4 failed, 25 passed in 57.27s
+f47      CAUGHT  3 failed, 26 passed in 68.28s (0:01:08)
+f48      CAUGHT  2 failed, 27 passed in 60.85s (0:01:00)
+f49      CAUGHT  1 failed, 28 passed in 56.17s
+f50      CAUGHT  1 failed in 11.03s
+f51      CAUGHT  1 failed in 11.22s
+control  clean  158 passed in 106.52s (0:01:46)
 ```
 
 The specification and the runner:
@@ -4693,6 +4954,12 @@ MUTATIONS = [
  ("f43", "pipeline/agents/critic.py", "            critic_words = NOT_SENT", "            critic_words = \"not classified\"", ["test_critic.py::test_a_single_record_flag_is_never_sent_and_is_shown_as_not_classified"]),
  ("f44", "pipeline/agents/critic.py", "        blocks.append(\"\\n\".join([f\"=== Flag {f['id']}: judge this flag on its own ===\",", "        blocks.append(\"\\n\".join([f\"Flag {f['id']}\",", ["test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"]),
  ("f45", "pipeline/agents/settings.py", "Each flag stands alone: judge it only on the records it names, and never compare records \"\n    \"across flags. ", "", ["test_critic.py::test_each_flag_is_its_own_block_and_the_instruction_says_so"]),
+ ("f46", "pipeline/statement.py", "    elif pooled_not_fitted(analyses[0]):", "    elif False:", ["test_statement.py"]),
+ ("f47", "pipeline/statement.py", "        spread = _spread_line(c)  # whenever its figures exist, with or without inference (re-check)\n        if spread:", "        spread = _spread_line(c) if pooled.get(\"p_value\") is not None else None\n        if spread:", ["test_statement.py"]),
+ ("f48", "pipeline/statement.py", "    elif recorded != FORMAT_VERSION:", "    elif False:", ["test_statement.py"]),
+ ("f49", "pipeline/statement.py", "    if recorded is None:\n        lines.append", "    if False:\n        lines.append", ["test_statement.py"]),
+ ("f50", "cli_runs.py", "    shown = show(engine, run_id)\n    print(json.dumps({**shown,", "    shown = show(engine, run_id)\n    print(json.dumps({**shown, \"explanation\": report.get(\"explanation\"),", ["test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text"]),
+ ("f51", "cli_runs.py", "        return {\"label\": analyst.LABEL, \"text\": explained[\"report\"]}", "        return {\"text\": explained[\"report\"]}", ["test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text"]),
 ]
 ```
 ```python
@@ -4722,13 +4989,13 @@ for mid, f, old, new, tests in MUTATIONS + [("control", None, None, None, ["test
 The whole suite on this head (locally):
 
 ```
-1836 passed, 1 warning in 865.43s (0:14:25)
+1846 passed, 1 warning in 897.12s (0:14:57)
 ```
 
 The test image, rebuilt on this head:
 
 ```
-1836 passed, 1 warning in 914.18s (0:15:14)
+1846 passed, 1 warning in 941.59s (0:15:41)
 exit 0
 overlay          32G   23G  7.2G  77% /
 ```
@@ -4738,25 +5005,25 @@ The guard checks in the runtime image, rebuilt on this head:
 ```
 no tests/ or docs/ in the image
 ALL GUARD CHECKS PASSED IN THE RUNTIME IMAGE
-{'statistics_libraries': ['ok'], 'refusals_after_clean_import': [], 'agent_libraries': ['ok'], 'after': ['ok', 'refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code', 'refused: file guard: ctypes.dlopen is outside the approved inputs of pipeline code', 'refused: file guard: reading /tmp/tmpj_ppke31/.env is outside the approved inputs of pipeline code']}
+{'statistics_libraries': ['ok'], 'refusals_after_clean_import': [], 'agent_libraries': ['ok'], 'after': ['ok', 'refused: file guard: ctypes.call_function is outside the approved inputs of pipeline code', 'refused: file guard: ctypes.dlopen is outside the approved inputs of pipeline code', 'refused: file guard: reading /tmp/tmpvkc6ncn9/.env is outside the approved inputs of pipeline code']}
 ```
 
 Package files in the repository and both images:
 
 ```
-repo:    8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
-runtime: 8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
-test:    8bcac7c12fb114bc946139b5f22ab98ba1cc6d43fda781345ef7596a7134494f  -
+repo:    619fb77958ea426cd3c2d8c7c0cd8d753a48bcd7ea2f42bd90bca294fba0fdfa  -
+runtime: 619fb77958ea426cd3c2d8c7c0cd8d753a48bcd7ea2f42bd90bca294fba0fdfa  -
+test:    619fb77958ea426cd3c2d8c7c0cd8d753a48bcd7ea2f42bd90bca294fba0fdfa  -
 tests/ in the test image vs the repository: identical
 ```
 
 GitHub Actions on this branch:
 
 ```
-(Recorded before pushing the fix round's last commits; the run on the pushed head follows that push.)
+(Recorded before pushing fix round 2; the run on the pushed head follows that push.)
+completed	success	Step 8b fix round 1: fix packet with the Critic's scope change and th…	tests	step-08b-agents	push	37702175161	13m20s	2026-10-07T23:25:19Z
 completed	success	Step 8b fix round 1: fix packet with the live Critic call (section 8b)	tests	step-08b-agents	push	37695367342	11m2s	2026-10-07T22:18:51Z
 completed	success	Step 8b fix round 1: fix packet for the second-model re-check	tests	step-08b-agents	push	37693044063	10m51s	2026-10-07T21:58:02Z
-completed	success	Step 8b fix round 1: the statement is a pure function of stored rows,…	tests	step-08b-agents	push	37687740256	12m43s	2026-10-07T21:12:29Z
 ```
 ## 8. Reference comparison with `main`
 
@@ -4785,6 +5052,7 @@ byte-identical
 4797b3c17da38ae50d9954f38406c5639992ca1097e389faae363d6f5257345f  /home/codespace/hc-work/step08b/refdump/main.json
 4797b3c17da38ae50d9954f38406c5639992ca1097e389faae363d6f5257345f  /home/codespace/hc-work/step08b/fix/branch_fix.json
 byte-identical on 88b57b9 too
+byte-identical on 520b363 too
 ```
 
 The comparison script:
@@ -5649,7 +5917,51 @@ if __name__ == "__main__":
         os.environ.pop("ANTHROPIC_API_KEY", None)
     main(mode)
 ```
-## 9. The review being answered
+## 9. The reviews being answered
+
+### The re-check (round 2)
+
+# Step 8b — second-model re-check (ChatGPT), 2026-10-07
+
+Verdict: **not safe to merge** (the five original findings closed; four new issues in the results statement and its
+presentation). Text as received by the owner and passed to Claude Code.
+
+---
+
+The original control-flow findings are closed. The new results statement and its presentation still need fixes.
+
+1. Narrower question — fixed.
+   Dispatch and both orchestrator phases now derive the path from the question’s link. The database independently checks the stored narrower-plan content and source fingerprints. The default-argument bypass is closed. I found no legitimate path broken by these guards.
+2. Settings — fixed.
+   All four roles now obtain instruction, model, limits and options from the invocation’s recorded settings. The tests exercise dispatch under version A followed by current settings changing to B, including Critic batching.
+3. Accounting failures — fixed for the reviewed execution paths.
+   Both failures stop Critic batching and propagate through the Planner, Critic and both Analyst paths. No subsequent agent call or completion follows. The replacement tests actually raise flags and exercise these failures.
+4. Answer shapes — fixed for the identified defects.
+   Type checks precede vocabulary membership. The expanded tests cover nested wrong-type values across the roles. They provide substantially better coverage, though not proof against every possible malformed response.
+5. Results statement — partly fixed.
+   Rendering from stored results is reasonable, but pipeline/statement.py has three gaps:
+   - A completed “coefficient cannot be fitted” run crashes the renderer. With withheld=False and estimate=None, _analysis_lines() calls display.coefficient(None). I reproduced the resulting TypeError. Add an explicit not-fitted branch; the fixture claiming to cover every outcome omits this one.
+   - Concentration is not always shown. Its line requires a non-null p-value. Consequently, a coefficient-only result with inference_reason="evidence_concentrated" hides precisely the concentration figures explaining its failed validity check. Show them whenever available. Comparing effective groups with that run’s informative-group count, without another threshold, is the right descriptive presentation.
+   - The recorded format version does not select the renderer. build() always uses current code. After version 2 arrives, a version-1 run gets version-2 wording; retaining the old expected hash does not preserve the old renderer. Either dispatch rendering by recorded version or explicitly define this as rendering historical results with current wording. The present claim that wording follows the recorded version is unsupported.
+   Otherwise, the caution rules follow the stored flags and labels. The revised calibration caution appropriately distinguishes method calibration from the error of this particular p-value.
+6. Analyst label and separation — partly fixed.
+   The approved label honestly describes the narrative’s status, and show separates it from the statement.
+   But immediate run/dispatch output still prints RunReport.explanation without the label or fixed statement. cli_runs._run() prints the orchestration report directly. Users can therefore encounter unlabelled model prose first. Use the same labelled presentation for every completed-run output.
+7. Planner’s reading — fixed within decision B.
+   Defaulted parts are checked against the same defaults supplied to the Planner, ignoring list order. The remaining-risk label is fair: code checks consistency, not whether the claim actually states those values. Human confirmation remains explicitly deferred.
+8. Live Critic — fixed as a transport/integration check; reasoning remains unverified.
+   The supplied request inputs contain metadata and flag categories, not compared measurements. This is stored request-input evidence, not a complete captured wire request.
+   Comparing two separate single-record flags is incorrect reasoning, although it cannot change decisions. Yes: instruct it to assess each flag independently using only that flag’s records, and permit cannot_tell. This needs no architectural change.
+9. Changed tests — fixed; no lost protection identified.
+   The race test still checks the waiting-reader/checkpoint interaction and now covers ordinary and narrower runs. Replacing the vacuous Critic-failure test improves coverage. Missing tests are the not-fitted statement, concentration without inference, historical format rendering, and labelled immediate CLI output.
+
+New issues introduced: the statement’s missing not-fitted branch, incomplete concentration display, ineffective historical-format selection, and inconsistent CLI presentation described above.
+
+I reproduced the renderer failure locally. Database guards and integration results were reviewed from the packet; I did not rerun PostgreSQL, the full suite or live calls.
+
+Not safe to merge.
+
+### The first review (round 1)
 
 # Step 8b — second-model review (ChatGPT), 2026-10-07
 
@@ -6081,6 +6393,12 @@ Stops: F-Q2 results-statement wording and cautions list (before building A); liv
   rebuilt test image; runtime guard checks pass; 41 mutations caught (f21, f35 after added tests); reference runs
   byte-identical to main. Next: owner sends the fix packet to ChatGPT; live Critic call (≤ $0.25) needs the owner's go
   and first a pg_dump + 0006 down/up of the local dev DB (still at the earlier 0006).
+- **Owner, 2026-10-07 (the Critic, after live call 1):** only flags naming ≥ 2 records are sent (critic.MIN_RECORDS;
+  single-record flags shown "not classified: single-record flag"; no call without multi-record flags; register
+  critic_scope); new instruction (each flag stands alone; one block per flag); test-side answer key
+  tests/fixtures/controlled_duplicates/critic_key.csv (approved). Live call 2 on MPEA + controlled duplicates:
+  4 correct, 4 acceptable, 2 abstentions, 0 wrong; $0.017723; decisions identical. Committed 88b57b9; packet 4049d83.
+  Suite 1,836 local + image; 46 mutations caught. Next: ChatGPT re-check of step08b_fix_packet.md; do not merge.
 ```
 ### `~/hc-work/step08b/fix/fixpacket.py`
 
@@ -6111,7 +6429,7 @@ def read(path) -> str:
 
 
 head = sh("git", "rev-parse", "--short", "HEAD").strip()
-parts = [f"""# Build step 8b — fix packet, round 1
+parts = [f"""# Build step 8b — fix packet, rounds 1 and 2 (for a final confirmation)
 
 Date: 2026-10-07. Branch: `step-08b-agents`. Reviewed head: `{BASE}` (ChatGPT: "not safe to merge",
 `docs/reviews/step08b_review_chatgpt.md`). Head when generated: `{head}`. Generated from the files on disk by a script
@@ -6123,9 +6441,9 @@ the images and GitHub; 8 the reference comparison with `main`; 9 the review text
 
 """]
 summary = read("docs/reviews/step08b_summary.md")
-start = summary.index("## Fix round 1")
-end = summary.index("\n## ", start + 5)
-parts.append("## 1. The fix round\n\n" + summary[start:end].split("\n", 1)[1] + "\n")
+start = summary.index("## Fix round 2")
+end = summary.index("## What the checks cover")
+parts.append("## 1. The fix rounds (round 2 first: the re-check; then round 1)\n\n" + summary[start:end] + "\n")
 diff = sh("git", "diff", f"{BASE}..HEAD", "--", "hypocurate", ":(exclude)hypocurate/assumptions.json")
 parts.append(f"## 2. Code diff (`{BASE}..HEAD`, the package; the register is in section 5)\n\n" + fence(diff, "diff"))
 new_tests = sh("git", "diff", "--name-only", "--diff-filter=A", f"{BASE}..HEAD", "--", "tests").split()
@@ -6163,7 +6481,9 @@ parts.append("## 8c. The second live Critic call, after the owner's further chan
              + fence(json.dumps(json.loads(read("docs/reviews/step08b_live_record.json"))["fix_round_1_critic_check_2"],
                                 indent=1, ensure_ascii=False), "json")
              + "\nThe harness:\n\n" + fence(read(HOME / "fix/live_critic2.py"), "python"))
-parts.append("## 9. The review being answered\n\n" + read("docs/reviews/step08b_review_chatgpt.md") + "\n")
+parts.append("## 9. The reviews being answered\n\n### The re-check (round 2)\n\n"
+             + read("docs/reviews/step08b_recheck_chatgpt.md") + "\n### The first review (round 1)\n\n"
+             + read("docs/reviews/step08b_review_chatgpt.md") + "\n")
 parts.append("## 10. The plan file and the scripts\n\n### The step 8b plan file (with the fix round's answers)\n\n"
              + fence(read(PLAN), "markdown") + "### `~/hc-work/step08b/fix/fixpacket.py`\n\n"
              + fence(read(HOME / "fix/fixpacket.py"), "python"))
