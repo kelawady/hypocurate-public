@@ -268,6 +268,9 @@ class Hypothesis(Base):
     narrower_of_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("run.id", use_alter=True))
     created_at: Mapped[datetime] = created()
+    # Step 9a (0007): at most one narrower question per original run.
+    __table_args__ = (Index("uq_hypothesis_narrower_of_run_id", "narrower_of_run_id", unique=True,
+                            postgresql_where=sql("narrower_of_run_id IS NOT NULL")),)
 
 
 VERSION_STATUSES = ("draft", "submitted", "returned", "dispatched")
@@ -322,7 +325,8 @@ class HypothesisVersionSource(Base):
 
 # --- Runs ----------------------------------------------------------------------
 
-RUN_STATUSES = ("queued", "running", "completed", "failed")
+# Step 9a (0007): 'waiting' for a named person's confirmation of the question as tested, before the rules lock.
+RUN_STATUSES = ("queued", "running", "waiting", "completed", "failed")
 OUTCOMES = ("sufficient", "partly_sufficient", "insufficient")
 VERDICTS = ("supported", "not_supported")
 
@@ -346,6 +350,8 @@ class Run(Base):
     evidence_level: Mapped[int | None] = mapped_column(SmallInteger)
     # Step 8b fix round 1 (migration 0006): the results statement's format version, recorded when the run completes.
     statement_format_version: Mapped[int | None] = mapped_column(SmallInteger)
+    # Step 9a (0007; register 'spending_caps'): a lower ceiling than the per-run cap, stored at dispatch, never changed.
+    spending_ceiling: Mapped[Decimal | None] = mapped_column(Numeric)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     agent_mode: Mapped[str] = mapped_column(Text, server_default=sql("'four_roles'"))
     fixed_plan: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
@@ -370,6 +376,8 @@ class Run(Base):
         CheckConstraint("(evidence_level IS NOT NULL) = (status = 'completed')", name="evidence_level_iff_completed"),
         CheckConstraint("statement_format_version IS NULL OR statement_format_version >= 1",
                         name="statement_format_version"),
+        CheckConstraint("spending_ceiling IS NULL OR (spending_ceiling > 0 AND spending_ceiling < 'Infinity')",
+                        name="spending_ceiling"),
         CheckConstraint("status = 'queued' OR started_at IS NOT NULL OR status = 'failed'", name="started_time"),
         CheckConstraint("status <> 'completed' OR completed_at IS NOT NULL", name="completed_time"),
         CheckConstraint("(status = 'failed') = (failure_reason IS NOT NULL)", name="failed_has_reason"),
@@ -377,6 +385,30 @@ class Run(Base):
     )
 
 
+
+
+CONFIRMED_BY_MAX = 200
+
+
+class RulesConfirmation(Base):
+    """Step 9a (0007; owner, Q1, A1, A2): a named person's confirmation of the question as tested, for a run waiting
+    at its rules lock: the fingerprint of the plan that will be locked, the stages it rests on, the content shown
+    and the exact text shown. One per run, at the database's time. Append-only."""
+    __tablename__ = "rules_confirmation"
+    id: Mapped[int] = pk()
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id"), unique=True)
+    confirmed_by: Mapped[str] = mapped_column(Text)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    plan_fingerprint: Mapped[str] = mapped_column(Text)
+    planner_stage_result_id: Mapped[int | None] = mapped_column(ForeignKey("stage_result.id"))
+    narrowing_stage_result_id: Mapped[int | None] = mapped_column(ForeignKey("stage_result.id"))
+    content: Mapped[dict] = mapped_column(JSONB)
+    shown: Mapped[str] = mapped_column(Text)
+    __table_args__ = (
+        CheckConstraint(f"length(btrim(confirmed_by)) BETWEEN 1 AND {CONFIRMED_BY_MAX}", name="named"),
+        CheckConstraint(f"plan_fingerprint {SHA256}", name="fingerprint_format"),
+        CheckConstraint("jsonb_typeof(content) = 'object' AND length(shown) > 0", name="content_and_text"),
+    )
 
 
 class Plan(Base):
