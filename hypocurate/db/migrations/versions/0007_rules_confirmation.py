@@ -17,8 +17,11 @@ run:
 - 0001's `hc_run_update` is replaced, with its body unchanged except the list of status changes, which gains
   running -> waiting, waiting -> waiting, waiting -> running and waiting -> failed. It is the only earlier
   function replaced; the downgrade restores 0001's text exactly.
-- `spending_ceiling` (R5): a lower ceiling than the per-run cap, stored at dispatch, positive and finite,
-  never changed (it joins what a run records at dispatch).
+- `spending_ceiling` (R5): the run's effective ceiling, stored at dispatch, positive and finite, never changed (it
+  joins what a run records at dispatch). The owner's decision (fix round 1): every new run stores one; none given is
+  the per-run cap ($2, the column's default), so the column is never empty for a run dispatched after 0007.
+- a failure reason 'cancelled: ...' only from queued or waiting (fix round 1, finding 5); other failures from running
+  stay allowed.
 rules_confirmation (Q1, A1, A2), append-only, one per run:
 - only for a waiting run; by a named person (1-200 characters); at the database's time;
 - the fingerprint of the plan that will be locked, in the plan fingerprint format;
@@ -26,6 +29,9 @@ rules_confirmation (Q1, A1, A2), append-only, one per run:
   proceed); a narrower question's names neither;
 - the source versions the narrowing counts were taken on (the run's own decision, or the original's for a
   narrower question) are exactly the run's versions;
+- no source the run uses has a newer sealed version than the run's, and no source was registered after the run's
+  dispatch (fix round 1, finding 2). It takes one advisory lock that registering a source and sealing a version take
+  too, so a registration and a confirmation cannot slip past each other;
 - the content shown (a JSON object) and the exact text shown (not empty).
 plan:
 - a plan for a run with a Planner stage (any attempt) or of a narrower question is locked only with that run's
@@ -41,7 +47,8 @@ Planner runs and narrower questions are refused at the lock (deliberately: no pl
 locked without a person); its fixed-plan runs are unaffected. The owner checks the live database for runs in
 progress before the deploy (R7).
 
-Downgrade refuses while a run is waiting, a confirmation exists or a ceiling is set, then drops what 0007
+Downgrade refuses while a run is waiting, a confirmation exists or a ceiling below the run cap is set (a ceiling
+equal to the cap says no more than the cap), then drops what 0007
 added and restores 0001's function and status rule.
 
 Rules for every migration (README, "Database migrations"): it runs inside the one upgrade transaction; it
@@ -59,6 +66,14 @@ depends_on = None
 STATUSES_0001 = ('queued', 'running', 'completed', 'failed')
 STATUSES_0007 = ('queued', 'running', 'waiting', 'completed', 'failed')
 CONFIRMED_BY_MAX = 200
+# Fix round 1, finding 2: one transaction-scoped advisory lock taken by registering a source, by sealing a source
+# version and by a confirmation, so neither can slip past the other ("hcsrces"; tests check it equals
+# pipeline/confirmation.SOURCES_LOCK_KEY; single-bigint keys in use elsewhere: spend.MONTH_LOCK_KEY, migrate's lock).
+SOURCES_LOCK_KEY = 0x68637372636573
+# The owner's decision (2026-10-08): every new run stores its effective ceiling at dispatch; none given is the per-run
+# cap. The default (tests check it equals spend.RUN_CAP_USD) also covers a dispatch by the previous release's code.
+# It is set after the column is added, so runs dispatched before 0007 keep no ceiling.
+CEILING_DEFAULT = "2"
 
 TRANSITIONS_0001 = """(('queued', 'queued'), ('queued', 'running'), ('queued', 'failed'),
                                              ('running', 'running'), ('running', 'completed'), ('running', 'failed'))"""
@@ -135,6 +150,11 @@ FUNCTIONS = [
         IF NEW.spending_ceiling IS DISTINCT FROM OLD.spending_ceiling THEN
             PERFORM hc_reject('what a run records at dispatch cannot change');
         END IF;
+        -- Fix round 1, finding 5: a cancel (a failure reason 'cancelled: ...') only from queued or waiting.
+        IF NEW.status = 'failed' AND OLD.status NOT IN ('queued', 'waiting')
+           AND NEW.failure_reason LIKE 'cancelled:%' THEN
+            PERFORM hc_reject('a run is cancelled only while it is queued or waiting');
+        END IF;
         IF OLD.status = 'running' AND NEW.status = 'waiting' THEN
             IF NOT {NEEDS_CONFIRMATION.format(run='NEW.id')} THEN
                 PERFORM hc_reject('only a run whose plan comes from the Planner or a narrower question waits');
@@ -172,6 +192,19 @@ FUNCTIONS = [
     BEGIN
         IF hc_lock_run(NEW.run_id) IS DISTINCT FROM 'waiting' THEN
             PERFORM hc_reject('only a run waiting for confirmation is confirmed');
+        END IF;
+        -- Fix round 1, finding 2: the registered sources as they are now, after any registration or seal in progress
+        -- has committed (the shared lock; each statement below reads with a new snapshot).
+        PERFORM pg_advisory_xact_lock(29382745069413747);  -- SOURCES_LOCK_KEY
+        IF EXISTS (SELECT 1 FROM run_source rs JOIN source_version sv ON sv.source_id = rs.source_id
+                   WHERE rs.run_id = NEW.run_id AND rs.source_version_id IS NOT NULL AND sv.sealed_at IS NOT NULL
+                     AND sv.id > rs.source_version_id) THEN
+            PERFORM hc_reject('a confirmation is refused: a source the run uses has a newer sealed version than the '
+                              'run''s (the narrowing no longer describes the registered sources)');
+        END IF;
+        IF EXISTS (SELECT 1 FROM source s WHERE NOT EXISTS (SELECT 1 FROM run_source rs WHERE rs.run_id = NEW.run_id
+                                                             AND rs.source_id = s.id)) THEN
+            PERFORM hc_reject('a confirmation is refused: a source was registered after the run''s dispatch');
         END IF;
         NEW.confirmed_at := now();
         SELECT h.narrower_of_run_id INTO original
@@ -230,8 +263,16 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # Fix round 1, finding 2: registering a source and sealing a version take the confirmation's lock.
+    f"""
+    CREATE FUNCTION hc_sources_lock() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        PERFORM pg_advisory_xact_lock({SOURCES_LOCK_KEY});
+        RETURN NEW;
+    END $$
+    """,
 ]
-FUNCTION_NAMES = ["hc_run_waiting()", "hc_rules_confirmation_insert()", "hc_plan_rules_confirmed()"]
+FUNCTION_NAMES = ["hc_run_waiting()", "hc_rules_confirmation_insert()", "hc_plan_rules_confirmed()", "hc_sources_lock()"]
 
 APPEND_ONLY = ["rules_confirmation"]
 # (table, event, trigger, function). Each trigger's name sorts after the earlier triggers on its table.
@@ -239,13 +280,19 @@ CHECKED = [
     ("run", "UPDATE", "hc_run_update_waiting", "hc_run_waiting"),
     ("rules_confirmation", "INSERT", "hc_rules_confirmation_insert", "hc_rules_confirmation_insert"),
     ("plan", "INSERT", "hc_plan_insert_rules_confirmed", "hc_plan_rules_confirmed"),
+    ("source", "INSERT", "hc_source_insert_sources_lock", "hc_sources_lock"),
+    ("source_version", "INSERT", "hc_source_version_insert_sources_lock", "hc_sources_lock"),
+    ("source_version", "UPDATE", "hc_source_version_update_sources_lock", "hc_sources_lock"),
 ]
+# Fix round 1, finding 2: a version takes the lock only when it is (or becomes) sealed; a new source always.
+WHEN = {"hc_source_version_insert_sources_lock": "WHEN (NEW.sealed_at IS NOT NULL) ",
+        "hc_source_version_update_sources_lock": "WHEN (OLD.sealed_at IS NULL AND NEW.sealed_at IS NOT NULL) "}
 TRIGGERS = (
     [f"CREATE TRIGGER hc_{t}_append_only BEFORE UPDATE OR DELETE ON {t} "
      f"FOR EACH ROW EXECUTE FUNCTION hc_append_only()" for t in APPEND_ONLY]
     + [f"CREATE TRIGGER hc_{t}_no_truncate BEFORE TRUNCATE ON {t} "
        f"FOR EACH STATEMENT EXECUTE FUNCTION hc_append_only()" for t in APPEND_ONLY]
-    + [f"CREATE TRIGGER {t} BEFORE {event} ON {table} FOR EACH ROW EXECUTE FUNCTION {f}()"
+    + [f"CREATE TRIGGER {t} BEFORE {event} ON {table} FOR EACH ROW {WHEN.get(t, '')}EXECUTE FUNCTION {f}()"
        for table, event, t, f in CHECKED]
 )
 
@@ -259,6 +306,7 @@ def upgrade() -> None:
     op.create_check_constraint(op.f('ck_run_status'), 'run', _in('status', STATUSES_0007))
     op.execute(RUN_UPDATE_0007)
     op.add_column('run', sa.Column('spending_ceiling', sa.Numeric(), nullable=True))
+    op.alter_column('run', 'spending_ceiling', server_default=sa.text(CEILING_DEFAULT))
     op.create_check_constraint(op.f('ck_run_spending_ceiling'), 'run',
                                "spending_ceiling IS NULL OR (spending_ceiling > 0 AND spending_ceiling < 'Infinity')")
     op.create_table(
@@ -293,12 +341,12 @@ def upgrade() -> None:
         op.execute(t)
 
 
-IN_USE = """
+IN_USE = f"""
     DO $$
     BEGIN
-        IF EXISTS (SELECT 1 FROM run WHERE status = 'waiting' OR spending_ceiling IS NOT NULL)
+        IF EXISTS (SELECT 1 FROM run WHERE status = 'waiting' OR spending_ceiling < {CEILING_DEFAULT})
            OR EXISTS (SELECT 1 FROM rules_confirmation) THEN
-            RAISE EXCEPTION 'hypocurate: migration 0007 is in use (a waiting run, a confirmation or a spending ceiling); not downgraded';
+            RAISE EXCEPTION 'hypocurate: migration 0007 is in use (a waiting run, a confirmation or a spending ceiling below the run cap); not downgraded';
         END IF;
     END $$
 """

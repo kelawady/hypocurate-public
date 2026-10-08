@@ -124,7 +124,8 @@ def test_a_failed_run_is_dispatched_again_as_a_new_run_with_what_the_first_recor
                                 "FROM run WHERE id = :r"), dict(r=again)).one()
     assert (row.status, row.hypothesis_version_id, row.fixed_plan, row.experiment_flags) == (
         "queued", q.version_id, True, {})
-    assert row.spending_ceiling is None  # a ceiling is given with each dispatch, never inherited
+    # A ceiling is given with each dispatch, never inherited; none given stores the run cap (owner, 2026-10-08).
+    assert row.spending_ceiling == spend.RUN_CAP_USD
 
 
 @pytest.mark.parametrize("status", ["queued", "running", "waiting"])
@@ -270,3 +271,9 @@ def test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test(e
 def test_a_constructed_source_not_chosen_does_not_refuse_dispatch(engine):
     rid = queries.dispatch(engine, submitted(engine).version_id)
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "queued"
+
+
+def test_a_dispatch_without_a_ceiling_stores_the_run_cap(engine):
+    """The owner's decision (2026-10-08): every run stores its effective ceiling at dispatch; none given is the cap."""
+    rid = queries.dispatch(engine, submitted(engine).version_id)
+    assert one(engine, "SELECT spending_ceiling FROM run WHERE id = :r", r=rid) == spend.RUN_CAP_USD

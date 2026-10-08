@@ -35,6 +35,9 @@ from hypocurate.pipeline import reading
 from hypocurate.pipeline.queries import LOCK_TIMEOUT_MS, QueryRefused
 
 WAITING_FOR = "confirmation of the question as tested by a named person"
+# Fix round 1, finding 2: the lock that registering a source, sealing a version and a confirmation share (0007 holds
+# the same number); `confirm` takes it before its own check, so the check and the insert see the same sources.
+SOURCES_LOCK_KEY = 0x68637372636573
 SOURCES_CHANGED = ("sources_changed", "{changes} since this run's narrowing; cancel this run and dispatch the query "
                                       "again")
 PART_WORDS = {"alloy_class": "alloy class", "phase_class": "phase class", "test_type": "test type",
@@ -271,6 +274,7 @@ def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | Non
         if conn.execute(text("SELECT EXISTS (SELECT 1 FROM rules_confirmation WHERE run_id = :r)"),
                         dict(r=run_id)).scalar_one():
             raise QueryRefused("already_confirmed", f"run {run_id} is already confirmed")
+        conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=SOURCES_LOCK_KEY))
         changes = source_changes(conn, run_id)
         if changes:
             raise QueryRefused(SOURCES_CHANGED[0], SOURCES_CHANGED[1].format(changes="; ".join(changes)))

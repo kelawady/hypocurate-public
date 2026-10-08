@@ -182,6 +182,12 @@ def dispatch(engine: Engine, version_id: int, *, fixed_plan: bool = False, const
     return run_transaction(engine, body)
 
 
+def spend_cap() -> Decimal:
+    """The per-run cap, stored as the ceiling when none is given (owner, 2026-10-08: every run stores its ceiling)."""
+    from hypocurate.pipeline.agents.spend import RUN_CAP_USD
+    return RUN_CAP_USD
+
+
 def _new_run(conn: Connection, version_id: int, fixed_plan: bool, constructed_test_data: bool,
              ceiling: Decimal | None, setting_ids: Mapping[str, int]) -> int:
     """The queued run of a dispatched version, with everything a run records at dispatch."""
@@ -191,7 +197,8 @@ def _new_run(conn: Connection, version_id: int, fixed_plan: bool, constructed_te
     flags = json.dumps({CONSTRUCTED_MARK: True} if constructed_test_data else {})
     rid = conn.execute(text("INSERT INTO run (hypothesis_version_id, fixed_plan, experiment_flags, spending_ceiling) "
                             "VALUES (:v, :f, CAST(:x AS jsonb), :c) RETURNING id"),
-                       dict(v=version_id, f=fixed_plan or narrower, x=flags, c=ceiling)).scalar_one()
+                       dict(v=version_id, f=fixed_plan or narrower, x=flags,
+                            c=ceiling if ceiling is not None else spend_cap())).scalar_one()
     chosen = set(conn.execute(text("SELECT source_id FROM hypothesis_version_source WHERE hypothesis_version_id = :v"),
                               dict(v=version_id)).scalars())
     for sid, key, latest in conn.execute(text(

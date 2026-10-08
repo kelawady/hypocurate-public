@@ -419,3 +419,196 @@ def test_a_run_has_at_most_one_narrower_question(w):
     w.hypothesis(narrower_of=original)
     with pytest.raises(IntegrityError, match="uq_hypothesis_narrower_of_run_id"):
         w.hypothesis(narrower_of=original)
+
+
+# --- fix round 1, finding 2: source freshness enforced by the database, serialised with registration -------------
+
+def seal_newer(w, key="mpea"):
+    v = w.new_version(key, label="newer")
+    w.add_file(v, f"{key}-newer.csv", f"{key},newer\n".encode())
+    w.seal(v)
+    return v
+
+
+@pytest.mark.parametrize("path", ["planner", "narrower"])
+@pytest.mark.parametrize("change", ["newer_version", "new_source"])
+def test_a_confirmation_is_refused_after_a_source_change_since_the_narrowing(w, path, change):
+    """Direct SQL (the review's case): the run's own versions still match the narrowing, but the registered sources
+    no longer do."""
+    if path == "planner":
+        rid, planner, narrowed = planner_run(w)
+    else:
+        rid, planner, narrowed = narrower_run(w), None, None
+    wait(w, rid)
+    if change == "newer_version":
+        seal_newer(w)
+        match = "a source the run uses has a newer sealed version"
+    else:
+        w.add_source("later_source")
+        match = "a source was registered after the run's dispatch"
+    with pytest.raises(IntegrityError, match=match):
+        confirm(w, rid, planner, narrowed)
+    assert w.val("SELECT count(*) FROM rules_confirmation") == 0
+
+
+def test_a_newer_version_of_a_source_the_run_does_not_use_is_no_change(w):
+    """Guard (owner's wording: 'any source the run uses'): a newer version of a source the query did not choose does
+    not refuse the confirmation; the code's check (`confirmation.source_changes`) looks at chosen sources too."""
+    rid = w.running(sources=("mpea",))
+    planner = w.stage(rid, "planner", "planner")
+    w.run_sql("UPDATE stage_result SET status = 'done', finished_at = now(), output = '{}' WHERE id = :s", s=planner)
+    narrowed = w.narrowing(rid, result="proceed", output={"sources": w.counted(("mpea",))})
+    wait(w, rid)
+    seal_newer(w, "tamu_fcc")
+    confirm(w, rid, planner, narrowed)
+    assert w.val("SELECT count(*) FROM rules_confirmation WHERE run_id = :r", r=rid) == 1
+
+
+def named_engine(db, name):
+    from sqlalchemy import create_engine
+    return create_engine(db.url, connect_args={"application_name": name, "options": "-c TimeZone=UTC"})
+
+
+def _blocked(engine, application_name):
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT count(*) FROM pg_stat_activity WHERE application_name = :a AND "
+                                 "wait_event_type = 'Lock'"), dict(a=application_name)).scalar() == 1
+
+
+def test_a_seal_in_progress_holds_back_a_confirmation_which_then_refuses(db):
+    """Two connections: a registration seals a newer version and has not committed; the confirmation waits for it
+    (the shared lock), then sees the new version and is refused."""
+    import threading
+    import time
+    w = World(db)
+    rid, planner, narrowed = planner_run(w)
+    wait(w, rid)
+    sealer = named_engine(db, "hc-test-sealer")
+    confirmer = named_engine(db, "hc-test-confirmer")
+    seal_conn = sealer.connect()
+    tx = seal_conn.begin()
+    v = seal_conn.execute(text("INSERT INTO source_version (source_id, label, obtained_on) VALUES (:s, 'newer', "
+                               "'2026-10-08') RETURNING id"), dict(s=w.source["mpea"])).scalar()
+    from model_builder import sha, version_fingerprint
+    data = b"mpea,newer\n"
+    seal_conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, 'n.csv', :h, :c)"),
+                      dict(v=v, h=sha(data), c=data))
+    fp = version_fingerprint({"n.csv": data}, *w.settings(w.version["mpea"]))
+    seal_conn.execute(text("UPDATE source_version SET sealed_at = now(), fingerprint = :f WHERE id = :v"), dict(f=fp, v=v))
+    outcome = {}
+
+    def confirm_it():
+        try:
+            with confirmer.begin() as conn:
+                conn.execute(text("INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, "
+                                  "planner_stage_result_id, narrowing_stage_result_id, content, shown) VALUES (:r, 'Ada', "
+                                  ":fp, :p, :n, '{}', 'x')"), dict(r=rid, fp=FP, p=planner, n=narrowed))
+            outcome["result"] = "confirmed"
+        except IntegrityError as error:
+            outcome["result"] = str(error.orig)
+
+    t = threading.Thread(target=confirm_it)
+    t.start()
+    deadline = time.time() + 10
+    while not _blocked(db, "hc-test-confirmer") and time.time() < deadline:
+        time.sleep(0.05)
+    assert _blocked(db, "hc-test-confirmer"), "the confirmation did not wait for the seal"
+    tx.commit()
+    t.join(10)
+    seal_conn.close()
+    sealer.dispose()
+    confirmer.dispose()
+    assert "a source the run uses has a newer sealed version" in outcome["result"]
+
+
+def test_a_confirmation_in_progress_holds_back_a_seal(db):
+    """The other order: the confirmation holds the shared lock until it commits; the seal waits, then succeeds."""
+    import threading
+    import time
+    w = World(db)
+    rid, planner, narrowed = planner_run(w)
+    wait(w, rid)
+    confirmer = named_engine(db, "hc-test-confirmer")
+    sealer = named_engine(db, "hc-test-sealer")
+    conf_conn = confirmer.connect()
+    tx = conf_conn.begin()
+    conf_conn.execute(text("INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, planner_stage_result_id, "
+                           "narrowing_stage_result_id, content, shown) VALUES (:r, 'Ada', :fp, :p, :n, '{}', 'x')"),
+                      dict(r=rid, fp=FP, p=planner, n=narrowed))
+    v = w.new_version("mpea", label="newer")
+    w.add_file(v, "mpea-newer.csv", b"mpea,newer\n")
+    fp = w.fingerprint(v)
+    done = {}
+
+    def seal_it():
+        with sealer.begin() as conn:
+            conn.execute(text("UPDATE source_version SET sealed_at = now(), fingerprint = :f WHERE id = :v"),
+                         dict(f=fp, v=v))
+        done["sealed"] = True
+
+    t = threading.Thread(target=seal_it)
+    t.start()
+    deadline = time.time() + 10
+    while not _blocked(db, "hc-test-sealer") and time.time() < deadline:
+        time.sleep(0.05)
+    assert _blocked(db, "hc-test-sealer"), "the seal did not wait for the confirmation"
+    tx.commit()
+    t.join(10)
+    conf_conn.close()
+    confirmer.dispose()
+    sealer.dispose()
+    assert done.get("sealed") and w.val("SELECT count(*) FROM rules_confirmation WHERE run_id = :r", r=rid) == 1
+
+
+def test_the_shared_lock_key_is_the_codes(engine):
+    from hypocurate.pipeline import confirmation
+    assert m0007().SOURCES_LOCK_KEY == confirmation.SOURCES_LOCK_KEY
+    insert = next(f for f in m0007().FUNCTIONS if "hc_rules_confirmation_insert()" in f)
+    lock = next(f for f in m0007().FUNCTIONS if "hc_sources_lock()" in f)
+    assert f"pg_advisory_xact_lock({confirmation.SOURCES_LOCK_KEY})" in insert
+    assert f"pg_advisory_xact_lock({confirmation.SOURCES_LOCK_KEY})" in lock
+
+
+# --- fix round 1, finding 5: a "cancelled" failure only from queued or waiting ----------------------------------
+
+@pytest.mark.parametrize("start, reason, allowed", [
+    ("running", "cancelled: cancelled by Ada before it started", False),
+    ("running", "cancelled:x", False),
+    ("running", "worker stopped", True),
+    ("queued", "cancelled: cancelled by Ada before it started", True),
+    ("waiting", "cancelled: cancelled by Ada while waiting for confirmation of the question as tested", True),
+])
+def test_a_cancelled_failure_is_allowed_only_from_queued_or_waiting(w, start, reason, allowed):
+    """Direct SQL (the review's case): ordinary failures from running stay allowed."""
+    if start == "queued":
+        rid = w.run()
+    elif start == "running":
+        rid = w.running()
+    else:
+        rid, _, _ = planner_run(w)
+        wait(w, rid)
+    sql = "UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r"
+    if allowed:
+        w.run_sql(sql, f=reason, r=rid)
+        assert w.val("SELECT status FROM run WHERE id = :r", r=rid) == "failed"
+    else:
+        w.rejected(sql, "a run is cancelled only while it is queued or waiting", f=reason, r=rid)
+
+
+# --- the owner's decision (2026-10-08): every new run stores its effective ceiling ---------------------------------
+
+def test_a_run_dispatched_without_a_ceiling_stores_the_run_cap(w):
+    """The database default (so a dispatch by the previous release's code stores it too) equals the code's cap."""
+    from hypocurate.pipeline.agents import spend
+    rid = w.run()
+    assert w.val("SELECT spending_ceiling FROM run WHERE id = :r", r=rid) == spend.RUN_CAP_USD
+    assert m0007().CEILING_DEFAULT == str(spend.RUN_CAP_USD)
+
+
+def test_the_downgrade_is_not_blocked_by_ceilings_equal_to_the_run_cap(db):
+    """Only a ceiling below the run cap would be lost; one equal to it says no more than the cap."""
+    w = World(db)
+    w.run()
+    migrate.downgrade(db, "0006")
+    assert migrate.current_revision(db) == "0006"
+    migrate.upgrade(db)

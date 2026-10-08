@@ -351,7 +351,8 @@ class Run(Base):
     # Step 8b fix round 1 (migration 0006): the results statement's format version, recorded when the run completes.
     statement_format_version: Mapped[int | None] = mapped_column(SmallInteger)
     # Step 9a (0007; register 'spending_caps'): a lower ceiling than the per-run cap, stored at dispatch, never changed.
-    spending_ceiling: Mapped[Decimal | None] = mapped_column(Numeric)
+    # Fix round 1 (owner, 2026-10-08): none given is the per-run cap, the column's default (runs before 0007: empty).
+    spending_ceiling: Mapped[Decimal | None] = mapped_column(Numeric, server_default=sql("2"))
     failure_reason: Mapped[str | None] = mapped_column(Text)
     agent_mode: Mapped[str] = mapped_column(Text, server_default=sql("'four_roles'"))
     fixed_plan: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))

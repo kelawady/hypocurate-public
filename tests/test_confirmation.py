@@ -349,3 +349,42 @@ def test_code_locks_only_the_confirmed_plan_and_says_so(engine, stub):
     report = proceed(engine, rid, stub)
     assert report.status == "failed" and report.failure == "refused: a checkpoint or write refused (not_confirmed)"
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
+
+
+def test_confirm_waits_for_a_seal_in_progress_and_gives_its_own_reason(engine, stub):
+    """Fix round 1, finding 2: `confirm` takes the shared lock before its own source check, so a registration that
+    commits during the confirmation is seen by the check (code's reason, not the database's backstop)."""
+    import threading
+    import time
+    from sqlalchemy import create_engine
+    from model_builder import sha, version_fingerprint
+    rid = waiting(engine, stub)
+    sealer = create_engine(engine.url, connect_args={"options": "-c TimeZone=UTC"})
+    conn = sealer.connect()
+    tx = conn.begin()
+    src = conn.execute(text("SELECT id, source_type, data_kind, grouping_unit FROM source WHERE key = 'mpea'")).one()
+    v = conn.execute(text("INSERT INTO source_version (source_id, label, obtained_on) VALUES (:s, 'newer', '2026-10-08') "
+                          "RETURNING id"), dict(s=src.id)).scalar()
+    data = b"newer,data\n"
+    conn.execute(text("INSERT INTO source_file (source_version_id, path, sha256, content) VALUES (:v, 'x.csv', :h, :c)"),
+                 dict(v=v, h=sha(data), c=data))
+    conn.execute(text("UPDATE source_version SET sealed_at = now(), fingerprint = :f WHERE id = :v"),
+                 dict(f=version_fingerprint({"x.csv": data}, src.source_type, src.data_kind, src.grouping_unit), v=v))
+    outcome = {}
+
+    def confirm_it():
+        try:
+            confirmation.confirm(engine, rid, by="Ada Reviewer")
+            outcome["code"] = "confirmed"
+        except queries.QueryRefused as refused:
+            outcome["code"] = refused.code
+
+    t = threading.Thread(target=confirm_it)
+    t.start()
+    time.sleep(1.0)
+    assert t.is_alive()  # waiting for the seal's lock
+    tx.commit()
+    t.join(10)
+    conn.close()
+    sealer.dispose()
+    assert outcome["code"] == "sources_changed"
