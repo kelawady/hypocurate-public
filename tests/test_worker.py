@@ -234,3 +234,18 @@ def test_the_web_service_never_claims_or_runs_a_pipeline():
             assert not any(x in (module, *names) for x in ("queue", "worker", "orchestrator", "recovery",
                                                            "hypocurate.pipeline.queue", "hypocurate.worker",
                                                            "hypocurate.pipeline.orchestrator")), path
+
+
+def test_a_child_whose_run_is_held_by_another_child_is_busy_and_writes_nothing(engine, stub):
+    """The work lock: a second child of the same run (an orphan still at work) returns `busy` at once."""
+    from hypocurate.pipeline import orchestrator, queries
+    stub.respond(to.responder())
+    rid = to.dispatched(engine, fixed_plan=True)
+    queries.start(engine, rid)
+    with engine.connect() as holder:
+        assert holder.execute(text("SELECT pg_try_advisory_lock(:k)"), dict(k=queue.work_key(rid))).scalar()
+        assert orchestrator.work_guarded({"run_id": rid}) == {"busy": True}
+        holder.execute(text("SELECT pg_advisory_unlock_all()"))
+        holder.commit()
+    assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r", r=rid) == 0
+    assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
