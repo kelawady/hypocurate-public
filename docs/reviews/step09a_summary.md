@@ -1,5 +1,19 @@
 # Build step 9a — summary for review
 
+> **Update, 2026-10-08: second review and the owner's merge decision.** ChatGPT's re-check (`step09a_recheck_chatgpt.md`) closed the original five findings. One gap remained: a direct SQL insert giving an explicit NULL `spending_ceiling` still stored a new run without a ceiling (the column's default covers only a column left out).
+>
+> **The owner's decision, verbatim:** "once the fix below is in with its test and the GitHub run on the new head is green, merge without another review round."
+>
+> **The fix:**
+> - An insert trigger on `run` (`hc_run_ceiling`, trigger `hc_run_insert_spending_ceiling`, in 0007, amended in place before the merge) replaces an explicit NULL with the per-run cap. Runs before 0007 keep theirs.
+> - **Test:** `tests/test_migrations_step9a.py::test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap`. It failed on the code before the fix (it stored NULL).
+> - Mutation r01 (the replacement removed) is caught; the control run is clean.
+> - `test_each_new_trigger_fires_after_the_earlier_ones_on_its_table` now compares per table and event, the order PostgreSQL uses, with a run-INSERT case added. It had compared across events.
+> - **Register:** `spending_caps` gains one sentence and the test (143 entries; one changed).
+> - The images were not rebuilt locally for this change; the GitHub run builds and tests both on the new head.
+>
+> **CI job limit (owner's decision):** `timeout-minutes` raised from 20 to 40 in `.github/workflows/tests.yml`, as its own commit (`4784d15`). Nothing else in the workflow changed. Run 37817464789 was cancelled at the 20-minute limit, after its suite step took 18 min 47 s. The suite step's time is reported from now on (owner).
+
 > **Update, 2026-10-08: fix round 1.** ChatGPT's review (`step09a_review_chatgpt.md`) found the step **not safe to merge**, with five findings. The owner accepted all five and decided that every run stores its effective ceiling at dispatch. Each fix came with tests that failed on the code before it.
 >
 > | Finding | What was wrong | What changed |

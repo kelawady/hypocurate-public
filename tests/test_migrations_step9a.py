@@ -99,12 +99,14 @@ def test_the_only_earlier_function_replaced_is_hc_run_update_and_only_its_status
     assert "waiting" in m0007().TRANSITIONS_0007 and "waiting" not in m0007().TRANSITIONS_0001
 
 
-@pytest.mark.parametrize("table, earlier", [("run", "hc_run_update"), ("plan", "hc_plan_insert")])
-def test_each_new_trigger_fires_after_the_earlier_ones_on_its_table(table, earlier):
-    """PostgreSQL fires BEFORE triggers in name order: the earlier rules' messages keep their priority."""
+@pytest.mark.parametrize("table, event, earlier", [("run", "UPDATE", "hc_run_update"), ("run", "INSERT", "hc_run_insert"),
+                                                   ("plan", "INSERT", "hc_plan_insert")])
+def test_each_new_trigger_fires_after_the_earlier_ones_on_its_table(table, event, earlier):
+    """PostgreSQL fires BEFORE triggers of one table and event in name order: the earlier rules' messages keep their
+    priority. (Second review round: compared per table and event; the run INSERT case added with its new trigger.)"""
     m6 = SCRIPTS.get_revision("0006").module
-    before = [earlier] + [t for tb, _, t, _ in m6.CHECKED if tb == table and t.startswith(earlier)]
-    names = [t for tb, _, t, _ in m0007().CHECKED if tb == table]
+    before = [earlier] + [t for tb, ev, t, _ in m6.CHECKED if tb == table and ev == event and t.startswith(earlier)]
+    names = [t for tb, ev, t, _ in m0007().CHECKED if tb == table and ev == event]
     assert names and all(n > b for n in names for b in before)
 
 
@@ -612,3 +614,14 @@ def test_the_downgrade_is_not_blocked_by_ceilings_equal_to_the_run_cap(db):
     migrate.downgrade(db, "0006")
     assert migrate.current_revision(db) == "0006"
     migrate.upgrade(db)
+
+
+def test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap(w):
+    """Second review (2026-10-08): the default applies only when the column is left out; an insert trigger replaces
+    an explicit NULL with the per-run cap, so no new run is stored without a ceiling, even by direct SQL."""
+    from hypocurate.pipeline.agents import spend
+    vid = w.dispatched()
+    rid = w.val("INSERT INTO run (hypothesis_version_id, spending_ceiling) VALUES (:v, NULL) RETURNING id", v=vid)
+    assert w.val("SELECT spending_ceiling FROM run WHERE id = :r", r=rid) == spend.RUN_CAP_USD
+    w.rejected("UPDATE run SET spending_ceiling = NULL WHERE id = :r", "what a run records at dispatch cannot change",
+               r=rid)

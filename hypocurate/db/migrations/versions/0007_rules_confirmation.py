@@ -19,7 +19,9 @@ run:
   function replaced; the downgrade restores 0001's text exactly.
 - `spending_ceiling` (R5): the run's effective ceiling, stored at dispatch, positive and finite, never changed (it
   joins what a run records at dispatch). The owner's decision (fix round 1): every new run stores one; none given is
-  the per-run cap ($2, the column's default), so the column is never empty for a run dispatched after 0007.
+  the per-run cap ($2, the column's default), so the column is never empty for a run dispatched after 0007. An insert
+  trigger replaces an explicit NULL with the cap too (second review, owner 2026-10-08), so even direct SQL cannot
+  store a new run without a ceiling.
 - a failure reason 'cancelled: ...' only from queued or waiting (fix round 1, finding 5); other failures from running
   stay allowed.
 rules_confirmation (Q1, A1, A2), append-only, one per run:
@@ -263,6 +265,17 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    # Second review (owner, 2026-10-08): no new run is stored without a ceiling, even by direct SQL; an explicit NULL
+    # becomes the per-run cap (the column's default covers only a column left out). Runs before 0007 keep theirs.
+    f"""
+    CREATE FUNCTION hc_run_ceiling() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NEW.spending_ceiling IS NULL THEN
+            NEW.spending_ceiling := {CEILING_DEFAULT};
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
     # Fix round 1, finding 2: registering a source and sealing a version take the confirmation's lock.
     f"""
     CREATE FUNCTION hc_sources_lock() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -272,7 +285,8 @@ FUNCTIONS = [
     END $$
     """,
 ]
-FUNCTION_NAMES = ["hc_run_waiting()", "hc_rules_confirmation_insert()", "hc_plan_rules_confirmed()", "hc_sources_lock()"]
+FUNCTION_NAMES = ["hc_run_waiting()", "hc_rules_confirmation_insert()", "hc_plan_rules_confirmed()", "hc_run_ceiling()",
+                  "hc_sources_lock()"]
 
 APPEND_ONLY = ["rules_confirmation"]
 # (table, event, trigger, function). Each trigger's name sorts after the earlier triggers on its table.
@@ -280,6 +294,7 @@ CHECKED = [
     ("run", "UPDATE", "hc_run_update_waiting", "hc_run_waiting"),
     ("rules_confirmation", "INSERT", "hc_rules_confirmation_insert", "hc_rules_confirmation_insert"),
     ("plan", "INSERT", "hc_plan_insert_rules_confirmed", "hc_plan_rules_confirmed"),
+    ("run", "INSERT", "hc_run_insert_spending_ceiling", "hc_run_ceiling"),
     ("source", "INSERT", "hc_source_insert_sources_lock", "hc_sources_lock"),
     ("source_version", "INSERT", "hc_source_version_insert_sources_lock", "hc_sources_lock"),
     ("source_version", "UPDATE", "hc_source_version_update_sources_lock", "hc_sources_lock"),

@@ -3423,7 +3423,7 @@
     "key": "spending_caps",
     "name": "Spending caps",
     "state": "in_force",
-    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
+    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default, and an insert trigger that replaces an explicit NULL, so even direct SQL cannot store a new run without one; runs before 0007 keep none). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
     "value": {
       "text": "$2 per run; $2 per curation; $50 per month",
       "unit": "USD"
@@ -3467,6 +3467,9 @@
         },
         {
           "ref": "sql:CEILING_DEFAULT"
+        },
+        {
+          "ref": "sql:hc_run_ceiling"
         }
       ],
       "note": null
@@ -3505,7 +3508,8 @@
       "tests/test_queries_step9a.py::test_the_lower_of_the_stored_and_the_given_ceiling_holds",
       "tests/test_queries_step9a.py::test_a_dispatch_without_a_ceiling_stores_the_run_cap",
       "tests/test_migrations_step9a.py::test_a_run_dispatched_without_a_ceiling_stores_the_run_cap",
-      "tests/test_cli_step9a.py::test_confirm_takes_no_ceiling"
+      "tests/test_cli_step9a.py::test_confirm_takes_no_ceiling",
+      "tests/test_migrations_step9a.py::test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap"
     ]
   },
   {
