@@ -45,7 +45,10 @@ def command(args, engine: Engine) -> int:
             print(json.dumps({"run": args.run, "status": "failed", "failure": reason}, ensure_ascii=False))
             return 0
         if args.command == "confirm":  # fix round 1, finding 4: no ceiling here; it is stored at dispatch
-            return _confirm(engine, args.run, args.by)
+            return _confirm(engine, args.run, args.by, getattr(args, "queue", False))
+        if args.command == "queue":
+            print(json.dumps(queue_rows(engine), indent=2, ensure_ascii=False, default=str))
+            return 0
         ceiling = _ceiling(args.ceiling)
         if args.command == "run":
             q = queries.create(engine, args.claim, [k.strip() for k in args.sources.split(",") if k.strip()],
@@ -76,6 +79,8 @@ def command(args, engine: Engine) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(json.dumps({"query": number, "run": run_id, "status": "dispatched"}), flush=True)
+    if getattr(args, "queue", False):  # step 9b (R1): returns at once; a worker takes the run up
+        return 0
     return _run(engine, run_id, ceiling)
 
 
@@ -92,24 +97,78 @@ def _ceiling(value: str | None) -> Decimal | None:
 
 
 def _run(engine: Engine, run_id: int, ceiling: Decimal | None) -> int:
-    """Two guarded calls: up to the rules lock (or the wait for a person, step 9a), then on to the end. Between them
-    the original claim and the question as tested are printed (owner's decision B), before the run goes on."""
-    from hypocurate.access.guarded import GuardedRunError, run_guarded
-    payload = {"run_id": run_id, "ceiling": str(ceiling) if ceiling is not None else None}
-    try:
-        report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "prepare"},
-                             timeout=3600, audit=(engine, run_id))
-        print(json.dumps({"claim": _claim(engine, run_id), "question_as_tested": report.get("question_as_tested")},
-                         ensure_ascii=False), flush=True)
-        if report.get("ready"):
-            rest = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", {**payload, "phase": "proceed"},
-                               timeout=3600, audit=(engine, run_id))
-            report = {**rest, "stages": report["stages"] + rest["stages"]}
-    except GuardedRunError:
-        print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
+    """Step 9b (R1): the run is worked inline through the same claim and worker code as the background worker: up to
+    the rules lock (or the wait for a person, step 9a), then on to the end, in two guarded children under one claim.
+    Between them the original claim and the question as tested are printed (owner's decision B), before the run goes
+    on. The ceiling is the one stored at dispatch (step 9a)."""
+    return _work_inline(engine, run_id, ("prepare", "proceed"), print_reading=True)
+
+
+def _work_inline(engine: Engine, run_id: int, phases: tuple, print_reading: bool) -> int:
+    from hypocurate import worker
+    from hypocurate.pipeline import queue
+    claim = queue.claim(engine, run_id, worker.worker_name())
+    if claim is None:  # a worker holds it: wait until it ends, waits or stops, then show what is stored
+        _wait_for(engine, run_id)
+        return _print_shown(engine, run_id, {"stages": None, "failure": None})
+    reports = {}
+
+    def on_phase(phase: str, report: dict) -> None:
+        reports[phase] = report
+        if phase == "prepare" and print_reading:
+            print(json.dumps({"claim": _claim(engine, run_id), "question_as_tested": report.get("question_as_tested")},
+                             ensure_ascii=False), flush=True)
+
+    out = worker.work(engine, claim, phases=phases, on_phase=on_phase)
+    if out["release"] in ("child_failed", "child_stuck", "shutdown"):
+        print(f"error: run {run_id} did not finish in the guarded process ({out['why']}; see the process log); "
               f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
         return 1
-    return _print_shown(engine, run_id, report)
+    stages = [s for p in phases if p in reports for s in (reports[p].get("stages") or [])]
+    last = reports.get(phases[-1]) or reports.get(phases[0]) or {}
+    return _print_shown(engine, run_id, {"stages": stages, "failure": last.get("failure")})
+
+
+def _wait_for(engine: Engine, run_id: int, poll: float = 2.0) -> None:
+    """Until the run ends, waits for a person, or has no open claim (a worker let it go)."""
+    import time
+    from hypocurate.pipeline import queue
+    deadline = time.monotonic() + queue.RUN_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        with engine.connect() as conn:
+            status, held = conn.execute(text(
+                "SELECT r.status, EXISTS (SELECT 1 FROM run_claim c WHERE c.run_id = r.id AND c.released_at IS NULL) "
+                "FROM run r WHERE r.id = :r"), dict(r=run_id)).one()
+        if status in ("completed", "failed", "waiting") or not held:
+            return
+        time.sleep(poll)
+
+
+def queue_rows(engine: Engine) -> list[dict]:
+    """`queue` (R2): every queued, waiting or running run, with its stage, its claim's worker and heartbeat age, the
+    time since the run last wrote anything (A4), and how often it was taken up again."""
+    from hypocurate.access.stage import actual_stage
+    from hypocurate.pipeline import confirmation, queue
+    out = []
+    with engine.connect() as conn:
+        runs = conn.execute(text(
+            "SELECT r.id, r.status, h.number, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS "
+            "confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
+            "(SELECT count(*) FROM run_claim x WHERE x.run_id = r.id AND x.released_at IS NOT NULL AND "
+            "x.release_reason NOT IN ('waiting', 'finished')) AS recoveries FROM run r "
+            "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
+            "LEFT JOIN run_claim c ON c.run_id = r.id AND c.released_at IS NULL "
+            "WHERE r.status IN ('queued', 'waiting', 'running') ORDER BY r.queued_at, r.id")).all()
+        for r in runs:
+            out.append({
+                "run": r.id, "query": r.number, "status": r.status, "stage": actual_stage(conn, r.id, r.status),
+                "waiting_for": (confirmation.WAITING_FOR if r.status == "waiting" and not r.confirmed else
+                                "a worker (confirmed)" if r.status == "waiting" else None),
+                "worker": r.worker, "heartbeat_age_seconds": round(float(r.heartbeat_age), 1)
+                if r.heartbeat_age is not None else None,
+                "seconds_since_last_write": round(queue.seconds_since_last_write(conn, r.id), 1),
+                "recoveries": int(r.recoveries)})
+    return out
 
 
 def _print_shown(engine: Engine, run_id: int, report: dict) -> int:
@@ -125,10 +184,9 @@ def _print_shown(engine: Engine, run_id: int, report: dict) -> int:
     return 0 if shown["status"] in ("completed", "failed", "waiting") else 1
 
 
-def _confirm(engine: Engine, run_id: int, by: str) -> int:
+def _confirm(engine: Engine, run_id: int, by: str, to_queue: bool = False) -> int:
     """Prints what is confirmed, records one named person's confirmation of exactly that, then runs the rest. The run's
     ceiling is the one stored at dispatch (fix round 1, finding 4: a lower one given here would be lost on a restart)."""
-    from hypocurate.access.guarded import GuardedRunError, run_guarded
     from hypocurate.pipeline import confirmation
     with engine.connect() as conn:
         status = conn.execute(text("SELECT status FROM run WHERE id = :r"), dict(r=run_id)).scalar_one_or_none()
@@ -139,15 +197,10 @@ def _confirm(engine: Engine, run_id: int, by: str) -> int:
     content, words = confirmation.show(engine, run_id)
     print(words, flush=True)
     confirmation.confirm(engine, run_id, by, shown=content)
-    payload = {"run_id": run_id, "ceiling": None, "phase": "proceed"}
-    try:
-        report = run_guarded("hypocurate.pipeline.orchestrator:run_guarded", payload, timeout=3600,
-                             audit=(engine, run_id))
-    except GuardedRunError:
-        print(f"error: run {run_id} did not finish in the guarded process (see the process log); "
-              f"`hypocurate show {run_id}` shows what was stored", file=sys.stderr)
-        return 1
-    return _print_shown(engine, run_id, report)
+    if to_queue:  # step 9b (R2): confirmed; a worker takes it up
+        print(json.dumps({"run": run_id, "status": "waiting", "confirmed": True, "queued": True}), flush=True)
+        return 0
+    return _work_inline(engine, run_id, ("proceed",), print_reading=False)
 
 
 def _claim(engine: Engine, run_id: int) -> str:
