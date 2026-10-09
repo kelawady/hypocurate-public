@@ -1,6 +1,34 @@
 # Build step 9b — summary for review
 
-Date: 2026-10-08/09. Branch: `step-09b-worker` (from `main` at `c7458d0`). **Status: fix round 1 done; pushed for a second review; not merged.** ChatGPT's review of `368a426` ("not safe to merge", seven findings) is in `docs/reviews/step09b_review_chatgpt.md`. The owner accepted all seven; the fixes are in "Fix round 1" below, and the evidence is in `docs/reviews/step09b_fix_packet.md`.
+Date: 2026-10-08/09. Branch: `step-09b-worker` (from `main` at `c7458d0`). **Status: fix round 2 done; merged by the owner's decision without another review round** (see "Fix round 2 and the merge decision" below). ChatGPT's first review of `368a426` ("not safe to merge", seven findings) is in `docs/reviews/step09b_review_chatgpt.md`; the fixes are in "Fix round 1", with the evidence in `docs/reviews/step09b_fix_packet.md`. Its second review of `60f5150` (two findings) is in `docs/reviews/step09b_recheck_chatgpt.md`.
+
+## Fix round 2 and the merge decision (2026-10-09)
+
+**The owner's decision:** "Fix both, then merge step 9b without another review round. This is my decision, provided each fix has a test that fails on the current code, mutation checks catch both, the reference runs stay byte-identical, and the GitHub run on the new head is green."
+
+1. **Finishing a model call checks ownership** (finding 1, `4490eea`).
+   - **The check:** `spend.finish` takes the run's lock, then checks the claim like every other write of the child (`writes.owner_holds`: the claim row FOR KEY SHARE and the work lock held), before it updates the call.
+   - **What a stale child gets:** `ClaimLost`, which the agent records as `recording_failed`. The call stays started, and recovery closes it as interrupted, counted at its maximum.
+   - **Register:** `queue_and_claims` is corrected so its "every write" includes the call record.
+   - **Tests:** 2 failed on `60f5150` (the work lock gone; a takeover). An owner still finishes its call (a guard).
+2. **A committed refusal decides a failed stage too** (finding 2, `4aaa3b5`).
+   - **The case:** a refusal whose transaction committed, but whose acknowledgement never reached Python, leaves the stage failed with `reservation_failed`, a recoverable code.
+   - **The lookup:** `recovery.refusal_code` finds the committed refusal of the stage's requests.
+   - **The decision:** the orchestrator decides the Planner's and the Critic's stored stages by it (`orchestrator._evidenced`), so the run fails `spending_refused`. Nothing is repeated or sent, and the Analyst is never asked after the Critic.
+   - **The stage's history** is kept as it was; nothing rewrites it.
+   - **The Analyst's check is unchanged:** a refusal there completes the run either way, and the owner's instruction named the Planner and the Critic.
+   - **Register:** `recovery_policy` is corrected.
+   - **Tests:** 6 failed on `60f5150`. The refusal transaction commits, then a connection error is raised before it returns, at the Planner and at the Critic: the run's ceiling, the monthly cap, and the cap after a month change. Without the fix, the Planner was repeated (and sent, once the month had changed), or the Critic's failure was excused and the Analyst asked.
+
+**Mutation checks:** 5 faults in the two fixes (g1–g5), all caught; the control run is clean (113 tests).
+
+**Reference runs:** byte-identical to `main` (six dumps, 0 differing leaves).
+
+**What the merge changes outside the package:** only `render.yaml`, the worker's plan (`0.5c-512mb` to `1c-2g`) and the header comment; no Dockerfile, Compose, workflow or dependency file. 0008 is the only migration.
+
+**Codespace:** the owner approved one `sudo iptables-legacy -I DOCKER-USER -j ACCEPT` rule to restore the Compose network after the Codespace restart. The test-image suite runs on the Compose network again.
+
+**Suite:** 2,155 tests, all passing on `4aaa3b5`. Locally: 35 min 41 s. In the test image rebuilt on this head, on the Compose network again: 36 min 43 s. The package is identical in the repository and both images, and the guard checks pass in the runtime image. **The GitHub run's suite step** for this round: GH_FIX2.
 
 ## Fix round 1 (2026-10-09)
 
@@ -40,7 +68,7 @@ Each finding has tests that failed on the reviewed code (`368a426`) and pass now
 
 **Reference runs:** byte-identical to `main` (six dumps, 0 differing leaves).
 
-**Suite:** 2,146 tests (2,123 at the review), all passing on `a9251d2`: locally in 36 min 25 s, and in the test image rebuilt on this head in 41 min 42 s. **The GitHub run's suite step** on the reviewed head was 30 min 9 s (run 37874572593). This round's figure comes with the push and is added in the next commit, as before.
+**Suite:** 2,146 tests (2,123 at the review), all passing on `a9251d2`: locally in 36 min 25 s, and in the test image rebuilt on this head in 41 min 42 s. **The GitHub run's suite step** on the reviewed head was 30 min 9 s (run 37874572593). Fix round 1's branch run (`60f5150`, run 37966373325): **23 min 19 s**.
 
 PRD Section 15, step 9 ("Worker and queue"), second part: job claiming, the heartbeat, recovery (resume or fail), and criterion 14.4. Part 9a (merged and live, schema 0007) built the wait at the rules lock and the confirmation, cancel, dispatch again, the stored ceiling, and an orchestrator that takes every step from stored rows. The approved plan, with every owner decision binding 9b, is in `docs/reviews/step09b_plan.md` (on the branch, so it survives a session's memory being compacted).
 
