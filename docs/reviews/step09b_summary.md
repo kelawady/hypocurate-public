@@ -1,6 +1,46 @@
 # Build step 9b — summary for review
 
-Date: 2026-10-08/09. Branch: `step-09b-worker` (from `main` at `c7458d0`). **Status: built; pushed for the second-model review; not merged** (the owner's end point for 9b: "End with the summary and review packet, push, and stop. Do not merge.").
+Date: 2026-10-08/09. Branch: `step-09b-worker` (from `main` at `c7458d0`). **Status: fix round 1 done; pushed for a second review; not merged.** ChatGPT's review of `368a426` ("not safe to merge", seven findings) is in `docs/reviews/step09b_review_chatgpt.md`. The owner accepted all seven; the fixes are in "Fix round 1" below, and the evidence is in `docs/reviews/step09b_fix_packet.md`.
+
+## Fix round 1 (2026-10-09)
+
+Each finding has tests that failed on the reviewed code (`368a426`) and pass now: **22 new tests failed there**, run with every process (pytest, the worker and its child) on the reviewed code. The one new test that passes there is the "mid-Critic, batch 1 of 2" kill case, which is new coverage, not a fix.
+
+1. **A spending refusal survives a failed save.**
+   - **The refusal's record:** its audit row is written in the transaction that decides the refusal (the owner's first design choice). A refusal is reported only once its record is committed.
+   - **Recovery** keeps a committed refusal as the stage's cause before it would close the stage as `interrupted`, so the Planner and the Critic still stop the run.
+   - **Tested** at the Planner (the run's ceiling, the monthly cap, and the cap after a month change) and at the Critic (the cap, and after a month change); after a Critic refusal the Analyst is never asked.
+2. **Never release a claim with a live child.**
+   - The worker stops and reaps its child in `finally` on every exit path, before the release.
+   - A SIGTERM not obeyed within 10 s (`guarded.STOP_GRACE_SECONDS`) becomes SIGKILL.
+   - Shutdown is checked before each child starts.
+3. **Losing the lock means stopping.**
+   - **The worker:** each heartbeat checks that it touched the open claim and that the lease session still holds its lock; otherwise the worker kills the child and gives the run up (`lost`).
+   - **The child:** it is bound to its claim. `writes.write` and `spend.reserve` refuse `claim_lost` unless the claim is open and the child's work lock is held (the owner's second design choice).
+   - **The owner's addition:** `writes.write` makes this check inside the write's own transaction, with the claim row locked. A takeover that closes the claim waits for the write, or the write sees the claim closed. For model requests the check comes before the reservation.
+   - **One difference from the owner's example:** the row lock is **FOR KEY SHARE**, not FOR SHARE. 0008's update trigger locks the claim row FOR UPDATE before it closes a claim, so closing still waits for a write in progress. Under FOR SHARE, the worker's own heartbeat (a plain update) would wait behind a long write and wrongly report the claim lost.
+   - **Tested** by terminating the lock-holding database sessions while the processes stay alive, by a two-connection race of a takeover against a child's write, and with a stale owner's reservation.
+   - **The race test's check (changed with the owner's approval, `a9251d2`):** it first compared two Python clock readings taken after each thread's database call. That failed once in the whole suite by scheduling chance. It now checks the wait itself: the takeover's close takes at least 1 s, and the claim's release time on the database's clock is after the end of the write's work. It passes 5 of 5, and fails on both lock faults (f09, f10).
+4. **The recovery exception applies only to old stages.** A lost Critic request is excused only for Critic stages stored before the recovery. A Critic run after recovery that fails to record its call stops the run.
+5. **Monitoring cannot block the watchdog.** The run's last write is sampled on a thread of its own, each query limited to 5 s (`queue.MONITOR_TIMEOUT_MS`). The main thread never queries while it watches: the 1,800 s limit, the shutdown check and the lost-claim check run on its own clock and events. Tested with a blocked monitoring query.
+6. **The stall allowance starts fresh:** 900 s from the attempt's launch, reset on progress; downtime before the attempt does not count.
+7. **Recovery count:** `run_claim.recovery` (0008 amended in place, still unmerged) marks a claim that took up a running run. More than 3 such claims fail the run. Tested with real claim histories: three recoveries go on, the fourth is refused.
+
+**Also (the owner's list):**
+- **The two-batch kill case:** "mid-Critic, batch 1 of 2", with 110 two-record flags.
+- **Worker sessions:** `client_connection_check_interval = 1s` plus TCP keepalives, on both sides (`db.engine.WORKER_SESSION`; register `worker_session_settings`).
+- **`render.yaml`'s header comment** now says the worker is on 1c-2g (its own commit). The full `render.yaml` diff is in the fix packet.
+- **The register** is corrected where it promised more than the code: `queue_and_claims`, `stuck_child_limits`, `recovery_policy`, `spending_caps`.
+
+**Mutation checks:**
+- **The faults:** all 19 faults of this round and all 27 earlier 9b faults are caught.
+- **f14 and f15:** their tests first detected these faults only by hanging. Two monitoring tests were changed to fail within their limits instead (`641af6b`, no assertion changed).
+- **The harness:** it now labels runs with errors or no result as ERROR or HUNG, never as caught. One run with the database down was discarded.
+- **The test image's suite** ran with `docker run --network host` against the same database. Since the Codespace restart, the Compose network drops traffic between containers (a legacy firewall table). The image and the tests are the same, and the hashes are in the packet.
+
+**Reference runs:** byte-identical to `main` (six dumps, 0 differing leaves).
+
+**Suite:** 2,146 tests (2,123 at the review), all passing on `a9251d2`: locally in 36 min 25 s, and in the test image rebuilt on this head in 41 min 42 s. **The GitHub run's suite step** on the reviewed head was 30 min 9 s (run 37874572593). This round's figure comes with the push and is added in the next commit, as before.
 
 PRD Section 15, step 9 ("Worker and queue"), second part: job claiming, the heartbeat, recovery (resume or fail), and criterion 14.4. Part 9a (merged and live, schema 0007) built the wait at the rules lock and the confirmation, cancel, dispatch again, the stored ceiling, and an orchestrator that takes every step from stored rows. The approved plan, with every owner decision binding 9b, is in `docs/reviews/step09b_plan.md` (on the branch, so it survives a session's memory being compacted).
 
@@ -15,7 +55,7 @@ PRD Section 15, step 9 ("Worker and queue"), second part: job claiming, the hear
 6. **`render.yaml`: the worker's plan, from `0.5c-512mb` to `1c-2g`** (the owner's decision of 2026-10-08, after the memory measurement below), as its own commit, with `test_skeleton`'s plan pin following. Nothing else in `render.yaml` changed. **For the reviewer:**
    - **When it applies:** a `render.yaml` change takes effect at the push to `main`, through Render's Blueprint sync, *before* the checks pass, and redeploys the code already running (CLAUDE.md, item 10). A plan change depends on no new code, so it is safe to apply then; the new code follows once the run is green.
    - **Cost:** from about $7 to about $25 a month for the worker, from the merge on.
-   - **A stale comment:** the file's header comment ("Plans: the cheapest paid plans") is no longer accurate for the worker. It was left as it is because the owner said nothing else in `render.yaml` changes; the owner may want it reworded in a later commit.
+   - **The header comment** ("Plans: the cheapest paid plans") now names the worker's exception (fix round 1, the owner's instruction of 2026-10-09; its own commit).
 
 **Not changed:** `.github/workflows/`, the Dockerfile, Compose, the dependency locks. 0001 to 0007 are untouched. The access layer's allow-lists are unchanged.
 
@@ -123,7 +163,7 @@ It writes no plan, record, set, freeze or confirmation; a source scan checks thi
 
 **The whole suite:** 2,123 tests (up from 2,021 on `main`), all passing locally (32 min 49 s) and in the test image rebuilt on this head (43 min 21 s). The suite grew by about 10 minutes, mostly the worker and kill-matrix tests, which run real worker processes.
 
-**The GitHub run's suite step:** the last known figure is 19 min 8 s (the 9a main run, 37838900076; the job limit is 40 minutes since `4784d15`). The 9b branch run's figure does not exist yet when this summary is committed (the run starts with the push). It is reported with the push and added here in the first commit of the review round. From the local ratio it is expected at about 28 minutes, still under the limit (the owner asked for this figure in every summary).
+**The GitHub run's suite step:** **30 min 9 s** on the reviewed head `368a426` (run 37874572593; the job limit is 40 minutes since `4784d15`). The fix round's figure is in "Fix round 1" above.
 
 **Mutation checks** (scratch copy, `PYTHONPATH`, one fault at a time; packet, section 7). There were 27 faults:
 - **0008:** d01–d04;
@@ -185,7 +225,7 @@ It also covers a restart with a run waiting at the lock, and criterion 14.4 bull
 
 ## Register
 
-**147 entries.**
+**148 entries** (fix round 1: `worker_session_settings` new; `queue_and_claims`, `stuck_child_limits`, `recovery_policy` and `spending_caps` corrected).
 - **New:** `queue_and_claims`, `stuck_child_limits`, `recovery_policy`, `guarded_child_dies_with_parent`.
 - **Reworded** (earlier wording in history): `worker_poll_interval` (it now names `queue.SWEEP_SECONDS`, still 60), `resumable_run`, `run_order_and_failures`.
 - The wording is Claude Code's draft, for the owner's review.
@@ -203,7 +243,7 @@ A test checks that the web code imports none of the queue, the worker, the orche
 ## Open items
 
 1. **Memory:** decided; the worker moves to 1c-2g with the merge (item 6).
-2. **`client_connection_check_interval`:** proposed (above).
+2. **`client_connection_check_interval`:** done in fix round 1 (1 s on worker sessions, plus TCP keepalives).
 3. **The Render worker** has no `ANTHROPIC_API_KEY`; the owner adds it when live runs on Render are wanted.
 4. **The worker on Render runs the code of the next merge.** `render.yaml` already starts `python -m hypocurate.worker`, now the real worker.
 
