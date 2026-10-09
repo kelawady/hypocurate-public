@@ -64,6 +64,17 @@ def finish_narrower_questions(engine: Engine) -> list[str]:
     return done
 
 
+def refusal_code(conn: Connection, stage_result_id: int) -> str | None:
+    """Step 9b fix round 2 (owner, 2026-10-09): the code of a committed spending refusal of the stage's requests (its
+    audit row, committed with the decision), or None. A stage stored as a lost request whose refusal was committed
+    (the acknowledgement lost on the way back) is that refusal: a spending stop, never a recoverable failure."""
+    return conn.execute(text(
+        "SELECT al.detail->>'code' FROM agent_invocation i JOIN audit_log al ON al.function = 'model_call' AND NOT "
+        "al.allowed AND al.detail->>'invocation' = i.id::text AND al.detail->>'code' = ANY(:codes) "
+        "WHERE i.stage_result_id = :s ORDER BY al.id DESC LIMIT 1"),
+        dict(s=stage_result_id, codes=list(SPENDING_CODES))).scalar_one_or_none()
+
+
 def recover(engine: Engine, run_id: int) -> dict:
     """Recovery's bookkeeping for a running run that a worker has just claimed; what was found."""
 

@@ -49,7 +49,7 @@ from typing import Any, Mapping
 from sqlalchemy import Connection, Engine, text
 
 from hypocurate.pipeline import analysis, checkpoints, checks, completion, confirmation, extract, inclusion
-from hypocurate.pipeline import narrowing, queries, reading
+from hypocurate.pipeline import narrowing, queries, reading, recovery
 from hypocurate.pipeline.agents import analyst, critic, planner
 from hypocurate.pipeline.agents.lm import RUN_STOPS
 from hypocurate.pipeline.recovery import PLANNER_REPEATS, RECOVERABLE
@@ -127,6 +127,17 @@ def _stage_code(row) -> str:
     return (row.output or {}).get("code") if isinstance(row.output, dict) else None
 
 
+def _evidenced(engine: Engine, row) -> str:
+    """The stage's code for deciding what follows (step 9b fix round 2, owner, 2026-10-09): a lost request
+    (`recovery.RECOVERABLE`) whose spending refusal was committed is that refusal's code; the stored stage is kept as
+    it is."""
+    code = _stage_code(row)
+    if code in RECOVERABLE:
+        with engine.connect() as conn:
+            return recovery.refusal_code(conn, row.id) or code
+    return code
+
+
 def _agent_stop(engine: Engine, run_id: int, stage: str, recovered: bool = False) -> str | None:
     """Fix round 1, finding 1: the code of a stop the role's latest stored stage holds (a recording or reservation
     failure, or a stage left running), whatever its status; None when there is no such stop. Step 9b: after recovery
@@ -154,7 +165,7 @@ def _critic_failures(engine: Engine, run_id: int) -> list:
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, status, output FROM stage_result WHERE run_id = :r AND stage = 'critic' "
                                  "AND status NOT IN ('done', 'skipped') ORDER BY id"), dict(r=run_id)).all()
-    return [_stage_code(r) for r in rows]
+    return [_evidenced(engine, r) for r in rows]
 
 
 def _exists(engine: Engine, sql: str, run_id: int) -> bool:
@@ -220,7 +231,7 @@ def prepare(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
             return _done(engine, report)
         stored = _stored(engine, run_id, "planner", done=False)
         if stored is not None and stored.status != "done":  # fix round 1, finding 1: an earlier stop stays a stop
-            code = _stage_code(stored)
+            code = _evidenced(engine, stored)
             if recovered and code in RECOVERABLE:  # step 9b (owner, Q3): the Planner is repeated once
                 if _lost(engine, run_id, "planner") > PLANNER_REPEATS:
                     return _failed(engine, report, "interrupted")

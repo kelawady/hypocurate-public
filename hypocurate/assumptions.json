@@ -8572,7 +8572,7 @@
     "key": "recovery_policy",
     "name": "Recovery when a run is taken up again",
     "state": "in_force",
-    "statement": "When a worker claims a run that is already running, recovery first closes every open model call as 'interrupted' (counted at its reserved maximum under every cap) and every running stage as failed: with the spending refusal recorded against its request when there is one (the refusal and its record are one transaction), else 'interrupted' (fix round 1, finding 1). Recovery attempts are counted explicitly (the claims that took up a running run; the first run is not one): the fourth fails the run ('attempts_exhausted'; finding 7). It writes no plan, record, set, freeze or confirmation. The run then goes on by the normal path, by cause (owner, 2026-10-08): an interruption, a recording failure or any database failure while saving a call, of a stage stored before the recovery, follows the per-role rule (a failure of an agent run after the recovery stops the run normally; finding 4) (the Planner is repeated once, a second loss fails the run; the Critic's remaining batches are skipped; after the Analyst the run completes with 'explanation unavailable'); a spending refusal stays a stop, exactly as in 9a (the Planner and the Critic fail the run, the Analyst completes it; no further request, never a later paid stage). The worker also finishes a narrower question that a stop left uncreated (never a second).",
+    "statement": "When a worker claims a run that is already running, recovery first closes every open model call as 'interrupted' (counted at its reserved maximum under every cap) and every running stage as failed: with the spending refusal recorded against its request when there is one (the refusal and its record are one transaction), else 'interrupted' (fix round 1, finding 1). A Planner or Critic stage already stored as failed with a lost request ('reservation_failed', 'recording_failed' or 'interrupted') whose spending refusal was committed (the acknowledgement lost on the way back) is decided as that refusal: a spending stop; the stored stage is kept as it was, never rewritten (fix round 2, finding 2). Recovery attempts are counted explicitly (the claims that took up a running run; the first run is not one): the fourth fails the run ('attempts_exhausted'; finding 7). It writes no plan, record, set, freeze or confirmation. The run then goes on by the normal path, by cause (owner, 2026-10-08): an interruption, a recording failure or any database failure while saving a call, of a stage stored before the recovery, follows the per-role rule (a failure of an agent run after the recovery stops the run normally; finding 4) (the Planner is repeated once, a second loss fails the run; the Critic's remaining batches are skipped; after the Analyst the run completes with 'explanation unavailable'); a spending refusal stays a stop, exactly as in 9a (the Planner and the Critic fail the run, the Analyst completes it; no further request, never a later paid stage). The worker also finishes a narrower question that a stop left uncreated (never a second).",
     "value": {
       "text": "3 recoveries; the Planner repeated once",
       "unit": null
@@ -8581,7 +8581,8 @@
     "affects": "Every run left open by a crash, a stop or a deploy (PRD 8, 14.4).",
     "reason": "Owner's answer Q3 (step 9 plan) and the owner's answer on recovery, split by cause (2026-10-08).",
     "evidence": [
-      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08).",
+      "Fix round 2 (owner, 2026-10-09): ChatGPT's second review, finding 2 (docs/reviews/step09b_recheck_chatgpt.md)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -8640,7 +8641,9 @@
       "tests/test_recovery_spending.py::test_a_critic_refusal_whose_stage_was_not_saved_stays_a_stop_and_the_analyst_is_never_asked",
       "tests/test_worker_fix1.py::test_a_critic_run_after_recovery_that_fails_to_record_its_call_stops_the_run",
       "tests/test_worker_fix1.py::test_three_recoveries_are_allowed_and_the_fourth_is_refused_with_real_claim_histories",
-      "tests/test_kill_matrix.py::test_a_worker_killed_during_the_critics_first_of_two_batches_skips_the_second"
+      "tests/test_kill_matrix.py::test_a_worker_killed_during_the_critics_first_of_two_batches_skips_the_second",
+      "tests/test_worker_fix2.py::test_a_planner_refusal_whose_answer_was_lost_stays_a_stop_after_recovery",
+      "tests/test_worker_fix2.py::test_a_critic_refusal_whose_answer_was_lost_stays_a_stop_and_the_analyst_is_never_asked"
     ],
     "history": [],
     "notes": []
