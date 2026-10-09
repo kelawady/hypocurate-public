@@ -125,3 +125,27 @@ the heartbeat exception to the locking protocol.
 ## Progress
 
 - [x] b0 (dumps from main c7458d0 in ~/hc-work/step09b/refdump/main, SHA256SUMS; a second dump identical; the confirmation time in labels normalised)  - [x] b1 (9c999ed)  - [x] b2+b3 (6a5f965; adapter change undone in the next commit)  - [x] b4  - [x] b5 (823236a; memory at the 512 MiB limit -> owner: worker to 1c-2g, ae8aa00; statistics 8.7 s at 10,000)  - [x] b6 (register a5ba354; 27/27 mutations caught after three tests; images hashed; reference byte-identical; suites, packet, push: in progress)
+
+## Fix round 1 (owner, 2026-10-09): all seven findings accepted
+
+Owner's instructions (verbatim essentials): fix each finding on `step-09b-worker` with a failing test first, then a
+fix packet for a second review; do not merge. (1) Record a spending refusal durably against its request (the existing
+refusal audit row) and have recovery check it before classifying a running stage as interrupted; test a real refusal
+followed by a failed save, at the Planner and the Critic, including across a month change. (2) Never release a claim
+with a live child: stop and reap it on every exit path; escalate a SIGTERM that doesn't work to SIGKILL; check for
+shutdown before starting a child. (3) Losing the lock means stopping: worker and child fail closed; bind the child's
+work to the current claim so a stale owner is refused before any further request or write; test by terminating the
+lock-holding sessions while the processes stay alive. **Owner's addition:** do the claim check inside the same
+transaction as the write and lock the claim row there (`SELECT … FOR SHARE`), so a takeover that closes the claim
+waits for that write or the write sees the closed claim and refuses; a two-connection test of a takeover racing a
+child write; for model requests the check before the reservation is enough. (4) The recovery exception applies only
+to old stages. (5) Monitoring cannot block the watchdog: time-limit monitoring queries; the 1,800 s kill and the
+shutdown check independent of them; test with a blocked monitoring connection. (6) The stall allowance starts at the
+current attempt's launch and resets on progress. (7) Count recovery attempts explicitly, excluding the first run;
+test three recoveries then refusal of the fourth with real claim histories. Also: the kill case "mid-Critic, batch 1
+of 2" with two-batch data; `client_connection_check_interval` 1 s for worker sessions plus TCP keepalives; fix the
+stale "cheapest paid plans" comment in render.yaml; the full render.yaml diff in the fix packet; correct the register
+wherever it promises more than the code. **Design choices approved (owner, 2026-10-09):** the refusal's audit row in
+the deciding transaction; the claim/lock check in `writes.write` and `spend.reserve` (`claim_lost`).
+
+- [x] finding 1 (refusal durable; 6 tests failed before)
