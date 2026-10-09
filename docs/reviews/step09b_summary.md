@@ -28,7 +28,7 @@ Date: 2026-10-08/09. Branch: `step-09b-worker` (from `main` at `c7458d0`). **Sta
 
 **Codespace:** the owner approved one `sudo iptables-legacy -I DOCKER-USER -j ACCEPT` rule to restore the Compose network after the Codespace restart. The test-image suite runs on the Compose network again.
 
-**Suite:** 2,155 tests, all passing on `4aaa3b5`. Locally: 35 min 41 s. In the test image rebuilt on this head, on the Compose network again: 36 min 43 s. The package is identical in the repository and both images, and the guard checks pass in the runtime image. **The GitHub run's suite step** for this round: GH_FIX2.
+**Suite:** 2,155 tests, all passing on `4aaa3b5`. Locally: 35 min 41 s. In the test image rebuilt on this head, on the Compose network again: 36 min 43 s. The package is identical in the repository and both images, and the guard checks pass in the runtime image. **The GitHub run's suite step** for this round: **28 min 46 s** (`77da518`, run 37982575759; the job took 30 min 6 s of its 40-minute limit).
 
 ## Fix round 1 (2026-10-09)
 
