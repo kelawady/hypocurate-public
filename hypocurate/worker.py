@@ -91,9 +91,6 @@ def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Calla
     child: guarded.GuardedChild | None = None
     reason, why = "child_failed", "error"
     try:
-        if stop.is_set():
-            reason, why = "shutdown", "shutdown"
-            return {"report": report, "release": reason, "why": why}
         if claim.status_before == "running":
             found = recovery.recover(engine, claim.run_id) or None
         for i, phase in enumerate(phases):
