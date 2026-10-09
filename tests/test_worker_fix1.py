@@ -263,9 +263,12 @@ def test_a_critic_run_after_recovery_that_fails_to_record_its_call_stops_the_run
 
 # --- findings 5 and 6 ----------------------------------------------------------------------------------------
 
+BLOCKED_SECONDS = 60  # far beyond each test's limit; bounded so a watchdog that waits on it fails, not hangs
+
+
 def blocked_monitoring(monkeypatch):
-    forever = threading.Event()
-    monkeypatch.setattr(queue, "last_write_epoch", lambda conn, run_id: forever.wait())
+    never = threading.Event()
+    monkeypatch.setattr(queue, "last_write_epoch", lambda conn, run_id: never.wait(BLOCKED_SECONDS))
 
 
 def test_a_blocked_monitoring_query_does_not_hold_back_the_whole_run_limit(engine, stub, monkeypatch):
@@ -301,11 +304,25 @@ def test_the_monitoring_query_is_time_limited(engine, stub):
     with engine.connect() as locker:
         tx = locker.begin()
         locker.execute(text("LOCK TABLE stage_result IN ACCESS EXCLUSIVE MODE"))
+        # On a thread, so a sample with no time limit fails this test instead of hanging the suite.
+        result = {}
+
+        def sample():
+            try:
+                queue.sample_last_write(engine, rid)
+                result["outcome"] = "returned"
+            except Exception as e:  # noqa: BLE001 (the timeout's error is the expected outcome)
+                result["outcome"] = e
         started = time.monotonic()
-        with pytest.raises(Exception):
-            queue.sample_last_write(engine, rid)
-        assert time.monotonic() - started < queue.MONITOR_TIMEOUT_MS / 1000 + 3
-        tx.rollback()
+        t = threading.Thread(target=sample, daemon=True)
+        t.start()
+        t.join(queue.MONITOR_TIMEOUT_MS / 1000 + 3)
+        alive = t.is_alive()
+        tx.rollback()  # releases a sample still waiting
+        t.join(10)
+        assert not alive, "the monitoring query waited past its time limit"
+        assert isinstance(result.get("outcome"), Exception)
+        assert time.monotonic() - started < queue.MONITOR_TIMEOUT_MS / 1000 + 13
 
 
 def test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance(engine, stub):
