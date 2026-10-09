@@ -412,6 +412,34 @@ class RulesConfirmation(Base):
     )
 
 
+# Step 9b (0008): how a claim ends; the same list as pipeline/queue.RELEASE_REASONS (tests check both).
+RELEASE_REASONS = ("finished", "waiting", "stopped_for_recovery", "child_failed", "child_stuck", "shutdown", "lost")
+
+
+class RunClaim(Base):
+    """Step 9b (0008; R6): a worker's hold on one open run, with the guarded child's pid (once), its heartbeat (on
+    this row, never the run row) and how it was released (once). One open claim per run. Never deleted."""
+    __tablename__ = "run_claim"
+    id: Mapped[int] = pk()
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id"))
+    worker: Mapped[str] = mapped_column(Text)
+    child_pid: Mapped[int | None] = mapped_column(Integer)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    release_reason: Mapped[str | None] = mapped_column(Text)
+    found: Mapped[dict | None] = mapped_column(JSONB)
+    recovery: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))  # fix round 1, finding 7
+    __table_args__ = (
+        Index("uq_run_claim_open", "run_id", unique=True, postgresql_where=sql("released_at IS NULL")),
+        CheckConstraint("length(btrim(worker)) BETWEEN 1 AND 200", name="worker_named"),
+        CheckConstraint(f"release_reason IS NULL OR {one_of('release_reason', RELEASE_REASONS)}", name="release"),
+        CheckConstraint("(released_at IS NULL) = (release_reason IS NULL)", name="released_with_reason"),
+        CheckConstraint("found IS NULL OR jsonb_typeof(found) = 'object'", name="found_object"),
+        CheckConstraint("child_pid IS NULL OR child_pid > 0", name="child_pid"),
+    )
+
+
 class Plan(Base):
     """The locked plan (PRD 5.1, 5.6). Inserted at the rules lock, never changed.
     The columns the database checks against are explicit; the rest is `content`."""

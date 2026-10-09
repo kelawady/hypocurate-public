@@ -21,6 +21,13 @@ The guard's refusals come back on the child's standard error; the parent copies 
 the audit log as a failure (code `file_guard`) for the run given in `audit`, or to the
 process log if no run is given or the database cannot take it.
 
+Step 9b (owner's addition A3, 2026-10-08): `start_guarded` starts the same child without waiting for it, for the
+worker, which must keep its heartbeat going and watch the child while it works. It may be called only from the
+main thread, and it passes the parent's pid: the child then sets PR_SET_PDEATHSIG(SIGKILL) first thing, so it
+dies with the thread that started it (the main thread, which lives as long as the worker), and exits at once
+(`PARENT_GONE_EXIT`) if its parent is not that process any more (the parent died before the signal was set).
+`run_guarded` is unchanged.
+
 This is a tripwire against *accidental* file access by trusted code, not a sandbox (see
 `file_guard`). This is the only place that installs it. The pipeline's entry points (the
 command line's run command, step 8; the worker's run of a claimed job, step 9) run each
@@ -33,9 +40,11 @@ import importlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 from typing import Any
 
 from hypocurate.access import file_guard
@@ -59,6 +68,9 @@ class GuardedRunError(Exception):
 
 
 MAX_REPORTED = 100  # refusals copied into the audit log per run; the rest are counted
+PARENT_GONE_EXIT = 3  # step 9b (A3): the child found that the process that started it is gone
+STOP_GRACE_SECONDS = 10  # step 9b fix round 1 (finding 2): a SIGTERM not obeyed within this is escalated to SIGKILL
+PR_SET_PDEATHSIG = 1  # linux/prctl.h
 
 
 def _as_text(captured) -> str:
@@ -112,15 +124,96 @@ def run_guarded(target: str, payload: Any = None, env: dict[str, str] | None = N
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     _report_refusals(completed.stderr, audit)
-    lines = completed.stdout.strip().splitlines()
+    return _answer(completed.stdout, completed.stderr, completed.returncode)
+
+
+def _answer(stdout: str, stderr: str, returncode: int) -> Any:
+    lines = stdout.strip().splitlines()
     try:
         answer = json.loads(lines[-1])
     except (IndexError, ValueError):
-        raise GuardedRunError(f"the guarded process gave no answer (exit {completed.returncode}): "
-                              f"{completed.stderr.strip()[-2000:]}") from None
+        raise GuardedRunError(f"the guarded process gave no answer (exit {returncode}): {stderr.strip()[-2000:]}") from None
     if not answer.get("ok"):
         raise GuardedRunError(answer.get("error", "unknown error"))
     return answer["result"]
+
+
+class GuardedChild:
+    """A guarded child started by `start_guarded`: its pid, and its answer once it ends."""
+
+    def __init__(self, proc: subprocess.Popen, scratch: str, audit):
+        self.proc, self.pid, self._scratch, self._audit = proc, proc.pid, scratch, audit
+        self._out = self._err = ""
+
+    def wait_for(self, seconds: float) -> bool:
+        """Waits up to `seconds` for the child to end (reading its output meanwhile); True once it has ended."""
+        try:
+            out, err = self.proc.communicate(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            return False
+        self._out, self._err = out or "", err or ""
+        return True
+
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
+    def stop(self, sig: int = signal.SIGKILL) -> None:
+        """Ends the child and reaps it: `sig` (SIGKILL by default); a SIGTERM not obeyed within `STOP_GRACE_SECONDS`
+        is escalated to SIGKILL (fix round 1, finding 2). Returns only once the child has ended."""
+        if self.proc.poll() is None:
+            self.proc.send_signal(sig)
+        if not self.wait_for(STOP_GRACE_SECONDS if sig != signal.SIGKILL else 30) and self.proc.poll() is None:
+            self.proc.kill()
+            self.wait_for(30)
+        self.proc.wait()
+
+    def result(self, timeout: float | None = None) -> Any:
+        """The child's answer (GuardedRunError if it failed); its refusals reported; its scratch removed."""
+        try:
+            if not self.wait_for(timeout if timeout is not None else 10 ** 9):
+                self.stop()
+                raise subprocess.TimeoutExpired(self.proc.args, timeout)
+        finally:
+            _report_refusals(_as_text(self._err), self._audit)
+            shutil.rmtree(self._scratch, ignore_errors=True)
+        return _answer(self._out, self._err, self.proc.returncode)
+
+    def discard(self) -> None:
+        """For a child that was stopped: its refusals reported and its scratch removed; no answer is read."""
+        _report_refusals(_as_text(self._err), self._audit)
+        shutil.rmtree(self._scratch, ignore_errors=True)
+
+
+def start_guarded(target: str, payload: Any = None, env: dict[str, str] | None = None, audit=None) -> GuardedChild:
+    """Starts `target(payload)` in a guarded child that dies with this process's main thread (A3), and returns at
+    once. Only from the main thread: the death signal follows the thread that started the child."""
+    if threading.current_thread() is not threading.main_thread():
+        raise RuntimeError("a guarded child is started only from the main thread (it dies with the thread that "
+                           "started it)")
+    if not target.startswith("hypocurate.") or ":" not in target:
+        raise ValueError(f"target {target!r} must be 'hypocurate.<module>:<function>'")
+    scratch = tempfile.mkdtemp(prefix=file_guard.SCRATCH_PREFIX, dir=file_guard.SYSTEM_TEMP)
+    try:
+        proc = subprocess.Popen([sys.executable, "-m", MODULE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, env=env if env is not None else dict(os.environ))
+        proc.stdin.write(json.dumps({"target": target, "payload": payload, "scratch": scratch,
+                                     "parent_pid": os.getpid()}))
+        proc.stdin.close()
+    except Exception:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+    return GuardedChild(proc, scratch, audit)
+
+
+def _die_with_parent(parent_pid: int) -> None:
+    """A3: the kernel sends SIGKILL when the thread that started this process ends; then the fork race is closed by
+    checking that the parent is still the process that started it."""
+    import ctypes
+    libc = ctypes.CDLL("libc.so.6", use_errno=True)
+    if libc.prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+        os._exit(PARENT_GONE_EXIT)  # the death signal could not be set: never run unwatched
+    if os.getppid() != parent_pid:
+        os._exit(PARENT_GONE_EXIT)
 
 
 def existing_path_entries(paths: list[str]) -> list[str]:
@@ -130,6 +223,8 @@ def existing_path_entries(paths: list[str]) -> list[str]:
 
 def _main() -> int:
     request = json.loads(sys.stdin.read())
+    if request.get("parent_pid") is not None:  # step 9b (A3): started by `start_guarded`
+        _die_with_parent(int(request["parent_pid"]))
     scratch = request["scratch"]
     for name in SCRATCH_ENV:
         os.environ[name] = scratch

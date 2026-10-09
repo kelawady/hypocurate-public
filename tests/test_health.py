@@ -57,19 +57,24 @@ def test_health_shows_no_secrets(database_url):
         assert database_url not in text and "postgresql" not in text
 
 
-def test_worker_idles_and_checks_the_database(database_url, monkeypatch, caplog):
-    monkeypatch.setenv("DATABASE_URL", database_url)
+def test_the_idle_worker_looks_for_work_every_sweep_and_checks_the_database(migrated_database, monkeypatch, caplog):
+    """Step 9b: was test_worker_idles_and_checks_the_database (the step 2 idle loop, replaced by the worker); the same
+    checks on the new loop: idle, it looks again every 60 s (queue.SWEEP_SECONDS) and logs that the database answers.
+    (A scratch database: the worker now reads the queue's tables.)"""
+    from hypocurate.pipeline import queue
+    monkeypatch.setenv("DATABASE_URL", migrated_database)
     sleeps = []
     with caplog.at_level(logging.INFO, logger="hypocurate.worker"):
-        worker.run(max_cycles=2, sleep=sleeps.append)
-    assert sleeps == [worker.IDLE_SECONDS] * 2
-    assert caplog.text.count("no pipeline yet; database reachable") == 2
+        worker.run(max_cycles=2, wait=sleeps.append)
+    assert sleeps == [queue.SWEEP_SECONDS] * 2 == [60, 60]
+    assert caplog.text.count("nothing to claim; database reachable") == 2
 
 
 def test_worker_logs_an_unreachable_database(monkeypatch, caplog):
+    """Step 9b: the same checks on the new loop (was `sleep=`, now `wait=`)."""
     monkeypatch.setenv("DATABASE_URL", UNREACHABLE_DB)
     with caplog.at_level(logging.INFO, logger="hypocurate.worker"):
-        worker.run(max_cycles=1, sleep=lambda s: None)
+        worker.run(max_cycles=1, wait=lambda s: None)
     assert "database NOT reachable" in caplog.text
     assert "planted-pw-7319" not in caplog.text  # the URL's password is never logged
 

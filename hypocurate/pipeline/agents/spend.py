@@ -14,8 +14,11 @@ while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
 - optionally a lower ceiling the caller names (the live curation call: $0.50, owner 2026-10-06),
   over the same run or invocation; for a run, also the ceiling stored on the run at dispatch (step 9a, R5:
   it holds after a crash or a restart), the lower of the two.
-A refusal sends nothing, is logged in `audit_log` in its own transaction (function 'model_call',
-result 'rejected', a fixed code) and raises `SpendingRefused`.
+A refusal sends nothing, is logged in `audit_log` (function 'model_call', result 'rejected', a fixed code,
+the invocation) and raises `SpendingRefused`. Step 9b fix round 1 (finding 1): the audit row is written in the
+same transaction that decides the refusal, so a refusal is reported only once its record is committed (if the
+commit fails, the caller sees a failure to save the call instead); recovery reads that record to keep a refusal a
+stop even when the agent's stage could not be saved.
 
 **After the request** (`finish`): one transaction (a run call takes the run's lock first) finishes
 the call exactly once, with the reported usage and its cost, or as failed with no usage (counted at
@@ -53,6 +56,11 @@ CODES = {
 FINISH_CODES = ("model_auth", "provider_rejected", "provider_unavailable", "cost_unknown")
 
 
+class ClaimLost(Exception):
+    """Step 9b fix round 1 (finding 3): a worker's child no longer holds the run; nothing is reserved or sent, and
+    (fix round 2) a call it reserved is not finished by it."""
+
+
 class SpendingRefused(Exception):
     """No request was sent; the refusal is logged."""
 
@@ -82,11 +90,15 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
         inv = conn.execute(text("SELECT scope, run_id, stage_result_id, role FROM agent_invocation WHERE id = :i"),
                            dict(i=invocation_id)).one_or_none()
         if inv is None:
+            conn.execute(_AUDIT, _refusal_row(invocation_id, None, None, "invocation_unknown", max_cost, ceiling, None))
             return ("refused", "invocation_unknown", None, None, None)
         # Every lock before any total is read (step 8a review, finding 3): the run's lock first (the
         # locking protocol), then the month-wide lock; read in the same order everywhere.
         if inv.scope == "run":
             status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=inv.run_id)).scalar_one()
+            from hypocurate.pipeline.writes import owner_holds
+            if not owner_holds(conn, inv.run_id):  # step 9b fix round 1, finding 3: before any request
+                raise ClaimLost("the run's claim was closed or its work lock is gone")
             stage = actual_stage(conn, inv.run_id, status)
         else:
             stage = "registration"
@@ -107,7 +119,9 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
                 "ceiling_reached" if limit is not None and spent + max_cost > limit else
                 "spending_cap_month" if month + max_cost > MONTH_CAP_USD else None)
         if code:
-            return ("refused", code, inv, stage, {"spent": str(spent), "month": str(month)})
+            totals = {"spent": str(spent), "month": str(month)}
+            conn.execute(_AUDIT, _refusal_row(invocation_id, inv, stage, code, max_cost, ceiling, totals))
+            return ("refused", code, inv, stage, totals)
         call = conn.execute(text(
             "INSERT INTO model_call (run_id, stage_result_id, invocation_id, role, model, price_table_version, max_cost) "
             "VALUES (:r, :s, :i, :o, :m, :p, :c) RETURNING id"),
@@ -118,22 +132,15 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
     outcome = run_transaction(engine, transaction)
     if outcome[0] == "reserved":
         return outcome[1]
-    _, code, inv, stage, totals = outcome
-    _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals)
-    raise SpendingRefused(code)
+    raise SpendingRefused(outcome[1])
 
 
-def _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals) -> None:
+def _refusal_row(invocation_id, inv, stage, code, max_cost, ceiling, totals) -> dict:
     detail = {"result": "rejected", "code": code, "invocation": int(invocation_id), "max_cost": str(max_cost)}
     if ceiling is not None:
         detail["ceiling"] = str(ceiling)
     detail.update(totals or {})
-    row = dict(r=inv.run_id if inv else None, role=inv.role if inv else "invalid", stage=stage or "none", d=detail)
-    try:
-        run_transaction(engine, lambda conn: conn.execute(_AUDIT, row))
-    except Exception as error:  # the process log is the fallback
-        LOG.error(json.dumps({"refusal_fallback": {**row, "function": "model_call"}, "error": type(error).__name__},
-                             sort_keys=True, default=str))
+    return dict(r=inv.run_id if inv else None, role=inv.role if inv else "invalid", stage=stage or "none", d=detail)
 
 
 def finish(engine: Engine, call_id: int, status: str, *, input_tokens: int | None = None,
@@ -155,6 +162,11 @@ def finish(engine: Engine, call_id: int, status: str, *, input_tokens: int | Non
         run_id = conn.execute(text("SELECT run_id FROM model_call WHERE id = :c"), dict(c=call_id)).scalar_one()
         if run_id is not None:
             conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id))
+            # Step 9b fix round 2 (owner, 2026-10-09): a stale child cannot finish its call; the call stays started,
+            # and recovery closes it at its maximum.
+            from hypocurate.pipeline.writes import owner_holds
+            if not owner_holds(conn, run_id):
+                raise ClaimLost("the run's claim was closed or its work lock is gone")
         conn.execute(text("UPDATE model_call SET status = :st, input_tokens = :i, output_tokens = :o, "
                           "cached_tokens = :c, cost = :cost, error = :e, finished_at = now() WHERE id = :id"),
                      dict(st=status, i=input_tokens, o=output_tokens, c=cached_tokens, cost=cost, e=code, id=call_id))

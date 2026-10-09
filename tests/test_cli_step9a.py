@@ -130,4 +130,6 @@ def test_confirm_takes_no_ceiling(engine, capsys):
     with pytest.raises(SystemExit) as stopped:
         cli.main(["confirm", "1", "--by", "Ada Reviewer", "--ceiling", "0.10"])
     assert stopped.value.code == 2
-    assert list(inspect.signature(cli_runs._confirm).parameters) == ["engine", "run_id", "by"]
+    # Step 9b: `to_queue` added (R2, `confirm --queue`); still no ceiling.
+    params = list(inspect.signature(cli_runs._confirm).parameters)
+    assert params == ["engine", "run_id", "by", "to_queue"] and "ceiling" not in params

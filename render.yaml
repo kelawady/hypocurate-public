@@ -2,7 +2,8 @@
 # services; nothing exists on Render until the owner connects it as a Blueprint.
 # Checked against render.com/docs/blueprint-spec on 2026-10-04.
 #
-# Plans: the cheapest paid plans (owner decision, 2026-10-04).
+# Plans: the cheapest paid plans (owner decision, 2026-10-04), except the worker: 1c-2g (owner decision,
+# 2026-10-08, after the step 9b memory measurement on 0.5 CPU / 512 MB).
 # autoDeployTrigger checksPass: Render deploys a commit on main only after its
 # GitHub checks pass, and never when a check fails or no check is found.
 # Region: all three in one region, so the services reach the database over
@@ -38,7 +39,7 @@ services:
     name: hypocurate-worker
     runtime: docker
     region: oregon
-    plan: 0.5c-512mb
+    plan: 1c-2g
     branch: main
     autoDeployTrigger: checksPass
     dockerfilePath: ./Dockerfile

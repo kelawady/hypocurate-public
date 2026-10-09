@@ -49,16 +49,22 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--fixed-plan", action="store_true", help="the reference plan, Planner bypassed (14.1a)")
     run.add_argument("--test-data", action="store_true", help="mark the run as a test with constructed data")
     run.add_argument("--ceiling", help="the most this run's model calls may cost, in USD (refused above it)")
+    run.add_argument("--queue", action="store_true", help="dispatch and return at once; a worker runs it (step 9b)")
     dispatch = sub.add_parser("dispatch", help="dispatch a submitted query by its number and run it (may cost money)")
     dispatch.add_argument("number", help="the query number, e.g. Q-0002")
     dispatch.add_argument("--by", help="the name of the person confirming the domain (not with --again)")
     dispatch.add_argument("--ceiling", help="the most this run's model calls may cost, in USD")
+    dispatch.add_argument("--queue", action="store_true", help="dispatch and return at once; a worker runs it")
     dispatch.add_argument("--again", action="store_true",
                           help="a new run of a query whose earlier run ended (refused while another run is open)")
     confirm = sub.add_parser("confirm", help="show a waiting run's question as tested; a named person confirms it, "
                                              "and the run goes on (may cost money)")
     confirm.add_argument("run", type=int)
     confirm.add_argument("--by", required=True, help="the name of the person confirming")
+    confirm.add_argument("--queue", action="store_true", help="record the confirmation; a worker runs the rest")
+    sub.add_parser("queue", help="list the queued, waiting and running runs, with their claims and heartbeats")
+    worker = sub.add_parser("worker", help="the background worker: claims runs and works them (PRD 12)")
+    worker.add_argument("--once", action="store_true", help="claim one run, if there is one, work it and stop")
     cancel = sub.add_parser("cancel", help="cancel a queued or waiting run")
     cancel.add_argument("run", type=int)
     cancel.add_argument("--by", required=True, help="the name of the person cancelling")
@@ -75,7 +81,10 @@ def main(argv: list[str] | None = None) -> int:
         reachable = database_reachable(engine)
         print("database reachable" if reachable else "database NOT reachable")
         return 0 if reachable else 1
-    if args.command in ("run", "dispatch", "show", "confirm", "cancel"):
+    if args.command == "worker":
+        from hypocurate import worker as background
+        return background.run(once=args.once, engine=engine)
+    if args.command in ("run", "dispatch", "show", "confirm", "cancel", "queue"):
         from hypocurate.cli_runs import command
         return command(args, engine)
     return _sources(args, engine)

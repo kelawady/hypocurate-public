@@ -82,8 +82,9 @@ def confirmed(w, rid, planner=None, narrowed=None, fp=FP):
 
 # --- the migration ------------------------------------------------------------------------------------------
 
-def test_0007_is_the_head_and_follows_0006():
-    assert migrate.head_revision() == "0007" and m0007().down_revision == "0006"
+def test_0007_follows_0006():
+    # Step 9b: 0008 is now the head (tests/test_migrations_step9b.py).
+    assert m0007().down_revision == "0006"
 
 
 def test_the_only_earlier_function_replaced_is_hc_run_update_and_only_its_status_changes_differ():
@@ -149,7 +150,8 @@ def test_the_downgrade_refuses_while_0007_is_in_use(db, use):
     before = snapshot(db)
     with pytest.raises(Exception, match="0007 is in use"):
         migrate.downgrade(db, "0006")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0007"
+    # Step 9b: the database stays at the head, now 0008 (0008's own downgrade is undone with the refused transaction).
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()
 
 
 # --- waiting (owner, Q1, Q5) --------------------------------------------------------------------------------
@@ -613,7 +615,7 @@ def test_the_downgrade_is_not_blocked_by_ceilings_equal_to_the_run_cap(db):
     w.run()
     migrate.downgrade(db, "0006")
     assert migrate.current_revision(db) == "0006"
-    migrate.upgrade(db)
+    migrate.upgrade(db)  # (step 9b: through 0008, which holds no claim here)
 
 
 def test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap(w):

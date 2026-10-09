@@ -69,7 +69,31 @@ CODES = {
     "narrowed": "code's narrowing decision is partly sufficient: the original question locks no plan",
     # Step 9a (owner, Q1): a run that waited locks only the plan whose fingerprint the person confirmed.
     "not_confirmed": "no person's confirmation of exactly this plan (its fingerprint) before the rules lock",
+    # Step 9b fix round 1 (finding 3): a worker's child whose claim was closed, or whose work lock is gone.
+    "claim_lost": "this process no longer holds the run (its claim was closed or its work lock is gone)",
 }
+# Step 9b fix round 1 (finding 3; owner, 2026-10-09): set in a worker's child to (its claim's id, the backend pid of the
+# session holding its work lock). Every write then checks, in its own transaction after the run's lock, that the claim
+# is still open and that the work lock is still held; otherwise the write is refused `claim_lost`. The claim row is
+# locked FOR KEY SHARE: closing a claim takes FOR UPDATE on its row first (migration 0008's trigger), so a takeover
+# waits for a write in progress, or the write sees the claim closed; the worker's heartbeat (a plain update) does not
+# conflict with it, so a long write never holds back a heartbeat.
+OWNER: tuple[int, int] | None = None
+_WORK_NS = 0x48435752  # queue's work-lock namespace (queue.py imports nothing from here; tests check they agree)
+
+
+def owner_holds(conn: Connection, run_id: int) -> bool:
+    """For a worker's child (`OWNER` set): its claim is open (row locked FOR KEY SHARE) and its work lock still held."""
+    if OWNER is None:
+        return True
+    claim_id, holder_pid = OWNER
+    claim = conn.execute(text("SELECT id FROM run_claim WHERE id = :c AND run_id = :r AND released_at IS NULL "
+                              "FOR KEY SHARE"), dict(c=claim_id, r=run_id)).scalar_one_or_none()
+    if claim is None:
+        return False
+    return bool(conn.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid = :p "
+        "AND classid = :ns AND objid = :r AND objsubid = 1)"), dict(p=holder_pid, ns=_WORK_NS, r=int(run_id))).scalar())
 CONSTRUCTED_MARK = "constructed_test_data"
 # Step 7 (owner, 2026-10-05; register 'constructed_test_runs'): TEST_RUN_LABEL, on every stored
 # result of a marked run, comes from one named place, the database model, whose CHECKs use it.
@@ -125,6 +149,8 @@ def write(engine: Engine, run_id: int, role: str, function: str, body: Callable[
     def transaction(conn: Connection):
         conn.execute(text(f"SET LOCAL lock_timeout = {int(LOCK_TIMEOUT_MS)}"))
         status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id)).scalar_one()
+        if not owner_holds(conn, run_id):  # step 9b fix round 1, finding 3
+            raise Refused(function, "claim_lost")
         return body(conn, actual_stage(conn, run_id, status))
 
     try:
