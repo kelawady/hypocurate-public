@@ -124,4 +124,4 @@ the heartbeat exception to the locking protocol.
 
 ## Progress
 
-- [x] b0 (dumps from main c7458d0 in ~/hc-work/step09b/refdump/main, SHA256SUMS; a second dump identical; the confirmation time in labels normalised)  - [ ] b1  - [ ] b2  - [ ] b3  - [ ] b4  - [ ] b5  - [ ] b6
+- [x] b0 (dumps from main c7458d0 in ~/hc-work/step09b/refdump/main, SHA256SUMS; a second dump identical; the confirmation time in labels normalised)  - [x] b1 (9c999ed)  - [x] b2+b3 (6a5f965; adapter change undone in the next commit)  - [x] b4  - [x] b5 (823236a; memory at the 512 MiB limit -> owner: worker to 1c-2g, ae8aa00; statistics 8.7 s at 10,000)  - [x] b6 (register a5ba354; 27/27 mutations caught after three tests; images hashed; reference byte-identical; suites, packet, push: in progress)
