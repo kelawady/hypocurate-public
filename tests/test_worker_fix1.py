@@ -170,19 +170,23 @@ def test_a_takeover_waits_for_a_write_in_progress_and_the_next_write_is_refused(
 
     def slow_write():
         def body(conn, _stage):
-            conn.execute(text("SELECT pg_sleep(2)"))
+            # The database's time at the end of the write's work, just before its commit.
+            done["body_end"] = conn.execute(text("SELECT pg_sleep(2), clock_timestamp()")).one()[1]
         writes.write(engine, rid, "test", "slow", body)
-        done["write"] = time.monotonic()
 
     t = threading.Thread(target=slow_write)
     t.start()
     time.sleep(0.5)
+    started = time.monotonic()
     with engine.begin() as conn:  # the takeover's close of the claim (without the run's lock: the claim row decides)
         conn.execute(text("UPDATE run_claim SET released_at = now(), release_reason = 'lost' WHERE id = :c"),
                      dict(c=c.id))
-        done["takeover"] = time.monotonic()
+    waited = time.monotonic() - started
     t.join(10)
-    assert done["takeover"] >= done["write"]  # it waited for the write to commit
+    # It waited for the write: the close took at least 1 s (the write held the row about 1.5 s more), and the claim's
+    # release time (the database's clock, set once the trigger has the row) is after the end of the write's work.
+    assert waited >= 1.0
+    assert one(engine, "SELECT released_at FROM run_claim WHERE id = :c", c=c.id) >= done["body_end"]
     with pytest.raises(writes.Refused) as refused:
         writes.write(engine, rid, "test", "next", lambda conn, _s: None)
     assert refused.value.code == "claim_lost"
