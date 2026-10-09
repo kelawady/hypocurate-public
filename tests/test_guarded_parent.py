@@ -86,7 +86,8 @@ def test_a_child_is_started_only_from_the_main_thread():
 def test_a_child_whose_parent_is_already_gone_exits_at_once():
     """The fork race: the parent died before the child set its death signal; the child sees another parent."""
     request = {"target": "hypocurate.access.guard_probe:probe", "payload": [{"op": "sleep", "seconds": 30}],
-               "scratch": "/tmp", "parent_pid": 1}
+               "scratch": "/tmp", "parent_pid": 2 ** 30}  # above Linux's largest pid: never the real parent (in a
+    # container the test process itself may be pid 1)
     started = time.time()
     done = subprocess.run([sys.executable, "-m", guarded.MODULE], input=json.dumps(request), capture_output=True,
                           text=True, timeout=20)
