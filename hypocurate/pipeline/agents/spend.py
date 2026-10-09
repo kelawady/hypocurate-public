@@ -56,6 +56,10 @@ CODES = {
 FINISH_CODES = ("model_auth", "provider_rejected", "provider_unavailable", "cost_unknown")
 
 
+class ClaimLost(Exception):
+    """Step 9b fix round 1 (finding 3): a worker's child no longer holds the run; nothing is reserved or sent."""
+
+
 class SpendingRefused(Exception):
     """No request was sent; the refusal is logged."""
 
@@ -91,6 +95,9 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
         # locking protocol), then the month-wide lock; read in the same order everywhere.
         if inv.scope == "run":
             status = conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=inv.run_id)).scalar_one()
+            from hypocurate.pipeline.writes import owner_holds
+            if not owner_holds(conn, inv.run_id):  # step 9b fix round 1, finding 3: before any request
+                raise ClaimLost("the run's claim was closed or its work lock is gone")
             stage = actual_stage(conn, inv.run_id, status)
         else:
             stage = "registration"

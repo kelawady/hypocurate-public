@@ -429,6 +429,7 @@ class RunClaim(Base):
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     release_reason: Mapped[str | None] = mapped_column(Text)
     found: Mapped[dict | None] = mapped_column(JSONB)
+    recovery: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))  # fix round 1, finding 7
     __table_args__ = (
         Index("uq_run_claim_open", "run_id", unique=True, postgresql_where=sql("released_at IS NULL")),
         CheckConstraint("length(btrim(worker)) BETWEEN 1 AND 200", name="worker_named"),

@@ -69,6 +69,7 @@ class GuardedRunError(Exception):
 
 MAX_REPORTED = 100  # refusals copied into the audit log per run; the rest are counted
 PARENT_GONE_EXIT = 3  # step 9b (A3): the child found that the process that started it is gone
+STOP_GRACE_SECONDS = 10  # step 9b fix round 1 (finding 2): a SIGTERM not obeyed within this is escalated to SIGKILL
 PR_SET_PDEATHSIG = 1  # linux/prctl.h
 
 
@@ -153,11 +154,18 @@ class GuardedChild:
         self._out, self._err = out or "", err or ""
         return True
 
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
     def stop(self, sig: int = signal.SIGKILL) -> None:
-        """Ends the child (SIGKILL by default) and waits for it."""
+        """Ends the child and reaps it: `sig` (SIGKILL by default); a SIGTERM not obeyed within `STOP_GRACE_SECONDS`
+        is escalated to SIGKILL (fix round 1, finding 2). Returns only once the child has ended."""
         if self.proc.poll() is None:
             self.proc.send_signal(sig)
-        self.wait_for(30)
+        if not self.wait_for(STOP_GRACE_SECONDS if sig != signal.SIGKILL else 30) and self.proc.poll() is None:
+            self.proc.kill()
+            self.wait_for(30)
+        self.proc.wait()
 
     def result(self, timeout: float | None = None) -> Any:
         """The child's answer (GuardedRunError if it failed); its refusals reported; its scratch removed."""

@@ -14,7 +14,10 @@ run_claim, one row per claim, never deleted:
 - only an open run (queued, running or waiting) is claimed, and at most one claim per run is open (a partial
   unique index);
 - while a claim is open only its heartbeat, its child's pid (once), `found` and the release may change; once
-  released it is final.
+  released it is final;
+- (fix round 1) `recovery`: whether the claim took up a run already running (a recovery attempt), never changed;
+  closing a claim locks its row FOR UPDATE first, so it waits for a write of the claim's child in progress (which
+  holds the row FOR KEY SHARE, `pipeline/writes.owner_holds`).
 The heartbeat is written on the claim row, not the run row (R6), so it never waits behind a transaction that holds
 the run's lock: the update trigger reads no run row. A named exception to the locking protocol, like audit rows.
 
@@ -73,6 +76,14 @@ FUNCTIONS = [
         IF OLD.child_pid IS NOT NULL AND NEW.child_pid IS DISTINCT FROM OLD.child_pid THEN
             PERFORM hc_reject('a claim''s child is recorded once');
         END IF;
+        IF NEW.recovery IS DISTINCT FROM OLD.recovery THEN
+            PERFORM hc_reject('what a claim records cannot change');
+        END IF;
+        -- Fix round 1, finding 3 (owner, 2026-10-09): closing a claim waits for any write of its child in progress
+        -- (which holds the row FOR KEY SHARE), so the write commits first or sees the claim closed.
+        IF NEW.released_at IS NOT NULL THEN
+            PERFORM 1 FROM run_claim WHERE id = OLD.id FOR UPDATE;
+        END IF;
         IF NEW.heartbeat_at IS DISTINCT FROM OLD.heartbeat_at THEN
             NEW.heartbeat_at := clock_timestamp();
         END IF;
@@ -112,6 +123,9 @@ def upgrade() -> None:
         sa.Column('released_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('release_reason', sa.Text(), nullable=True),
         sa.Column('found', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        # Fix round 1, finding 7: the claim took up a run that was already running (a recovery attempt), set at the
+        # claim and never changed; the first run's claim (from queued or waiting) is not one.
+        sa.Column('recovery', sa.Boolean(), server_default=sa.text('false'), nullable=False),
         sa.CheckConstraint(f"length(btrim(worker)) BETWEEN 1 AND {WORKER_MAX}", name=op.f('ck_run_claim_worker_named')),
         sa.CheckConstraint(f"release_reason IS NULL OR {_in('release_reason', RELEASE_REASONS)}",
                            name=op.f('ck_run_claim_release')),

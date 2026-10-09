@@ -20,6 +20,14 @@ first (they are taken up again), then confirmed waiting runs, then queued runs i
 `HEARTBEAT_SECONDS`, on the claim row, never the run row, so it never waits behind the run's lock (a named exception
 to the locking protocol, like audit rows). A release (`release`) follows the protocol.
 
+**Ownership** (fix round 1, finding 3): each beat also confirms that the claim is still open (the update touched its
+row) and that the lease session still holds CLAIM; otherwise `lost` is set and the worker stops its child at once
+(fail closed). The child's own writes and reservations check its claim and its work lock (`writes.owner_holds`).
+**Monitoring** (findings 5 and 6): `Monitor` samples the run's last write on a thread of its own, each query
+time-limited (`MONITOR_TIMEOUT_MS`), and records when it last saw progress; the worker's main thread never waits for
+it, so the whole-run limit and the shutdown check keep their own clock, and the stall allowance counts from the
+attempt's launch (downtime before it does not count) and restarts at each progress seen.
+
 This module is imported by the worker parent, which never imports dspy, litellm or scipy (owner, Q2: memory).
 """
 from __future__ import annotations
@@ -27,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import Connection, Engine, bindparam, text
@@ -45,6 +54,7 @@ STALL_SECONDS = 900        # A4: no write by the run for this long: the child is
 RUN_TIMEOUT_SECONDS = 1800  # A4: the whole run, as a backstop
 SWEEP_SECONDS = 60         # the worker looks for work this often when idle (and on start)
 LOCK_TIMEOUT_MS = 5000
+MONITOR_TIMEOUT_MS = 5000  # fix round 1, finding 5: a monitoring query is cut off after this
 # Session advisory locks, one per run (the run id in the low 32 bits). Their high words ("HCLA", "HCWR") keep them
 # apart from the single-key locks used elsewhere (spend.MONTH_LOCK_KEY, confirmation.SOURCES_LOCK_KEY, migrate's).
 _CLAIM_NS, _WORK_NS = 0x48434C41, 0x48435752
@@ -70,7 +80,9 @@ class Lease:
     def __init__(self, engine: Engine, run_id: int):
         self.run_id = run_id
         self._conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-        self._conn.execute(text("SELECT set_config('application_name', :a, false)"), dict(a=f"hc-lease-{run_id}"))
+        self._conn.execute(text("SELECT set_config('application_name', :a, false), "
+                                "set_config('statement_timeout', :t, false)"),
+                           dict(a=f"hc-lease-{run_id}", t=str(MONITOR_TIMEOUT_MS)))
 
     def try_take(self) -> bool:
         """CLAIM taken, and WORK free (taken and let go at once); False, holding nothing, otherwise."""
@@ -82,10 +94,25 @@ class Lease:
         self._conn.execute(text("SELECT pg_advisory_unlock(:k)"), dict(k=work_key(self.run_id)))
         return True
 
+    def holds(self) -> bool:
+        """Fix round 1, finding 3: the lease session is alive and still holds CLAIM (taking it again only counts up)."""
+        try:
+            if not self._conn.execute(text("SELECT pg_try_advisory_lock(:k)"), dict(k=claim_key(self.run_id))).scalar():
+                return False
+            self._conn.execute(text("SELECT pg_advisory_unlock(:k)"), dict(k=claim_key(self.run_id)))
+            held = self._conn.execute(text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted "
+                "AND classid = :c AND objid = :o AND objsubid = 1"),
+                dict(c=_CLAIM_NS, o=int(self.run_id))).scalar()
+            return held >= 1
+        except Exception:  # noqa: BLE001 (the session is gone: the lock is gone with it)
+            return False
+
     def close(self) -> None:
         """Lets go of the lock (by closing the session) and the connection."""
         try:
-            self._conn.execute(text("SELECT pg_advisory_unlock_all(), set_config('application_name', '', false)"))
+            self._conn.execute(text("SELECT pg_advisory_unlock_all(), set_config('application_name', '', false), "
+                                    "set_config('statement_timeout', '0', false)"))
         except Exception:  # noqa: BLE001 (closing the session lets go of it anyway)
             pass
         self._conn.close()
@@ -130,8 +157,8 @@ def _take(engine: Engine, run_id: int, worker: str, stale_seconds: float) -> tup
             conn.execute(text("UPDATE run_claim SET released_at = now(), release_reason = 'lost', found = :f "
                               "WHERE id = :c").bindparams(bindparam("f", type_=JSONB)),
                          dict(c=open_claim.id, f={"stale_heartbeat_at": open_claim.heartbeat_at.isoformat()}))
-        cid = conn.execute(text("INSERT INTO run_claim (run_id, worker) VALUES (:r, :w) RETURNING id"),
-                           dict(r=run_id, w=worker)).scalar_one()
+        cid = conn.execute(text("INSERT INTO run_claim (run_id, worker, recovery) VALUES (:r, :w, :rec) RETURNING id"),
+                           dict(r=run_id, w=worker, rec=status == "running")).scalar_one()
         if status == "queued":
             conn.execute(text("UPDATE run SET status = 'running', started_at = now() WHERE id = :r"), dict(r=run_id))
         elif status == "waiting":  # confirmed: it goes on (the database requires the confirmation, 0007)
@@ -199,21 +226,31 @@ def release(engine: Engine, c: Claim, reason: str, found: dict | None = None) ->
 
 
 class Heartbeat(threading.Thread):
-    """Writes the claim's heartbeat every `interval` seconds until stopped (R6: on the claim row only)."""
+    """Writes the claim's heartbeat every `interval` seconds until stopped (R6: on the claim row only). With a `lease`
+    and a `lost` event (fix round 1, finding 3), each beat also confirms ownership: the beat touched the open claim's
+    row, and the lease still holds CLAIM. Otherwise `lost` is set (fail closed: the worker stops its child)."""
 
-    def __init__(self, engine: Engine, claim_id: int, interval: float = HEARTBEAT_SECONDS):
+    def __init__(self, engine: Engine, claim_id: int, interval: float = HEARTBEAT_SECONDS, lease: Lease | None = None,
+                 lost: threading.Event | None = None):
         super().__init__(name=f"heartbeat-{claim_id}", daemon=True)
         self._engine, self._claim, self._interval = engine, claim_id, interval
+        self._lease, self.lost = lease, lost or threading.Event()
         self._stop_event = threading.Event()
 
     def run(self) -> None:
         while not self._stop_event.wait(self._interval):
             try:
                 with self._engine.begin() as conn:
-                    conn.execute(text("UPDATE run_claim SET heartbeat_at = clock_timestamp() WHERE id = :c "
-                                      "AND released_at IS NULL"), dict(c=self._claim))
-            except Exception as error:  # noqa: BLE001 (the next beat tries again; a long gap makes the claim stale)
+                    conn.execute(text(f"SET LOCAL statement_timeout = {MONITOR_TIMEOUT_MS}"))
+                    touched = conn.execute(text("UPDATE run_claim SET heartbeat_at = clock_timestamp() WHERE id = :c "
+                                                "AND released_at IS NULL"), dict(c=self._claim)).rowcount
+            except Exception as error:  # noqa: BLE001 (ownership cannot be confirmed: fail closed)
                 LOG.error(json.dumps({"heartbeat_failed": self._claim, "error": type(error).__name__}))
+                touched = 0
+            if touched != 1 or (self._lease is not None and not self._lease.holds()):
+                LOG.error(json.dumps({"ownership_lost": self._claim}))
+                self.lost.set()
+                return
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -231,6 +268,62 @@ _LAST_WRITE = text("""
         (SELECT locked_at FROM plan WHERE run_id = r.id),
         (SELECT frozen_at FROM run_snapshot WHERE run_id = r.id)))
     FROM run r WHERE r.id = :r""")
+
+
+_LAST_WRITE_EPOCH = text("""
+    SELECT extract(epoch FROM greatest(
+        r.queued_at, r.started_at, r.completed_at, r.failed_at,
+        (SELECT max(greatest(started_at, finished_at)) FROM stage_result WHERE run_id = r.id),
+        (SELECT max(greatest(started_at, finished_at)) FROM model_call WHERE run_id = r.id),
+        (SELECT max(decided_at) FROM run_source WHERE run_id = r.id),
+        (SELECT max(created_at) FROM record WHERE extraction_run_id = r.id),
+        (SELECT max(confirmed_at) FROM rules_confirmation WHERE run_id = r.id),
+        (SELECT locked_at FROM plan WHERE run_id = r.id),
+        (SELECT frozen_at FROM run_snapshot WHERE run_id = r.id)))
+    FROM run r WHERE r.id = :r""")
+
+
+def last_write_epoch(conn: Connection, run_id: int) -> float:
+    """The time (epoch seconds) of the run's last write that shows progress."""
+    return float(conn.execute(_LAST_WRITE_EPOCH, dict(r=run_id)).scalar_one())
+
+
+def sample_last_write(engine: Engine, run_id: int) -> float:
+    """`last_write_epoch` under a time limit (fix round 1, finding 5): a blocked query is cut off, never waited for."""
+    with engine.begin() as conn:
+        conn.execute(text(f"SET LOCAL statement_timeout = {MONITOR_TIMEOUT_MS}"))
+        conn.execute(text(f"SET LOCAL lock_timeout = {MONITOR_TIMEOUT_MS}"))
+        return last_write_epoch(conn, run_id)
+
+
+class Monitor(threading.Thread):
+    """Fix round 1, findings 5 and 6: samples the run's last write off the main thread and records when it last saw
+    progress (`progress_at`, monotonic), starting at the attempt's launch: earlier downtime does not count."""
+
+    def __init__(self, engine: Engine, run_id: int, interval: float = 5.0):
+        super().__init__(name=f"monitor-{run_id}", daemon=True)
+        self._engine, self._run, self._interval = engine, run_id, interval
+        self._stop_event = threading.Event()
+        self.progress_at = time.monotonic()
+        self._last: float | None = None
+
+    def launched(self) -> None:
+        """A child was launched: its allowance starts now."""
+        self.progress_at = time.monotonic()
+
+    def run(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                seen = sample_last_write(self._engine, self._run)
+                if self._last is not None and seen > self._last:
+                    self.progress_at = time.monotonic()
+                self._last = seen if self._last is None else max(self._last, seen)
+            except Exception:  # noqa: BLE001 (no sample: no progress seen; the allowance keeps running)
+                pass
+            self._stop_event.wait(self._interval)
+
+    def stop(self) -> None:
+        self._stop_event.set()  # never joined: a sample that blocks must not hold back the worker
 
 
 def seconds_since_last_write(conn: Connection, run_id: int) -> float:

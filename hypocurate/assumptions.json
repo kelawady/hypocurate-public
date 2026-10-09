@@ -3431,7 +3431,7 @@
     "key": "spending_caps",
     "name": "Spending caps",
     "state": "in_force",
-    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default, and an insert trigger that replaces an explicit NULL, so even direct SQL cannot store a new run without one; runs before 0007 keep none). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
+    "statement": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged in the same transaction that decides it: a refusal is reported only once its record is committed (otherwise the caller sees a failure to save the call). So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default, and an insert trigger that replaces an explicit NULL, so even direct SQL cannot store a new run without one; runs before 0007 keep none). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
     "value": {
       "text": "$2 per run; $2 per curation; $50 per month",
       "unit": "USD"
@@ -3444,7 +3444,7 @@
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-08"
+      "date": "2026-10-09"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -3500,6 +3500,12 @@
         "from": "2026-10-07",
         "to": "2026-10-08",
         "note": "Step 9a (owner, 2026-10-08, R5): the ceiling stored on the run; the monthly cap also blocks dispatch."
+      },
+      {
+        "value": "Model calls may cost at most $2 per run, $2 per curation (one registration invocation of the Curator) and $50 per calendar month (UTC, by the database's start time), counting every call at its reported cost or, while none is known, at its maximum cost. The check is made before each request, in one transaction that takes its locks before reading any total (the run's lock for a run call, then one month-wide advisory lock, in that order) and records the call as started; a request that would pass a cap, or a lower ceiling (the lower of one the caller names and, for a run, the one stored on the run at dispatch, which holds after a crash or a restart), is not sent, and the refusal is logged. So two concurrent reservations can never both pass the same cap or ceiling. Every run dispatched after migration 0007 stores its ceiling: the one given at dispatch, or else the per-run cap (the owner's decision, 2026-10-08; the column's default, and an insert trigger that replaces an explicit NULL, so even direct SQL cannot store a new run without one; runs before 0007 keep none). The ceiling is set only at dispatch; `confirm` takes none. The monthly cap counts the calls recorded in this database only. At dispatch, a run is refused once the month's counted calls have reached the monthly cap.",
+        "from": "2026-10-08",
+        "to": "2026-10-09",
+        "note": "Step 9b fix round 1 (owner, 2026-10-09, finding 1): the refusal's record is written in the transaction that decides it."
       }
     ],
     "notes": [],
@@ -3517,7 +3523,8 @@
       "tests/test_queries_step9a.py::test_a_dispatch_without_a_ceiling_stores_the_run_cap",
       "tests/test_migrations_step9a.py::test_a_run_dispatched_without_a_ceiling_stores_the_run_cap",
       "tests/test_cli_step9a.py::test_confirm_takes_no_ceiling",
-      "tests/test_migrations_step9a.py::test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap"
+      "tests/test_migrations_step9a.py::test_an_explicit_null_ceiling_on_a_new_run_stores_the_run_cap",
+      "tests/test_recovery_spending.py::test_a_refusal_is_reported_only_once_its_record_is_committed"
     ]
   },
   {
@@ -8417,7 +8424,7 @@
     "key": "queue_and_claims",
     "name": "The queue: claims and the heartbeat",
     "state": "in_force",
-    "statement": "A worker claims one run at a time: on its own autocommit lease connection it takes, without waiting, a session advisory lock on the run (CLAIM) and checks that the run's WORK lock is free; then, in one transaction under the run's lock, it re-checks the run, closes a stale open claim as 'lost', records its claim (run_claim; one open claim per run) and starts the run (queued, or a confirmed waiting run, becomes running). The guarded child holds the run's WORK lock for its whole work; an orphan child holding it keeps every worker off the run. A claim's heartbeat is written every 15 seconds by a thread of the worker on the claim row, never the run row, so it never waits behind the run's lock (a named exception to the locking protocol, like audit rows). A claim is taken to be dead when its heartbeat is older than 120 seconds; a claim released for recovery or at shutdown is claimable at once. Running runs are taken up first, then confirmed waiting runs, then queued runs in the order of dispatch. The worker parent never imports dspy, litellm or scipy (it does load numpy, through the source adapters' spreadsheet library).",
+    "statement": "A worker claims one run at a time: on its own autocommit lease connection it takes, without waiting, a session advisory lock on the run (CLAIM) and checks that the run's WORK lock is free; then, in one transaction under the run's lock, it re-checks the run, closes a stale open claim as 'lost', records its claim (run_claim; one open claim per run) and starts the run (queued, or a confirmed waiting run, becomes running). The guarded child holds the run's WORK lock for its whole work; an orphan child holding it keeps every worker off the run. A claim's heartbeat is written every 15 seconds by a thread of the worker on the claim row, never the run row, so it never waits behind the run's lock (a named exception to the locking protocol, like audit rows). Each beat also confirms ownership: the beat touched the open claim's row and the lease session still holds CLAIM; otherwise the worker stops its child at once and gives the run up ('lost'). The child's work is bound to its claim: every write checks, in its own transaction after the run's lock, that the claim is open (its row locked FOR KEY SHARE; closing a claim locks the row FOR UPDATE first, so a takeover waits for a write in progress or the write sees the claim closed) and that the child's work lock is still held; a reservation checks the same before any request. A stale owner is refused ('claim_lost') before any further write or request (fix round 1, finding 3). A claim is taken to be dead when its heartbeat is older than 120 seconds; a claim released for recovery or at shutdown is claimable at once. Running runs are taken up first, then confirmed waiting runs, then queued runs in the order of dispatch. The worker parent never imports dspy, litellm or scipy (it does load numpy, through the source adapters' spreadsheet library).",
     "value": {
       "text": "heartbeat 15 s; dead after 120 s",
       "unit": "seconds"
@@ -8466,6 +8473,9 @@
         },
         {
           "ref": "sql:hc_run_claim_update"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.writes:owner_holds"
         }
       ],
       "note": null
@@ -8477,7 +8487,11 @@
       "tests/test_queue.py::test_a_running_run_with_a_live_claim_is_left_alone_and_a_stale_one_is_taken_over",
       "tests/test_migrations_step9b.py::test_the_heartbeat_is_the_databases_time_and_needs_no_run_lock",
       "tests/test_worker.py::test_two_workers_and_one_run_give_one_claim_and_no_repeated_request",
-      "tests/test_worker.py::test_the_worker_parent_loads_no_model_or_statistics_library"
+      "tests/test_worker.py::test_the_worker_parent_loads_no_model_or_statistics_library",
+      "tests/test_worker_fix1.py::test_losing_the_lease_session_stops_the_child_and_gives_up_the_run",
+      "tests/test_worker_fix1.py::test_losing_the_work_session_refuses_the_childs_next_write",
+      "tests/test_worker_fix1.py::test_a_takeover_waits_for_a_write_in_progress_and_the_next_write_is_refused",
+      "tests/test_worker_fix1.py::test_a_stale_owner_is_refused_before_its_reservation"
     ],
     "history": [],
     "notes": [
@@ -8488,7 +8502,7 @@
     "key": "stuck_child_limits",
     "name": "A stuck child",
     "state": "in_force",
-    "statement": "The worker kills its child, releases the claim as 'child_stuck' and lets recovery take the run up when the run has written nothing (a status change, a stage or call started or finished, a source searched, a record stored, the confirmation, the lock, the freeze) for 900 seconds, or after 1,800 seconds in all. 900 seconds covers one agent call's two requests at the 300-second request timeout plus 300 seconds of margin. A deploy (SIGTERM) stops the child and releases the claim as 'shutdown'.",
+    "statement": "The worker kills its child, releases the claim as 'child_stuck' and lets recovery take the run up when no progress has been seen for 900 seconds since the later of the child's launch and the last progress (downtime before the attempt does not count; fix round 1, finding 6), or after 1,800 seconds in all. Progress is the run's last write (a status change, a stage or call started or finished, a source searched, a record stored, the confirmation, the lock, the freeze), sampled by a thread of the worker with each query cut off after 5 seconds; the worker's main thread never waits for it, so the whole-run limit and the shutdown check keep their own clock (finding 5). 900 seconds covers one agent call's two requests at the 300-second request timeout plus 300 seconds of margin. A deploy (SIGTERM) stops the child (a SIGTERM not obeyed within 10 seconds is escalated to SIGKILL) and releases the claim as 'shutdown'. On every exit path the child is stopped and reaped before the claim is released, and no child is started once shutdown was asked for (finding 2).",
     "value": {
       "text": "900 s without a write; 1,800 s in all",
       "unit": "seconds"
@@ -8523,6 +8537,14 @@
         {
           "ref": "python:hypocurate.pipeline.agents.lm:DEFAULT_TIMEOUT_SECONDS",
           "equals": 300
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queue:MONITOR_TIMEOUT_MS",
+          "equals": 5000
+        },
+        {
+          "ref": "python:hypocurate.access.guarded:STOP_GRACE_SECONDS",
+          "equals": 10
         }
       ],
       "note": null
@@ -8531,7 +8553,14 @@
       "tests/test_worker.py::test_a_stuck_child_is_stopped_and_its_claim_released_for_recovery",
       "tests/test_worker.py::test_the_whole_run_limit_stops_a_child_that_keeps_writing_too_long",
       "tests/test_worker.py::test_sigterm_shuts_the_worker_down_releasing_its_claim_and_stopping_its_child",
-      "tests/test_queue.py::test_the_time_since_the_last_write_counts_stage_and_call_rows"
+      "tests/test_queue.py::test_the_time_since_the_last_write_counts_stage_and_call_rows",
+      "tests/test_worker_fix1.py::test_a_failure_after_the_child_started_stops_and_reaps_it_before_the_claim_is_released",
+      "tests/test_worker_fix1.py::test_a_child_that_ignores_sigterm_is_killed",
+      "tests/test_worker_fix1.py::test_no_child_is_started_once_shutdown_was_asked_for",
+      "tests/test_worker_fix1.py::test_a_blocked_monitoring_query_does_not_hold_back_the_whole_run_limit",
+      "tests/test_worker_fix1.py::test_a_blocked_monitoring_query_does_not_hold_back_shutdown",
+      "tests/test_worker_fix1.py::test_the_monitoring_query_is_time_limited",
+      "tests/test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance"
     ],
     "history": [],
     "notes": []
@@ -8540,7 +8569,7 @@
     "key": "recovery_policy",
     "name": "Recovery when a run is taken up again",
     "state": "in_force",
-    "statement": "When a worker claims a run that is already running, recovery first closes every open model call as 'interrupted' (counted at its reserved maximum under every cap) and every running stage as failed ('interrupted'); a run taken up more than 3 times fails ('attempts_exhausted'). It writes no plan, record, set, freeze or confirmation. The run then goes on by the normal path, by cause (owner, 2026-10-08): an interruption, a recording failure or any database failure while saving a call follows the per-role rule (the Planner is repeated once, a second loss fails the run; the Critic's remaining batches are skipped; after the Analyst the run completes with 'explanation unavailable'); a spending refusal stays a stop, exactly as in 9a (the Planner and the Critic fail the run, the Analyst completes it; no further request, never a later paid stage). The worker also finishes a narrower question that a stop left uncreated (never a second).",
+    "statement": "When a worker claims a run that is already running, recovery first closes every open model call as 'interrupted' (counted at its reserved maximum under every cap) and every running stage as failed: with the spending refusal recorded against its request when there is one (the refusal and its record are one transaction), else 'interrupted' (fix round 1, finding 1). Recovery attempts are counted explicitly (the claims that took up a running run; the first run is not one): the fourth fails the run ('attempts_exhausted'; finding 7). It writes no plan, record, set, freeze or confirmation. The run then goes on by the normal path, by cause (owner, 2026-10-08): an interruption, a recording failure or any database failure while saving a call, of a stage stored before the recovery, follows the per-role rule (a failure of an agent run after the recovery stops the run normally; finding 4) (the Planner is repeated once, a second loss fails the run; the Critic's remaining batches are skipped; after the Analyst the run completes with 'explanation unavailable'); a spending refusal stays a stop, exactly as in 9a (the Planner and the Critic fail the run, the Analyst completes it; no further request, never a later paid stage). The worker also finishes a narrower question that a stop left uncreated (never a second).",
     "value": {
       "text": "3 recoveries; the Planner repeated once",
       "unit": null
@@ -8583,6 +8612,14 @@
         {
           "ref": "python:hypocurate.pipeline.recovery:ANALYST_INTERRUPTED",
           "equals": "explanation unavailable (interrupted)"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.recovery:SPENDING_CODES",
+          "equals": [
+            "spending_cap_run",
+            "spending_cap_month",
+            "ceiling_reached"
+          ]
         }
       ],
       "note": null
@@ -8595,7 +8632,12 @@
       "tests/test_recovery.py::test_a_run_recovered_more_than_max_recoveries_times_fails",
       "tests/test_kill_matrix.py::test_a_worker_killed_at_a_code_stage_is_taken_up_with_the_same_results",
       "tests/test_kill_matrix.py::test_a_worker_killed_mid_planner_repeats_the_planner_once",
-      "tests/test_kill_matrix.py::test_14_4_a_worker_stopped_mid_run_and_restarted_finishes_the_run"
+      "tests/test_kill_matrix.py::test_14_4_a_worker_stopped_mid_run_and_restarted_finishes_the_run",
+      "tests/test_recovery_spending.py::test_a_planner_refusal_whose_stage_was_not_saved_stays_a_stop_after_recovery",
+      "tests/test_recovery_spending.py::test_a_critic_refusal_whose_stage_was_not_saved_stays_a_stop_and_the_analyst_is_never_asked",
+      "tests/test_worker_fix1.py::test_a_critic_run_after_recovery_that_fails_to_record_its_call_stops_the_run",
+      "tests/test_worker_fix1.py::test_three_recoveries_are_allowed_and_the_fourth_is_refused_with_real_claim_histories",
+      "tests/test_kill_matrix.py::test_a_worker_killed_during_the_critics_first_of_two_batches_skips_the_second"
     ],
     "history": [],
     "notes": []
@@ -8648,6 +8690,53 @@
       "tests/test_guarded_parent.py::test_a_child_is_started_only_from_the_main_thread",
       "tests/test_guarded_parent.py::test_a_child_whose_parent_is_already_gone_exits_at_once",
       "tests/test_worker.py::test_killing_the_worker_kills_its_child_and_frees_the_runs_locks"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "worker_session_settings",
+    "name": "Worker sessions notice a lost client",
+    "state": "in_force",
+    "statement": "The worker's and its child's database sessions set client_connection_check_interval to 1 second (PostgreSQL abandons a query whose client is gone) and TCP keepalives (idle 30 s, interval 10 s, 3 probes) on both sides, so a lost connection is noticed. Other sessions (the web service, the command line's own) keep the server's defaults.",
+    "value": {
+      "text": "1 s; keepalives 30/10/3",
+      "unit": "seconds"
+    },
+    "category": "operational",
+    "affects": "Every database session of the worker and its child.",
+    "reason": "The second-model review of step 9b; owner's decision, 2026-10-09.",
+    "evidence": [
+      "docs/reviews/step09b_review_chatgpt.md; docs/reviews/step09b_plan.md, 'Fix round 1'."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-09"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.engine:WORKER_SESSION",
+          "equals": {
+            "client_connection_check_interval": "1s",
+            "tcp_keepalives_idle": "30",
+            "tcp_keepalives_interval": "10",
+            "tcp_keepalives_count": "3"
+          }
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_worker_fix1.py::test_worker_sessions_check_for_a_lost_client_every_second_with_tcp_keepalives",
+      "tests/test_worker_fix1.py::test_the_worker_and_its_child_use_worker_sessions"
     ],
     "history": [],
     "notes": []

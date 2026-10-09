@@ -299,11 +299,13 @@ def proceed(engine: Engine, run_id: int, *, ceiling=None, client_options: Mappin
         if not _exists(engine, "SELECT 1 FROM stage_result WHERE run_id = :r AND stage = 'critic'", run_id):
             c = critic.run_critic(engine, run_id, **agent_kw)
             report.stages.append("critic")
-            failures = c.failures
+            failures, stored = c.failures, False
         else:  # fix round 1, finding 1: the Critic's stored stages decide, as they did when it ran
-            failures = _critic_failures(engine, run_id)
-        # Step 9b (owner, 2026-10-08): after recovery a lost Critic request is not repeated and the run goes on.
-        stops = [f for f in failures if (f in RUN_STOPS or f == LEFT_RUNNING) and not (recovered and f in RECOVERABLE)]
+            failures, stored = _critic_failures(engine, run_id), True
+        # Step 9b (owner, 2026-10-08): after recovery a lost Critic request is not repeated and the run goes on. Fix
+        # round 1, finding 4: only for stages stored before (those recovery processed), never for a Critic run now.
+        excused = recovered and stored
+        stops = [f for f in failures if (f in RUN_STOPS or f == LEFT_RUNNING) and not (excused and f in RECOVERABLE)]
         if stops:
             return _stopped(engine, report, stops[0])
         spent = [f for f in failures if f in SPENDING]
@@ -430,13 +432,19 @@ def work_guarded(payload: dict) -> dict:
     from hypocurate.config import load_settings
     from hypocurate.db.engine import make_engine
     from hypocurate.pipeline import queue
-    engine = make_engine(load_settings(web=False).database_url)
+    engine = make_engine(load_settings(web=False).database_url, worker_session=True)
     run_id = int(payload["run_id"])
     holder = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
     try:
         holder.execute(text("SELECT set_config('application_name', :a, false)"), dict(a=f"hc-work-{run_id}"))
         if not holder.execute(text("SELECT pg_try_advisory_lock(:k)"), dict(k=queue.work_key(run_id))).scalar():
             return {"busy": True}
+        if payload.get("claim_id") is not None:  # step 9b fix round 1, finding 3: the work is bound to this claim
+            from hypocurate.pipeline import writes
+            writes.OWNER = (int(payload["claim_id"]), holder.execute(text("SELECT pg_backend_pid()")).scalar())
+            with engine.connect() as conn:
+                if not writes.owner_holds(conn, run_id):
+                    return {"busy": True}
         phase = {"prepare": prepare, "proceed": proceed}.get(payload.get("phase"), run)
         r = phase(engine, run_id, client_options=payload.get("client_options"),
                   recovered=bool(payload.get("recovered")))

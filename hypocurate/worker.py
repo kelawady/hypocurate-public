@@ -32,7 +32,7 @@ from hypocurate.pipeline import queue, recovery
 
 log = logging.getLogger("hypocurate.worker")
 CHILD_TARGET = "hypocurate.pipeline.orchestrator:work_guarded"
-WATCH_SECONDS = 1.0  # how often the worker looks at its child
+WATCH_SECONDS = 1.0  # how often the worker looks at its child (and its events)
 
 
 def worker_name() -> str:
@@ -44,23 +44,32 @@ def _status(engine: Engine, run_id: int) -> str:
         return conn.execute(text("SELECT status FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
 
 
-def _watch(engine: Engine, run_id: int, child: guarded.GuardedChild, started: float, stop: threading.Event,
-           stall_seconds: float, run_timeout: float) -> str:
-    """'ended', or why the child is to be stopped: 'shutdown', 'run_timeout' or 'stalled'."""
+def _watch(child: guarded.GuardedChild, started: float, stop: threading.Event, lost: threading.Event,
+           monitor: queue.Monitor, stall_seconds: float, run_timeout: float) -> str:
+    """'ended', or why the child is to be stopped: 'shutdown', 'ownership_lost', 'run_timeout' or 'stalled'. Every
+    check is on this thread's own clock or an event (fix round 1, finding 5): the database is read only by the
+    monitor's thread, whose samples are time-limited and never waited for. The stall allowance counts from
+    `monitor.progress_at`: this child's launch, or the last progress the monitor saw since (finding 6)."""
     while True:
         if child.wait_for(WATCH_SECONDS):
             return "ended"
         if stop.is_set():
             return "shutdown"
-        if time.monotonic() - started > run_timeout:
+        if lost.is_set():
+            return "ownership_lost"
+        now = time.monotonic()
+        if now - started > run_timeout:
             return "run_timeout"
-        try:
-            with engine.connect() as conn:
-                quiet = queue.seconds_since_last_write(conn, run_id)
-        except Exception:  # noqa: BLE001 (the database is away: the run limit still applies)
-            continue
-        if quiet > stall_seconds:
+        if now - monitor.progress_at > stall_seconds:
             return "stalled"
+
+
+def _end_child(child: guarded.GuardedChild | None, why: str | None) -> None:
+    """Stops and reaps the child (finding 2): SIGTERM at a shutdown (escalated to SIGKILL if not obeyed), else SIGKILL."""
+    if child is not None and child.alive():
+        child.stop(signal.SIGTERM if why == "shutdown" else signal.SIGKILL)
+    if child is not None:
+        child.discard()
 
 
 def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Callable[[str, dict], None] | None = None,
@@ -68,41 +77,59 @@ def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Calla
          run_timeout: float = queue.RUN_TIMEOUT_SECONDS, heartbeat_interval: float = queue.HEARTBEAT_SECONDS,
          client_options: dict | None = None) -> dict[str, Any]:
     """Works one claimed run (from the main thread) and releases its claim; returns the last phase's report, the
-    release reason and, for a stopped child, why."""
+    release reason and, for a stopped child, why. Fix round 1 (finding 2): the claim is released only after the child
+    has been stopped and reaped, on every exit path, and no child is started once shutdown was asked for."""
     stop = stop or threading.Event()
-    beat = queue.Heartbeat(engine, claim.id, interval=heartbeat_interval)
+    lost = threading.Event()
+    beat = queue.Heartbeat(engine, claim.id, interval=heartbeat_interval, lease=claim.lease, lost=lost)
+    monitor = queue.Monitor(engine, claim.run_id, interval=min(5.0, max(0.5, stall_seconds / 4)))
     beat.start()
+    monitor.start()
     started = time.monotonic()
     found: dict | None = None
     report: dict | None = None
+    child: guarded.GuardedChild | None = None
+    reason, why = "child_failed", "error"
     try:
+        if stop.is_set():
+            reason, why = "shutdown", "shutdown"
+            return {"report": report, "release": reason, "why": why}
         if claim.status_before == "running":
             found = recovery.recover(engine, claim.run_id) or None
         for i, phase in enumerate(phases):
             if found and found.get("failed"):  # recovery ended the run (attempts exhausted)
                 break
-            child = guarded.start_guarded(CHILD_TARGET, {"run_id": claim.run_id, "phase": phase,
+            if stop.is_set():
+                reason, why = "shutdown", "shutdown"
+                return {"report": report, "release": reason, "why": why}
+            if lost.is_set():
+                reason, why = "lost", "ownership_lost"
+                return {"report": report, "release": reason, "why": why}
+            child = guarded.start_guarded(CHILD_TARGET, {"run_id": claim.run_id, "phase": phase, "claim_id": claim.id,
                                                          "client_options": client_options,
                                                          "recovered": claim.status_before == "running"},
                                           audit=(engine, claim.run_id))
+            monitor.launched()
             if i == 0:
                 queue.record_child(engine, claim, child.pid)
-            why = _watch(engine, claim.run_id, child, started, stop, stall_seconds, run_timeout)
-            if why != "ended":
-                child.stop(signal.SIGTERM if why == "shutdown" else signal.SIGKILL)
-                child.discard()
-                reason = "shutdown" if why == "shutdown" else "child_stuck"
-                queue.release(engine, claim, reason, found)
-                log.warning(json.dumps({"child_stopped": claim.run_id, "why": why}))
+            watched = _watch(child, started, stop, lost, monitor, stall_seconds, run_timeout)
+            if watched != "ended":
+                _end_child(child, watched)
+                child = None
+                reason = {"shutdown": "shutdown", "ownership_lost": "lost"}.get(watched, "child_stuck")
+                why = watched
+                log.warning(json.dumps({"child_stopped": claim.run_id, "why": watched}))
                 return {"report": report, "release": reason, "why": why}
             try:
                 report = child.result(timeout=60)
             except guarded.GuardedRunError:
-                queue.release(engine, claim, "child_failed", found)
-                return {"report": report, "release": "child_failed", "why": "no_answer"}
-            if report.get("busy"):  # another child holds the run's work lock
-                queue.release(engine, claim, "child_failed", found)
-                return {"report": report, "release": "child_failed", "why": "busy"}
+                child = None
+                reason, why = "child_failed", "no_answer"
+                return {"report": report, "release": reason, "why": why}
+            child = None
+            if report.get("busy"):  # another child holds the run's work lock, or the claim is not this child's
+                reason, why = "child_failed", "busy"
+                return {"report": report, "release": reason, "why": why}
             if on_phase:
                 on_phase(phase, report)
             if phase == "prepare" and not report.get("ready"):
@@ -110,16 +137,18 @@ def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Calla
         status = _status(engine, claim.run_id)
         reason = ("finished" if status in ("completed", "failed") else "waiting" if status == "waiting"
                   else "stopped_for_recovery")
-        queue.release(engine, claim, reason, found)
-        return {"report": report, "release": reason, "why": None}
-    except BaseException:
-        try:
-            queue.release(engine, claim, "child_failed", found)
-        except Exception:  # noqa: BLE001 (the lease is let go anyway: the claim goes stale)
-            pass
-        raise
+        why = None
+        if lost.is_set():
+            reason, why = "lost", "ownership_lost"
+        return {"report": report, "release": reason, "why": why}
     finally:
+        _end_child(child, "error")  # never release with a live child (finding 2)
         beat.stop()
+        monitor.stop()
+        try:
+            queue.release(engine, claim, reason, found)
+        except Exception:  # noqa: BLE001 (the lease is let go anyway: the claim goes stale)
+            log.error(json.dumps({"release_failed": claim.run_id}))
 
 
 def run(once: bool = False, engine: Engine | None = None, max_cycles: int | None = None,
@@ -128,7 +157,7 @@ def run(once: bool = False, engine: Engine | None = None, max_cycles: int | None
     Each cycle it finishes any narrower question left by a stop (`recovery.finish_narrower_questions`) and claims the
     next run; idle, it logs whether the database answers (never its address) and looks again after `SWEEP_SECONDS`.
     `max_cycles` and `wait` are for tests."""
-    engine = engine or make_engine(load_settings(web=False).database_url)
+    engine = engine or make_engine(load_settings(web=False).database_url, worker_session=True)
     stop = threading.Event()
     wait = wait or stop.wait
     if threading.current_thread() is threading.main_thread():

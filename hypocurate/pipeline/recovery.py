@@ -94,14 +94,16 @@ def recover(engine: Engine, run_id: int) -> dict:
             "|| jsonb_build_object('code', 'interrupted') || CASE WHEN stage = 'analyst' THEN "
             "jsonb_build_object('shown', CAST(:shown AS text)) ELSE '{}'::jsonb END "
             "WHERE run_id = :r AND status = 'running'"), dict(r=run_id, shown=ANALYST_INTERRUPTED)).rowcount
-        earlier = conn.execute(text(
-            "SELECT count(*) FROM run_claim WHERE run_id = :r AND released_at IS NOT NULL "
-            "AND release_reason NOT IN ('waiting', 'finished')"), dict(r=run_id)).scalar_one()
-        found = {"calls_closed": calls, "stages_closed": stages, "refusals_kept": refused, "recoveries": earlier + 1}
-        if earlier + 1 > MAX_RECOVERIES:
+        # Fix round 1, finding 7: recovery attempts counted explicitly, the claims that took up a running run (this
+        # one included); the first run's claim is not one.
+        attempts = conn.execute(text("SELECT count(*) FROM run_claim WHERE run_id = :r AND recovery"),
+                                dict(r=run_id)).scalar_one()
+        attempts = max(attempts, 1)  # a run taken up with no claim recorded as a recovery (stopped outside a worker)
+        found = {"calls_closed": calls, "stages_closed": stages, "refusals_kept": refused, "recoveries": attempts}
+        if attempts > MAX_RECOVERIES:
             from hypocurate.access.stage import actual_stage
             stage = actual_stage(conn, run_id, status)
-            reason = EXHAUSTED.format(stage=stage.replace("_", " "), n=earlier + 1)
+            reason = EXHAUSTED.format(stage=stage.replace("_", " "), n=attempts)
             conn.execute(text("UPDATE run SET status = 'failed', failed_at = now(), failure_reason = :f WHERE id = :r"),
                          dict(f=reason, r=run_id))
             found["failed"] = reason

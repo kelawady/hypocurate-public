@@ -318,3 +318,41 @@ def test_14_4_a_worker_stopped_mid_run_and_restarted_finishes_the_run(engine, st
     start_worker("--once")  # restarted: a shutdown claim is claimable at once
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "completed"
     assert_bookkeeping(engine, rid)
+
+
+def test_a_worker_killed_during_the_critics_first_of_two_batches_skips_the_second(migrated_database, stub, monkeypatch):
+    """Fix round 1 (owner, 2026-10-09): 'mid-Critic, batch 1 of 2'. 110 rows present in both sources raise 110 flags
+    naming two records each; the Critic sends at most 100 per request (its recorded setting), so two batches. The
+    worker is killed during the first; after recovery the second is never sent and the run completes."""
+    import pipeline_world as pw
+    import stub_provider as sp
+    from hypocurate.db.engine import make_engine
+    from stats_world import small_rows
+    from test_critic import SOURCES
+    for k, v in (("DATABASE_URL", migrated_database), ("ANTHROPIC_API_BASE", stub.base_url),
+                 ("ANTHROPIC_BASE_URL", stub.base_url), ("ANTHROPIC_API_KEY", sp.DUMMY_KEY)):
+        monkeypatch.setenv(k, v)
+    eng = make_engine(migrated_database)
+    with eng.begin() as conn:
+        db = conn.execute(text("SELECT current_database()")).scalar()
+        conn.execute(text(f'ALTER DATABASE "{db}" SET client_connection_check_interval = \'100ms\''))
+    pairs = [pw.mpea_row("CoCrFeNi", 1.0 + i / 10, 5000.0 + i, doi=f"10.1016/j.test.2026.{300 + i}") for i in range(110)]
+    pw.registered_files(eng, {"mpea": pw.mpea_csv(small_rows(3, papers=3) + pairs),
+                              "controlled_duplicates": pw.mpea_csv(pairs)})
+    q = queries.create(eng, to.FCC_CLAIM, SOURCES)
+    queries.submit(eng, q.version_id)
+    queries.confirm_domain(eng, q.version_id, by="Ada Reviewer")
+    rid = queries.dispatch(eng, q.version_id, fixed_plan=True, constructed_test_data=True)
+    state = kill_on(stub, "classification")
+    proc = start_worker("--once", wait=False)
+    state["pid"] = proc.pid
+    proc.wait(600)
+    assert state["done"]
+    two_or_more = one(eng, "SELECT count(*) FROM flag f WHERE f.run_id = :r AND (SELECT count(*) FROM flag_record fr "
+                           "WHERE fr.flag_id = f.id) >= 2", r=rid)
+    assert two_or_more > 100  # two batches
+    complete(eng, rid)
+    assert one(eng, "SELECT status FROM run WHERE id = :r", r=rid) == "completed"
+    assert requests(stub, "classification") == 1  # the second batch was never sent
+    assert_bookkeeping(eng, rid)
+    eng.dispose()
