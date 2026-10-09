@@ -36,6 +36,8 @@ PLANNER_REPEATS = 1  # owner, Q3
 # save the call. A spending refusal is never among them.
 RECOVERABLE = ("interrupted", "recording_failed", "reservation_failed")
 LOCK_TIMEOUT_MS = 5000
+# The refusals a stage keeps as its cause (spend.CODES; the curation cap never applies to a run).
+SPENDING_CODES = ("spending_cap_run", "spending_cap_month", "ceiling_reached")
 # How an Analyst stage closed by recovery is shown (owner, Q3); tests check it is agents.analyst.UNAVAILABLE's wording.
 ANALYST_INTERRUPTED = "explanation unavailable (interrupted)"
 EXHAUSTED = ("attempts_exhausted: the run stopped at {stage} {n} times without finishing; dispatch it again as a new "
@@ -75,7 +77,19 @@ def recover(engine: Engine, run_id: int) -> dict:
             "SELECT 1 FROM stage_result s WHERE s.id = mc.stage_result_id AND s.status = 'failed' AND "
             "s.output->>'code' = 'recording_failed') THEN 'recording_failed' ELSE 'worker_stopped' END "
             "WHERE mc.run_id = :r AND mc.status = 'started'"), dict(r=run_id)).rowcount
-        stages = conn.execute(text(
+        # Fix round 1, finding 1: a running stage whose request was refused by a spending cap (the refusal's record,
+        # committed with the decision) keeps that cause; only a stage with no such record was interrupted.
+        refused = conn.execute(text(
+            "UPDATE stage_result s SET status = 'failed', finished_at = now(), output = coalesce(s.output, '{}'::jsonb) "
+            "|| jsonb_build_object('code', a.code) || CASE WHEN s.stage = 'analyst' THEN jsonb_build_object('shown', "
+            "'explanation unavailable (' || a.code || ')') ELSE '{}'::jsonb END "
+            "FROM (SELECT DISTINCT ON (i.stage_result_id) i.stage_result_id, al.detail->>'code' AS code "
+            "      FROM agent_invocation i JOIN audit_log al ON al.function = 'model_call' AND NOT al.allowed "
+            "      AND al.detail->>'invocation' = i.id::text AND al.detail->>'code' = ANY(:codes) "
+            "      WHERE i.run_id = :r ORDER BY i.stage_result_id, al.id DESC) a "
+            "WHERE s.id = a.stage_result_id AND s.run_id = :r AND s.status = 'running'"),
+            dict(r=run_id, codes=list(SPENDING_CODES))).rowcount
+        stages = refused + conn.execute(text(
             "UPDATE stage_result SET status = 'failed', finished_at = now(), output = coalesce(output, '{}'::jsonb) "
             "|| jsonb_build_object('code', 'interrupted') || CASE WHEN stage = 'analyst' THEN "
             "jsonb_build_object('shown', CAST(:shown AS text)) ELSE '{}'::jsonb END "
@@ -83,7 +97,7 @@ def recover(engine: Engine, run_id: int) -> dict:
         earlier = conn.execute(text(
             "SELECT count(*) FROM run_claim WHERE run_id = :r AND released_at IS NOT NULL "
             "AND release_reason NOT IN ('waiting', 'finished')"), dict(r=run_id)).scalar_one()
-        found = {"calls_closed": calls, "stages_closed": stages, "recoveries": earlier + 1}
+        found = {"calls_closed": calls, "stages_closed": stages, "refusals_kept": refused, "recoveries": earlier + 1}
         if earlier + 1 > MAX_RECOVERIES:
             from hypocurate.access.stage import actual_stage
             stage = actual_stage(conn, run_id, status)

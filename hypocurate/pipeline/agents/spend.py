@@ -14,8 +14,11 @@ while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
 - optionally a lower ceiling the caller names (the live curation call: $0.50, owner 2026-10-06),
   over the same run or invocation; for a run, also the ceiling stored on the run at dispatch (step 9a, R5:
   it holds after a crash or a restart), the lower of the two.
-A refusal sends nothing, is logged in `audit_log` in its own transaction (function 'model_call',
-result 'rejected', a fixed code) and raises `SpendingRefused`.
+A refusal sends nothing, is logged in `audit_log` (function 'model_call', result 'rejected', a fixed code,
+the invocation) and raises `SpendingRefused`. Step 9b fix round 1 (finding 1): the audit row is written in the
+same transaction that decides the refusal, so a refusal is reported only once its record is committed (if the
+commit fails, the caller sees a failure to save the call instead); recovery reads that record to keep a refusal a
+stop even when the agent's stage could not be saved.
 
 **After the request** (`finish`): one transaction (a run call takes the run's lock first) finishes
 the call exactly once, with the reported usage and its cost, or as failed with no usage (counted at
@@ -82,6 +85,7 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
         inv = conn.execute(text("SELECT scope, run_id, stage_result_id, role FROM agent_invocation WHERE id = :i"),
                            dict(i=invocation_id)).one_or_none()
         if inv is None:
+            conn.execute(_AUDIT, _refusal_row(invocation_id, None, None, "invocation_unknown", max_cost, ceiling, None))
             return ("refused", "invocation_unknown", None, None, None)
         # Every lock before any total is read (step 8a review, finding 3): the run's lock first (the
         # locking protocol), then the month-wide lock; read in the same order everywhere.
@@ -107,7 +111,9 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
                 "ceiling_reached" if limit is not None and spent + max_cost > limit else
                 "spending_cap_month" if month + max_cost > MONTH_CAP_USD else None)
         if code:
-            return ("refused", code, inv, stage, {"spent": str(spent), "month": str(month)})
+            totals = {"spent": str(spent), "month": str(month)}
+            conn.execute(_AUDIT, _refusal_row(invocation_id, inv, stage, code, max_cost, ceiling, totals))
+            return ("refused", code, inv, stage, totals)
         call = conn.execute(text(
             "INSERT INTO model_call (run_id, stage_result_id, invocation_id, role, model, price_table_version, max_cost) "
             "VALUES (:r, :s, :i, :o, :m, :p, :c) RETURNING id"),
@@ -118,22 +124,15 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
     outcome = run_transaction(engine, transaction)
     if outcome[0] == "reserved":
         return outcome[1]
-    _, code, inv, stage, totals = outcome
-    _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals)
-    raise SpendingRefused(code)
+    raise SpendingRefused(outcome[1])
 
 
-def _log_refusal(engine, invocation_id, inv, stage, code, max_cost, ceiling, totals) -> None:
+def _refusal_row(invocation_id, inv, stage, code, max_cost, ceiling, totals) -> dict:
     detail = {"result": "rejected", "code": code, "invocation": int(invocation_id), "max_cost": str(max_cost)}
     if ceiling is not None:
         detail["ceiling"] = str(ceiling)
     detail.update(totals or {})
-    row = dict(r=inv.run_id if inv else None, role=inv.role if inv else "invalid", stage=stage or "none", d=detail)
-    try:
-        run_transaction(engine, lambda conn: conn.execute(_AUDIT, row))
-    except Exception as error:  # the process log is the fallback
-        LOG.error(json.dumps({"refusal_fallback": {**row, "function": "model_call"}, "error": type(error).__name__},
-                             sort_keys=True, default=str))
+    return dict(r=inv.run_id if inv else None, role=inv.role if inv else "invalid", stage=stage or "none", d=detail)
 
 
 def finish(engine: Engine, call_id: int, status: str, *, input_tokens: int | None = None,
