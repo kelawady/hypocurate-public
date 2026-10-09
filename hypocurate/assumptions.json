@@ -8424,7 +8424,7 @@
     "key": "queue_and_claims",
     "name": "The queue: claims and the heartbeat",
     "state": "in_force",
-    "statement": "A worker claims one run at a time: on its own autocommit lease connection it takes, without waiting, a session advisory lock on the run (CLAIM) and checks that the run's WORK lock is free; then, in one transaction under the run's lock, it re-checks the run, closes a stale open claim as 'lost', records its claim (run_claim; one open claim per run) and starts the run (queued, or a confirmed waiting run, becomes running). The guarded child holds the run's WORK lock for its whole work; an orphan child holding it keeps every worker off the run. A claim's heartbeat is written every 15 seconds by a thread of the worker on the claim row, never the run row, so it never waits behind the run's lock (a named exception to the locking protocol, like audit rows). Each beat also confirms ownership: the beat touched the open claim's row and the lease session still holds CLAIM; otherwise the worker stops its child at once and gives the run up ('lost'). The child's work is bound to its claim: every write checks, in its own transaction after the run's lock, that the claim is open (its row locked FOR KEY SHARE; closing a claim locks the row FOR UPDATE first, so a takeover waits for a write in progress or the write sees the claim closed) and that the child's work lock is still held; a reservation checks the same before any request. A stale owner is refused ('claim_lost') before any further write or request (fix round 1, finding 3). A claim is taken to be dead when its heartbeat is older than 120 seconds; a claim released for recovery or at shutdown is claimable at once. Running runs are taken up first, then confirmed waiting runs, then queued runs in the order of dispatch. The worker parent never imports dspy, litellm or scipy (it does load numpy, through the source adapters' spreadsheet library).",
+    "statement": "A worker claims one run at a time: on its own autocommit lease connection it takes, without waiting, a session advisory lock on the run (CLAIM) and checks that the run's WORK lock is free; then, in one transaction under the run's lock, it re-checks the run, closes a stale open claim as 'lost', records its claim (run_claim; one open claim per run) and starts the run (queued, or a confirmed waiting run, becomes running). The guarded child holds the run's WORK lock for its whole work; an orphan child holding it keeps every worker off the run. A claim's heartbeat is written every 15 seconds by a thread of the worker on the claim row, never the run row, so it never waits behind the run's lock (a named exception to the locking protocol, like audit rows). Each beat also confirms ownership: the beat touched the open claim's row and the lease session still holds CLAIM; otherwise the worker stops its child at once and gives the run up ('lost'). The child's work is bound to its claim: every write checks, in its own transaction after the run's lock, that the claim is open (its row locked FOR KEY SHARE; closing a claim locks the row FOR UPDATE first, so a takeover waits for a write in progress or the write sees the claim closed) and that the child's work lock is still held; a reservation checks the same before any request, and finishing a model call checks the same in its own transaction after the run's lock (fix round 2): a stale child cannot finish its call, which stays started and is closed by recovery as interrupted, counted at its maximum. A stale owner is refused ('claim_lost') before any further write, request or call record (fix round 1, finding 3; fix round 2, finding 1). A claim is taken to be dead when its heartbeat is older than 120 seconds; a claim released for recovery or at shutdown is claimable at once. Running runs are taken up first, then confirmed waiting runs, then queued runs in the order of dispatch. The worker parent never imports dspy, litellm or scipy (it does load numpy, through the source adapters' spreadsheet library).",
     "value": {
       "text": "heartbeat 15 s; dead after 120 s",
       "unit": "seconds"
@@ -8433,7 +8433,8 @@
     "affects": "Every run worked by the worker or the command line (PRD 8 'Queue', 'Restart').",
     "reason": "PRD 8; the owner's approval of R6 and of the claims design (step 9 plan).",
     "evidence": [
-      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08)."
+      "Step 9 plan approved by the owner on 2026-10-08 (R6, Q2, Q3, A3, A4); docs/reviews/step09b_plan.md; the owner's answer on recovery (2026-10-08).",
+      "Fix round 2 (owner, 2026-10-09): ChatGPT's second review, finding 1 (docs/reviews/step09b_recheck_chatgpt.md)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -8491,7 +8492,9 @@
       "tests/test_worker_fix1.py::test_losing_the_lease_session_stops_the_child_and_gives_up_the_run",
       "tests/test_worker_fix1.py::test_losing_the_work_session_refuses_the_childs_next_write",
       "tests/test_worker_fix1.py::test_a_takeover_waits_for_a_write_in_progress_and_the_next_write_is_refused",
-      "tests/test_worker_fix1.py::test_a_stale_owner_is_refused_before_its_reservation"
+      "tests/test_worker_fix1.py::test_a_stale_owner_is_refused_before_its_reservation",
+      "tests/test_worker_fix2.py::test_a_stale_child_cannot_finish_an_open_call_and_recovery_closes_it_at_its_maximum",
+      "tests/test_worker_fix2.py::test_an_owner_still_finishes_its_call"
     ],
     "history": [],
     "notes": [

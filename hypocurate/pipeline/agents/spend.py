@@ -57,7 +57,8 @@ FINISH_CODES = ("model_auth", "provider_rejected", "provider_unavailable", "cost
 
 
 class ClaimLost(Exception):
-    """Step 9b fix round 1 (finding 3): a worker's child no longer holds the run; nothing is reserved or sent."""
+    """Step 9b fix round 1 (finding 3): a worker's child no longer holds the run; nothing is reserved or sent, and
+    (fix round 2) a call it reserved is not finished by it."""
 
 
 class SpendingRefused(Exception):
@@ -161,6 +162,11 @@ def finish(engine: Engine, call_id: int, status: str, *, input_tokens: int | Non
         run_id = conn.execute(text("SELECT run_id FROM model_call WHERE id = :c"), dict(c=call_id)).scalar_one()
         if run_id is not None:
             conn.execute(text("SELECT hc_write_lock(p_run => :r)"), dict(r=run_id))
+            # Step 9b fix round 2 (owner, 2026-10-09): a stale child cannot finish its call; the call stays started,
+            # and recovery closes it at its maximum.
+            from hypocurate.pipeline.writes import owner_holds
+            if not owner_holds(conn, run_id):
+                raise ClaimLost("the run's claim was closed or its work lock is gone")
         conn.execute(text("UPDATE model_call SET status = :st, input_tokens = :i, output_tokens = :o, "
                           "cached_tokens = :c, cost = :cost, error = :e, finished_at = now() WHERE id = :id"),
                      dict(st=status, i=input_tokens, o=output_tokens, c=cached_tokens, cost=cost, e=code, id=call_id))

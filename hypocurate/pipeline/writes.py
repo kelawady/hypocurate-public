@@ -83,7 +83,7 @@ _WORK_NS = 0x48435752  # queue's work-lock namespace (queue.py imports nothing f
 
 
 def owner_holds(conn: Connection, run_id: int) -> bool:
-    """For a worker's child (`OWNER` set): its claim is open (row locked FOR SHARE) and its work lock still held."""
+    """For a worker's child (`OWNER` set): its claim is open (row locked FOR KEY SHARE) and its work lock still held."""
     if OWNER is None:
         return True
     claim_id, holder_pid = OWNER
