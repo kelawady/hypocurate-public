@@ -414,3 +414,75 @@ def test_the_planners_stage_stores_the_question_as_tested_labelled_as_its_readin
                          "(as the claim states); phase class FCC (as the claim states); test type tension (assumed: "
                          "the claim does not state it); room temperature, 20 to 25 °C (assumed: the claim does not "
                          "state it); excluding records with a grain size below 0.1 µm")
+
+
+# --- the specific rejection reason (owner, 2026-10-10, after live run B on Render) ----------------------------
+
+def stage_output(engine, stage_id):
+    return one(engine, "SELECT output FROM stage_result WHERE id = :s", s=stage_id)
+
+
+def test_an_answer_without_the_stated_marks_is_refused_with_its_reason_stored_and_named_in_the_retry(engine, stub):
+    """Live run B's likely answer: the five keys the old output description named, without 'stated'."""
+    rid = running(engine)
+    b = body()
+    del b["stated"]
+    bad = sp.fields(plan=json.dumps(b))
+    stub.queue(sp.reply(bad), sp.reply(bad))
+    result = plan_run(engine, rid, stub)
+    assert result.failure == "invalid_plan"
+    out = stage_output(engine, result.stage_id)
+    assert out["attempts"] == ["invalid_plan", "invalid_plan"]
+    assert out["attempt_reasons"] == ["missing key: stated", "missing key: stated"]
+    assert "missing key: stated" in stub.requests[1]["raw"].decode()
+
+
+def test_a_corrected_attempts_reason_is_kept_and_the_accepted_attempt_has_none(engine, stub):
+    rid = running(engine)
+    stated = {"alloy_class": True, "phase_class": True, "test_type": False, "temperature_band": False}
+    bad = body(claim_scope={**body()["claim_scope"], "test_type": ["compression"]}, stated=stated)
+    stub.queue(sp.reply(sp.fields(plan=json.dumps(bad))), sp.reply(answer()))
+    result = plan_run(engine, rid, stub)
+    assert result.failure is None
+    out = stage_output(engine, result.stage_id)
+    reason = "test_type is marked as not stated by the claim but differs from the default"
+    assert out["attempts"] == ["invalid_plan", "ok"] and out["attempt_reasons"] == [reason, None]
+    retry = stub.requests[1]["raw"].decode()
+    assert reason in retry and "compression" not in retry.split("previous answer")[-1][:400]
+
+
+@pytest.mark.parametrize("over, reason", [
+    ({"zq_planted_key": 1}, "a key that is not allowed"),
+    ({"outcome": "zq_planted_outcome"}, "the outcome comes from the list"),
+    ({"claim_scope": {"alloy_class": ["zq_planted_class"], "phase_class": ["FCC"], "test_type": ["tension"],
+                      "temperature_band": [RT]}}, "alloy_class: a non-empty list of distinct allowed values"),
+    ({"exclusion_rules": [{"rule": "zq_planted_rule"}]}, "an exclusion rule comes from the menu"),
+])
+def test_a_reason_names_only_codes_words_never_the_answers(engine, stub, over, reason):
+    """The planted-value test for reasons: whatever the model wrote stays out of the stored reason and the retry."""
+    rid = running(engine)
+    bad = sp.fields(plan=json.dumps(body(**over)))
+    stub.queue(sp.reply(bad), sp.reply(bad))
+    result = plan_run(engine, rid, stub)
+    out = stage_output(engine, result.stage_id)
+    assert out["attempt_reasons"] == [reason, reason]
+    assert "zq_planted" not in json.dumps(out) and "zq_planted" not in stub.requests[1]["raw"].decode()
+
+
+def test_a_plan_the_template_refuses_gets_one_fixed_reason_never_the_validators_message(engine, stub):
+    rid = running(engine)
+    bad = sp.fields(plan=json.dumps(body(claim_scope={
+        "alloy_class": [MPEA_CLASS], "phase_class": ["FCC"], "test_type": ["tension"],
+        "temperature_band": [{"band": "elevated", "min": 15.0, "max": 22.0}]})))
+    stub.queue(sp.reply(bad), sp.reply(bad))
+    result = plan_run(engine, rid, stub)
+    out = stage_output(engine, result.stage_id)
+    assert out["attempt_reasons"] == [planner.PLAN_INVALID_REASON] * 2
+    assert planner.PLAN_INVALID_REASON in stub.requests[1]["raw"].decode()
+
+
+def test_an_accepted_first_answer_stores_no_reason(engine, stub):
+    rid = running(engine)
+    stub.queue(sp.reply(answer()))
+    result = plan_run(engine, rid, stub)
+    assert stage_output(engine, result.stage_id)["attempt_reasons"] == [None]
