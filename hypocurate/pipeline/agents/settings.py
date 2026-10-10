@@ -17,6 +17,7 @@ from typing import Any, Mapping
 from sqlalchemy import Engine, text
 
 from hypocurate.db.retry import run_transaction
+from hypocurate.pipeline.agents.text_checks import SENTENCE_NAMES
 
 MODELS = MappingProxyType({
     "planner": "claude-opus-5-5",
@@ -57,15 +58,19 @@ CRITIC_INSTRUCTION = (
     "metadata shown. Each flag stands alone: judge it only on the records it names, and never compare records "
     "across flags. If the metadata do not allow a judgment, use 'cannot_tell'. You do not decide which record "
     "is used, and you never choose between values.")
+_SENTENCES = ", ".join("{" + n + "}" for n in SENTENCE_NAMES[:-1]) + " and {" + SENTENCE_NAMES[-1] + "}"
 ANALYST_INSTRUCTION = (
     "You explain a result that code has already computed. Write no digits at all. Wherever you want a number, a "
     "p-value, the paper figures, the outcome or the verdict, write the name of the fact in braces exactly as it is "
     "listed in 'facts', for example {pooled_estimate} or {pooled_p_phrase}; code replaces each name with its value. "
     "Open by restating the claim in words, then give the outcome ({outcome_wording}) and, when it is listed, the "
     "verdict ({verdict_wording}), then the main cautions, in two or three sentences, before any detail; do not open "
-    "with the query number. When there is a verdict, also use {pooled_p_phrase} and {pooled_figures_phrase}. Use the "
-    "ready-made sentences and notes whole where they apply: {model_sentence}, {scope_source} or the scope notes, "
-    "{direction_note}, {calibration_summary}, and {group_definition} once. Say 'groups', not 'papers'. Use only the "
+    "with the query number. When there is a verdict, also use {pooled_p_phrase} and {pooled_figures_phrase}. "
+    # Owner, 2026-10-10 (live run A): the code-built sentences stand alone; the list is the check's own.
+    f"These ready-made facts are complete sentences: where they apply, place each whole as a sentence of its own, "
+    f"never inside another sentence: {_SENTENCES}; use {{group_definition}} once. Give the minimums only through "
+    "{minimums_sentence}, which states each with its status. Use the scope notes whole where they apply. "
+    "Say 'groups', not 'papers'. Use only the "
     "facts and notes given, compute nothing, and do not draw conclusions beyond the facts and notes given. Never "
     "describe the effective number as a number of independent groups. Never write that data do not exist; say what "
     "was not found in the sources searched. If there is no verdict, do not suggest one. Do not use causal language, "

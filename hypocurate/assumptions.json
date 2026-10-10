@@ -6785,7 +6785,7 @@
     "key": "request_failure_policy",
     "name": "What happens when an agent request fails",
     "state": "in_force",
-    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst). The Analyst's 'unknown_name' and 'digit_outside_placeholder' are corrected once the same way.",
+    "statement": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming the failure code and, when the role's check gives one, its specific reason in code's own words (counts, the role's own keys, scope parts, names and rules; never the answer's text, a provider's text or an error's text), each attempt's reason stored with the stage, or the curation's summary, as 'attempt_reasons' (owner, 2026-10-10); refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst). The Analyst's 'unknown_name' and 'digit_outside_placeholder' are corrected once the same way.",
     "value": {
       "text": "2 requests at most; retry / correct / stop by code",
       "unit": null
@@ -6794,11 +6794,12 @@
     "affects": "Every agent call's cost and outcome.",
     "reason": "The step 8a failure table (owner, 2026-10-06): every failure mode has a defined, tested outcome.",
     "evidence": [
-      "Owner, step 8a plan: the request-path failure table (2026-10-06)."
+      "Owner, step 8a plan: the request-path failure table (2026-10-06).",
+      "Owner's decision, 2026-10-10, after the first live runs on Render (run A completed with garbled Analyst wording; run B failed 'invalid_plan'): branch fix-agent-contracts, docs/reviews/fix_agent_contracts_summary.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-10"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -6815,6 +6816,12 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.lm:FAILURES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.interface:correction_note"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.interface:parse_reason"
         }
       ],
       "note": null
@@ -6837,6 +6844,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Owner, 2026-10-07, after the refused live Analyst check: placeholders (the Analyst writes no digits), fewer facts built by code, and the stated/defaulted marks, in one change."
+      },
+      {
+        "value": "Every agent request is reserved, sent once (litellm's retries off) outside any database transaction, and recorded. At most two requests per agent call: an unavailable provider (connection error, timeout, 429, 5xx, or a reply litellm cannot read) is tried once more with the same request; an unusable answer (empty, malformed, a tool call, truncated at the output limit, longer than the role allows) once more with a fixed corrective note naming only the failure code; refused credentials (401, 403), another refused request (4xx), a refusal, a cost the provider did not report, a reservation that cannot be written (nothing is sent), a failed recording on any branch (after a provider failure, a reply without usage or a usable reply) and every spending refusal stop at once. A failed call is recorded with no usage and counts at its maximum cost; a call whose recording fails stays 'started' and counts at its maximum cost. No provider, library or database text is kept with a call or sent in a later request; the process log gets the failure code, the exception's types and where it was raised, never its text. Not covered: what a library logs by itself (litellm's own debug logging is off unless a process turns it on). DSPy's JSON fallback is off. Step 8b: a role's own check of an answer that could be read gives a code that is corrected once the same way: 'invalid_plan' (Planner), 'numbers_unmatched' and 'wording_refused' (Analyst). The Analyst's 'unknown_name' and 'digit_outside_placeholder' are corrected once the same way.",
+        "from": "2026-10-07",
+        "to": "2026-10-10",
+        "note": "Superseded on 2026-10-10: the corrective note named only the failure code."
       }
     ],
     "notes": [
@@ -6856,7 +6869,8 @@
       "tests/test_agent_core.py::test_provider_error_text_never_reaches_the_process_log",
       "tests/test_agent_core.py::test_the_request_headers_carry_nothing_of_the_input",
       "tests/test_planner_narrowing.py::test_an_invalid_plan_is_corrected_once_naming_only_the_code_then_the_stage_fails",
-      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded"
+      "tests/test_analyst.py::test_a_text_failing_a_check_twice_is_discarded",
+      "tests/test_planner_narrowing.py::test_a_corrected_attempts_reason_is_kept_and_the_accepted_attempt_has_none"
     ]
   },
   {
@@ -7296,7 +7310,7 @@
     "key": "planner_answer",
     "name": "What the Planner may answer and what code does with it",
     "state": "in_force",
-    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires (a part marked as the default must hold the profile's default, else the answer is an invalid plan; the marks are otherwise the Planner's reading, not verified by code), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the eligibility rules, the calibration and the sufficiency option never come from the model, and of the rules only one does: for a band other than room temperature, the Planner's temperature range becomes the plan's temperature-range rule. The Planner's scope and exclusion rules decide which records are eligible. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+    "statement": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires (a part marked as the default must hold the profile's default, else the answer is an invalid plan; the marks are otherwise the Planner's reading, not verified by code), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the eligibility rules, the calibration and the sufficiency option never come from the model, and of the rules only one does: for a band other than room temperature, the Planner's temperature range becomes the plan's temperature-range rule. The Planner's scope and exclusion rules decide which records are eligible. An answer whose shape, values or plan are not valid is corrected once, naming the code and its specific reason in code's own words (for example 'missing key: stated', or a part marked as not stated by the claim that differs from the default; a key the model added is reported as 'a key that is not allowed', never by its name; a plan the template refuses gets one fixed reason, never the validator's message), stored per attempt with the stage as 'attempt_reasons'; then the run fails before the lock. The output description sent to the model is built from the same key list the check requires (ANSWER_KEYS), so the two cannot differ (owner, 2026-10-10: on Render, live run B failed because the description named five of the six required keys, leaving out 'stated'). A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
     "value": {
       "text": "fixed form; plan built by code",
       "unit": null
@@ -7306,11 +7320,12 @@
     "reason": "CLAUDE.md rule 1: code decides; agents advise. PRD 5.2: exclusion rules from a menu.",
     "evidence": [
       "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md.",
-      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md, 'Code decides'); owner's decision B and wording corrections (2026-10-07)."
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md, 'Code decides'); owner's decision B and wording corrections (2026-10-07).",
+      "Owner's decision, 2026-10-10, after the first live runs on Render (run A completed with garbled Analyst wording; run B failed 'invalid_plan'): branch fix-agent-contracts, docs/reviews/fix_agent_contracts_summary.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-10"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7329,6 +7344,24 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.planner:DEFAULT_SCOPE"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:ANSWER_KEYS",
+          "equals": [
+            "domain_matches",
+            "claim_scope",
+            "stated",
+            "outcome",
+            "exclusion_rules",
+            "narrower"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:OUTPUT_DESCRIPTION"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.planner:PLAN_INVALID_REASON",
+          "equals": "the plan built from this answer is not valid for the supported template"
         }
       ],
       "note": null
@@ -7345,7 +7378,11 @@
       "tests/test_planner_narrowing.py::test_every_wrong_type_at_every_position_is_refused_by_the_planners_check",
       "tests/test_planner_narrowing.py::test_an_exclusion_rule_name_of_the_wrong_type_is_an_invalid_plan",
       "tests/test_planner_narrowing.py::test_a_part_marked_defaulted_must_hold_the_default",
-      "tests/test_planner_narrowing.py::test_parts_marked_defaulted_that_hold_the_defaults_are_accepted"
+      "tests/test_planner_narrowing.py::test_parts_marked_defaulted_that_hold_the_defaults_are_accepted",
+      "tests/test_agent_contracts.py::test_the_planners_output_description_names_exactly_the_keys_the_check_requires",
+      "tests/test_agent_contracts.py::test_an_answer_with_exactly_the_keys_the_planner_is_told_is_accepted",
+      "tests/test_planner_narrowing.py::test_an_answer_without_the_stated_marks_is_refused_with_its_reason_stored_and_named_in_the_retry",
+      "tests/test_planner_narrowing.py::test_a_reason_names_only_codes_words_never_the_answers"
     ],
     "history": [
       {
@@ -7365,6 +7402,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Step 8b fix round 1: a part marked as the default must hold it (owner's decision B); wording corrected (second-model review: the Planner's temperature bounds enter a rule)."
+      },
+      {
+        "value": "The Planner answers one JSON object of fixed form: whether the claim belongs to the domain, the claim's scope (alloy classes, phase classes, test types, temperature bands with their ranges), and for each scope part whether the claim states it (true) or the Planner used the default (false), a mark code requires (a part marked as the default must hold the profile's default, else the answer is an invalid plan; the marks are otherwise the Planner's reading, not verified by code), the outcome field, exclusion rules from the menu, and a narrower scope that should be null (code decides any narrower scope; one given anyway is stored and never used); values from fixed lists only, no free text and no other key. Code builds the plan from the profile's defaults and only these parameters: the model, the eligibility rules, the calibration and the sufficiency option never come from the model, and of the rules only one does: for a band other than room temperature, the Planner's temperature range becomes the plan's temperature-range rule. The Planner's scope and exclusion rules decide which records are eligible. An answer whose shape, values or plan are not valid is corrected once, naming only the code, then the run fails before the lock. A claim judged to be of another domain fails the run before the lock (PRD 5.5).",
+        "from": "2026-10-07",
+        "to": "2026-10-10",
+        "note": "Superseded on 2026-10-10: the corrective note named only the code, and the output description was written by hand (it named five keys)."
       }
     ]
   },
@@ -7582,7 +7625,7 @@
     "key": "analyst_facts_only",
     "name": "The Analyst receives stored facts only",
     "state": "in_force",
-    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum except the groups' (that count is of informative groups, a paper figure shown only with the other three); per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'not testable alone (too few groups)', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given. Fix round 1 (owner, F-Q2): the calibration summary describes the simulation interval once.",
+    "statement": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold and option; the minimums only in one code-built sentence giving each minimum with its status (met; not met; not met, waived under 'use what is available'; or not assessed when no dataset was frozen), never a minimum as a name of its own, the groups' status shown but never their count (owner, 2026-10-10, after live run A on Render showed 'at least 10 groups' without its status); per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum except the groups' (that count is of informative groups, a paper figure shown only with the other three); per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction sentence from the estimate's sign and the claim's direction (the plan's alternative), worded exactly as code's statement prints it (owner, 2026-10-10: it was a clause, which the Analyst set inside a sentence of its own making in live run A), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'not testable alone (too few groups)', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given. Fix round 1 (owner, F-Q2): the calibration summary describes the simulation interval once.",
     "value": {
       "text": "named stored facts; nothing outcome-derived below the minimums",
       "unit": null
@@ -7592,11 +7635,12 @@
     "reason": "Owner's Q6 and standing requirement.",
     "evidence": [
       "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q6.",
-      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07)."
+      "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
+      "Owner's decision, 2026-10-10, after the first live runs on Render (run A completed with garbled Analyst wording; run B failed 'invalid_plan'): branch fix-agent-contracts, docs/reviews/fix_agent_contracts_summary.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-07"
+      "date": "2026-10-10"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7631,6 +7675,12 @@
         },
         {
           "ref": "python:hypocurate.pipeline.analyst_names:direction_note"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:minimums_sentence"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.analyst_names:direction_sentence"
         }
       ],
       "note": null
@@ -7648,7 +7698,11 @@
       "tests/test_analyst.py::test_the_calibration_summary_covers_both_calibrations_and_their_flags",
       "tests/test_analyst.py::test_the_direction_note_is_built_from_the_sign_and_the_claims_direction",
       "tests/test_analyst.py::test_the_plain_label_for_a_single_group_source",
-      "tests/test_analyst.py::test_a_text_using_the_code_built_sentences_is_accepted"
+      "tests/test_analyst.py::test_a_text_using_the_code_built_sentences_is_accepted",
+      "tests/test_analyst.py::test_the_minimums_sentence_gives_every_minimum_its_status",
+      "tests/test_analyst.py::test_below_the_minimums_the_facts_give_every_minimum_with_its_status_and_no_bare_minimum",
+      "tests/test_analyst.py::test_the_direction_sentence_reads_correctly_for_every_value_it_can_take",
+      "tests/test_analyst.py::test_every_placeholder_named_in_the_instruction_is_a_fact_the_analyst_is_given"
     ],
     "history": [
       {
@@ -7674,6 +7728,12 @@
         "from": "2026-10-07",
         "to": "2026-10-07",
         "note": "Step 8b fix round 1: no separate informative-group count (finding 4); label wording and the interval described once."
+      },
+      {
+        "value": "The Analyst receives the claim's text, the domain, the chosen sources' names and grouping, and named facts built by code from what it stored, each a finished display string or ready-made phrase it refers to as {name}: the decision and its wordings; the plan's threshold, option and minimums; per scope part whether the claim stated it or the Planner assumed it (or that the plan was fixed); the pooled result and its counts against each minimum except the groups' (that count is of informative groups, a paper figure shown only with the other three); per source its result and label; both calibrations of the pooled result; a summary of the sensitivity sets built by code (how many; how many under each per-source label, classified against the pooled result by the same function; the sets not labelled 'agrees'; the smallest and largest estimate with their sets; the result without the group holding the largest share of slope information); the gap facts; at 'narrowed' the claim's parts, their counts and the narrower scope. The full per-set numbers are not sent (step 10 shows them in a table drawn by code). Below the minimums no name gives an estimate, a standard error, a p-value or the paper figures; the fixed-noise detection and false-positive shares, which use no outcome value, stay. It never receives a record-level value or identity, a Critic's class or reason, or a stage's text, and never sets the outcome, verdict, label or level. Owner's additions (2026-10-07): code-built sentences the Analyst uses whole: a model sentence (what was fitted, and that the estimate is its coefficient), for a fixed-plan run a sentence that the scope was set by the fixed reference plan and not read from the claim, a direction note from the estimate's sign and the claim's direction (the plan's alternative), one calibration summary covering both calibrations and their flags, and one sentence saying what a group is; plain names for the two calibrations (noise levels estimated from the data; fixed illustrative noise levels); plain wording for the four labels ('in agreement with the pooled result', 'not testable alone (too few groups)', ...); 'groups' throughout. The instruction asks the Analyst to open by restating the claim, then the outcome and verdict, then the main cautions, not with the query number, and not to draw conclusions beyond the facts and notes given. Fix round 1 (owner, F-Q2): the calibration summary describes the simulation interval once.",
+        "from": "2026-10-07",
+        "to": "2026-10-10",
+        "note": "Superseded on 2026-10-10: each minimum was a name of its own ({minimum_records}, ...), and the direction was a clause ({direction_note})."
       }
     ]
   },
@@ -7681,7 +7741,7 @@
     "key": "analyst_text_checks",
     "name": "The Analyst's number and wording checks",
     "state": "in_force",
-    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement'). Every output of a completed run (`run`, `dispatch`, `show`) gives code's statement first and the Analyst's text only after it and only under that label (owner, after the re-check).",
+    "statement": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). The code-built whole sentences (model, scope source, direction, minimums, calibration summary, group definition: text_checks.SENTENCE_NAMES, named exactly in the instruction) must each stand as a sentence of its own; one placed inside another sentence is refused as 'wording_refused' (owner, 2026-10-10). Each failure is corrected once, naming the code and its specific reason in code's words (counts, our names, our rule names); failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement'). Every output of a completed run (`run`, `dispatch`, `show`) gives code's statement first and the Analyst's text only after it and only under that label (owner, after the re-check).",
     "value": {
       "text": "numbers as given; wording rules",
       "unit": null
@@ -7692,11 +7752,12 @@
     "evidence": [
       "Owner's answers in the step 8b planning and build (2026-10-07); plan file and docs/reviews/step08b_summary.md. Answer Q8.",
       "Step 8b second-model review (docs/reviews/step08b_review_chatgpt.md); owner's decision A and F-Q2 (2026-10-07).",
-      "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decision, 2026-10-08."
+      "Step 8b second-model re-check (docs/reviews/step08b_recheck_chatgpt.md); owner's decision, 2026-10-08.",
+      "Owner's decision, 2026-10-10, after the first live runs on Render (run A completed with garbled Analyst wording; run B failed 'invalid_plan'): branch fix-agent-contracts, docs/reviews/fix_agent_contracts_summary.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-08"
+      "date": "2026-10-10"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -7740,6 +7801,20 @@
         {
           "ref": "python:hypocurate.pipeline.agents.analyst:LABEL",
           "equals": "written by a language model; values inserted from the run record; narrative not verified"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:SENTENCE_NAMES",
+          "equals": [
+            "model_sentence",
+            "scope_source",
+            "direction_sentence",
+            "minimums_sentence",
+            "calibration_summary",
+            "group_definition"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.agents.text_checks:placement_problems"
         }
       ],
       "note": null
@@ -7759,7 +7834,11 @@
       "tests/test_analyst.py::test_a_refused_text_stores_counts_or_rule_names_and_no_text",
       "tests/test_analyst.py::test_the_failure_facts_of_a_corrected_attempt_are_stored",
       "tests/test_analyst.py::test_no_fact_name_exposes_a_bare_p_value_or_an_individual_paper_figure",
-      "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text"
+      "tests/test_cli_runs.py::test_run_dispatch_and_show_print_the_statement_then_the_labelled_analyst_text",
+      "tests/test_analyst.py::test_a_whole_sentence_inside_another_sentence_is_refused_with_its_name",
+      "tests/test_analyst.py::test_run_as_garbled_frame_is_corrected_naming_the_sentence_rule_and_the_reason_is_stored",
+      "tests/test_analyst.py::test_each_analyst_refusal_has_a_specific_reason_in_codes_words",
+      "tests/test_agent_contracts.py::test_the_whole_sentences_the_analyst_is_told_to_place_alone_are_those_its_check_enforces"
     ],
     "history": [
       {
@@ -7803,6 +7882,12 @@
         "from": "2026-10-07",
         "to": "2026-10-08",
         "note": "Re-check: `run` and `dispatch` printed the explanation without the label or statement."
+      },
+      {
+        "value": "The Analyst writes no digits: every number, p-value, set of paper figures, the outcome and the verdict are {name} placeholders of its named facts, and code renders the finished text. Before rendering, code refuses a name that is not among the facts given ('unknown_name'), any digit outside a placeholder ('digit_outside_placeholder'), a text that does not use {outcome_wording} (and {verdict_wording} when there is a verdict), and, when there is a verdict, a text that does not use {pooled_p_phrase} and {pooled_figures_phrase} ('result_phrases_missing'). A p-value and the paper figures exist only inside their phrase names: no other name exposes them (tested; the group minimum's count, which is the informative-group count, is no longer a name of its own). On the finished text: no forbidden phrase ('do not exist', 'proves', ...), never 'confirms the claim' or 'confirms the hypothesis' and no causal language ('causes', 'caused by', 'causal') even with a verdict, no verdict where there is none, the effective number never called 'independent', and every number one of the facts' (a safeguard). Each failure is corrected once, naming only the code; failing twice the text is discarded and the run shows 'explanation unavailable'; the stage keeps counts or rule names, never text. The finished text and its template are stored. The failure facts (counts or rule names) are stored for every attempt that failed, also when a later attempt was accepted (owner, 2026-10-07). The checks cover digits and wording only: a number written in words, or a conclusion the facts do not support, is not caught (no list of number words is kept, by the owner's decision). The stored explanation is therefore labelled 'written by a language model; values inserted from the run record; narrative not verified' and is shown separately from the statement code writes for every completed run (register 'results_statement'). Every output of a completed run (`run`, `dispatch`, `show`) gives code's statement first and the Analyst's text only after it and only under that label (owner, after the re-check).",
+        "from": "2026-10-08",
+        "to": "2026-10-10",
+        "note": "Superseded on 2026-10-10: no placement rule for the code-built sentences; the corrective note named only the code."
       }
     ]
   },

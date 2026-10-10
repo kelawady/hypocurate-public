@@ -39,15 +39,28 @@ from hypocurate.pipeline import reading
 from hypocurate.pipeline.agents import libraries
 from hypocurate.pipeline.eligibility import SUPPORTED_OUTCOMES
 
-KEYS = {"domain_matches", "claim_scope", "stated", "outcome", "exclusion_rules", "narrower"}
+# The answer's keys, in the order the request names them: one definition for the output description and the check
+# (owner, 2026-10-10, after live run B on Render: the description named five keys while the check required six).
+ANSWER_KEYS = ("domain_matches", "claim_scope", "stated", "outcome", "exclusion_rules", "narrower")
+KEYS = frozenset(ANSWER_KEYS)
 SCOPE_KEYS = {"alloy_class", "phase_class", "test_type", "temperature_band"}
 NARROWER_KEYS = {"phase_class", "test_type", "temperature_band"}  # alloy class is not countable (Q5)
 BANDS = tuple(p.SUPPORTED_BANDS)
 CATEGORY_RULE_VALUES = {"phase": sorted(PHASE_CLASSES), "test_type": sorted(TEST_TYPES)}
 _FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.S)
 
-OUTPUT_DESCRIPTION = ("One JSON object with exactly the keys domain_matches, claim_scope, outcome, exclusion_rules "
-                      "and narrower, in the form and with the values given in 'allowed'. Nothing else.")
+
+
+def _and(words) -> str:
+    words = list(words)
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+OUTPUT_DESCRIPTION = (f"One JSON object with exactly the keys {_and(ANSWER_KEYS)}, in the form and with the values "
+                      "given in 'allowed'. Nothing else.")
+# The reason given for a plan the template refuses (`plans.PlanError`): one fixed text, never the validator's message,
+# which may quote what it was given.
+PLAN_INVALID_REASON = "the plan built from this answer is not valid for the supported template"
 
 
 def signature(instruction: str):
@@ -207,8 +220,13 @@ class Answer:
 
 
 def read_answer(data: Mapping) -> Answer:
+    """The answer's values, or AnswerInvalid whose message is the specific reason, in code's own words: it names only
+    the answer's keys, scope parts and rules as code defines them, never a value or key the model wrote."""
+    missing = [k for k in ANSWER_KEYS if k not in data]
+    if missing:
+        raise AnswerInvalid(("missing key: " if len(missing) == 1 else "missing keys: ") + ", ".join(missing))
     if set(data) != KEYS:
-        raise AnswerInvalid("the answer has exactly the keys " + ", ".join(sorted(KEYS)))
+        raise AnswerInvalid("a key that is not allowed")
     if not isinstance(data["domain_matches"], bool):
         raise AnswerInvalid("domain_matches is true or false")
     if not _word(data["outcome"], SUPPORTED_OUTCOMES):
@@ -220,7 +238,7 @@ def read_answer(data: Mapping) -> Answer:
     scope = _scope(data["claim_scope"], SCOPE_KEYS)
     for part, is_stated in stated.items():
         if not is_stated and _sorted(scope[part]) != _sorted(DEFAULT_SCOPE[part]):
-            raise AnswerInvalid(f"{part} is marked as not stated by the claim but is not the default")
+            raise AnswerInvalid(f"{part} is marked as not stated by the claim but differs from the default")
     return Answer(data["domain_matches"], scope, data["outcome"], _exclusions(data["exclusion_rules"]), narrower,
                   dict(sorted(stated.items())))
 
@@ -261,11 +279,14 @@ def plan_without_version(plan: Mapping) -> dict:
 
 
 def make_check(hypothesis_version_id: int, sufficiency_option: str, approved_alloy_classes: set[str]):
-    """The common interface's check of a Planner answer: None, 'malformed' or 'invalid_plan'."""
+    """The common interface's check of a Planner answer: None, 'malformed' or 'invalid_plan', with the specific reason
+    in `check.last_reason` (owner, 2026-10-10)."""
 
     def check(outputs: Mapping[str, str]) -> str | None:
+        check.last_reason = None
         data = parse(outputs["plan"])
         if data is None:
+            check.last_reason = "the plan is not one JSON object"
             return "malformed"
         try:
             answer = read_answer(data)
@@ -276,10 +297,15 @@ def make_check(hypothesis_version_id: int, sufficiency_option: str, approved_all
             if one_plan(answer.claim_scope):
                 build_plan(hypothesis_version_id, answer.claim_scope, answer.outcome, answer.exclusion_rules,
                            sufficiency_option)
-        except (AnswerInvalid, plans.PlanError):
+        except AnswerInvalid as error:
+            check.last_reason = str(error)
+            return "invalid_plan"
+        except plans.PlanError:
+            check.last_reason = PLAN_INVALID_REASON
             return "invalid_plan"
         return None
 
+    check.last_reason = None
     return check
 
 
@@ -319,14 +345,15 @@ def run_planner(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                         ceiling=ceiling, lm_options=dict(s["settings"]), client_options=client_options,
                         check=make_check(row.hypothesis_version_id, row.sufficiency_option, approved))
     if result.failure is not None:
-        close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts},
-                    input_=inputs)
+        close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
+                                                         "attempt_reasons": result.reasons}, input_=inputs)
         return PlannerResult(None, result.failure, stage_id, invocation, result.calls)
     answer = read_answer(parse(result.outputs["plan"]))
     # Decision B: the question as tested, in code's words, labelled as the Planner's reading.
     tested = reading.question_as_tested(answer.claim_scope, answer.outcome, answer.exclusion_rules, answer.stated,
                                         "planner")
     close_stage(engine, run_id, stage_id, "done", {"answer": answer.__dict__, "attempts": result.attempts,
+                                                   "attempt_reasons": result.reasons,
                                                    "question_as_tested": tested}, input_=inputs)
     return PlannerResult(answer, None, stage_id, invocation, result.calls)
 

@@ -86,7 +86,7 @@ def wording_problems(text: str, decision: Mapping, facts: Mapping | None = None)
     """The wording rules the text breaks (empty when none). `facts`: the Analyst's facts, for its phrases."""
     lower = " ".join(text.lower().split())
     problems = [f"forbidden: {p}" for p in FORBIDDEN if p in lower]
-    problems += [f"forbidden: {m.group(0).lower()}" for m in ALWAYS_FORBIDDEN.finditer(text)]
+    problems += [f"forbidden: {' '.join(m.group(0).lower().split())}" for m in ALWAYS_FORBIDDEN.finditer(text)]
     outcome = (decision.get("outcome_wording") or "").lower()
     if not outcome or outcome not in lower:
         problems.append("outcome wording missing")
@@ -121,6 +121,51 @@ def placeholder_problems(template: str, names: Mapping[str, str]) -> dict[str, i
             "digits_outside_placeholders": len(re.findall(r"\d", rest)),
             "required_missing": sum(1 for r in required if r not in used),
             "result_phrases_missing": sum(1 for r in phrases_required if r not in used)}
+
+
+# Owner, 2026-10-10 (live run A on Render: "Because of the the estimate is positive, ..."): the names whose values are
+# complete sentences built by code. Each must stand as a sentence of its own in the Analyst's text: after the start of
+# the text, a sentence's end (. ! ?), the start of a line or a list marker, and followed by the end of the text, a line
+# break, or a new sentence (a capital letter). The Analyst's instruction names exactly these.
+SENTENCE_NAMES = ("model_sentence", "scope_source", "direction_sentence", "minimums_sentence", "calibration_summary",
+                  "group_definition")
+_LIST_MARKER = re.compile(r"(?:^|\n)[ \t]*[-*•][ \t]*$")
+
+
+def sentence_reason(name: str) -> str:
+    return "{" + name + "} is a whole sentence: place it as a sentence of its own"
+
+
+def placement_problems(template: str, names: Mapping[str, str]) -> list[str]:
+    """The whole-sentence names placed inside another sentence, each once, as reasons in code's words (never text).
+    Judged on the finished text around each placeholder, so a sentence name next to another reads as it will be
+    shown. Names not among the facts are left to `placeholder_problems`."""
+    problems: list[str] = []
+    for m in PLACEHOLDER.finditer(template):
+        name = m.group(1)
+        if name not in SENTENCE_NAMES or name not in names:
+            continue
+        before = render(template[:m.start()], names) if all(
+            u in names for u in PLACEHOLDER.findall(template[:m.start()])) else template[:m.start()]
+        after = render(template[m.end():], names) if all(
+            u in names for u in PLACEHOLDER.findall(template[m.end():])) else template[m.end():]
+        head = before.rstrip(" \t")
+        starts = not head or head[-1] in ".!?\n" or bool(_LIST_MARKER.search(head))
+        rest = after.lstrip(" \t")
+        ends = (not after or after[0] in " \t\n") and (not rest or rest[0] == "\n" or rest[0].isupper())
+        if not (starts and ends):
+            reason = sentence_reason(name)
+            if reason not in problems:
+                problems.append(reason)
+    return problems
+
+
+def missing_required(template: str, names: Mapping[str, str]) -> tuple[list[str], list[str]]:
+    """The required names the template does not use (our names only): the wordings, then the result phrases."""
+    used = set(PLACEHOLDER.findall(template))
+    required = list(REQUIRED) + (["verdict_wording"] if "verdict_wording" in names else [])
+    phrases = [r for r in REQUIRED_WITH_VERDICT if "verdict_wording" in names and r in names]
+    return [r for r in required if r not in used], [r for r in phrases if r not in used]
 
 
 def render(template: str, names: Mapping[str, str]) -> str:

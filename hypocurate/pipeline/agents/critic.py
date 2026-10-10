@@ -98,7 +98,15 @@ def parse(text_: str) -> dict | None:
 
 
 def check(outputs: Mapping[str, str]) -> str | None:
-    return None if parse(outputs["classification"]) is not None else "malformed"
+    """None, or "malformed" with its specific reason in `check.last_reason` (owner, 2026-10-10)."""
+    if parse(outputs["classification"]) is not None:
+        check.last_reason = None
+        return None
+    check.last_reason = "the classification is not one JSON object"
+    return "malformed"
+
+
+check.last_reason = None
 
 
 @dataclass
@@ -190,6 +198,7 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
             failures.append(result.failure)
             refused.update({str(f["id"]): result.failure for f in batch})
             close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
+                                                             "attempt_reasons": result.reasons,
                                                              "flags": [f["id"] for f in batch]}, input_=inputs)
             if (result.failure.startswith("spending_cap") or result.failure == "ceiling_reached"
                     or result.failure in RUN_STOPS):  # finding 3: no further batch after an accounting failure
@@ -200,7 +209,7 @@ def run_critic(engine: Engine, run_id: int, *, ceiling=None, client_options: Map
             refused.update(got.refused)
             close_stage(engine, run_id, stage_id, "done", {
                 "classified": {str(k): {"class": c, "reason": r} for k, (c, r) in sorted(got.accepted.items())},
-                "refused": got.refused, "attempts": result.attempts,
+                "refused": got.refused, "attempts": result.attempts, "attempt_reasons": result.reasons,
                 "not_sent": [f["id"] for f in data["flags_kind"] if len(f["records"]) < MIN_RECORDS]}, input_=inputs)
         if not plan_batches:
             break

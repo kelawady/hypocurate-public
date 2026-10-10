@@ -57,42 +57,56 @@ def render_inputs(analyst_input: Mapping[str, Any]) -> dict[str, str]:
 
 def make_check(analyst_input: Mapping[str, Any]):
     """The common interface's check: None, 'empty', 'unknown_name', 'digit_outside_placeholder', 'wording_refused'
-    or 'numbers_unmatched'. `check.last_problems` holds counts or rule names, never text; `check.rendered` the
-    finished text of an accepted answer."""
+    (also for a whole sentence placed inside another, owner 2026-10-10), 'result_phrases_missing' or
+    'numbers_unmatched'. `check.last_problems` holds counts or rule names, never text; `check.last_reason` the specific
+    reason in code's words (counts, our names, our rules); `check.rendered` the finished text of an accepted answer."""
     names = analyst_input["analyst_facts"]["names"]
     decision = {"outcome_wording": names.get("outcome_wording"), "verdict": "verdict_wording" in names,
                 "verdict_wording": names.get("verdict_wording")}
 
     def check(outputs: Mapping[str, str]) -> str | None:
-        check.last_problems, check.rendered = [], None
+        check.last_problems, check.rendered, check.last_reason = [], None, None
         template = outputs["report"].strip()
         if not template:
             return "empty"
         counts = text_checks.placeholder_problems(template, names)
         if counts["unknown_names"]:
             check.last_problems = [counts]
+            check.last_reason = f"placeholders that name no fact given: {counts['unknown_names']}"
             return "unknown_name"
         if counts["digits_outside_placeholders"]:
             check.last_problems = [counts]
+            check.last_reason = f"digits outside placeholders: {counts['digits_outside_placeholders']}"
             return "digit_outside_placeholder"
+        required, phrases = text_checks.missing_required(template, names)
         if counts["required_missing"]:
             check.last_problems = [counts]
+            check.last_reason = "the text does not use " + ", ".join("{" + r + "}" for r in required)
             return "wording_refused"
         if counts["result_phrases_missing"]:
             check.last_problems = [counts]
+            check.last_reason = "the text does not use " + ", ".join("{" + r + "}" for r in phrases)
             return "result_phrases_missing"
+        # Owner, 2026-10-10: a code-built sentence stands as a sentence of its own (live run A's garbled frame).
+        placed = text_checks.placement_problems(template, names)
+        if placed:
+            check.last_problems = placed
+            check.last_reason = "; ".join(placed)
+            return "wording_refused"
         report = text_checks.render(template, names)
         problems = text_checks.wording_problems(report, decision, names)
         if problems:
             check.last_problems = problems  # the names of the rules (fixed wording, or a listed phrase)
+            check.last_reason = "wording rule: " + "; ".join(problems)
             return "wording_refused"
         if text_checks.unmatched_numbers(report, names):  # a safeguard: every number came from a name
             check.last_problems = ["numbers_unmatched"]
+            check.last_reason = "a number that is not one of the facts, as given"
             return "numbers_unmatched"
         check.rendered = report
         return None
 
-    check.last_problems, check.rendered = [], None
+    check.last_problems, check.rendered, check.last_reason = [], None, None
     return check
 
 
@@ -124,6 +138,7 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
     if result.failure is not None:
         close_stage(engine, run_id, stage_id, "failed", {"code": result.failure, "attempts": result.attempts,
                                                          "failure_details": result.details,
+                                                         "attempt_reasons": result.reasons,
                                                          "shown": f"{UNAVAILABLE} ({result.failure})"}, input_=inputs)
         return AnalystResult(None, result.failure, stage_id, result.calls)
     report = check.rendered
@@ -131,6 +146,7 @@ def run_analyst(engine, run_id: int, *, ceiling=None, client_options: Mapping[st
                                                    "attempts": result.attempts,
                                                    # owner, 2026-10-07: also for an attempt later corrected
                                                    "failure_details": result.details,
+                                                   "attempt_reasons": result.reasons,
                                                    "check": LABEL},
                 input_=inputs)
     return AnalystResult(report, None, stage_id, result.calls)

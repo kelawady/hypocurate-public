@@ -128,8 +128,9 @@ def below_minimums(engine):
 
 
 # Step 8b (owner, 2026-10-07): the Analyst writes no digits; it refers to facts by name, and code renders the text.
-BELOW = ("The outcome is {outcome_wording}: the pooled set has {pooled_records} records, below the minimum of "
-         "{minimum_records}, so no test was run and no estimate is shown.")
+# Owner, 2026-10-10: the minimums are given only in {minimums_sentence}, each with its status (was {minimum_records}).
+BELOW = ("The outcome is {outcome_wording}: the pooled set has {pooled_records} records, too few for a test, so no "
+         "test was run and no estimate is shown. {minimums_sentence}")
 
 
 def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, stub):
@@ -155,7 +156,7 @@ def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, 
 def test_a_run_below_the_minimums_offers_no_estimate_names(engine):
     names = names_of(engine, below_minimums(engine))
     assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
-    assert "pooled_records" in names and "minimum_records" in names
+    assert "pooled_records" in names and "minimums_sentence" in names  # owner, 2026-10-10: was minimum_records
 
 
 @pytest.mark.parametrize("bad, code", [
@@ -467,7 +468,8 @@ def test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level(en
     assert names["scope_source"] == analyst_names.FIXED_PLAN_SENTENCE  # the test world's runs use a fixed plan
     assert names["model_sentence"] == analyst_names.MODEL_SENTENCE
     assert names["group_definition"] == analyst_names.GROUP_DEFINITION
-    assert names["direction_note"] == analyst_names.direction_note(pooled["estimate"], "k > 0")
+    # Owner, 2026-10-10: the direction is given as a whole sentence (was the clause direction_note).
+    assert names["direction_sentence"] == analyst_names.direction_sentence(pooled["estimate"], "k > 0")
     assert names["nominal_level"] == "5.0%" and "alpha" not in names
     assert names["pooled_estimate"].endswith(" MPa·µm^0.5") and names["pooled_std_error"].endswith(" MPa·µm^0.5")
     assert names["estimated_calibration_name"] == "noise levels estimated from the data"
@@ -480,7 +482,7 @@ def test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level(en
 
 SENTENCES = ("The claim is that yield strength rises as grain size falls. The outcome is {outcome_wording}, and the "
              "claim is {verdict_wording}, with {pooled_p_phrase}, from {pooled_figures_phrase}. {calibration_summary} "
-             "{scope_source} {model_sentence} The pooled estimate is {pooled_estimate}; {direction_note}. "
+             "{scope_source} {model_sentence} The pooled estimate is {pooled_estimate}. {direction_sentence} "
              "{group_definition}")
 
 

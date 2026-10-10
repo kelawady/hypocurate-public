@@ -164,7 +164,11 @@ def test_an_unusable_answer_is_corrected_once_with_a_fixed_note_and_never_the_an
     assert result.attempts == [code, "ok"] and result.outputs == {"answer": "Better."}
     assert [r.status for r in calls(w, inv)] == ["succeeded", "succeeded"]  # both recorded with their usage
     retry = json.dumps(stub.bodies()[1])
-    assert interface.correction_note(code).replace('"', '\\"') in retry
+    # Owner, 2026-10-10: the note also names the specific reason the check gave (None for these codes but malformed).
+    assert interface.correction_note(code, result.reasons[0]).replace('"', '\\"') in retry
+    assert result.reasons == [interface.parse_reason({"output_headers_present": {"answer": False},
+                                                      "completed_marker": False, "header_count": 0,
+                                                      "answer_empty": False}) if code == "malformed" else None, None]
     assert PLANTED not in retry and "x" * 100 not in retry and "/etc/x" not in retry
     assert retry.count("[[ ## note ## ]]") == stub.bodies()[0].__str__().count("[[ ## note ## ]]")
 
