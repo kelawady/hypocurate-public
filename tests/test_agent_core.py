@@ -164,7 +164,9 @@ def test_an_unusable_answer_is_corrected_once_with_a_fixed_note_and_never_the_an
     assert result.attempts == [code, "ok"] and result.outputs == {"answer": "Better."}
     assert [r.status for r in calls(w, inv)] == ["succeeded", "succeeded"]  # both recorded with their usage
     retry = json.dumps(stub.bodies()[1])
-    assert interface.correction_note(code).replace('"', '\\"') in retry
+    # Owner, 2026-10-10: the note also names the specific reason the check gave (None for these codes but malformed).
+    assert interface.correction_note(code, result.reasons[0]).replace('"', '\\"') in retry
+    assert result.reasons == ["missing output field: answer" if code == "malformed" else None, None]
     assert PLANTED not in retry and "x" * 100 not in retry and "/etc/x" not in retry
     assert retry.count("[[ ## note ## ]]") == stub.bodies()[0].__str__().count("[[ ## note ## ]]")
 
@@ -518,3 +520,19 @@ def test_the_request_headers_carry_nothing_of_the_input(w, db, stub):
     assert headers["user-agent"].startswith("litellm/") and headers["content-type"] == "application/json"
     assert not any(PLANTED in v or "tension" in v for v in headers.values())
     assert PLANTED in request["raw"].decode()  # the planted value is in the body, so the check above can fail
+
+
+@pytest.mark.parametrize("facts, reason", [
+    (None, None),
+    ({"output_headers_present": {"answer": False}, "completed_marker": False, "header_count": 0, "answer_empty": True},
+     "the answer was empty"),
+    ({"output_headers_present": {"answer": False, "plan": True}, "completed_marker": True, "header_count": 2,
+      "answer_empty": False}, "missing output field: answer"),
+    ({"output_headers_present": {"answer": True}, "completed_marker": False, "header_count": 1, "answer_empty": False},
+     "missing the closing completed marker"),
+    ({"output_headers_present": {"answer": True}, "completed_marker": True, "header_count": 2, "answer_empty": False},
+     None),
+])
+def test_the_reason_for_an_unreadable_answer_comes_from_its_form_facts_only(facts, reason):
+    """Owner, 2026-10-10: the specific reason named in the corrective note; never the answer's text."""
+    assert interface.parse_reason(facts) == reason

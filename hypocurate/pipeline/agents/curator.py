@@ -68,8 +68,16 @@ def parse(text: str) -> dict | None:
 
 
 def check(outputs: Mapping[str, str]) -> str | None:
-    """The common interface's check: None if the answer can be read, else "malformed"."""
-    return None if parse(outputs["proposals"]) is not None else "malformed"
+    """The common interface's check: None if the answer can be read, else "malformed", with its specific reason in
+    `check.last_reason` (owner, 2026-10-10)."""
+    if parse(outputs["proposals"]) is not None:
+        check.last_reason = None
+        return None
+    check.last_reason = "the proposals are not one JSON object"
+    return "malformed"
+
+
+check.last_reason = None
 
 
 @dataclass(frozen=True)

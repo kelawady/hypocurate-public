@@ -6,7 +6,9 @@ string or ready-made phrase (`agents.text_checks.render`). This module builds th
 
 - the decision: {outcome_wording} (always to be used), {verdict_wording} (to be used when there is a verdict),
   {evidence_level}, {evidence_level_wording}, {result_label};
-- the plan: {alpha}, {sufficiency_option}, each minimum ({minimum_records}, ...), and where the scope came from:
+- the plan: {alpha}, {sufficiency_option}, the minimums in one sentence with each one's status ({minimums_sentence};
+  owner, 2026-10-10: no minimum is a name of its own, so none can be shown without its status), and where the scope
+  came from:
   per scope part a note {scope_alloy_class}, {scope_phase_class}, {scope_test_type}, {scope_temperature_band}
   ("the claim did not state a test type; tension was assumed"), or {scope_source} for a fixed plan;
 - the pooled result: counts, each count against its minimum ({count_records}, {met_records}, ...), and unless
@@ -157,6 +159,36 @@ def direction_note(estimate: float | None, alternative: str | None) -> str | Non
     return "the estimate is zero"
 
 
+def direction_sentence(estimate: float | None, alternative: str | None) -> str | None:
+    """The direction note as a whole sentence, exactly as code's statement prints it (owner, 2026-10-10: in live run A
+    the Analyst set the clause inside a sentence of its own making, "Because of the the estimate is positive, ...")."""
+    note = direction_note(estimate, alternative)
+    return note[0].upper() + note[1:] + "." if note else None
+
+
+# Owner, 2026-10-10 (live run A: "at least 10 groups" without its status): every minimum with its status, in one
+# sentence built by code. The groups' status is shown, never their count (the informative-group count is a paper figure,
+# step 8b fix round 1, finding 4).
+MINIMUMS_HEAD = "The minimums for a test: "
+NOT_ASSESSED = "not assessed: no dataset was frozen"
+WAIVED = "not met; waived: use what is available"
+
+
+def minimums_sentence(plan_minimums: Mapping[str, Any], minimums: Mapping[str, Mapping] | None, option: str) -> str:
+    """`plan_minimums`: each minimum's threshold; `minimums`: the pooled result's counts against them, or None when no
+    dataset was frozen; `option`: the plan's sufficiency option."""
+    from hypocurate.pipeline.statement import MINIMUM_ORDER, MINIMUM_WORDS  # here: the statement imports this module
+    parts = []
+    for key in MINIMUM_ORDER:
+        if key not in plan_minimums:
+            continue
+        m = (minimums or {}).get(key)
+        status = (NOT_ASSESSED if m is None else "met" if m.get("met") else
+                  WAIVED if option == "use_available" else "not met")
+        parts.append(f"at least {_s(plan_minimums[key])} {MINIMUM_WORDS[key]} ({status})")
+    return MINIMUMS_HEAD + "; ".join(parts) + "."
+
+
 def label_words(e: Mapping) -> str:
     if e.get("label") == "not_enough_data" and e.get("inference_reason") == "insufficient_groups":
         return TOO_FEW_GROUPS
@@ -224,8 +256,6 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
     names["model_sentence"] = MODEL_SENTENCE
     names["group_definition"] = GROUP_DEFINITION
     names["sufficiency_option"] = str(plan["sufficiency_option"]).replace("_", " ")
-    for k, v in plan["minimums"].items():
-        names[f"minimum_{k}"] = _s(v)
     names.update(scope_note)
     withheld = bool(stats.get("withheld"))
     analyses = [e for e in stats.get("analyses") or [] if isinstance(e, Mapping)]
@@ -240,9 +270,9 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
             names[f"count_{k}"] = _s(m.get("count"))
             names[f"met_{k}"] = "met" if m.get("met") else "not met"
         cal = pooled.get("calibration") or {}
-        note = direction_note(pooled.get("estimate"), plan.get("alternative")) if not withheld else None
-        if note:
-            names["direction_note"] = note
+        sentence = direction_sentence(pooled.get("estimate"), plan.get("alternative")) if not withheld else None
+        if sentence:
+            names["direction_sentence"] = sentence
         if withheld:  # the fixed-noise shares use no outcome value (owner, 2026-10-07)
             fixed = (pooled.get("detection") or {}).get("fixed") or {}
             if "detection" in fixed:
@@ -259,6 +289,8 @@ def analysis_names(stats: Mapping, gap: Mapping, plan: Mapping, scope_note: Mapp
                 if e.get("label"):
                     names[f"{prefix}_label"] = label_words(e)
         names.update(sensitivity_summary(analyses, pooled, plan["alpha"], withheld))
+    names["minimums_sentence"] = minimums_sentence(plan["minimums"], analyses[0].get("minimums") if analyses
+                                                   else gap.get("minimums"), plan["sufficiency_option"])
     missed = gap.get("minimums_missed") or []
     names["minimums_missed"] = ", ".join(str(m).replace("_", " ") for m in missed) if missed else "none"
     if gap.get("kind"):

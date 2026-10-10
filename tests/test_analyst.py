@@ -3,6 +3,7 @@ local stub provider."""
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from sqlalchemy import text
@@ -127,8 +128,9 @@ def below_minimums(engine):
 
 
 # Step 8b (owner, 2026-10-07): the Analyst writes no digits; it refers to facts by name, and code renders the text.
-BELOW = ("The outcome is {outcome_wording}: the pooled set has {pooled_records} records, below the minimum of "
-         "{minimum_records}, so no test was run and no estimate is shown.")
+# Owner, 2026-10-10: the minimums are given only in {minimums_sentence}, each with its status (was {minimum_records}).
+BELOW = ("The outcome is {outcome_wording}: the pooled set has {pooled_records} records, too few for a test, so no "
+         "test was run and no estimate is shown. {minimums_sentence}")
 
 
 def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, stub):
@@ -154,7 +156,7 @@ def test_below_the_minimums_the_analysts_request_holds_no_outcome_value(engine, 
 def test_a_run_below_the_minimums_offers_no_estimate_names(engine):
     names = names_of(engine, below_minimums(engine))
     assert not [k for k in names if k.endswith(("_estimate", "_std_error", "_p_phrase", "_figures_phrase"))]
-    assert "pooled_records" in names and "minimum_records" in names
+    assert "pooled_records" in names and "minimums_sentence" in names  # owner, 2026-10-10: was minimum_records
 
 
 @pytest.mark.parametrize("bad, code", [
@@ -466,7 +468,8 @@ def test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level(en
     assert names["scope_source"] == analyst_names.FIXED_PLAN_SENTENCE  # the test world's runs use a fixed plan
     assert names["model_sentence"] == analyst_names.MODEL_SENTENCE
     assert names["group_definition"] == analyst_names.GROUP_DEFINITION
-    assert names["direction_note"] == analyst_names.direction_note(pooled["estimate"], "k > 0")
+    # Owner, 2026-10-10: the direction is given as a whole sentence (was the clause direction_note).
+    assert names["direction_sentence"] == analyst_names.direction_sentence(pooled["estimate"], "k > 0")
     assert names["nominal_level"] == "5.0%" and "alpha" not in names
     assert names["pooled_estimate"].endswith(" MPa·µm^0.5") and names["pooled_std_error"].endswith(" MPa·µm^0.5")
     assert names["estimated_calibration_name"] == "noise levels estimated from the data"
@@ -479,7 +482,7 @@ def test_the_facts_carry_the_code_built_sentences_units_and_the_nominal_level(en
 
 SENTENCES = ("The claim is that yield strength rises as grain size falls. The outcome is {outcome_wording}, and the "
              "claim is {verdict_wording}, with {pooled_p_phrase}, from {pooled_figures_phrase}. {calibration_summary} "
-             "{scope_source} {model_sentence} The pooled estimate is {pooled_estimate}; {direction_note}. "
+             "{scope_source} {model_sentence} The pooled estimate is {pooled_estimate}. {direction_sentence} "
              "{group_definition}")
 
 
@@ -515,3 +518,156 @@ def test_an_analyst_text_of_any_shape_gets_a_code_never_an_exception(raw):
         "outcome_wording": "insufficient in the sources searched"}}})
     assert check({"report": raw}) in (None, "empty", "malformed", "unknown_name", "digit_outside_placeholder",
                                       "wording_refused", "result_phrases_missing", "numbers_unmatched")
+
+
+# --- the owner's wording fixes from live run A on Render (2026-10-10) -------------------------------------------
+
+from hypocurate.pipeline import analyst_names as an  # noqa: E402
+from hypocurate.pipeline import statement  # noqa: E402
+
+RUN_A_FRAME = "Because of the {direction_sentence}, the result points the way the claim describes."
+PLACEMENT_REASON = "{direction_sentence} is a whole sentence: place it as a sentence of its own"
+
+
+@pytest.mark.parametrize("estimate", [424.9, -12.0, 0.0])
+def test_the_direction_sentence_reads_correctly_for_every_value_it_can_take(estimate):
+    s = an.direction_sentence(estimate, "k > 0")
+    assert s[0].isupper() and s.endswith(".") and s.count(".") == 1
+    assert s == statement._cap(an.direction_note(estimate, "k > 0")) + "."  # the statement's own line, unchanged
+    names = {"direction_sentence": s, "outcome_wording": "sufficient in the sources searched"}
+    for template in ("{direction_sentence} The outcome is {outcome_wording}.",
+                     "The outcome is {outcome_wording}. {direction_sentence}",
+                     "The outcome is {outcome_wording}.\n{direction_sentence}\n"):
+        assert text_checks.placement_problems(template, names) == []
+        rendered = text_checks.render(template, names)
+        assert "the the" not in rendered and ".." not in rendered and s in rendered
+    assert text_checks.placement_problems(RUN_A_FRAME, names) == [PLACEMENT_REASON]
+
+
+@pytest.mark.parametrize("estimate, alternative", [(None, "k > 0"), (424.9, None), (424.9, "k < 0")])
+def test_there_is_no_direction_sentence_without_an_estimate_or_the_claims_direction(estimate, alternative):
+    assert an.direction_sentence(estimate, alternative) is None
+
+
+@pytest.mark.parametrize("template", [
+    "{model_sentence} The outcome is {outcome_wording}.",
+    "The outcome is {outcome_wording}! {model_sentence}",
+    "The outcome is {outcome_wording}? {model_sentence}",
+    "The outcome is {outcome_wording}.\n- {model_sentence}\n* {group_definition}",
+    "{model_sentence} {group_definition}",
+    "The outcome is {outcome_wording}:\n\n{model_sentence}",
+])
+def test_a_whole_sentence_placed_as_its_own_sentence_is_accepted(template):
+    names = {"model_sentence": an.MODEL_SENTENCE, "group_definition": an.GROUP_DEFINITION,
+             "outcome_wording": "sufficient in the sources searched"}
+    assert text_checks.placement_problems(template, names) == []
+
+
+@pytest.mark.parametrize("template, name", [
+    ("As {model_sentence} The outcome is {outcome_wording}.", "model_sentence"),
+    ("The outcome is {outcome_wording} ({model_sentence})", "model_sentence"),
+    ("The outcome is {outcome_wording}: {group_definition}", "group_definition"),
+    ("{model_sentence}, so the outcome is {outcome_wording}.", "model_sentence"),
+    ("{group_definition} {outcome_wording} is the outcome.", "group_definition"),
+    ("The outcome is {outcome_wording}, and {group_definition}", "group_definition"),
+])
+def test_a_whole_sentence_inside_another_sentence_is_refused_with_its_name(template, name):
+    names = {"model_sentence": an.MODEL_SENTENCE, "group_definition": an.GROUP_DEFINITION,
+             "outcome_wording": "sufficient in the sources searched"}
+    assert text_checks.placement_problems(template, names) == [
+        "{" + name + "} is a whole sentence: place it as a sentence of its own"]
+
+
+MET = {"records": {"count": 97, "minimum": 30, "met": True}, "alloys": {"count": 22, "minimum": 5, "met": True},
+       "groups": {"count": 20, "minimum": 10, "met": True}, "resid_df": {"count": 74, "minimum": 10, "met": True}}
+BELOW_MINS = {"records": {"count": 6, "minimum": 30, "met": False}, "alloys": {"count": 3, "minimum": 5, "met": False},
+              "groups": {"count": 3, "minimum": 10, "met": False}, "resid_df": {"count": 2, "minimum": 10, "met": False}}
+PLAN_MINIMUMS = {"records": 30, "alloys": 5, "groups": 10, "resid_df": 10}
+
+
+@pytest.mark.parametrize("minimums, option, expected", [
+    (MET, "fixed_minimum", "The minimums for a test: at least 30 records (met); at least 5 alloys with at least 2 grain "
+                           "sizes (met); at least 10 informative groups (met); at least 10 residual degrees of freedom "
+                           "(met)."),
+    (BELOW_MINS, "fixed_minimum", "The minimums for a test: at least 30 records (not met); at least 5 alloys with at "
+                                  "least 2 grain sizes (not met); at least 10 informative groups (not met); at least 10 "
+                                  "residual degrees of freedom (not met)."),
+    ({**MET, "records": {"count": 6, "minimum": 30, "met": False}}, "use_available",
+     "The minimums for a test: at least 30 records (not met; waived: use what is available); at least 5 alloys with at "
+     "least 2 grain sizes (met); at least 10 informative groups (met); at least 10 residual degrees of freedom (met)."),
+    (None, "fixed_minimum", "The minimums for a test: at least 30 records (not assessed: no dataset was frozen); at "
+                            "least 5 alloys with at least 2 grain sizes (not assessed: no dataset was frozen); at least "
+                            "10 informative groups (not assessed: no dataset was frozen); at least 10 residual degrees "
+                            "of freedom (not assessed: no dataset was frozen)."),
+])
+def test_the_minimums_sentence_gives_every_minimum_its_status(minimums, option, expected):
+    s = an.minimums_sentence(PLAN_MINIMUMS, minimums, option)
+    assert s == expected
+    for words in statement.MINIMUM_WORDS.values():  # every minimum, each with its status
+        assert re.search(rf"at least \d+ {re.escape(words)} \((met|not met[^)]*|not assessed[^)]*)\)", s), words
+    assert " 20 " not in s and " 3 " not in s  # never the informative-group count
+
+
+@pytest.mark.parametrize("value", [
+    lambda: an.MODEL_SENTENCE, lambda: an.GROUP_DEFINITION, lambda: an.FIXED_PLAN_SENTENCE,
+    lambda: an.NARROWER_PLAN_SENTENCE,
+    *(lambda e=e: an.direction_sentence(e, "k > 0") for e in (424.9, -12.0, 0.0)),
+    *(lambda m=m, o=o: an.minimums_sentence(PLAN_MINIMUMS, m, o)
+      for m, o in ((MET, "fixed_minimum"), (BELOW_MINS, "use_available"), (None, "fixed_minimum"))),
+])
+def test_every_value_of_a_whole_sentence_name_is_a_complete_sentence(value):
+    value = value()
+    assert value[0].isupper() and value.rstrip().endswith(".")
+
+
+def test_below_the_minimums_the_facts_give_every_minimum_with_its_status_and_no_bare_minimum(engine):
+    names = names_of(engine, below_minimums(engine))
+    assert "minimums_sentence" in names and not [k for k in names if k.startswith("minimum_")]
+    assert "at least 10 informative groups (not met)" in names["minimums_sentence"]
+    assert "direction_note" not in names
+
+
+def test_the_facts_give_the_direction_as_a_whole_sentence(engine):
+    rid, pooled = exploratory(engine)
+    names = names_of(engine, rid)
+    assert names["direction_sentence"] == an.direction_sentence(pooled["estimate"], "k > 0")
+    assert "direction_note" not in names
+    assert set(text_checks.SENTENCE_NAMES) >= {"direction_sentence", "minimums_sentence", "model_sentence",
+                                               "group_definition", "calibration_summary", "scope_source"}
+
+
+def test_every_placeholder_named_in_the_instruction_is_a_fact_the_analyst_is_given(engine):
+    rid, _ = exploratory(engine)
+    names = set(names_of(engine, rid))
+    named = set(re.findall(r"\{([a-z_]+)\}", ANALYST_INSTRUCTION)) - {"name"}
+    assert named <= names, named - names
+
+
+def test_run_as_garbled_frame_is_corrected_naming_the_sentence_rule_and_the_reason_is_stored(engine, stub):
+    rid, _ = exploratory(engine)
+    garbled = FOLLOWS_ALL + " " + RUN_A_FRAME
+    stub.queue(reply(garbled), reply(FOLLOWS_ALL + " {direction_sentence}"))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    assert out.failure is None
+    stored = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id)
+    assert stored["attempts"] == ["wording_refused", "ok"]
+    assert stored["attempt_reasons"] == [PLACEMENT_REASON, None]
+    assert PLACEMENT_REASON.replace('"', '\\"') in stub.requests[1]["raw"].decode()
+
+
+@pytest.mark.parametrize("template, code, reason", [
+    ("The claim is {verdict_wording}, with {pooled_p_phrase} from {pooled_figures_phrase}.", "wording_refused",
+     "the text does not use {outcome_wording}"),
+    ("The outcome is {outcome_wording}; the claim is {verdict_wording}.", "result_phrases_missing",
+     "the text does not use {pooled_p_phrase}, {pooled_figures_phrase}"),
+    (FOLLOWS_ALL + " There were 12 records.", "digit_outside_placeholder", "digits outside placeholders: 2"),
+    (FOLLOWS_ALL + " {zq_unknown_name}", "unknown_name", "placeholders that name no fact given: 1"),
+    (FOLLOWS_ALL + " This proves it.", "wording_refused", "wording rule: forbidden: proves"),
+])
+def test_each_analyst_refusal_has_a_specific_reason_in_codes_words(engine, stub, template, code, reason):
+    rid, _ = exploratory(engine)
+    stub.queue(reply(template), reply(template))
+    out = analyst.run_analyst(engine, rid, client_options=sp.client_options(stub))
+    stored = one(engine, "SELECT output FROM stage_result WHERE id = :s", s=out.stage_id)
+    assert stored["attempts"] == [code, code] and stored["attempt_reasons"] == [reason, reason]
+    assert "zq_unknown" not in json.dumps(stored) and "12 records" not in json.dumps(stored)

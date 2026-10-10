@@ -87,7 +87,7 @@ def curate(engine: Engine, key: str, *, ceiling: Decimal | None = None,
                         max_output_chars=s["limits"]["max_output_chars"], ceiling=ceiling,
                         lm_options=dict(s["settings"]), client_options=client_options, check=curator.check)
     summary = {"source": key, "version": version.id, "invocation": invocation, "attempts": result.attempts,
-               "calls": result.calls}
+               "attempt_reasons": result.reasons, "calls": result.calls}
     if result.failure is not None:
         return {**summary, "status": "failed", "code": result.failure, "proposals": [], "ignored_keys": []}
     proposals, ignored = curator.proposals_from(result.outputs["proposals"], data["source_documentation"]["documents"])
