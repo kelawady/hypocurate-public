@@ -276,9 +276,10 @@ def test_a_cancelled_waiting_run_is_not_confirmed(engine, stub):
 def test_no_code_confirms_in_bulk_or_by_itself():
     """No bulk or automatic confirmation in step 9 (owner, 2026-10-08): `confirm` takes one run and one name, and
     the only callers in the package are the command line's `confirm` command and, from step 10a (owner's approved
-    plan, 2026-10-11), the web page's confirm action; step 10a adds the shown content's fingerprint (addition 2)."""
+    plan, 2026-10-11), the web page's confirm action; step 10a adds the shown content's fingerprint (addition 2); step
+    10b's fix round 1 adds `via`, where it was done, for its action_record row (owner, 2026-10-11)."""
     params = list(inspect.signature(confirmation.confirm).parameters)
-    assert params == ["engine", "run_id", "by", "shown", "shown_fingerprint"]
+    assert params == ["engine", "run_id", "by", "shown", "shown_fingerprint", "via"]
     package = pathlib.Path(confirmation.__file__).parents[1]
     callers = []
     for path in package.rglob("*.py"):
