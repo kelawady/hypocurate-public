@@ -1,4 +1,6 @@
-"""Step 10a, a5 (owner's condition 1 for the parallel suite, 2026-10-11): no test can see another test's data.
+"""Step 10a, a5 (owner's condition 1 for a parallel suite, 2026-10-11): no test can see another test's data. The suite
+runs serially since the owner's decision of 2026-10-11 (register 'parallel_suite'); these checks keep it ready for a
+parallel run.
 
 How it holds: every test that needs tables gets a database of its own, made and dropped by tests/conftest.py
 (`empty_database`, `migrated_database`; random names), from a template each pytest process makes for itself (under
@@ -45,9 +47,8 @@ def test_only_the_read_only_health_tests_open_the_shared_database():
             assert not re.search(r"\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b", text_), path.name
 
 
-def test_each_xdist_worker_has_its_own_template(template_database):
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "serial")
-    assert re.fullmatch(r"hypocurate_tmpl_[0-9a-f]{12}", template_database), (worker, template_database)
+def test_each_test_database_is_made_from_a_template_of_this_process(template_database):
+    assert re.fullmatch(r"hypocurate_tmpl_[0-9a-f]{12}", template_database), template_database
 
 
 def test_the_serial_group_names_only_existing_test_files():

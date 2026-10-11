@@ -98,13 +98,13 @@ def db(migrated_database):
     engine.dispose()
 
 
-# Step 10a, a5 (owner, 2026-10-11): the suite runs in parallel with pytest-xdist (`-n 4 --dist loadgroup`, pyproject).
-# Each test already has a database of its own (above): `migrated_database` and `empty_database` are new databases with
-# random names, dropped after the test, and every xdist worker makes its own template (`template_database` is
-# session-scoped, so once per worker process). Advisory locks are per database. The files below hold tests that
-# measure time, race threads or processes, or send signals: they run one after another on a single worker
-# (`xdist_group`, which never deselects a test). A test that fails even once in parallel and passes alone is added here
-# (or the suite drops to 2 workers), never re-run: there is no rerun plugin or retry flag.
+# Step 10a, a5 (owner, 2026-10-11): the suite runs serially. A parallel run (pytest-xdist) was tried on 4 and then 2
+# workers: on the 2-core machines it gained little, and a test with a 6 s stall allowance
+# (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the
+# load, locally on 4 workers and on GitHub on 2, although it was in a group run on one worker. The owner chose serial
+# for 10a and to revisit the suite's speed in step 11 (register 'parallel_suite'). Kept as a record for that: the
+# files that measure time, race threads or processes, or send signals, which a parallel run would need to keep apart
+# from other load (tests/test_parallel_isolation.py checks that they exist). Every test still has its own database.
 SERIAL_FILES = frozenset({
     "test_access_dispatch.py", "test_access_layer.py", "test_agent_core.py", "test_checkpoints.py",
     "test_cli_step9b.py", "test_concurrency.py", "test_confirmation.py", "test_guarded_parent.py",
@@ -112,10 +112,3 @@ SERIAL_FILES = frozenset({
     "test_migrations_step9a.py", "test_queue.py", "test_source_versions.py", "test_web_state.py", "test_worker.py",
     "test_worker_fix1.py", "test_write_retry.py",
 })
-SERIAL_GROUP = "serial"
-
-
-def pytest_collection_modifyitems(config, items):
-    for item in items:
-        if item.path.name in SERIAL_FILES:
-            item.add_marker(pytest.mark.xdist_group(SERIAL_GROUP))

@@ -9193,16 +9193,16 @@
   },
   {
     "key": "parallel_suite",
-    "name": "The regression suite runs in parallel",
+    "name": "The regression suite runs serially; a parallel run is for step 11",
     "state": "in_force",
-    "statement": "The suite runs with pytest-xdist on 2 workers (-n 2 --dist loadgroup, pyproject.toml). Every test that needs tables has a database of its own with a random name, made from a template each worker makes for itself; the database at DATABASE_URL is opened only by the read-only health tests. Test files that measure time, race threads or processes, or send signals form one group that runs on a single worker, one test after another (tests/conftest.py SERIAL_FILES; a group never deselects a test). A test that fails even once in parallel and passes alone is added to that group, never re-run (no rerun plugin or retry flag); a failure that pinning cannot help (a test already in the group) is met with fewer workers. The test image still runs plain `pytest -q`.",
+    "statement": "The suite runs serially (plain `pytest -q`). A parallel run with pytest-xdist was tried in step 10a and taken out: on 4 workers locally (2-core machine) it took 34 min 10 s against 36 min 06 s serially, and a test with a 6 s stall allowance (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the load although it ran in a group on one worker; on 2 workers it took 31 min 37 s locally against 35 min 58 s serially (the same 2,292 tests and outcomes), and on GitHub the suite step took 26 min 20 s (green) and 26 min 45 s (that test failed again), against about 32 minutes serially. Every test still has a database of its own with a random name; the files that would need keeping apart from other load are listed in tests/conftest.py SERIAL_FILES. The suite's speed is revisited in step 11 as its own reviewed change.",
     "value": {
-      "text": "2 workers; one serial group",
+      "text": "serial; revisit in step 11",
       "unit": null
     },
     "category": "operational",
     "affects": "Every run of the regression suite, locally and on GitHub.",
-    "reason": "The GitHub suite step took about 32 of the job's 40 minutes; owner's answer 4 to the step 10 plan with two conditions, and the overnight answers of 2026-10-11. 4 workers were tried first (the owner's choice): on the 2-core machines the suite is CPU-bound, the run took 34 min 10 s against 36 min 06 s serially, and a test already in the serial group (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the load, so pinning could not help; by the owner's overnight rule the suite went to 2 workers (2026-10-11).",
+    "reason": "The GitHub suite step took about 32 of the job's 40 minutes; the owner's answer 4 to the step 10 plan approved a parallel run on conditions (no test sees another's data; no re-runs); the owner chose serial for 10a on 2026-10-11 after the stall-allowance test failed under parallel load on GitHub.",
     "evidence": [
       "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
     ],
@@ -9217,21 +9217,14 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "yes",
-      "settings": [
-        {
-          "ref": "file:pyproject.toml:-n 2 --dist loadgroup"
-        },
-        {
-          "ref": "file:tests/conftest.py:SERIAL_FILES = frozenset({"
-        }
-      ],
-      "note": null
+      "status": "not_yet",
+      "step": 11,
+      "note": "Isolation checks kept: tests/test_parallel_isolation.py."
     },
     "tests": [
       "tests/test_parallel_isolation.py::test_databases_are_made_only_by_conftest_with_random_names",
       "tests/test_parallel_isolation.py::test_only_the_read_only_health_tests_open_the_shared_database",
-      "tests/test_parallel_isolation.py::test_each_xdist_worker_has_its_own_template",
+      "tests/test_parallel_isolation.py::test_each_test_database_is_made_from_a_template_of_this_process",
       "tests/test_parallel_isolation.py::test_the_serial_group_names_only_existing_test_files"
     ],
     "history": [],
