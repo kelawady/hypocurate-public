@@ -6,9 +6,13 @@ The first runs on the live site, made by the owner from Render's Shell on the wo
 
 ## Before the runs
 
-- **Sources registered:** `python -m hypocurate.cli sources register mpea tamu_fcc`, run by the owner. This was the first registration on the live database.
-  - The registration output was not pasted into the session. The fingerprints were checked from run 3's confirmation text, which names the sealed versions the run used: `mpea version d41959cce6b6; tamu_fcc version 2fad3ccb3dbc`.
-  - These match the values computed from the frozen files and sealed in the local development database:
+- **The version on Render** for the registration and runs 1 and 2: `4b780c4ef77039533db8ee65f79b13ebf9f46cd8` (`python -m hypocurate.cli version`, the owner's Shell). Run 3 ran after the fix went live (`51257cb`).
+- **Sources registered:** `python -m hypocurate.cli sources register mpea tamu_fcc`, run by the owner. This was the first registration on the live database. Its output, from the owner's Shell:
+  - **mpea:** registered and sealed; version 1; commit d31e2510cccc3fb9e79d43ad62652f64ef8c2c5e; fingerprint `d41959cce6b6e8e319143c8d1dd5473b320b615865358ef9cfce3bc0db848677`.
+  - **tamu_fcc:** registered and sealed; version 2; v1.1.0, commit 11390ee516c1a17cacdde318b40d5d6889d4007f; fingerprint `2fad3ccb3dbc32c1ec51e6efcb70a9d17d755bfdfa606cb044f458bd2b37b982`.
+  - **Repeatable:** a second `register` printed "already registered" with the same values, and the queue was empty.
+  - **Used by run 3:** its confirmation text names the same sealed versions (`mpea version d41959cce6b6; tamu_fcc version 2fad3ccb3dbc`).
+  - **Equal to local:** both fingerprints equal the values computed from the frozen files and sealed in the local development database:
 
     | Source | Fingerprint |
     |---|---|
@@ -22,7 +26,9 @@ The first runs on the live site, made by the owner from Render's Shell on the wo
 
 - **What:** `run … --fixed-plan --ceiling 0.45 --queue`, criterion 14.1a.
 - **Result:** reported by the owner as matching the reference numbers exactly: pooled 97 records, 22 alloys, 20 groups, 74 residual degrees of freedom, k = 424.9 ± 64.4, p ≈ 1.3e-6; MPEA alone 424.1 ± 62.2; Texas A&M alone about 1173, coefficient only.
-- **Cost:** about $0.04, as reported by the owner. The exact figure was not pasted.
+- **Simulation check:** significant in 7.8% (6.6% to 9.0%) of simulations with no effect with noise levels estimated from the data, and 8.5% (7.3% to 9.8%) with fixed illustrative noise levels.
+- **Calls:** 1 (the Analyst, accepted on its first attempt); 3,319 input and 1,446 output tokens.
+- **Cost:** $0.042196.
 - **The Analyst's wording,** which led to the fix below:
   - a garbled sentence, "Because of the the estimate is positive, the direction the claim describes, the result points the way the claim describes";
   - "at least 10 groups" without its "(met)" status.
@@ -90,10 +96,10 @@ The first runs on the live site, made by the owner from Render's Shell on the wo
 
 | Run | What | Calls | Cost |
 |---|---|---|---|
-| 1 | Fixed plan | not pasted | about $0.04 (owner) |
+| 1 | Fixed plan | 1 | $0.042196 |
 | 2 | Planner, failed `invalid_plan` | 2 | $0.042572 |
 | 3 | Planner, confirmed, completed | 3 | $0.093948 |
-| | **Total on Render** | | **about $0.18** |
+| | **Total on Render** | 6 | **$0.178716** |
 
 In addition, the local live check of the fix cost $0.058, on the development database. Every run stayed within its ceiling, and the month is far below the $50 cap.
 
@@ -101,7 +107,7 @@ In addition, the local live check of the fix cost $0.058, on the development dat
 
 For steps 10 and 11 (not built here):
 
-1. **The simulation seed is not tied to the analysis.** On identical data, the calibration's share of significant tests with no effect was 7.8% in one run and 8.6% in another (owner's comparison of runs 1 and 3). The seed comes from the whole-run fingerprint, which differs between runs with the same data and plan. Already in the backlog: an analysis-specific seed and about 10,000 simulations before the final evaluation.
+1. **The simulation seed is not tied to the analysis.** On identical data, the calibration's share of significant tests with no effect was 7.8% (6.6% to 9.0%) in run 1 and 8.6% (7.4% to 9.9%) in run 3 with estimated noise; with fixed noise, 8.5% (7.3% to 9.8%) and 8.3% (7.2% to 9.6%). The seed comes from the whole-run fingerprint, which differs between runs with the same data and plan. Already in the backlog: an analysis-specific seed and about 10,000 simulations before the final evaluation.
 2. **"10 independent groups" in the confirmation text** should be "10 informative groups". The paper minimum counts informative groups (register, `fixed_minimums`), as the statement and the Analyst's minimums sentence say (`pipeline/confirmation.py`).
 3. **`queue` shows the stage as "none" while a run waits.** It should say what the run waits at, for example the rules lock.
 4. **The label printed during `confirm` is the pre-confirmation label.** The text the person confirms is labelled "not verified by code and, in this version, not confirmed by a person", the label of the state being confirmed. The wording shown at the moment of confirmation should be reconsidered.
