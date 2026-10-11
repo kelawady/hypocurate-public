@@ -117,35 +117,112 @@ def test_the_script_asks_again_only_when_the_state_it_received_carries_an_addres
     assert js.index('getAttribute("data-ended")') < again  # an ended fragment never reaches the next schedule
 
 
-def test_14_4_a_run_goes_on_to_its_end_with_the_page_closed_and_across_a_web_restart(own, stub):
-    """Criterion 14.4, bullets 1 and 3: a worker works the run; one web app reads its state and is then dropped (the
-    browser closed); a new app on the same database (the web service restarted) reads on until the run ends. The run
-    completes with the reference result, worked by the worker alone; the web service wrote nothing."""
+def free_port() -> int:
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+class WebProcess:
+    """The web service as its own process (uvicorn, the image's command), on a database of its own."""
+
+    PASSWORD = "test-password-not-a-secret"
+
+    def __init__(self, database_url: str):
+        import secrets
+        self.port = free_port()
+        self.base = f"http://127.0.0.1:{self.port}"
+        env = {**os.environ, "HYPOCURATE_ENV": "development", "HYPOCURATE_PASSWORD": self.PASSWORD,
+               "SESSION_SECRET": secrets.token_hex(32), "DATABASE_URL": database_url}
+        self.proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "hypocurate.web.main:app", "--host",
+                                      "127.0.0.1", "--port", str(self.port), "--workers", "1"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, env=env)
+        import httpx
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            try:
+                if httpx.get(self.base + "/health", timeout=2).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                time.sleep(0.2)
+        else:
+            self.stop()
+            raise AssertionError("the web process did not start")
+        self.client = httpx.Client(base_url=self.base, follow_redirects=False, timeout=30)
+        assert self.client.post("/login", data={"password": self.PASSWORD, "name": "Ada Reviewer"}).status_code == 303
+
+    def state(self, rid: int) -> str:
+        r = self.client.get(f"/runs/{rid}/state")
+        assert r.status_code == 200
+        return r.text
+
+    def stop(self) -> int:
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait(timeout=30)
+        if getattr(self, "client", None) is not None:
+            self.client.close()
+        return self.proc.returncode
+
+
+def test_14_4_a_run_goes_on_to_its_end_across_a_restart_of_the_web_process(own, stub):
+    """Criterion 14.4, bullets 1 and 3 (fix round 1, finding 4): the web service runs as its own process. A worker
+    process works a fixed-plan run and is held at its model request (the Analyst's) by the stub. While it is held,
+    the web process is stopped (its browser gone with it) and a new one is started. Then the worker is released.
+    The run completes with the reference result, under one claim, with one model request: nothing was repeated."""
+    import threading
     engine, url = own
+    arrived, release = threading.Event(), threading.Event()
+
+    def hold():
+        arrived.set()
+        release.wait(180)
+
     stub.respond(to.responder())
+    stub.on_request(hold)
     rid = to.dispatched(engine, fixed_plan=True)
-    proc = subprocess.Popen([sys.executable, "-m", "hypocurate.worker", "--once"], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, env=dict(os.environ))
+    first = WebProcess(url)
+    worker = second = None
     try:
-        first = signed_in(engine, url)
-        seen = {first.get(f"/runs/{rid}/state").status_code for _ in range(3)}
-        assert seen == {200}
-        del first  # the browser is closed
-        second = signed_in(engine, url)  # the web service restarted: a new app, nothing carried over
-        deadline = time.time() + 300
-        while time.time() < deadline and "data-ended" not in second.get(f"/runs/{rid}/state").text:
+        assert "queued" in plain(first.state(rid))
+        worker = subprocess.Popen([sys.executable, "-m", "hypocurate.worker", "--once"], stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True, env=dict(os.environ))
+        assert arrived.wait(300), "the worker never reached its model request"
+        held = plain(first.state(rid))
+        assert "running" in held and run_view.STAGE_WORDS["analysis"] in held
+        assert first.stop() is not None  # the web process is gone, while the run is mid-request
+        with pytest.raises(Exception):
+            import httpx
+            httpx.get(first.base + "/health", timeout=2)
+        second = WebProcess(url)  # the web service restarted: a new process, nothing carried over
+        assert "running" in plain(second.state(rid))
+        assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "running"
+        release.set()
+        out, err = worker.communicate(timeout=300)
+        assert worker.returncode == 0, err[-3000:]
+        deadline = time.time() + 60
+        while time.time() < deadline and 'data-ended="true"' not in second.state(rid):
             time.sleep(0.5)
-        out, err = proc.communicate(timeout=300)
-        assert proc.returncode == 0, err[-3000:]
+        page = plain(second.client.get(f"/runs/{rid}").text)
     finally:
-        if proc.poll() is None:
-            proc.kill()
+        release.set()
+        for web in (first, second):
+            if web is not None:
+                web.stop()
+        if worker is not None and worker.poll() is None:
+            worker.kill()
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "completed"
     pooled = run_view.show(engine, rid)["results"][0]
     assert (pooled["n_records"], pooled["n_alloys"], pooled["n_groups"], pooled["resid_df"]) == (97, 22, 20, 74)
     assert round(pooled["estimate"], 1) == 424.9 and round(pooled["std_error"], 1) == 64.4
     with engine.connect() as conn:
-        claims = conn.execute(text("SELECT worker, release_reason FROM run_claim WHERE run_id = :r"), dict(r=rid)).all()
-    assert len(claims) == 1 and claims[0].release_reason == "finished"
-    page = plain(signed_in(engine, url).get(f"/runs/{rid}").text)
-    assert "Level 6 of 6: tested answer" in page and "completed" in page
+        claims = conn.execute(text("SELECT release_reason FROM run_claim WHERE run_id = :r"), dict(r=rid)).all()
+    assert [c.release_reason for c in claims] == ["finished"]  # one claim
+    assert len(stub.requests) == 1  # one model request: the Analyst's, never repeated
+    assert one(engine, "SELECT count(*) FROM model_call WHERE run_id = :r", r=rid) == 1
+    assert "Level 6 of 6: tested answer" in page
