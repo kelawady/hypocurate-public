@@ -40,7 +40,7 @@ USED_COEFFICIENT_ONLY = "used in the fit (coefficient only: no valid uncertainty
 # the wide one from 56rem, never narrower than 540 px; the narrow one below, on screens at least 360 px wide).
 LAYOUTS = {"wide": {"w": 720, "h": 460, "left": 84, "right": 20, "top": 20, "bottom": 64, "font": 16, "r": 5,
                     "ticks": 5},
-           "narrow": {"w": 320, "h": 300, "left": 58, "right": 10, "top": 12, "bottom": 52, "font": 14, "r": 4,
+           "narrow": {"w": 320, "h": 300, "left": 72, "right": 10, "top": 12, "bottom": 52, "font": 14, "r": 4,
                       "ticks": 4}}
 W, FONT = LAYOUTS["wide"]["w"], LAYOUTS["wide"]["font"]
 
@@ -200,7 +200,7 @@ def svg(d: Mapping, layout: str = "wide") -> Markup:
     out.append(f'<text x="{(left + w - right) / 2:.0f}" y="{h - 8}" text-anchor="middle" fill="#1d2330">grain size'
                f'<tspan baseline-shift="super" font-size="{font}">-1/2</tspan> (µm<tspan baseline-shift="super" '
                f'font-size="{font}">-1/2</tspan>)</text>')
-    out.append(f'<text transform="translate({font + 2},{(top + h - bottom) / 2:.0f}) rotate(-90)" text-anchor="middle" '
+    out.append(f'<text transform="translate({font},{(top + h - bottom) / 2:.0f}) rotate(-90)" text-anchor="middle" '
                f'fill="#1d2330">yield strength (MPa)</text>')
     for seg in d["segments"]:
         out.append(f'<line class="fit" x1="{px(seg["x0"]):.1f}" y1="{py(seg["y0"]):.1f}" x2="{px(seg["x1"]):.1f}" '
