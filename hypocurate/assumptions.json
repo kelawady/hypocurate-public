@@ -8885,7 +8885,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -8929,7 +8929,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -8976,14 +8976,14 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
     "key": "evidence_dial",
     "name": "The evidence-level dial",
     "state": "in_force",
-    "statement": "The run viewer shows the run's evidence level (set by code; it never changes the verdict) as a half circle of six separate segments in one blue that darkens with the level (never red to green), with a needle on the run's level and its segment outlined, and the words \"Level n of 6: <short label>\". The short labels: 6 tested answer, 5 exploratory answer, 4 coefficient only, 3 below the minimums, 2 no coefficient fitted, 1 nothing tested. The verdict is shown beside the dial, never in it. A marked test run's dial is hatched, with a \"test run\" badge. The runs list shows a small dial; a run not completed shows no level (\"failed: no evidence level\" for a failed run). The dial holds no text: every word is HTML beside it.",
+    "statement": "The run viewer shows the run's evidence level (set by code; it never changes the verdict) as a half circle of six separate segments in one blue that darkens with the level (never red to green), with a needle on the run's level and its segment outlined, and the words \"Level n of 6: <short label>\". The short labels: 6 tested answer, 5 exploratory answer, 4 coefficient only, 3 below the minimums, 2 no coefficient fitted, 1 nothing tested. The verdict is shown beside the dial, never in it. A marked test run's dial is hatched, with the stored test-run label ('test run' in the runs list). The runs list shows a small dial; a run not completed shows no level (\"failed: no evidence level\" for a failed run). The dial holds no text: every word is HTML beside it.",
     "value": {
       "text": "six segments; one hue; the labels stated",
       "unit": null
@@ -9039,7 +9039,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -9086,7 +9086,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -9140,7 +9140,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -9188,7 +9188,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   },
   {
@@ -9229,7 +9229,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-11."
     ]
   }
 ]

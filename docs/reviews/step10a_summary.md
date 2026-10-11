@@ -1,6 +1,6 @@
 # Build step 10a — summary for review
 
-Date: 2026-10-11. Branch: `step-10a-run-pages` (from `main` at `ba83c3d`). **Status: built, pushed, not merged; stopped for the owner's morning review of the register entries, then the second-model review.**
+Date: 2026-10-11. Branch: `step-10a-run-pages` (from `main` at `ba83c3d`). **Status: built, pushed, not merged; register entries approved by the owner (2026-10-11); stopped for the second-model review.**
 
 PRD Section 15, step 10 ("Website screens"), first part. The owner split step 10 into:
 - **10a (this part):** the run pages (runs list, run viewer, evidence dial, confirmation and cancel, live state), the fixes from the first live runs, and a faster suite;
@@ -188,7 +188,7 @@ The owner approved a parallel run (`pytest-xdist`) on two conditions: no test se
 
 ## Register
 
-**156 entries.** 8 new, each with the owner's decision of 2026-10-11 and Claude Code's wording, for the owner's review:
+**156 entries.** 8 new, each with the owner's decision of 2026-10-11. Claude Code drafted the wording; the owner approved it on 2026-10-11, with one correction to `evidence_dial` (a test run's dial is hatched "with the stored test-run label ('test run' in the runs list)"). Each entry's note reads "Wording approved by the owner, 2026-10-11."
 - `signed_in_name`;
 - `csrf_tokens`;
 - `confirmation_shown_fingerprint`;
