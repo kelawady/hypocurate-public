@@ -144,3 +144,22 @@ def test_what_is_stored_is_exactly_the_text_the_fingerprint_covered(engine, stub
     with engine.connect() as conn:
         assert conn.execute(text("SELECT shown FROM rules_confirmation WHERE run_id = :r"), dict(r=rid)).scalar() \
             == words == stored["shown"]
+
+
+def test_the_command_line_refuses_a_text_that_changed_after_it_was_printed(engine, stub, monkeypatch, capsys):
+    """Fix round 1, finding 1, on the command line: `confirm` prints the text, then records; if the renderer gives
+    another text by then, nothing is recorded."""
+    from hypocurate import cli_runs
+    rid = waiting(engine, stub)
+    original, calls = confirmation.render, []
+
+    def changing(c):
+        calls.append(1)
+        words = original(c)
+        return words if len(calls) == 1 else words.replace("informative groups", "independent groups")
+
+    monkeypatch.setattr(confirmation, "render", changing)
+    with pytest.raises(queries.QueryRefused) as refused:
+        cli_runs._confirm(engine, rid, "Grace Reviewer")
+    assert refused.value.code == "content_changed" and confirmations(engine, rid) == 0
+    assert "10 informative groups" in capsys.readouterr().out  # what was printed
