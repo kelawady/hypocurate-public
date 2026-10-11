@@ -441,6 +441,7 @@ def runs_list(engine: Engine, before: int | None = None, per_page: int = RUNS_PE
     re-check: an offset shifted when runs were added between pages, repeating some and never reaching others; a run's
     id never changes, so following "older runs" goes through every run that existed when the list was opened exactly
     once). One snapshot for the count and the rows."""
+    from hypocurate.pipeline import reading
     if before is not None and before < 1:
         raise NoSuchPage(f"no runs before run {before}")
     with snapshot(engine) as conn:
@@ -452,11 +453,12 @@ def runs_list(engine: Engine, before: int | None = None, per_page: int = RUNS_PE
             "JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN model_call_totals_by_run t ON t.run_id = r.id "
             "WHERE CAST(:before AS bigint) IS NULL OR r.id < :before ORDER BY r.id DESC LIMIT :n"),
             dict(before=before, n=per_page + 1)).all()  # one more than shown: is there an older page?
-    more, rows = len(rows) > per_page, rows[:per_page]
+        more, rows = len(rows) > per_page, rows[:per_page]
+        plans = {r.id: reading.provenance(conn, r.id) for r in rows}  # step 10b: the "Plan" column, same snapshot
     out = []
     for r in rows:
         test_run = bool((r.experiment_flags or {}).get("constructed_test_data"))
-        out.append({"run": r.id, "query": r.number, "claim": r.text, "status": r.status,
+        out.append({"run": r.id, "query": r.number, "claim": r.text, "status": r.status, "plan": plans[r.id],
                     "status_words": STATUS_WORDS[r.status], "queued": r.queued,
                     "outcome": r.outcome.replace("_", " ") + " in the sources searched" if r.outcome else None,
                     "evidence": evidence(r.evidence_level, None, None, test_run, failed=r.status == "failed"),

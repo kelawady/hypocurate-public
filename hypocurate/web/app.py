@@ -15,6 +15,7 @@ never affects a run (criterion 14.4).
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -234,6 +235,183 @@ def create_app(
             return page(request, "run.html", {"r": shown, "message": None, "error": f"Not cancelled: {refused.reason}"},
                         status_code=409)
         return RedirectResponse(f"/runs/{run_id}?done=cancelled", status_code=303)
+
+    # --- the query pages (step 10b; PRD 9.1 to 9.3) ----------------------------------------------------------------
+
+    def refused_words(error: Exception) -> str:
+        """A refusal in code's fixed words: a query refusal's reason, or the database's own fixed message."""
+        from sqlalchemy.exc import IntegrityError
+        from hypocurate.pipeline import queries
+        from hypocurate.pipeline.writes import database_message
+        if isinstance(error, queries.QueryRefused):
+            return error.reason
+        if isinstance(error, IntegrityError):
+            return database_message(error)
+        raise error
+
+    def form_values(form) -> dict:
+        return {"claim": form.get("claim", ""), "domain": form.get("domain", ""),
+                "sufficiency": form.get("sufficiency", "fixed_minimum"), "note": form.get("note", ""),
+                "sources": form.getlist("sources"), "action": form.get("action", "save")}
+
+    @app.get("/queries", response_class=HTMLResponse)
+    def queries_page(request: Request, before: int | None = Query(None)):
+        from hypocurate.pipeline import query_view
+        try:
+            listed = query_view.queries_list(engine, before)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "queries.html", {"listed": listed, "active": "queries"})
+
+    @app.get("/queries/new", response_class=HTMLResponse)
+    def new_query_form(request: Request):
+        from hypocurate.pipeline import query_view
+        return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": None,
+                                                 "values": None, "error": None, "active": "new"})
+
+    @app.post("/queries")
+    async def new_query(request: Request):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        security.signed_in_name(request)
+        v = form_values(form)
+        try:
+            q = queries.create(engine, v["claim"], v["sources"], domain=v["domain"], sufficiency=v["sufficiency"],
+                               note=v["note"])
+            if v["action"] == "submit":
+                queries.submit(engine, q.version_id)
+        except Exception as error:  # noqa: BLE001 (refused_words re-raises anything that is not a fixed refusal)
+            return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": None,
+                                                     "values": v, "error": refused_words(error), "active": "new"},
+                        status_code=409)
+        return RedirectResponse(f"/queries/{q.number}", status_code=303)
+
+    @app.get("/queries/{number}", response_class=HTMLResponse)
+    def query_detail(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "query.html", {"q": shown, "error": None, "active": "queries"})
+
+    @app.get("/queries/{number}/edit", response_class=HTMLResponse)
+    def edit_query_form(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        latest = shown["latest"]
+        values = {"claim": latest["claim"], "note": latest["note"] or "", "sufficiency": None,
+                  "sources": [s["key"] for s in latest["sources"]], "domain": None}
+        return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
+                                                 "q": shown, "values": values, "error": None, "active": "queries"})
+
+    @app.post("/queries/{number}/edit")
+    async def edit_query(request: Request, number: str):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        security.signed_in_name(request)
+        v = form_values(form)
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        try:
+            change = queries.new_version if shown["latest"]["status"] == "returned" else queries.update_draft
+            vid = change(engine, number, v["claim"], v["sources"], v["domain"], v["sufficiency"], v["note"])
+            if v["action"] == "submit":
+                queries.submit(engine, vid)
+        except Exception as error:  # noqa: BLE001
+            return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
+                                                     "q": shown, "values": v, "error": refused_words(error),
+                                                     "active": "queries"}, status_code=409)
+        return RedirectResponse(f"/queries/{number}", status_code=303)
+
+    @app.post("/queries/{number}/again")
+    async def dispatch_again(request: Request, number: str):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        security.signed_in_name(request)
+        try:
+            rid = queries.dispatch_again(engine, number)
+        except Exception as error:  # noqa: BLE001
+            try:
+                shown = query_view.query_page(engine, number)
+            except query_view.NoSuchQuery as missing:
+                raise HTTPException(status_code=404, detail=str(missing)) from None
+            return page(request, "query.html", {"q": shown, "error": f"Not dispatched: {refused_words(error)}",
+                                                "active": "queries"}, status_code=409)
+        return RedirectResponse(f"/runs/{rid}", status_code=303)
+
+    @app.get("/review", response_class=HTMLResponse)
+    def review_index(request: Request):
+        from hypocurate.pipeline import query_view, run_view
+        return page(request, "review.html", {"picker": query_view.review_list(engine), "q": None,
+                                             "queue": run_view.queue_rows(engine), "error": None, "active": "review"})
+
+    @app.get("/review/{number}", response_class=HTMLResponse)
+    def review_query(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.review_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
+                                             "queue": shown.get("queue"), "error": None, "active": "review"})
+
+    async def review_action(request: Request, number: str, act):
+        from hypocurate.pipeline import query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        try:
+            shown = query_view.review_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        try:
+            if not shown["reviewable"]:
+                from hypocurate.pipeline.queries import QueryRefused
+                raise QueryRefused("not_submitted", f"query {number} is {shown['latest']['status_words']}; only a "
+                                                    "submitted query is reviewed")
+            return act(form, name, shown)
+        except Exception as error:  # noqa: BLE001
+            return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
+                                                 "queue": shown.get("queue"), "active": "review",
+                                                 "error": refused_words(error)}, status_code=409)
+
+    @app.post("/review/{number}/dispatch")
+    async def review_dispatch(request: Request, number: str):
+        from hypocurate.pipeline import queries
+
+        def act(form, name, shown):
+            ceiling = (form.get("ceiling") or "").strip()
+            try:
+                ceiling = Decimal(ceiling) if ceiling else None
+            except InvalidOperation:
+                raise queries.QueryRefused("ceiling", "the ceiling is a number of US dollars") from None
+            if ceiling is not None and not ceiling > 0:
+                raise queries.QueryRefused("ceiling", "the ceiling is a positive number of US dollars")
+            queries.confirm_domain(engine, shown["version_id"], by=name, domain=form.get("domain") or None,
+                                   where=queries.WEBSITE)
+            rid = queries.dispatch(engine, shown["version_id"], ceiling=ceiling)
+            return RedirectResponse(f"/runs/{rid}", status_code=303)
+
+        return await review_action(request, number, act)
+
+    @app.post("/review/{number}/return")
+    async def review_return(request: Request, number: str):
+        from hypocurate.pipeline import queries
+
+        def act(form, name, shown):
+            queries.return_for_edits(engine, shown["version_id"], by=name, comment=form.get("comment", ""))
+            return RedirectResponse(f"/queries/{number}", status_code=303)
+
+        return await review_action(request, number, act)
 
     @app.get("/health")
     def health(request: Request) -> Response:

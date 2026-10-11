@@ -7,12 +7,13 @@
 <p class="muted">{{ listed.words }} {{ info("queue") }}</p>
 {% if runs %}
 <table class="data runs">
-  <thead><tr><th>Evidence {{ info("evidence_level") }}</th><th>Run</th><th>Claim</th><th>Status {{ info("status") }}</th><th>Outcome {{ info("outcome") }}</th><th>Cost {{ info("cost") }}</th></tr></thead>
+  <thead><tr><th>Evidence {{ info("evidence_level") }}</th><th>Run</th><th>Claim</th><th>Plan {{ info("fixedplan") }}</th><th>Status {{ info("status") }}</th><th>Outcome {{ info("outcome") }}</th><th>Cost {{ info("cost") }}</th></tr></thead>
   <tbody>{% for x in runs %}
     <tr>
       <td data-label="Evidence">{% with e = x.evidence, small = true %}{% include "_dial.html" %}{% endwith %}</td>
       <td data-label="Run"><a href="/runs/{{ x.run }}">{{ x.query }} · run {{ x.run }}</a><div class="muted">{{ x.queued }}</div></td>
       <td data-label="Claim">{{ x.claim }}</td>
+      <td data-label="Plan">{{ x.plan }}</td>
       <td data-label="Status">{{ x.status_words }}</td>
       <td data-label="Outcome">{{ x.outcome or "—" }}</td>
       <td data-label="Cost">{{ x.cost }}</td>

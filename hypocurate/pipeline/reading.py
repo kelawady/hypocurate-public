@@ -127,6 +127,32 @@ def stored(conn: Connection, run_id: int) -> dict | None:
     return _confirmed(conn, run_id, tested, locked=run.plan is not None)
 
 
+# Step 10b (owner, 2026-10-11): where a run's question as tested came from, in short words for the runs list, from
+# what is stored (the run's fixed-plan flag, its narrower link, its locked plan, its confirmation), never a guess.
+PROVENANCE_WORDS = {"fixed": "fixed reference plan", "narrower": "narrower question's plan",
+                    "planner": "Planner's reading", "confirmed": "Planner's reading, confirmed by {by}",
+                    "narrower_confirmed": "narrower question's plan, confirmed by {by}",
+                    "predates": "Planner's reading; predates confirmation"}
+
+
+def provenance(conn: Connection, run_id: int) -> str:
+    """The short provenance of a run's question as tested (the run page's label, shortened)."""
+    row = conn.execute(text(
+        "SELECT r.fixed_plan, h.narrower_of_run_id IS NOT NULL AS narrower, "
+        "EXISTS (SELECT 1 FROM plan p WHERE p.run_id = r.id) AS locked, "
+        "(SELECT confirmed_by FROM rules_confirmation rc WHERE rc.run_id = r.id) AS confirmed_by FROM run r "
+        "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
+        "WHERE r.id = :r"), dict(r=run_id)).one()
+    if row.narrower:
+        return (PROVENANCE_WORDS["narrower_confirmed"].format(by=row.confirmed_by) if row.confirmed_by
+                else PROVENANCE_WORDS["narrower"])
+    if row.fixed_plan:
+        return PROVENANCE_WORDS["fixed"]
+    if row.confirmed_by:
+        return PROVENANCE_WORDS["confirmed"].format(by=row.confirmed_by)
+    return PROVENANCE_WORDS["predates"] if row.locked else PROVENANCE_WORDS["planner"]
+
+
 def _confirmed(conn: Connection, run_id: int, tested: dict, locked: bool = False) -> dict:
     """The reading with its label once a person confirmed it (owner, 2026-10-08, question 2); a Planner reading locked
     with no confirmation (only possible before step 9a's migration 0007) says that it predates confirmation (owner,

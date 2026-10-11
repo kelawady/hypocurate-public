@@ -94,8 +94,9 @@ def _source_ids(conn: Connection, keys: Iterable[str]) -> list[int]:
 
 
 def create(engine: Engine, claim: str, sources: Iterable[str], domain: str = "grain_size_strengthening",
-           sufficiency: str = "fixed_minimum", narrower_of_run: int | None = None) -> Query:
-    """A new query with one draft version."""
+           sufficiency: str = "fixed_minimum", narrower_of_run: int | None = None, note: str | None = None) -> Query:
+    """A new query with one draft version (step 10b: with the submitter's optional note)."""
+    claim, note = _claim_text(claim), _note_text(note)
     sources = list(dict.fromkeys(sources))
     if not sources:
         raise QueryRefused("no_source", "a query chooses at least one source")
@@ -105,8 +106,9 @@ def create(engine: Engine, claim: str, sources: Iterable[str], domain: str = "gr
         h = conn.execute(text("INSERT INTO hypothesis (narrower_of_run_id) VALUES (:r) RETURNING id, number"),
                          dict(r=narrower_of_run)).one()
         vid = conn.execute(text(
-            "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id, sufficiency_option) "
-            "VALUES (:h, 1, :t, :d, :o) RETURNING id"), dict(h=h.id, t=claim, d=domain_id, o=sufficiency)).scalar_one()
+            "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id, sufficiency_option, note) "
+            "VALUES (:h, 1, :t, :d, :o, :n) RETURNING id"),
+            dict(h=h.id, t=claim, d=domain_id, o=sufficiency, n=note)).scalar_one()
         for sid in source_ids:
             conn.execute(text("INSERT INTO hypothesis_version_source VALUES (:v, :s)"), dict(v=vid, s=sid))
         return Query(h.id, h.number, vid)
@@ -123,8 +125,10 @@ def submit(engine: Engine, version_id: int) -> None:
     run_transaction(engine, body)
 
 
-def confirm_domain(engine: Engine, version_id: int, by: str, domain: str | None = None) -> None:
-    """A named person confirms the domain (or changes it to `domain`) while the version is submitted."""
+def confirm_domain(engine: Engine, version_id: int, by: str, domain: str | None = None,
+                   where: str = "at the command line") -> None:
+    """A named person confirms the domain (or changes it to `domain`) while the version is submitted. `where`: the
+    command line, or the website (step 10b)."""
     if not isinstance(by, str) or not by.strip() or len(by.strip()) > REVIEWER_MAX:
         raise QueryRefused("reviewer_missing", f"the reviewer's name is required (at most {REVIEWER_MAX} characters)")
 
@@ -135,7 +139,7 @@ def confirm_domain(engine: Engine, version_id: int, by: str, domain: str | None 
         domain_id = _domain_id(conn, domain) if domain else chosen
         conn.execute(text("UPDATE hypothesis_version SET confirmed_domain_id = :d, domain_confirmed_at = now(), "
                           "review_comment = :c WHERE id = :v"),
-                     dict(d=domain_id, c=f"domain confirmed at the command line by {by.strip()}", v=version_id))
+                     dict(d=domain_id, c=f"domain confirmed {where} by {by.strip()}", v=version_id))
 
     run_transaction(engine, body)
 
@@ -319,6 +323,104 @@ def create_narrower(engine: Engine, original_run: int, narrower_scope: Mapping) 
                domain=row.domain, sufficiency=row.sufficiency_option, narrower_of_run=original_run)
     submit(engine, q.version_id)
     return q
+
+
+CLAIM_MAX = 2000      # step 10b: the hypothesis text, as typed on the new-query page
+NOTE_MAX = 2000       # the submitter's note to the reviewer
+COMMENT_MAX = 2000    # the reviewer's comment when returning a query
+WEBSITE = "on the website"  # where a domain is confirmed (step 10b)
+
+
+def _claim_text(claim: str) -> str:
+    text_ = (claim or "").strip()  # trimmed only: the claim's words are kept as written
+    if not 1 <= len(text_) <= CLAIM_MAX:
+        raise QueryRefused("claim_required", f"state the hypothesis (1 to {CLAIM_MAX} characters)")
+    return text_
+
+
+def _note_text(note: str | None) -> str | None:
+    note = (note or "").strip()
+    if len(note) > NOTE_MAX:
+        raise QueryRefused("note_too_long", f"the note is at most {NOTE_MAX} characters")
+    return note or None
+
+
+def _version(conn: Connection, number: str):
+    """The latest version of query `number`, locked."""
+    row = conn.execute(text(
+        "SELECT hv.id, hv.status, hv.version_number, h.id AS hypothesis_id, h.narrower_of_run_id FROM hypothesis h "
+        "JOIN hypothesis_version hv ON hv.hypothesis_id = h.id WHERE h.number = :n ORDER BY hv.version_number DESC "
+        "LIMIT 1"), dict(n=number)).one_or_none()
+    if row is None:
+        raise QueryRefused("unknown_query", f"no query {number}")
+    _lock_version(conn, row.id)
+    return row
+
+
+def update_draft(engine: Engine, number: str, claim: str, sources: Iterable[str], domain: str, sufficiency: str,
+                 note: str | None) -> int:
+    """Step 10b: a draft is edited in place (it was never submitted); its sources are replaced. Returns its id."""
+    claim, note, sources = _claim_text(claim), _note_text(note), list(dict.fromkeys(sources))
+    if not sources:
+        raise QueryRefused("no_source", "a query chooses at least one source")
+
+    def body(conn: Connection):
+        v = _version(conn, number)
+        if v.status != "draft":
+            raise QueryRefused("not_a_draft", f"query {number} is {v.status}; only a draft is edited in place")
+        conn.execute(text("UPDATE hypothesis_version SET text = :t, domain_id = :d, sufficiency_option = :o, "
+                          "note = :n WHERE id = :v"),
+                     dict(t=claim, d=_domain_id(conn, domain), o=sufficiency, n=note, v=v.id))
+        conn.execute(text("DELETE FROM hypothesis_version_source WHERE hypothesis_version_id = :v"), dict(v=v.id))
+        for sid in _source_ids(conn, sources):
+            conn.execute(text("INSERT INTO hypothesis_version_source VALUES (:v, :s)"), dict(v=v.id, s=sid))
+        return v.id
+
+    return run_transaction(engine, body)
+
+
+def new_version(engine: Engine, number: str, claim: str, sources: Iterable[str], domain: str, sufficiency: str,
+                note: str | None) -> int:
+    """Step 10b (PRD 9.2): editing a returned query creates its next version, a draft; earlier versions are kept
+    unchanged. Returns the new version's id."""
+    claim, note, sources = _claim_text(claim), _note_text(note), list(dict.fromkeys(sources))
+    if not sources:
+        raise QueryRefused("no_source", "a query chooses at least one source")
+
+    def body(conn: Connection):
+        v = _version(conn, number)
+        if v.status != "returned":
+            raise QueryRefused("not_returned", f"query {number} is {v.status}; a new version follows a returned one")
+        vid = conn.execute(text(
+            "INSERT INTO hypothesis_version (hypothesis_id, version_number, text, domain_id, sufficiency_option, note) "
+            "VALUES (:h, :n, :t, :d, :o, :note) RETURNING id"),
+            dict(h=v.hypothesis_id, n=v.version_number + 1, t=claim, d=_domain_id(conn, domain), o=sufficiency,
+                 note=note)).scalar_one()
+        for sid in _source_ids(conn, sources):
+            conn.execute(text("INSERT INTO hypothesis_version_source VALUES (:v, :s)"), dict(v=vid, s=sid))
+        return vid
+
+    return run_transaction(engine, body)
+
+
+def return_for_edits(engine: Engine, version_id: int, by: str, comment: str) -> None:
+    """Step 10b (PRD 9.3): the reviewer returns a submitted version for edits, with a comment; it never changes again,
+    and an edit is its next version."""
+    if not isinstance(by, str) or not by.strip() or len(by.strip()) > REVIEWER_MAX:
+        raise QueryRefused("reviewer_missing", f"the reviewer's name is required (at most {REVIEWER_MAX} characters)")
+    comment = (comment or "").strip()
+    if not 1 <= len(comment) <= COMMENT_MAX:
+        raise QueryRefused("comment_required", f"say what to change (1 to {COMMENT_MAX} characters)")
+
+    def body(conn: Connection):
+        status = _lock_version(conn, version_id)
+        if status != "submitted":
+            raise QueryRefused("not_submitted", f"this version is {status}; only a submitted version is returned")
+        conn.execute(text("UPDATE hypothesis_version SET status = 'returned', returned_at = now(), "
+                          "review_comment = :c WHERE id = :v"),
+                     dict(c=f"returned by {by.strip()}: {comment}", v=version_id))
+
+    run_transaction(engine, body)
 
 
 def submitted_version(engine: Engine, number: str) -> int:

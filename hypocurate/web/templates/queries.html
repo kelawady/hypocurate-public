@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Queries · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Queries {{ info("queries") }}</h1>
+<p class="muted">{{ listed.words }} <a class="button" href="/queries/new">New query</a></p>
+{% if listed.queries %}
+<table class="data">
+  <thead><tr><th>Query</th><th>Created</th><th>Domain {{ info("domain") }}</th><th>Hypothesis {{ info("hypothesis") }}</th><th>Sources</th><th>Status {{ info("status") }}</th><th>Outcome {{ info("outcome") }}</th><th>Cost {{ info("cost") }}</th><th></th></tr></thead>
+  <tbody>{% for x in listed.queries %}
+    <tr>
+      <td data-label="Query"><a href="/queries/{{ x.number }}">{{ x.number }}</a>{% if x.version > 1 %}<div class="muted">version {{ x.version }}</div>{% endif %}{% if x.narrower %}<div class="muted">narrower question</div>{% endif %}</td>
+      <td data-label="Created">{{ x.created }}</td>
+      <td data-label="Domain">{{ x.domain }}</td>
+      <td data-label="Hypothesis">{{ x.claim }}</td>
+      <td data-label="Sources">{{ x.sources }}</td>
+      <td data-label="Status">{{ x.status_words }}</td>
+      <td data-label="Outcome">{{ x.outcome or "—" }}</td>
+      <td data-label="Cost">{{ x.cost }}</td>
+      <td data-label="Action"><a href="{{ x.action.href }}">{{ x.action.label }}</a></td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+{% endif %}
+{% if listed.newest or listed.older %}
+<nav class="pages" aria-label="Pages of the queries list">
+  {% if listed.newest %}<a rel="first" href="/queries">Newest queries</a>{% endif %}
+  {% if listed.older %}<a rel="next" href="/queries?before={{ listed.older }}">Older queries</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

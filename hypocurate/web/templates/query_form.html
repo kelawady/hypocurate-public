@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{% if number %}Edit {{ number }}{% else %}New query{% endif %} · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+{% if number %}<p class="crumbs"><a href="/queries">Queries</a> › <a href="/queries/{{ number }}">{{ number }}</a> › edit</p>{% endif %}
+<h1>{% if number %}Edit {{ number }}{% else %}New query{% endif %}</h1>
+{% if number and q and q.latest.status == "returned" %}
+<p class="notice">Version {{ q.latest.version }} was returned for edits: {{ q.latest.review_comment }}. Saving creates version {{ q.latest.version + 1 }}; version {{ q.latest.version }} is kept unchanged. {{ info("version") }}</p>
+{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="{% if number %}/queries/{{ number }}/edit{% else %}/queries{% endif %}" class="query-form">
+  <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+  <label for="claim">Hypothesis {{ info("hypothesis") }}</label>
+  <textarea id="claim" name="claim" rows="3" required>{{ values.claim if values else "" }}</textarea>
+  <fieldset><legend>Domain {{ info("domain") }}</legend>
+    {% for d in options.domains %}
+    <label class="choice"><input type="radio" name="domain" value="{{ d.key }}"
+      {%- if (values and values.domain == d.key) or ((not values or not values.domain) and loop.first) %} checked{% endif %}> {{ d.name }}{% if not d.supported %} <span class="muted">(not yet supported: cannot be dispatched)</span>{% endif %}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset><legend>Data sources {{ info("sources") }}</legend>
+    {% for s in options.sources %}
+    <label class="choice"><input type="checkbox" name="sources" value="{{ s.key }}"
+      {%- if values and s.key in values.sources %} checked{% elif not values and s.enabled %} checked{% endif %}> {{ s.name }} <span class="badge kind">{{ s.data_kind }}</span>{% if s.constructed %} <span class="muted">(constructed test data: dispatched only as a marked test run, from the command line)</span>{% endif %}{% if not s.enabled %} <span class="muted">(off)</span>{% endif %}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset><legend>How much data is enough {{ info("sufficiency") }}</legend>
+    {% for o in options.sufficiency %}
+    <label class="choice"><input type="radio" name="sufficiency" value="{{ o.key }}"
+      {%- if (values and values.sufficiency == o.key) or ((not values or not values.sufficiency) and loop.first) %} checked{% endif %}> {{ o.words }} <span class="muted">({{ o.detail }})</span></label>
+    {% endfor %}
+  </fieldset>
+  <label for="note">Note to the reviewer (optional)</label>
+  <textarea id="note" name="note" rows="2">{{ values.note if values else "" }}</textarea>
+  <div class="actions">
+    <button type="submit" name="action" value="save" class="secondary">Save draft</button>
+    <button type="submit" name="action" value="submit">Submit for review</button>
+  </div>
+</form>
+{% endblock %}
