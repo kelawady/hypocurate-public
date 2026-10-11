@@ -171,8 +171,8 @@ def queue_rows(engine: Engine) -> list[dict]:
     out = []
     with engine.connect() as conn:
         runs = conn.execute(text(
-            "SELECT r.id, r.status, h.number, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS "
-            "confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
+            "SELECT r.id, r.status, h.number, r.experiment_flags, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE "
+            "rc.run_id = r.id) AS confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
             "(SELECT count(*) FROM run_claim x WHERE x.run_id = r.id AND x.released_at IS NOT NULL AND "
             "x.release_reason NOT IN ('waiting', 'finished')) AS recoveries FROM run r "
             "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
@@ -189,7 +189,9 @@ def queue_rows(engine: Engine) -> list[dict]:
                 "worker": r.worker, "heartbeat_age_seconds": round(float(r.heartbeat_age), 1)
                 if r.heartbeat_age is not None else None,
                 "seconds_since_last_write": round(progress.seconds_since_last_write(conn, r.id), 1),
-                "recoveries": int(r.recoveries)})
+                "recoveries": int(r.recoveries),
+                # Step 10b (register 'constructed_test_runs'): the label on every list.
+                "test_run": bool((r.experiment_flags or {}).get("constructed_test_data"))})
     return out
 
 

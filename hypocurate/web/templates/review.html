@@ -52,7 +52,7 @@
     {% if not queue %}<p class="muted">No run is queued, waiting or running.</p>{% else %}
     <table class="data">
       <thead><tr><th>Run</th><th>Query</th><th>Status</th><th>Stage</th><th>Worker</th></tr></thead>
-      <tbody>{% for x in queue %}<tr><td data-label="Run"><a href="/runs/{{ x.run }}">run {{ x.run }}</a></td><td data-label="Query">{{ x.query }}</td><td data-label="Status">{{ x.status }}</td><td data-label="Stage">{{ x.stage }}</td><td data-label="Worker">{{ x.worker or "none" }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for x in queue %}<tr><td data-label="Run"><a href="/runs/{{ x.run }}">run {{ x.run }}</a></td><td data-label="Query">{{ x.query }}{% if x.test_run %} <span class="badge test-run">test run</span>{% endif %}</td><td data-label="Status">{{ x.status }}</td><td data-label="Stage">{{ x.stage }}</td><td data-label="Worker">{{ x.worker or "none" }}</td></tr>{% endfor %}</tbody>
     </table>{% endif %}
   </section>
   </div>

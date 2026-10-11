@@ -61,7 +61,7 @@ def test_every_category_has_entries_and_keys_are_unique():
 # grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
 # the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
 # Step 10a: question_as_tested fully applied (the website's Confirm button).
-PARTLY = {"constructed_test_runs"}  # step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
+PARTLY: set = set()  # step 10b: constructed_test_runs fully applied (its label on every screen); step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -252,7 +252,9 @@ def test_the_step_6_decisions_carry_the_owners_wording():
     access = BY_KEY["code_role_access"]["statement"]
     assert "Inclusion receives no outcome value" in access and "Not claimed: that outcomes play no part at all" in access
     assert "test run: includes constructed data" in BY_KEY["constructed_test_runs"]["statement"]
-    assert BY_KEY["constructed_test_runs"]["applied"]["step"] == 10
+    # Step 10b: the label is on every screen and list, so the entry is fully applied (it was pending step 10).
+    assert BY_KEY["constructed_test_runs"]["applied"]["status"] == "yes"
+    assert "Step 10" in BY_KEY["constructed_test_runs"]["applied"]["note"]
     assert "adapter code, with the adapter's name and version" in BY_KEY["record_extraction_provenance"]["statement"]
     assert "Duplicates are resolved before grain sizes are counted." in BY_KEY["eligibility_rule_order"]["statement"]
     assert "step 1 answer file" in " ".join(BY_KEY["duplicate_survivor_rule"]["notes"])

@@ -277,3 +277,18 @@ def test_every_menu_item_is_reachable_on_a_phone(own):
         assert f">{label}</a>" in nav, label
     css = (pathlib.Path(query_view.__file__).resolve().parents[1] / "web" / "static" / "style.css").read_text()
     assert ".menu ul { flex-wrap: wrap; }" in css
+
+
+def test_a_marked_test_run_is_labelled_in_the_queries_list_and_the_queue(own):
+    """Register 'constructed_test_runs': the label on every screen and list (step 10b)."""
+    from hypocurate.pipeline import run_view
+    engine, url = own
+    q = queries.create(engine, CLAIM, ["mpea"])
+    queries.submit(engine, q.version_id)
+    queries.confirm_domain(engine, q.version_id, by=NAME)
+    rid = queries.dispatch(engine, q.version_id, fixed_plan=True, constructed_test_data=True)
+    c = signed_in(engine, url, NAME)
+    assert f"queued ({run_view.TEST_RUN_BADGE})" in plain(c.get("/queries").text)
+    assert next(r for r in run_view.queue_rows(engine) if r["run"] == rid)["test_run"] is True
+    pending = new_query(c, action="submit")
+    assert "test run" in plain(c.get(f"/review/{pending}").text)

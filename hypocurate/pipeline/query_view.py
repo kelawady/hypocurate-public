@@ -66,6 +66,8 @@ def queries_list(engine: Engine, before: int | None = None, per_page: int = QUER
         for r in rows:
             run = _latest_run(conn, r.id)
             status = (STATUS_WORDS[run.status] if r.status == "dispatched" and run else VERSION_STATUS_WORDS[r.status])
+            if run is not None and (run.experiment_flags or {}).get("constructed_test_data"):
+                status += f" ({run_view.TEST_RUN_BADGE})"  # register 'constructed_test_runs': the label on every list
             out.append({
                 "id": r.id, "number": r.number, "version": r.version_number, "created": r.created, "domain": r.domain,
                 "claim": r.text, "narrower": r.narrower_of_run_id is not None,
