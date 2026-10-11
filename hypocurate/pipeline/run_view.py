@@ -42,25 +42,30 @@ SET_DISPLAY_NAMES = {
     "no_exclusions": "with no exclusion rules",
     "tension_and_compression": "with tension and compression tests",
     "six_batches_as_groups": "with Texas A&M grouped by its six batches",
-    "same_alloy_1_at_pct": "with alloys matched at 1 at.%",
+    "same_alloy_1_at_pct": "with alloys matched at 1 atomic percent (at.%)",
     "source_only_assignments": "with values assigned from the source only",
     "scope_not_confirmed_included": "with records of unconfirmed scope included",
     "possible_duplicates_separate": "with possible duplicates counted separately",
     "conflicts_survivor_value": "with conflicting values counted once (survivor rule)",
 }
-# The one change of each set, in words for people (the eligibility code's own description, `SENSITIVITY_CHANGES`,
-# names internal sets; the ninth set's description is that one, which names none).
+# The one change of each set, in words for people, and what the main result does instead (owner's review,
+# 2026-10-11). The main result's rule is read from the run's locked plan ({…} filled by `_set_description`).
 SET_DESCRIPTIONS = {
-    "no_exclusions": "The plan's exclusion rules are dropped; the scope is kept.",
-    "tension_and_compression": "Tests in tension and in compression are both accepted.",
-    "six_batches_as_groups": "The Texas A&M records are grouped by their six batches instead of as one group; the "
-                             "records are the same.",
-    "same_alloy_1_at_pct": "Compositions are rounded to 1 at.% when deciding whether two records are the same alloy.",
-    "source_only_assignments": "Only values converted or assigned from the source are accepted; values assigned by "
-                               "decision are left out.",
-    "scope_not_confirmed_included": "Records whose scope cannot be confirmed are treated as in scope.",
+    "no_exclusions": "The plan's exclusion rules are dropped ({exclusions}); the main result applies them. The scope is "
+                     "kept.",
+    "tension_and_compression": "Tests in tension and in compression are both accepted, instead of {test_types} only, "
+                               "as in the main result.",
+    "six_batches_as_groups": "The Texas A&M records are grouped by their six batches, instead of as one group (the "
+                             "whole dataset), as in the main result; the records are the same.",
+    "same_alloy_1_at_pct": "Compositions are rounded to 1 at.% when deciding whether two records are the same alloy, "
+                           "instead of to {main_rounding} at.%, as in the main result.",
+    "source_only_assignments": "Only values converted or assigned from the source are accepted; the main result also "
+                               "accepts values assigned by decision.",
+    "scope_not_confirmed_included": "Records whose scope cannot be confirmed are treated as in scope; the main result "
+                                    "leaves them out.",
     "possible_duplicates_separate": "Records in unresolved or possible duplicate groups count as separate "
-                                    "measurements.",
+                                    "measurements; in the main result a possible duplicate group counts once (by the "
+                                    "survivor rule) and an unresolved one is left out.",
     # Owner's wording (2026-10-11): say that these values are normally left out.
     "conflicts_survivor_value": "Conflicting values, left out of the main result, are included once each, using the "
                                 "survivor's value.",
@@ -91,11 +96,21 @@ def snapshot(engine: Engine) -> Iterator[Connection]:
             yield conn
 
 
-def _set_description(key: str | None) -> str:
+def _set_description(key: str | None, plan: Mapping | None = None) -> str:
+    """The set's one change and what the main result does instead, with the main result's rule from `plan` (the run's
+    locked plan; the profile's defaults when none is given)."""
+    from hypocurate.pipeline import plan as plans
+    from hypocurate.pipeline import reading
     from hypocurate.pipeline.eligibility import INFLUENCE_KEY, SENSITIVITY_CHANGES
     if key == INFLUENCE_KEY:
-        return SENSITIVITY_CHANGES[INFLUENCE_KEY][:1].upper() + SENSITIVITY_CHANGES[INFLUENCE_KEY][1:] + "."
-    return SET_DESCRIPTIONS.get(key or "", "")
+        return (SENSITIVITY_CHANGES[INFLUENCE_KEY][:1].upper() + SENSITIVITY_CHANGES[INFLUENCE_KEY][1:]
+                + "; the main result keeps them.")
+    p = plan or plans.reference_plan(0)
+    rules = p.get("exclusion_rules") or []
+    values = {"exclusions": "; ".join(reading.exclusion_words(r) for r in rules) if rules else "none in this plan",
+              "test_types": " and ".join(p["scope"]["test_type"]),
+              "main_rounding": f"{10 ** -p['rules']['same_alloy_decimals']:g}"}
+    return SET_DESCRIPTIONS.get(key or "", "").format(**values)
 
 
 def _set_display_name(key: str | None) -> str:
@@ -282,7 +297,7 @@ def _counts_words(e: Mapping) -> dict:
             "informative": c.get("n_groups_informative"), "resid_df": c.get("resid_df")}
 
 
-def _tables(stats: Mapping, kinds: Mapping[str, str]) -> dict:
+def _tables(stats: Mapping, kinds: Mapping[str, str], plan: Mapping | None = None) -> dict:
     """Per-source and sensitivity rows from the stored statistics output (the order `statement` uses)."""
     from hypocurate.pipeline import analyst_names as an
     from hypocurate.pipeline.statement import _ordered, _source_name
@@ -307,7 +322,7 @@ def _tables(stats: Mapping, kinds: Mapping[str, str]) -> dict:
         against = "—"
         if inference and e.get("estimate") is not None:
             against = an.label_words({**e, "label": st.label(e, pooled, alpha)})
-        sensitivity.append({"name": _set_display_name(e.get("set")), "change": _set_description(e.get("set")),
+        sensitivity.append({"name": _set_display_name(e.get("set")), "change": _set_description(e.get("set"), plan),
                             **_counts_words(e), "result": _result_words(e, withheld), "against": against})
     return {"pooled": pooled, "per_source": per_source, "sensitivity": sensitivity}
 
@@ -374,7 +389,8 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     tags = conn.execute(text(
         "SELECT tv.kind, tv.value FROM run_tag rt JOIN tag_value tv ON tv.id = rt.tag_value_id WHERE rt.run_id = :r "
         "ORDER BY tv.kind, tv.value"), dict(r=run_id)).all()
-    plan = conn.execute(text("SELECT fingerprint FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one_or_none()
+    locked = conn.execute(text("SELECT fingerprint, content FROM plan WHERE run_id = :r"), dict(r=run_id)).one_or_none()
+    plan = locked.fingerprint if locked else None
     freeze = conn.execute(text("SELECT fingerprint, n_records FROM run_snapshot WHERE run_id = :r"),
                           dict(r=run_id)).one_or_none()
     locked_at, frozen_at = _time(conn, "locked_at", "plan", run_id), _time(conn, "frozen_at", "run_snapshot", run_id)
@@ -393,7 +409,7 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     facts = _claim_facts(conn, run_id) if head.status in ("queued", "waiting", "running") else None
     test_run = bool((head.experiment_flags or {}).get("constructed_test_data"))
     cost = shown["tokens_and_cost"] or {}
-    tables = _tables(stats or {}, kinds)
+    tables = _tables(stats or {}, kinds, locked.content if locked else None)
     return {
         "run": run_id, "query": shown["query"], "version": head.version_number, "claim": shown["claim"],
         "status": head.status, "status_words": STATUS_WORDS[head.status],

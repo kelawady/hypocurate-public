@@ -533,3 +533,27 @@ def test_a_narrower_questions_run_says_so(own, stub):
     with engine.connect() as conn:
         assert reading.provenance(conn, rid) == f"narrower question, built by code from run {original}"
         assert reading.provenance(conn, original) == "Planner's reading"  # partly sufficient: never locked
+
+
+# --- step 10b: each sensitivity set says what it changes compared with the main result (owner, 2026-10-11) ---------
+
+def test_every_set_description_says_what_the_main_result_does_instead():
+    from hypocurate.pipeline.eligibility import INFLUENCE_KEY
+    for key in SENSITIVITY_CHANGES:
+        assert "main result" in run_view._set_description(key), key
+    assert run_view._set_description(INFLUENCE_KEY).endswith("; the main result keeps them.")
+
+
+def test_the_one_at_pct_set_names_the_main_results_own_rounding_from_the_plan():
+    from hypocurate.pipeline.plan import reference_plan
+    plan = reference_plan(1)
+    assert "instead of to 0.1 at.%, as in the main result" in run_view._set_description("same_alloy_1_at_pct", plan)
+    plan["rules"]["same_alloy_decimals"] = 2
+    assert "instead of to 0.01 at.%, as in the main result" in run_view._set_description("same_alloy_1_at_pct", plan)
+
+
+def test_atomic_percent_is_written_out_once_on_the_run_page(world):
+    engine, url, runs = world
+    page = plain(signed_in(engine, url).get(f"/runs/{runs['sufficient']}").text)
+    assert page.count("atomic percent (at.%)") == 1
+    assert page.index("atomic percent (at.%)") < page.index("rounded to 1 at.%")
