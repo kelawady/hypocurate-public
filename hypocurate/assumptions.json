@@ -8936,9 +8936,9 @@
     "key": "confirmation_shown_fingerprint",
     "name": "A confirmation is of the content the page showed",
     "state": "in_force",
-    "statement": "The confirmation page sends back the SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8) of the content it displayed. confirmation.confirm compares it, inside the transaction that records the confirmation, with the run's current content, and refuses any difference as content_changed (as it refuses other content given whole by the command line). A page that sends no fingerprint is refused the same way. The website is the second caller of confirm, after the command line; confirm still takes one run and one name.",
+    "statement": "The confirmation page sends back the SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8) of the content it displayed and the exact text it displayed, together. confirmation.confirm reads the content and renders the text inside the transaction that records the confirmation, and refuses any difference from what was shown as content_changed, so the text stored is exactly the text the person saw (a renderer changed between showing and confirming is refused). A page that sends no fingerprint is refused the same way; the command line's confirm checks the text it printed the same way. The website is the second caller of confirm, after the command line; confirm still takes one run and one name.",
     "value": {
-      "text": "SHA-256 of the canonical content",
+      "text": "SHA-256 of the content and the text shown",
       "unit": null
     },
     "category": "operational",
@@ -8961,22 +8961,34 @@
       "status": "yes",
       "settings": [
         {
-          "ref": "python:hypocurate.pipeline.confirmation:content_fingerprint"
+          "ref": "python:hypocurate.pipeline.confirmation:shown_fingerprint"
         }
       ],
       "note": null
     },
     "tests": [
       "tests/test_confirmation_step10.py::test_the_fingerprint_is_the_sha256_of_the_contents_canonical_json_and_changes_with_any_item",
+      "tests/test_confirmation_step10.py::test_the_fingerprint_covers_the_content_and_the_text_together",
+      "tests/test_confirmation_step10.py::test_a_renderer_changed_between_display_and_submission_is_refused",
+      "tests/test_confirmation_step10.py::test_what_is_stored_is_exactly_the_text_the_fingerprint_covered",
       "tests/test_confirmation_step10.py::test_another_fingerprint_is_refused_as_content_changed_and_nothing_is_recorded",
       "tests/test_confirmation_step10.py::test_content_that_changed_after_it_was_shown_is_refused",
+      "tests/test_web_fix1.py::test_finding_1_a_page_confirmed_after_the_renderer_changed_is_refused",
       "tests/test_web_runs.py::test_a_confirmation_of_content_other_than_what_was_shown_is_refused",
       "tests/test_web_runs.py::test_a_confirmation_without_the_shown_contents_fingerprint_is_refused",
       "tests/test_confirmation.py::test_no_code_confirms_in_bulk_or_by_itself"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-11",
+        "to": "2026-10-11",
+        "value": "SHA-256 of the canonical content",
+        "note": "the fingerprint covered the content only; ChatGPT's review of step 10a (finding 1) showed a renderer changed between showing and confirming passed it; the owner accepted the fix (2026-10-11)"
+      }
+    ],
     "notes": [
-      "Wording approved by the owner, 2026-10-11."
+      "Wording approved by the owner, 2026-10-11.",
+      "Fix round 1 (2026-10-11): the fingerprint covers the text shown as well (ChatGPT finding 1, accepted by the owner)."
     ]
   },
   {
@@ -9093,7 +9105,7 @@
     "key": "live_run_state",
     "name": "An open run's page updates itself and stops when the run ends",
     "state": "in_force",
-    "statement": "While a run is queued, waiting or running, its page asks for the run's state every 5 seconds (static/poll.js, a script of our own, not HTMX). The server decides when this ends: an open run's state carries its own address, an ended run's (completed or failed) carries none; the script asks again only when the state it received carries an address, and on an ended state reloads the page once to show the results. Every state read is read-only; the web service never claims a run or runs a stage, so closing the browser or restarting the web service never affects a run (criterion 14.4).",
+    "statement": "While a run is queued, waiting or running, its page asks for the run's state every 5 seconds (static/poll.js, a script of our own, not HTMX). The server decides when this ends: an open run's state carries its own address, an ended run's (completed or failed) carries none; the script asks again only when the state it received carries an address, and on an ended state reloads the page once to show the results. Every state read is read-only and comes from one database snapshot (a read-only REPEATABLE READ transaction for the whole page; fix round 1, finding 2); the web service never claims a run or runs a stage, so closing the browser or restarting the web service never affects a run (criterion 14.4).",
     "value": {
       "text": "every 5 s while the run is open",
       "unit": "seconds"
@@ -9135,8 +9147,10 @@
       "tests/test_web_state.py::test_an_open_runs_page_polls_its_own_state_and_an_ended_runs_page_does_not",
       "tests/test_web_state.py::test_the_state_fragment_carries_the_address_while_open_and_says_ended_once_ended",
       "tests/test_web_state.py::test_the_script_asks_again_only_when_the_state_it_received_carries_an_address",
-      "tests/test_web_state.py::test_14_4_a_run_goes_on_to_its_end_with_the_page_closed_and_across_a_web_restart",
-      "tests/test_web_isolation.py::test_opening_every_run_page_loads_no_model_library_and_no_pipeline_runner"
+      "tests/test_web_state.py::test_14_4_a_run_goes_on_to_its_end_across_a_restart_of_the_web_process",
+      "tests/test_web_isolation.py::test_opening_every_run_page_loads_no_model_library_and_no_pipeline_runner",
+      "tests/test_web_fix1.py::test_finding_2_a_run_that_completes_while_its_page_is_read_is_shown_in_one_state",
+      "tests/test_web_fix1.py::test_finding_2_the_state_fragment_of_such_a_run_keeps_polling"
     ],
     "history": [],
     "notes": [
@@ -9195,7 +9209,7 @@
     "key": "parallel_suite",
     "name": "The regression suite runs serially; a parallel run is for step 11",
     "state": "in_force",
-    "statement": "The suite runs serially (plain `pytest -q`). A parallel run with pytest-xdist was tried in step 10a and taken out: on 4 workers locally (2-core machine) it took 34 min 10 s against 36 min 06 s serially, and a test with a 6 s stall allowance (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the load although it ran in a group on one worker; on 2 workers it took 31 min 37 s locally against 35 min 58 s serially (the same 2,292 tests and outcomes), and on GitHub the suite step took 26 min 20 s (green) and 26 min 45 s (that test failed again), against about 32 minutes serially. Every test still has a database of its own with a random name; the files that would need keeping apart from other load are listed in tests/conftest.py SERIAL_FILES. The suite's speed is revisited in step 11 as its own reviewed change.",
+    "statement": "The suite runs serially (plain `pytest -q`). A parallel run with pytest-xdist was tried in step 10a and taken out: on 4 workers locally (2-core machine) it took 34 min 10 s against 36 min 06 s serially, and a test with a 6 s stall allowance (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the load although it ran in a group on one worker; on 2 workers it took 31 min 37 s locally against 35 min 58 s serially (the same 2,292 tests and outcomes), and on GitHub the suite step took 26 min 20 s (green) and 26 min 45 s (that test failed again), against about 32 minutes serially. Every test has a database of its own with a random name, except the shared read-only world fixture of tests/test_web_runs.py (one database for that module's tests that only read); the files that would need keeping apart from other load are listed in tests/conftest.py SERIAL_FILES. The suite's speed is revisited in step 11 as its own reviewed change.",
     "value": {
       "text": "serial; revisit in step 11",
       "unit": null
@@ -9229,7 +9243,52 @@
     ],
     "history": [],
     "notes": [
-      "Wording approved by the owner, 2026-10-11."
+      "Wording approved by the owner, 2026-10-11.",
+      "2026-10-11: corrected after ChatGPT's review of step 10a: the shared read-only world fixture is the one exception to a database per test (owner)."
+    ]
+  },
+  {
+    "key": "runs_list_pages",
+    "name": "The runs list has pages of 50",
+    "state": "in_force",
+    "statement": "The runs list shows every run, newest first, in pages of 50, with \"Runs a to b of n\" and links to the newer and older pages, so every run stays reachable however many newer runs there are. Each page is read from one database snapshot (the count and the rows together). A page outside the list is not found.",
+    "value": {
+      "text": "50 runs a page",
+      "unit": "runs"
+    },
+    "category": "operational",
+    "affects": "The runs list.",
+    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size is Claude Code's proposal.",
+    "evidence": [
+      "docs/reviews/step10a_review_chatgpt.md, finding 3; docs/reviews/step10a_fix_packet.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.run_view:RUNS_PER_PAGE",
+          "equals": 50
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix1.py::test_finding_3_an_old_waiting_run_stays_reachable_through_the_runs_list",
+      "tests/test_web_fix1.py::test_finding_3_the_list_says_which_runs_a_page_shows"
+    ],
+    "history": [],
+    "notes": [
+      "Wording and page size drafted by Claude Code for the owner's review (2026-10-11)."
     ]
   }
 ]
