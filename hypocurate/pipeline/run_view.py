@@ -18,7 +18,7 @@ from typing import Any, Iterator, Mapping
 from sqlalchemy import Connection, Engine, text
 
 from hypocurate.db.models import TEST_RUN_LABEL
-from hypocurate.pipeline import display, progress
+from hypocurate.pipeline import display, failure_words, progress
 from hypocurate.pipeline import statistics as st
 
 # What a run's status is called on the screens (step 10a; the live-run record's open item 3: a waiting run is shown as
@@ -71,6 +71,7 @@ STAGE_NAMES = {"planner": "Planner", "narrowing": "narrowing decision (code)", "
                "gap_facts": "gap facts (code)", "analyst": "Analyst"}
 OPEN_STATUSES = ("queued", "waiting", "running")  # the screens update these by themselves (static/poll.js)
 NOT_COMPLETED = "No evidence level yet (not completed)"
+NOT_REACHED = "not searched (the run ended first)"
 FAILED_NO_LEVEL = "failed: no evidence level"  # owner, 2026-10-11
 # The stored label of a marked run (register 'constructed_test_runs'), shown as it is stored.
 TEST_RUN_BADGE = TEST_RUN_LABEL
@@ -415,7 +416,10 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
         "checkpoints": {"rules_lock": {"at": locked_at, "fingerprint": plan},
                         "dataset_freeze": {"at": frozen_at, "fingerprint": freeze.fingerprint if freeze else None,
                                            "records": freeze.n_records if freeze else None}},
-        "sources": [{"name": s.name, "status": s.search_status.replace("_", " "),
+        "failure_plain": failure_words.explain(conn, run_id, shown["failure"]) if head.status == "failed" else None,
+        # Owner, 2026-10-11: a source a run never reached because it ended first is "not searched", never "pending".
+        "sources": [{"name": s.name, "status": (NOT_REACHED if s.search_status == "pending" and head.status in
+                                                ("completed", "failed") else s.search_status.replace("_", " ")),
                      "nothing_found": s.nothing_found.replace("_", " ") if s.nothing_found else None} for s in sources],
         "flags": shown["flags"],
         "stages": [{"name": STAGE_NAMES.get(s.stage, s.stage), "attempt": s.attempt, "status": s.status,
@@ -448,18 +452,21 @@ def runs_list(engine: Engine, before: int | None = None, per_page: int = RUNS_PE
         total = conn.execute(text("SELECT count(*) FROM run")).scalar_one()
         rows = conn.execute(text(
             "SELECT r.id, r.status, r.evidence_level, r.verdict, r.experiment_flags, h.number, hv.text, "
-            "r.outcome, to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
+            "r.outcome, r.failure_reason, "
+            "to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
             "coalesce(t.cap_cost, 0) AS cost FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
             "JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN model_call_totals_by_run t ON t.run_id = r.id "
             "WHERE CAST(:before AS bigint) IS NULL OR r.id < :before ORDER BY r.id DESC LIMIT :n"),
             dict(before=before, n=per_page + 1)).all()  # one more than shown: is there an older page?
         more, rows = len(rows) > per_page, rows[:per_page]
         plans = {r.id: reading.provenance(conn, r.id) for r in rows}  # step 10b: the "Plan" column, same snapshot
+        failures = {r.id: failure_words.explain(conn, r.id, r.failure_reason) for r in rows if r.status == "failed"}
     out = []
     for r in rows:
         test_run = bool((r.experiment_flags or {}).get("constructed_test_data"))
         out.append({"run": r.id, "query": r.number, "claim": r.text, "status": r.status, "plan": plans[r.id],
-                    "status_words": STATUS_WORDS[r.status], "queued": r.queued,
+                    "status_words": failures[r.id]["short"] if r.id in failures else STATUS_WORDS[r.status],
+                    "queued": r.queued,
                     "outcome": r.outcome.replace("_", " ") + " in the sources searched" if r.outcome else None,
                     "evidence": evidence(r.evidence_level, None, None, test_run, failed=r.status == "failed"),
                     "cost": money(r.cost)})

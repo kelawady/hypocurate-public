@@ -89,7 +89,9 @@ def test_the_state_fragment_carries_the_address_while_open_and_says_ended_once_e
     assert c.post(f"/runs/{rid}/cancel", data={"csrf_token": token(c)}).status_code == 303
     ended = c.get(f"/runs/{rid}/state").text
     assert 'data-ended="true"' in state_attrs(ended) and "data-poll" not in ended
-    assert "Failed: cancelled: cancelled by Grace Reviewer before it started" in plain(ended)
+    # Step 10b (owner, 2026-10-11): the failure in plain words first, the codes second.
+    assert "The run was cancelled by Grace Reviewer before it started" in plain(ended)
+    assert "Technical detail: cancelled." in plain(ended)
 
 
 def test_the_state_fragment_needs_the_login_and_a_known_run(own):
