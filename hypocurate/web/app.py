@@ -57,7 +57,15 @@ def _info(key: str) -> Markup:
         f'<span class="info-text" role="tooltip" id="{tip}" hidden>{Markup.escape(e["text"])}</span></span>')
 
 
-templates.env.globals.update(info=_info, dial=dial.svg)
+def _term(key: str) -> Markup:
+    """A glossary term's name with its information button (PRD 9.7)."""
+    return Markup(f'<span class="term">{Markup.escape(glossary.entry(key)["term"])}{_info(key)}</span>')
+
+
+# The terms of the results statement and the calibration, each with its button (PRD 9.7: every row of the record
+# of statistical significance has one).
+STATEMENT_TERMS = ("sig_estimate", "sig_test", "sig_validity", "sig_data", "sig_suff", "sig_source", "sig_other", "cal")
+templates.env.globals.update(info=_info, dial=dial.svg, term=_term, statement_terms=STATEMENT_TERMS)
 templates.env.filters.update(units=textfmt.units, model_text=textfmt.model_text)
 
 
@@ -494,6 +502,18 @@ def create_app(
         if shown is None:
             raise HTTPException(status_code=404, detail=f"no role {role}")
         return page(request, "agent.html", {"a": shown, "active": "agents"})
+
+    @app.get("/help", response_class=HTMLResponse)
+    def help_page(request: Request, q: str = ""):
+        """PRD 9.7: every explanation, where it appears, searchable; read from the glossary file only."""
+        q = q.strip()
+        entries = list(glossary.entries())
+        shown = [e for e in entries if not q or q.lower() in (e["term"] + " " + e["text"] + " " + e["screen"]).lower()]
+        groups: dict[str, list] = {}
+        for e in shown:
+            groups.setdefault(e["screen"], []).append(e)
+        return page(request, "help.html", {"q": q, "shown": shown, "total": len(entries),
+                                           "groups": list(groups.items()), "active": "help"}, spending=False)
 
     @app.get("/health")
     def health(request: Request) -> Response:

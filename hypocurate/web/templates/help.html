@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Help · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Help</h1>
+<p class="muted">Every explanation the information buttons show, in one place, from the one glossary file.</p>
+<form method="get" action="/help" class="help-search">
+  <label for="q">Search the explanations</label>
+  <input id="q" name="q" value="{{ q }}" type="search">
+  <button type="submit">Search</button>{% if q %} <a href="/help">Show all</a>{% endif %}
+</form>
+<p class="muted">{{ shown|length }} of {{ total }} explanations{% if q %} contain “{{ q }}”{% endif %}.</p>
+{% for screen, entries in groups %}
+<section>
+  <h2>{{ screen }}</h2>
+  {% for e in entries %}
+  <div class="help-entry" id="{{ e.key }}"><h3>{{ e.term }}</h3><p>{{ e.text }}</p></div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}
