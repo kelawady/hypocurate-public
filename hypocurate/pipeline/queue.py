@@ -42,6 +42,7 @@ from sqlalchemy import Connection, Engine, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from hypocurate.db.retry import run_transaction
+from hypocurate.pipeline.progress import seconds_since_last_write  # noqa: F401 (step 10a: moved; still named here)
 
 LOG = logging.getLogger("hypocurate.worker")
 
@@ -257,19 +258,6 @@ class Heartbeat(threading.Thread):
         self.join(30)
 
 
-_LAST_WRITE = text("""
-    SELECT extract(epoch FROM clock_timestamp() - greatest(
-        r.queued_at, r.started_at, r.completed_at, r.failed_at,
-        (SELECT max(greatest(started_at, finished_at)) FROM stage_result WHERE run_id = r.id),
-        (SELECT max(greatest(started_at, finished_at)) FROM model_call WHERE run_id = r.id),
-        (SELECT max(decided_at) FROM run_source WHERE run_id = r.id),
-        (SELECT max(created_at) FROM record WHERE extraction_run_id = r.id),
-        (SELECT max(confirmed_at) FROM rules_confirmation WHERE run_id = r.id),
-        (SELECT locked_at FROM plan WHERE run_id = r.id),
-        (SELECT frozen_at FROM run_snapshot WHERE run_id = r.id)))
-    FROM run r WHERE r.id = :r""")
-
-
 _LAST_WRITE_EPOCH = text("""
     SELECT extract(epoch FROM greatest(
         r.queued_at, r.started_at, r.completed_at, r.failed_at,
@@ -324,9 +312,3 @@ class Monitor(threading.Thread):
 
     def stop(self) -> None:
         self._stop_event.set()  # never joined: a sample that blocks must not hold back the worker
-
-
-def seconds_since_last_write(conn: Connection, run_id: int) -> float:
-    """A4: seconds since the run last wrote anything that shows progress (its status times, a stage or call started or
-    finished, a source searched, a record stored, the confirmation, the lock, the freeze)."""
-    return float(conn.execute(_LAST_WRITE, dict(r=run_id)).scalar_one())

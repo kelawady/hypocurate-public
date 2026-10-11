@@ -31,6 +31,8 @@ LABELS = {
 PART_LABELS = {"phase_class": "phase class", "test_type": "test type"}
 # Owner, 2026-10-08 (step 9a, question 2): the label once a person has confirmed the reading at the rules lock.
 CONFIRMED_LABEL = "the Planner's reading of the claim; not verified by code; confirmed by {by} on {at}"
+# Owner, 2026-10-11 (step 10a review): a Planner run whose plan was locked before confirmations existed (step 8b runs).
+PREDATES_LABEL = "the Planner's reading of the claim; not verified by code; this run predates confirmation"
 STATED = "as the claim states"
 ASSUMED = "assumed: the claim does not state it"
 
@@ -101,27 +103,40 @@ def from_plan(plan: Mapping[str, Any], source: str) -> dict[str, str]:
 
 
 def stored(conn: Connection, run_id: int) -> dict | None:
-    """The question as tested of a run: the Planner's stored reading, else the reading of its locked plan (fixed
-    or narrower), else the Planner's reading of a partly-sufficient original (no plan), else none. Once a named
-    person confirmed it (step 9a), its label says by whom and when."""
+    """The question as tested of a run: the Planner's stored reading, else the reading of its locked plan, else none
+    (a partly-sufficient original with no stored reading has no plan). The label's source is the run's own: a
+    narrower question's run, a fixed-plan run, or a Planner run, never a fallback to the fixed plan (step 10a: the
+    owner found a Planner run of step 8b, which stored no reading with its stage, labelled as the fixed reference
+    plan). Once a named person confirmed it (step 9a), its label says by whom and when; a Planner reading whose plan
+    was locked with no confirmation predates confirmations (`PREDATES_LABEL`)."""
+    run = conn.execute(text(
+        "SELECT r.fixed_plan, h.narrower_of_run_id, p.content AS plan FROM run r JOIN hypothesis_version hv ON hv.id = "
+        "r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN plan p ON p.run_id = r.id "
+        "WHERE r.id = :r"), dict(r=run_id)).one_or_none()
+    if run is None:
+        return None
     out = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'planner' AND status = "
                             "'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
     if isinstance(out, dict) and out.get("question_as_tested"):
-        return _confirmed(conn, run_id, out["question_as_tested"])
-    row = conn.execute(text("SELECT p.content, h.narrower_of_run_id FROM plan p JOIN run r ON r.id = p.run_id JOIN "
-                            "hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = "
-                            "hv.hypothesis_id WHERE p.run_id = :r"), dict(r=run_id)).one_or_none()
-    if row is None:
+        tested = out["question_as_tested"]
+    elif run.plan is None:
         return None
-    return _confirmed(conn, run_id, from_plan(row.content, "narrower" if row.narrower_of_run_id is not None else "fixed"))
+    else:
+        source = "narrower" if run.narrower_of_run_id is not None else "fixed" if run.fixed_plan else "planner"
+        tested = from_plan(run.plan, source)
+    return _confirmed(conn, run_id, tested, locked=run.plan is not None)
 
 
-def _confirmed(conn: Connection, run_id: int, tested: dict) -> dict:
-    """The reading with its label once a person confirmed it (owner, 2026-10-08, question 2); else as it is."""
+def _confirmed(conn: Connection, run_id: int, tested: dict, locked: bool = False) -> dict:
+    """The reading with its label once a person confirmed it (owner, 2026-10-08, question 2); a Planner reading locked
+    with no confirmation (only possible before step 9a's migration 0007) says that it predates confirmation (owner,
+    2026-10-11); else as it is."""
     row = conn.execute(text("SELECT confirmed_by, to_char(confirmed_at AT TIME ZONE 'UTC', "
                             "'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS at FROM rules_confirmation WHERE run_id = :r"),
                        dict(r=run_id)).one_or_none()
     if row is None:
+        if locked and tested["label"] == LABELS["planner"]:
+            return {**tested, "label": PREDATES_LABEL}
         return tested
     if tested["label"] == LABELS["planner"]:
         label = CONFIRMED_LABEL.format(by=row.confirmed_by, at=row.at)

@@ -29,6 +29,9 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
 from hypocurate.pipeline import queries
+# Step 10a: moved to the read-only `run_view` (shared with the screens), unchanged; imported here under their names.
+from hypocurate.pipeline.run_view import (analyst_text, critic_flags, question_as_tested, queue_rows,  # noqa: F401
+                                          show)
 
 
 def command(args, engine: Engine) -> int:
@@ -144,33 +147,6 @@ def _wait_for(engine: Engine, run_id: int, poll: float = 2.0) -> None:
         time.sleep(poll)
 
 
-def queue_rows(engine: Engine) -> list[dict]:
-    """`queue` (R2): every queued, waiting or running run, with its stage, its claim's worker and heartbeat age, the
-    time since the run last wrote anything (A4), and how often it was taken up again."""
-    from hypocurate.access.stage import actual_stage
-    from hypocurate.pipeline import confirmation, queue
-    out = []
-    with engine.connect() as conn:
-        runs = conn.execute(text(
-            "SELECT r.id, r.status, h.number, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS "
-            "confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
-            "(SELECT count(*) FROM run_claim x WHERE x.run_id = r.id AND x.released_at IS NOT NULL AND "
-            "x.release_reason NOT IN ('waiting', 'finished')) AS recoveries FROM run r "
-            "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
-            "LEFT JOIN run_claim c ON c.run_id = r.id AND c.released_at IS NULL "
-            "WHERE r.status IN ('queued', 'waiting', 'running') ORDER BY r.queued_at, r.id")).all()
-        for r in runs:
-            out.append({
-                "run": r.id, "query": r.number, "status": r.status, "stage": actual_stage(conn, r.id, r.status),
-                "waiting_for": (confirmation.WAITING_FOR if r.status == "waiting" and not r.confirmed else
-                                "a worker (confirmed)" if r.status == "waiting" else None),
-                "worker": r.worker, "heartbeat_age_seconds": round(float(r.heartbeat_age), 1)
-                if r.heartbeat_age is not None else None,
-                "seconds_since_last_write": round(queue.seconds_since_last_write(conn, r.id), 1),
-                "recoveries": int(r.recoveries)})
-    return out
-
-
 def _print_shown(engine: Engine, run_id: int, report: dict) -> int:
     # One presentation everywhere (owner, after the re-check): the same output as `show` (code's statement first, then
     # the Analyst's text under its label), with the stages run and the run's failure, if any. The orchestration
@@ -207,92 +183,3 @@ def _claim(engine: Engine, run_id: int) -> str:
     with engine.connect() as conn:
         return conn.execute(text("SELECT hv.text FROM run r JOIN hypothesis_version hv ON hv.id = "
                                  "r.hypothesis_version_id WHERE r.id = :r"), dict(r=run_id)).scalar_one()
-
-
-def question_as_tested(engine: Engine, run_id: int) -> dict | None:
-    from hypocurate.pipeline import reading
-    with engine.connect() as conn:
-        return reading.stored(conn, run_id)
-
-
-def analyst_text(explained) -> dict:
-    """The Analyst's stored explanation, always with its label; or that it is unavailable (code's own words)."""
-    from hypocurate.pipeline.agents import analyst
-    if isinstance(explained, dict) and explained.get("report"):
-        return {"label": analyst.LABEL, "text": explained["report"]}
-    if isinstance(explained, dict):
-        return {"unavailable": explained.get("shown") or analyst.UNAVAILABLE}
-    return {"unavailable": analyst.UNAVAILABLE}
-
-
-def critic_flags(engine: Engine, run_id: int) -> list[dict]:
-    """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
-    from hypocurate.pipeline.agents import critic
-    return critic.flag_display(engine, run_id)
-
-
-def show(engine: Engine, run_id: int) -> dict | None:
-    from hypocurate.pipeline import statement
-    from hypocurate.pipeline import statistics as st
-    with engine.connect() as conn:
-        run = conn.execute(text(
-            "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
-            "r.fixed_plan, h.number, hv.text, hv.sufficiency_option, h.narrower_of_run_id FROM run r "
-            "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
-            "WHERE r.id = :r"), dict(r=run_id)).one_or_none()
-        if run is None:
-            return None
-
-        def output(stage):
-            return conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s "
-                                     "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
-
-        stats, gap, narrowing, explained = output("statistics"), output("gap_facts"), output("narrowing"), output("analyst")
-        results = [dict(r._mapping) for r in conn.execute(text(
-            "SELECT ar.scope, s.key AS source, a.key AS analysis_set, ar.n_records, ar.n_alloys, ar.n_groups, "
-            "ar.resid_df, ar.check1_passed, ar.check2_passed, ar.minimums_met, ar.withheld, ar.estimate, ar.std_error, "
-            "ar.p_value, ar.label FROM analysis_result ar JOIN analysis_set a ON a.id = ar.analysis_set_id "
-            "LEFT JOIN source s ON s.id = ar.source_id WHERE ar.run_id = :r ORDER BY ar.id"), dict(r=run_id)).all()]
-        narrower = conn.execute(text("SELECT number FROM hypothesis WHERE narrower_of_run_id = :r"),
-                                dict(r=run_id)).scalar_one_or_none()
-        original = conn.execute(text("SELECT h.number FROM run r JOIN hypothesis_version hv ON hv.id = "
-                                     "r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE r.id = :r"),
-                                dict(r=run.narrower_of_run_id)).scalar_one_or_none() if run.narrower_of_run_id else None
-        cost = conn.execute(text("SELECT * FROM model_call_totals_by_run WHERE run_id = :r"), dict(r=run_id)).one_or_none()
-    decision = (stats or {}).get("decision") or (narrowing or {}).get("decision") or {}
-    built = statement.build(engine, run_id)  # decision A: code's statement, for every completed run
-    return {
-        # One presentation everywhere (owner, after the re-check): code's statement first, then the Analyst's text,
-        # only with the statement and only under its label; `run` and `dispatch` print this same output.
-        "statement": built["lines"] if built else None,
-        "analyst_text": analyst_text(explained) if built else None,
-        "run": run.id, "query": run.number, "claim": run.text, "outcome_code": run.outcome,
-        "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
-        "narrower_question_of": original, "narrower_question": narrower,
-        # A8: a narrower question's plan is shown as coming from its original's narrowing decision.
-        "plan": ("from the narrowing decision" if original is not None else "fixed") if run.fixed_plan
-                else "the Planner's",
-        "sufficiency_option": run.sufficiency_option,
-        "outcome": decision.get("outcome_wording") if run.status == "completed" else None,
-        "verdict": decision.get("verdict_wording") if run.verdict else None,
-        "exploratory": run.exploratory, "evidence_level": run.evidence_level,
-        "evidence_level_wording": decision.get("evidence_level_wording") if run.status == "completed" else None,
-        "label": decision.get("label"), "failure": run.failure_reason,
-        "results": [r for r in results if not r["withheld"]] if results else [],
-        "withheld": [{k: r[k] for k in ("scope", "source", "analysis_set", "n_records", "n_alloys", "n_groups",
-                                         "resid_df", "minimums_met")} for r in results if r["withheld"]],
-        "minimums_missed": (gap or {}).get("minimums_missed"), "nothing_found": (gap or {}).get("kind"),
-        "sources": (gap or {}).get("sources"),
-        "statement_format": ({"current": built["format_version"], "recorded": built["recorded_format_version"]}
-                             if built else None),
-        "flags": critic_flags(engine, run_id),
-        "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
-        "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,
-        # Step 9a: only for a waiting run, so every other run's output is as before.
-        **({"waiting_for": _waiting_for()} if run.status == "waiting" else {}),
-    }
-
-
-def _waiting_for() -> str:
-    from hypocurate.pipeline.confirmation import WAITING_FOR
-    return WAITING_FOR

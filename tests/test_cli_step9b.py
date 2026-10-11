@@ -97,3 +97,14 @@ def test_confirm_works_the_rest_through_a_claim(engine, stub, capsys):
         reasons = [r for (r,) in conn.execute(text("SELECT release_reason FROM run_claim WHERE run_id = :r ORDER BY id"),
                                                dict(r=rid)).all()]
     assert reasons == ["waiting", "finished"]
+
+
+def test_queue_says_where_a_waiting_or_queued_run_is_never_none(engine, stub, capsys):
+    """Step 10a (the live-run record's open item 3): `queue` showed stage "none" for a run waiting at the rules lock."""
+    stub.respond(responder(planner_body()))
+    hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--by", "Ada Reviewer")  # stops at the wait
+    hc(capsys, "run", FCC_CLAIM, "--sources", "mpea,tamu_fcc", "--fixed-plan", "--by", "Ada Reviewer", "--queue")
+    code, out, err = hc(capsys, "queue")
+    assert code == 0, err
+    stages = {r["status"]: r["stage"] for r in json.loads(out)}
+    assert stages == {"waiting": "waiting at the rules lock", "queued": "queued (not started)"}
