@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Data sources · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Data sources {{ info("datasources") }}</h1>
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<table class="data">
+  <thead><tr><th>Source</th><th>Type</th><th>Kind of data {{ info("kinds") }}</th><th>Licence</th><th>Adapter {{ info("adapter") }}</th><th>On</th><th>Latest sealed version</th><th></th></tr></thead>
+  <tbody>{% for x in s.sources %}
+    <tr>
+      <td data-label="Source">{{ x.name }}{% if x.constructed %}<div class="muted">constructed test data: only in a marked test run</div>{% endif %}</td>
+      <td data-label="Type">{{ x.source_type }}</td>
+      <td data-label="Kind of data"><span class="badge kind">{{ x.data_kind }}</span></td>
+      <td data-label="Licence">{{ x.licence }}</td>
+      <td data-label="Adapter">{{ x.adapter_words }}</td>
+      <td data-label="On">{{ x.enabled_words }}</td>
+      <td data-label="Latest sealed version">{% if x.fingerprint %}{{ x.version_label }} · {{ x.short_fingerprint }} · {{ x.sealed }}{% else %}none{% endif %}</td>
+      <td data-label="Test"><a href="/sources/{{ x.key }}/test">Test connection {{ info("testconn") }}</a></td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+{% if s.unregistered %}
+<section>
+  <h2>Defined in code, not registered yet</h2>
+  <p class="muted">Registering reads the source's frozen files and seals a version. A new source needs an adapter in code first; registering a source of your own from a form is for a later sprint.</p>
+  <ul>{% for x in s.unregistered %}
+    <li>{{ x.name }} <span class="badge kind">{{ x.data_kind }}</span>
+      <form method="post" action="/sources/{{ x.key }}/register" class="inline-form">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+        <button type="submit">Register as {{ signed_in_as }}</button>
+      </form></li>
+  {% endfor %}</ul>
+</section>
+{% endif %}
+{% if report %}
+<section>
+  <h2>Connection test: {{ report.source_key }}</h2>
+  <p>Version {{ report.version_label }} · fingerprint {{ report.fingerprint[:12] }} · {{ report.records_read }} records read · {{ report.blank_rows }} blank rows.</p>
+  <p class="muted">Values by status: {{ report.statuses }}. Category values outside the fixed lists: {{ report.unrecognized_words }}.</p>
+  <table class="data">
+    <thead><tr><th>Item</th><th>Alloy</th><th>Grain size</th><th>Yield strength</th><th>Paper</th></tr></thead>
+    <tbody>{% for r in report.sample_rows %}<tr><td data-label="Item">{{ r.item }}</td><td data-label="Alloy">{{ r.alloy }}</td><td data-label="Grain size">{{ r.grain_size }}</td><td data-label="Yield strength">{{ r.yield_strength }}</td><td data-label="Paper">{{ r.paper }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

@@ -437,7 +437,7 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
         "sources": [{"name": s.name, "status": (NOT_REACHED if s.search_status == "pending" and head.status in
                                                 ("completed", "failed") else s.search_status.replace("_", " ")),
                      "nothing_found": s.nothing_found.replace("_", " ") if s.nothing_found else None} for s in sources],
-        "flags": shown["flags"],
+        "flags": [{**f, "kind_words": f["kind"].replace("_", " ")} for f in shown["flags"]],
         "stages": [{"name": STAGE_NAMES.get(s.stage, s.stage), "attempt": s.attempt, "status": s.status,
                     "model": s.model, "calls": int(s.calls or 0), "input_tokens": tokens(s.input_tokens),
                     "output_tokens": tokens(s.output_tokens), "cost": money(s.reported_cost)} for s in stages],

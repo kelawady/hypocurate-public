@@ -92,6 +92,17 @@
 </section>
 {% endif %}
 
+{% if r.flags %}
+<section>
+  <h2>Flags raised by code {{ info("records") }}</h2>
+  <table class="data">
+    <thead><tr><th>Flag</th><th>Kind</th><th>Category</th><th>Records</th><th>The Critic's class</th></tr></thead>
+    <tbody>{% for f in r.flags %}<tr><td data-label="Flag">{{ f.flag }}</td><td data-label="Kind">{{ f.kind_words }}</td><td data-label="Category">{{ f.category or "—" }}</td><td data-label="Records">{{ f.records }}</td>
+      <td data-label="The Critic's class">{{ f.critic }}{% if f.critic_label %}<div class="label">{{ f.critic_label }}</div>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
 <section>
   <h2>Checkpoints</h2>
   <div class="cards">

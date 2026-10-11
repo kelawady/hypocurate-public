@@ -421,6 +421,59 @@ def create_app(
 
         return await review_action(request, number, act)
 
+    # --- data sources and agents (step 10b; PRD 9.5, 9.6) ---------------------------------------------------------
+
+    @app.get("/sources", response_class=HTMLResponse)
+    def sources_page(request: Request):
+        from hypocurate.pipeline import catalog_view
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None, "error": None,
+                                              "message": None, "active": "sources"})
+
+    @app.get("/sources/{key}/test", response_class=HTMLResponse)
+    def source_test(request: Request, key: str):
+        from hypocurate.pipeline import catalog_view
+        try:
+            report = catalog_view.connection_page(engine, key)
+        except Exception as error:  # noqa: BLE001 (an unknown or unregistered source: the reason in words)
+            return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None,
+                                                  "message": None, "active": "sources",
+                                                  "error": f"Connection test not done for {key}: the source is not "
+                                                           "registered, or its sealed version could not be read."},
+                        status_code=409)
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": report, "error": None,
+                                              "message": None, "active": "sources"})
+
+    @app.post("/sources/{key}/register")
+    async def source_register(request: Request, key: str):
+        """Registers a source defined in code (sources.versions.register; a safeguard write, with the CSRF token)."""
+        from hypocurate.pipeline import catalog_view
+        from hypocurate.sources import versions
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        try:
+            done = versions.register(engine, key)
+        except versions.RegistrationError as error:
+            return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None,
+                                                  "message": None, "active": "sources",
+                                                  "error": f"Not registered: {error}"}, status_code=409)
+        message = (f"{key} registered by {name}: version {done.label}, fingerprint {done.fingerprint[:12]}."
+                   if done.created else f"{key} was already registered with this version ({done.fingerprint[:12]}).")
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None, "error": None,
+                                              "message": message, "active": "sources"})
+
+    @app.get("/agents", response_class=HTMLResponse)
+    def agents_index(request: Request):
+        return RedirectResponse("/agents/planner", status_code=303)
+
+    @app.get("/agents/{role}", response_class=HTMLResponse)
+    def agent(request: Request, role: str):
+        from hypocurate.pipeline import catalog_view
+        shown = catalog_view.agent_page(engine, role)
+        if shown is None:
+            raise HTTPException(status_code=404, detail=f"no role {role}")
+        return page(request, "agent.html", {"a": shown, "active": "agents"})
+
     @app.get("/health")
     def health(request: Request) -> Response:
         db_ok = database_reachable(engine)

@@ -127,3 +127,6 @@ svg.plot-wide { width: 100%; min-width: 540px; } svg.plot-narrow { display: none
 @media (max-width: 56rem) { svg.plot-wide { display: none; } svg.plot-narrow { display: block; } }
 @media (max-width: 48rem) { section { padding: 0.75rem; } .menu ul { flex-wrap: wrap; } }
 .legend { margin: 8px 0; padding-left: 1.2em; }
+.inline-form { display: inline; } .inline-form button { margin: 0 0 0 8px; padding: 4px 10px; }
+pre.instruction { white-space: pre-wrap; background: var(--panel); padding: 10px 12px; border-radius: 6px; font-size: 0.875rem; }
+nav.pages a[aria-current="page"] { font-weight: 600; text-decoration: none; }
