@@ -22,6 +22,8 @@ fixed-plan run of an ordinary question (criterion 14.1a) never waits.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal
 from typing import Any, Mapping
 
@@ -215,12 +217,26 @@ def _parts_lines(parts: list[dict]) -> list[str]:
     return [f"  {x['part']}: {', '.join(x['values'])}" + (f" ({x['marked']})" if x["marked"] else "") for x in parts]
 
 
+ONCE_BY, ONCE_AT = "the person who confirms", "the time of confirming (UTC)"
+
+
+def label_once_confirmed(label: str, by: str = ONCE_BY, at: str = ONCE_AT) -> str:
+    """The label the question as tested carries once confirmed (`reading._confirmed`'s wording)."""
+    if label == reading.LABELS["planner"]:
+        return reading.CONFIRMED_LABEL.format(by=by, at=at)
+    return f"{label}; confirmed by {by} on {at}"
+
+
 def render(c: Mapping[str, Any]) -> str:
     """The text shown before a person confirms (A2): every item of the content, in words."""
     n = c["narrowing"]
+    tested = c["question_as_tested"]
     lines = [f"Run {c['run']} of {c['query']} waits for {WAITING_FOR} before its rules lock.",
              f"Original question: {c['original_question']}",
-             f"Question as tested ({c['question_as_tested']['label']}): {c['question_as_tested']['text']}"]
+             f"Question as tested: {tested['text']}",
+             # Step 10a (the live-run record's open item 4): the label now, and the label once confirmed.
+             f"  Now labelled: {tested['label']}",
+             f"  Once confirmed, labelled: {label_once_confirmed(tested['label'])}"]
     if n["narrowed"]:
         lines.append(f"Narrowed: this is the narrower question of {n['original_query']} ({n['original_question']}).")
         lines.append("  Why: code found no candidate record in the sources searched for "
@@ -240,16 +256,29 @@ def render(c: Mapping[str, Any]) -> str:
     lines.append("Exclusion rules: " + ("; ".join(c["exclusion_rules"]) if c["exclusion_rules"] else "none"))
     s = c["sufficiency"]
     lines.append(f"Sufficiency option: {s['option'].replace('_', ' ')} (minimums: {s['min_records']} records, "
-                 f"{s['min_alloys']} alloys with at least 2 grain sizes, {s['min_groups']} independent groups, "
+                 f"{s['min_alloys']} alloys with at least 2 grain sizes, {s['min_groups']} informative groups, "
                  f"{s['min_resid_df']} residual degrees of freedom)")
     lines.append("Sources: " + "; ".join(
         f"{x['source']} version {x['version_fingerprint'][:12]}" if x["chosen"] else f"{x['source']} not chosen"
         for x in c["sources"]))
     k = c["cost_so_far"]
+    calls = f"{k['calls']} model call" + ("" if k["calls"] == 1 else "s")
     lines.append(f"Cost so far: ${k['counted_usd']} counted toward the caps (reported ${k['reported_usd']}; "
-                 f"{k['calls']} model calls, {k['calls_without_reported_cost']} without a reported cost)")
+                 f"{calls}, {k['calls_without_reported_cost']} without a reported cost)")
     lines.append(f"Plan to be locked: fingerprint {c['plan_fingerprint']}")
     return "\n".join(lines)
+
+
+def shown_fingerprint(c: Mapping[str, Any], words: str) -> str:
+    """SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8) of the content and the exact text shown together:
+    what a confirmation page (or the command line) sends back, so that `confirm` records only what the person saw
+    (owner's addition 2 of 2026-10-11; fix round 1, finding 1: the text too, so a renderer changed between showing and
+    confirming is refused)."""
+    canonical = json.dumps({"content": c, "text": words}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+_fingerprint = shown_fingerprint  # `confirm`'s own parameter has the same name
 
 
 def show(engine: Engine, run_id: int) -> tuple[dict, str]:
@@ -259,9 +288,13 @@ def show(engine: Engine, run_id: int) -> tuple[dict, str]:
     return c, render(c)
 
 
-def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | None = None) -> dict:
-    """Records one named person's confirmation of one waiting run. `shown`: the content that was printed; the
-    confirmation is refused if it is no longer the current content. Returns the stored content and text."""
+def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | None = None,
+            shown_fingerprint: str | None = None) -> dict:
+    """Records one named person's confirmation of one waiting run. `shown`: the content that was printed; or
+    `shown_fingerprint`: the `shown_fingerprint` of the content and the text displayed (step 10a, owner's addition 2;
+    fix round 1, finding 1). The content is read and the text rendered in the same transaction as the insert; the
+    confirmation is refused as `content_changed` if either differs from what was shown, so the text stored is exactly
+    the text the fingerprint covered. Returns the stored content and text."""
     name = (by or "").strip()
     if not name or len(name) > CONFIRMED_BY_MAX:
         raise QueryRefused("name_required", f"a confirmation names the person (1 to {CONFIRMED_BY_MAX} characters)")
@@ -282,10 +315,11 @@ def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | Non
             c = content(conn, run_id)
         except NotLockable as error:
             raise QueryRefused(error.code, "the stored rows give no plan to lock") from None
-        if shown is not None and dict(shown) != c:
+        words = render(c)
+        if (shown is not None and dict(shown) != c) or \
+                (shown_fingerprint is not None and shown_fingerprint != _fingerprint(c, words)):
             raise QueryRefused("content_changed", "what was shown is no longer the run's current content; show it "
                                                   "again before confirming")
-        words = render(c)
         conn.execute(text(
             "INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, planner_stage_result_id, "
             "narrowing_stage_result_id, content, shown) VALUES (:r, :b, :fp, :p, :n, :c, :s)").bindparams(

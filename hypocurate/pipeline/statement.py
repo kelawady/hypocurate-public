@@ -297,7 +297,13 @@ def build(engine: Engine, run_id: int) -> dict | None:
     """The statement of a completed run, or None for a run that is not completed: its lines and text, the format
     version it is rendered in, and the version recorded on the run when it completed (None if not recorded)."""
     with engine.connect() as conn:
-        f = facts(conn, run_id)
+        return build_in(conn, run_id)
+
+
+def build_in(conn: Connection, run_id: int) -> dict | None:
+    """`build` on a given connection (step 10a, fix round 1, finding 2: the run page reads everything in one
+    snapshot)."""
+    f = facts(conn, run_id)
     if f is None:
         return None
     lines = render(f)

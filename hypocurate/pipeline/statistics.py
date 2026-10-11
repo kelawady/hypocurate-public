@@ -118,6 +118,16 @@ EVIDENCE_LEVELS = MappingProxyType({
     2: "coefficient cannot be fitted",
     1: "no dataset frozen",
 })
+# The dial's short label for each level (owner, 2026-10-11, step 10a answer 2; register 'evidence_dial'): shown as
+# "Level n of 6: <label>", with the long wording above beneath it. Descriptive only, like the level.
+EVIDENCE_SHORT = MappingProxyType({
+    6: "tested answer",
+    5: "exploratory answer",
+    4: "coefficient only",
+    3: "below the minimums",
+    2: "no coefficient fitted",
+    1: "nothing tested",
+})
 # Owner's addition 1 (2026-10-06; step 8b): a partly-sufficient original question is at level 1, shown as
 # this wording (it was never tested; code's narrowing decision proposed a narrower question).
 PARTLY_SUFFICIENT_WORDING = "original question not tested; a narrower question was proposed"

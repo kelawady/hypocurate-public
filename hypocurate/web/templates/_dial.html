@@ -1,0 +1,8 @@
+{# The evidence dial with its words beside it (owner's brief). `e` is run_view.evidence(...). #}
+<div class="dial-box{% if small %} small{% endif %}">
+  {{ dial(e.level, e.test_run, "small" if small else "large", e.words) }}
+  <div class="dial-words">
+    <div class="dial-level">{{ e.words }}</div>
+    {% if e.test_run %}<span class="badge test-run">test run</span>{% endif %}
+  </div>
+</div>

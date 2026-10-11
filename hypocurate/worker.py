@@ -44,6 +44,19 @@ def _status(engine: Engine, run_id: int) -> str:
         return conn.execute(text("SELECT status FROM run WHERE id = :r"), dict(r=run_id)).scalar_one()
 
 
+def _log_finished(engine: Engine, run_id: int) -> None:
+    """Step 10a (the live-run record): one log line for each run that ended under this worker, with its status and
+    its outcome or failure reason as stored (code's own words)."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT status, outcome, failure_reason FROM run WHERE id = :r"),
+                               dict(r=run_id)).one()
+        log.info(json.dumps({"run_finished": run_id, "status": row.status, "outcome": row.outcome,
+                             "failure": row.failure_reason}, ensure_ascii=False))
+    except Exception:  # noqa: BLE001 (a log line never fails the worker)
+        log.error(json.dumps({"run_finished_unreadable": run_id}))
+
+
 def _watch(child: guarded.GuardedChild, started: float, stop: threading.Event, lost: threading.Event,
            monitor: queue.Monitor, stall_seconds: float, run_timeout: float) -> str:
     """'ended', or why the child is to be stopped: 'shutdown', 'ownership_lost', 'run_timeout' or 'stalled'. Every
@@ -146,6 +159,8 @@ def work(engine: Engine, claim: queue.Claim, *, phases=("run",), on_phase: Calla
             queue.release(engine, claim, reason, found)
         except Exception:  # noqa: BLE001 (the lease is let go anyway: the claim goes stale)
             log.error(json.dumps({"release_failed": claim.run_id}))
+        if reason == "finished":
+            _log_finished(engine, claim.run_id)
 
 
 def run(once: bool = False, engine: Engine | None = None, max_cycles: int | None = None,

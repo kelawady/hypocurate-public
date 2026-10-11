@@ -5,9 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}HypoCurate{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/info.js" defer></script>
+  <script src="/static/poll.js" defer></script>
 </head>
-<body>
-  <header><span class="brand">HypoCurate</span>{% block nav %}{% endblock %}</header>
+<body{% if signed_in_as is defined %} class="app"{% endif %}>
+{% if signed_in_as is defined %}
+  <nav class="menu" aria-label="Main">
+    <div class="brand">HypoCurate</div>
+    <ul>
+      <li><a href="/"{% if active == "home" %} aria-current="page"{% endif %}>Home</a></li>
+      <li><a href="/runs"{% if active == "runs" %} aria-current="page"{% endif %}>Runs</a></li>
+      <li><a href="/assumptions"{% if active == "assumptions" %} aria-current="page"{% endif %}>Assumptions</a></li>
+    </ul>
+    {% if spending %}
+    <section class="spending" aria-label="Spending">
+      <h2>Spending {{ info("spending") }}</h2>
+      <dl>
+        <dt>Per-run cap</dt><dd>{{ spending.per_run_cap }}</dd>
+        <dt>Monthly cap</dt><dd>{{ spending.monthly_cap }}</dd>
+        <dt>Counted this month</dt><dd>{{ spending.month_counted }}</dd>
+        <dt>Tokens this month</dt><dd>{{ spending.month_tokens }}</dd>
+      </dl>
+    </section>
+    {% endif %}
+    <div class="who">Signed in: <strong>{{ signed_in_as or "no name (sign in again)" }}</strong>
+      <form method="post" action="/logout" class="logout"><button type="submit" class="link">Sign out</button></form></div>
+  </nav>
+{% else %}
+  <header><span class="brand">HypoCurate</span></header>
+{% endif %}
   <main{% block main_attrs %}{% endblock %}>{% block content %}{% endblock %}</main>
 </body>
 </html>

@@ -275,9 +275,10 @@ def test_a_cancelled_waiting_run_is_not_confirmed(engine, stub):
 
 def test_no_code_confirms_in_bulk_or_by_itself():
     """No bulk or automatic confirmation in step 9 (owner, 2026-10-08): `confirm` takes one run and one name, and
-    the only caller in the package is the command line's `confirm` command."""
+    the only callers in the package are the command line's `confirm` command and, from step 10a (owner's approved
+    plan, 2026-10-11), the web page's confirm action; step 10a adds the shown content's fingerprint (addition 2)."""
     params = list(inspect.signature(confirmation.confirm).parameters)
-    assert params == ["engine", "run_id", "by", "shown"]
+    assert params == ["engine", "run_id", "by", "shown", "shown_fingerprint"]
     package = pathlib.Path(confirmation.__file__).parents[1]
     callers = []
     for path in package.rglob("*.py"):
@@ -288,7 +289,7 @@ def test_no_code_confirms_in_bulk_or_by_itself():
                 callers.append(path.name)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "confirm":
                 callers.append(path.name)
-    assert callers == ["cli_runs.py"], callers
+    assert sorted(callers) == ["app.py", "cli_runs.py"], callers
     source = pathlib.Path(cli_runs.__file__).read_text(encoding="utf-8")
     assert "INSERT INTO rules_confirmation" not in source
     inserts = [p.name for p in package.rglob("*.py") if "INSERT INTO rules_confirmation" in p.read_text(encoding="utf-8")]
@@ -334,7 +335,8 @@ def test_the_cost_shown_is_the_runs_counted_and_reported_cost(engine, stub):
                                           ":r"), dict(r=rid)).one()
     assert Decimal(content["cost_so_far"]["counted_usd"]) == cap > 0
     assert Decimal(content["cost_so_far"]["reported_usd"]) == reported > 0
-    assert f"Cost so far: ${cap:.6f} counted toward the caps (reported ${reported:.6f}; 1 model calls" in words
+    # Step 10a (owner's review, 2026-10-11): "1 model call", in the singular.
+    assert f"Cost so far: ${cap:.6f} counted toward the caps (reported ${reported:.6f}; 1 model call," in words
 
 
 def test_code_locks_only_the_confirmed_plan_and_says_so(engine, stub):

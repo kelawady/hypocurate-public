@@ -76,6 +76,11 @@ On 2026-10-10 the owner ran the first two live runs on Render, through the real 
   - `SENTENCES`: the direction is placed as its own sentence.
   - `test_agent_core::test_an_unusable_answer_is_corrected_once_with_a_fixed_note_and_never_the_answer`: the note now includes the reason, and the literal reason is checked.
 - **The whole suite:** 2,215 tests, all passing locally (36 min 37 s) on `436b518`. The final local run before the push and the GitHub suite step are given below.
+- **Added on 2026-10-11 (step 10a; the live-run record's open item 7), as they were missing:**
+  - **The final local run before the push:** 2,220 tests, all passing, 36 min 36 s (finished 2026-10-10 22:43:40 UTC).
+  - **The GitHub suite step** ("Run the suite in the test image"):
+    - the branch: **21 min 45 s** (`1ddf508`, run 38092510866);
+    - `main` after the merge: **32 min 16 s** (`51257cb`, run 38093958140).
 
 ## Mutation checks
 

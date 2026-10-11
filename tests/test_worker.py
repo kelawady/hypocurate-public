@@ -249,3 +249,20 @@ def test_a_child_whose_run_is_held_by_another_child_is_busy_and_writes_nothing(e
         holder.commit()
     assert one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r", r=rid) == 0
     assert one(engine, "SELECT count(*) FROM plan WHERE run_id = :r", r=rid) == 0
+
+
+def test_the_worker_logs_each_claim_and_each_finished_run(engine, stub):
+    """Step 10a (the live-run record): the worker's log has one line for the claim and one for the finished run, with
+    its status and outcome, so the Render log shows both."""
+    import json as _json
+    stub.respond(to.responder())
+    rid = to.dispatched(engine, fixed_plan=True)
+    proc = worker("--once", wait=False)
+    out, err = proc.communicate(timeout=600)
+    assert proc.returncode == 0, err[-3000:]
+    events = [_json.loads(line[line.index("{"):]) for line in (out + err).splitlines() if "{" in line
+              and ('"claimed"' in line or '"run_finished"' in line)]
+    assert [e for e in events if "claimed" in e] == [{"claimed": rid, "claim": events[0]["claim"],
+                                                     "worker": events[0]["worker"], "status_before": "queued"}]
+    assert [e for e in events if "run_finished" in e] == [{"run_finished": rid, "status": "completed",
+                                                          "outcome": "sufficient", "failure": None}]

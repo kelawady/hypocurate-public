@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block nav %}<form method="post" action="/logout" class="logout"><button type="submit">Sign out</button></form>{% endblock %}
+{% set active = "home" %}
 {% block content %}
 <h1>Signed in</h1>
-<p>The skeleton is running. The screens arrive in build step 10.</p>
-<p><a href="/assumptions">Assumptions</a> · <a href="/health">Health</a></p>
+<p>Step 10a: the run pages. <a href="/runs">Runs</a> lists every dispatched run; a run waiting at the rules lock is confirmed or cancelled from its page.</p>
+<p><a href="/runs">Runs</a> · <a href="/assumptions">Assumptions</a> · <a href="/health">Health</a></p>
 {% endblock %}

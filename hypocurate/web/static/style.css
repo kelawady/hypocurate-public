@@ -1,32 +1,115 @@
-:root { --fg: #1d2330; --muted: #5b6475; --bg: #ffffff; --line: #d8dde6; --accent: #2457c5; --bad: #b3261e; --good: #1f7a3a; }
+/* HypoCurate screens (step 10a). Sizes in rem only (1rem = 16px); nothing below 0.75rem = 12px (owner's addition 6;
+   tests/test_web_pages.py checks every font-size here). */
+:root { --fg: #1d2330; --muted: #5b6475; --bg: #ffffff; --panel: #f6f7f9; --line: #d8dde6; --accent: #2457c5;
+        --bad: #b3261e; --good: #1f7a3a; --menu: #17233b; --menu-fg: #e8ecf4; --model: #eef3fb; }
 * { box-sizing: border-box; }
-body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+body { margin: 0; font: 1rem/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
 header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .brand { font-weight: 600; }
 main { max-width: 32rem; margin: 2rem auto; padding: 0 16px; }
+main.wide { max-width: 72rem; }
 label { display: block; margin-bottom: 4px; }
 input { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
-button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 4px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
-.logout button { margin: 0; }
+button, .button { display: inline-block; margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 4px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; text-decoration: none; }
+button.secondary, .button.secondary { background: #e7ebf2; color: var(--fg); }
+button.link { background: none; color: var(--menu-fg); padding: 0; margin: 0; text-decoration: underline; }
 .error { color: var(--bad); }
 .ok { color: var(--good); }
+.notice { background: #eaf4ec; border-left: 4px solid var(--good); padding: 8px 12px; }
 th { text-align: left; padding-right: 16px; color: var(--muted); font-weight: 500; }
-/* Assumptions register (step 4b): plain table; full styling comes with the step 10 screens. */
-main.wide { max-width: 72rem; }
-.nav { display: flex; align-items: center; gap: 16px; }
 .muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
 a { color: var(--accent); }
-code { font-size: 0.9em; overflow-wrap: anywhere; }
+code, .mono { font-family: ui-monospace, monospace; font-size: 0.875rem; overflow-wrap: anywhere; }
+h1 { font-size: 1.5rem; line-height: 1.3; margin: 0.25rem 0 0.5rem; }
+h2 { font-size: 1.125rem; margin: 0 0 0.5rem; }
+h3 { font-size: 1rem; margin: 0 0 0.25rem; }
+section { margin: 1.25rem 0; padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 6px; }
+.crumbs { color: var(--muted); margin: 0; }
+.nav { display: flex; align-items: center; gap: 16px; }
+
+/* The left menu (signed-in pages). */
+body.app { display: grid; grid-template-columns: 15rem 1fr; min-height: 100vh; }
+body.app main { margin: 1.5rem auto; width: 100%; }
+.menu { background: var(--menu); color: var(--menu-fg); padding: 1rem; }
+.menu .brand { font-size: 1.25rem; margin-bottom: 1rem; }
+.menu ul { list-style: none; margin: 0 0 1.5rem; padding: 0; }
+.menu li a { display: block; color: var(--menu-fg); text-decoration: none; padding: 6px 10px; border-radius: 4px; }
+.menu li a[aria-current="page"] { background: #fff; color: var(--menu); font-weight: 600; }
+.menu .spending { border: 0; padding: 0; margin: 0 0 1.5rem; }
+.menu .spending h2 { font-size: 1rem; }
+.menu dl { margin: 0; font-size: 0.875rem; } .menu dt { color: #b7c1d6; } .menu dd { margin: 0 0 6px; }
+.menu .who { font-size: 0.875rem; }
+.menu .info-button { background: #334468; }
+@media (max-width: 48rem) { body.app { display: block; } .menu { padding: 12px 16px; } .menu ul { display: flex; gap: 8px; margin-bottom: 8px; } .menu .spending { display: none; } }
+
+/* Information buttons (PRD 9.7). */
+.info { position: relative; display: inline-block; vertical-align: middle; }
+.info-button { margin: 0 0 0 4px; width: 1.25rem; height: 1.25rem; padding: 0; border-radius: 50%; font-size: 0.75rem; font-weight: 700; line-height: 1.25rem; background: #5b6b8c; }
+.info-text { position: absolute; z-index: 10; left: 0; top: 1.6rem; width: 20rem; max-width: 80vw; padding: 10px 12px; background: #fff; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.15); font-size: 0.875rem; font-weight: 400; line-height: 1.45; text-align: left; }
+
+/* Run viewer. */
+.badge { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 4px; font-size: 0.875rem; }
+.badge.test-run { background: #fff4e5; color: #8a4b00; border: 1px dashed #8a4b00; margin-left: 0; }
+.badge.exploratory { background: #fff4e5; color: #8a4b00; margin-left: 0; }
+.badge.unreviewed { background: #fdecea; color: var(--bad); }
+.badge.open-badge { background: #fff4e5; color: #8a4b00; }
+.outcome { background: #fbf4ea; }
+.outcome-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+.verdict .outcome-words { font-size: 1.25rem; font-weight: 600; }
+.verdict .verdict-words { font-size: 1.125rem; }
+.dial-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dial-box.small { flex-direction: row; gap: 8px; }
+.dial-level { font-weight: 600; font-size: 1rem; }
+.dial-box.small .dial-level { font-size: 0.75rem; font-weight: 500; max-width: 9rem; }
+.dial-box.small .badge { font-size: 0.75rem; }
+.statement p, .confirm-text .crow { margin: 0 0 6px; }
+.indent { padding-left: 1.5rem; }
+.analyst { background: var(--model); }
+.analyst .label { font-size: 0.875rem; color: var(--muted); font-style: italic; }
+table.data { width: 100%; border-collapse: collapse; }
+table.data th, table.data td { text-align: left; vertical-align: top; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+table.data tr.pooled td { font-weight: 600; }
+table.data td .muted { font-size: 0.875rem; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.card p { margin: 0 0 4px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; }
+.state-line { font-size: 1.125rem; margin: 0 0 4px; }
+.actions { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.actions form { margin: 0; }
+.confirm-text { background: var(--panel); }
+.chead { font-weight: 600; }
+.confirm-form, .cancel-form { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+@media (max-width: 48rem) {
+  .cards { grid-template-columns: 1fr; }
+  /* Tables become stacked cards on a phone: one row per card, each cell under its column's name. */
+  table.data, table.data tbody, table.data tr, table.data td { display: block; width: 100%; }
+  table.data thead { display: none; }
+  table.data tr { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+  table.data td { border: 0; padding: 2px 0; }
+  table.data td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
+  table.runs td:nth-child(2) { white-space: normal; }
+  body.app main { margin: 1rem auto; }
+}
+
+/* Assumptions register (step 4b). */
 .register { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
 .register th, .register td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; }
 .register thead th { border-bottom: 2px solid var(--line); }
 .register tbody { border-bottom: 1px solid var(--line); }
 .register tr.more td { padding-top: 0; }
 .register .unreviewed-scientific td:first-child { border-left: 4px solid var(--bad); padding-left: 8px; }
-.badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 0.85em; }
-.badge.unreviewed { background: #fdecea; color: var(--bad); }
-.badge.open-badge { background: #fff4e5; color: #8a4b00; }
 details summary { cursor: pointer; color: var(--muted); }
 dl { margin: 8px 0; } dt { font-weight: 600; margin-top: 6px; } dd { margin-left: 0; }
 dd ul { margin: 0; padding-left: 1.2em; }
 @media (max-width: 48rem) { .register thead { display: none; } .register td { display: block; padding-right: 0; } }
+.statement-row { display: grid; grid-template-columns: 1fr 15rem; gap: 20px; align-items: start; }
+.statement aside.outcome { border: 1px solid #f0d5b0; border-radius: 6px; padding: 12px; text-align: center; }
+.statement aside .outcome-words { font-size: 1rem; font-weight: 600; margin-top: 8px; }
+.statement aside .verdict-words { font-size: 1rem; }
+@media (max-width: 60rem) { .statement-row { grid-template-columns: 1fr; } }
+.info.flip .info-text { left: auto; right: 0; }
+table.runs td:nth-child(2) { white-space: nowrap; }
+.pages { display: flex; gap: 16px; align-items: baseline; margin: 1rem 0; }

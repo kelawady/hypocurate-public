@@ -5008,8 +5008,8 @@
           "ref": "python:hypocurate.pipeline.results:REAL_RUN"
         }
       ],
-      "done": "The mark and the refusals at storage, inclusion and freeze (step 6). Step 7: the label on every stored analysis and calibration result and on the statistics and gap-facts stage results of a marked run (checked by the database for result rows), and one named condition that leaves marked runs out of every aggregate (pipeline/results.py, REAL_RUN).",
-      "pending": "The label and the exclusion on every screen and list (step 10).",
+      "done": "The mark and the refusals at storage, inclusion and freeze (step 6). Step 7: the label on every stored analysis and calibration result and on the statistics and gap-facts stage results of a marked run (checked by the database for result rows), and one named condition that leaves marked runs out of every aggregate (pipeline/results.py, REAL_RUN). Step 10a: the run viewer shows the label on a marked run, and the runs list marks it (a hatched dial and a 'test run' badge).",
+      "pending": "The label and the exclusion on the remaining screens and lists (step 10b).",
       "step": 10,
       "note": "The guard is in code; the database itself does not refuse a constructed record."
     },
@@ -5030,7 +5030,8 @@
       "tests/test_analysis_stage.py::test_a_marked_run_with_no_dataset_frozen_is_labelled_too",
       "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records",
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
-      "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test"
+      "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test",
+      "tests/test_web_runs.py::test_a_marked_test_runs_dial_is_hatched_with_a_badge"
     ]
   },
   {
@@ -7437,7 +7438,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.reading:LABELS"
@@ -7454,12 +7455,13 @@
         {
           "ref": "python:hypocurate.pipeline.reading:CONFIRMED_LABEL",
           "equals": "the Planner's reading of the claim; not verified by code; confirmed by {by} on {at}"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reading:PREDATES_LABEL",
+          "equals": "the Planner's reading of the claim; not verified by code; this run predates confirmation"
         }
       ],
-      "done": "Step 8b fix round 1: the text and label written by code, stored with the Planner's stage output, the defaulted-mark check, printed by `run`/`dispatch` before the rules lock and by `show`. Step 9a: confirmed by a named person at the rules lock from the command line (`confirm`); the label once confirmed.",
-      "pending": "The Confirm button on the website (step 10).",
-      "step": 10,
-      "note": null
+      "note": "Step 8b fix round 1: the text and label written by code. Step 9a: confirmed from the command line (`confirm`). Step 10a: the Confirm button on the website (the same function and content); the label comes from the run's own plan source, never a fallback to the fixed plan."
     },
     "history": [
       {
@@ -7475,7 +7477,9 @@
         "note": "Step 9a (owner, 2026-10-08): the confirmation at the rules lock, from the command line; the label once confirmed."
       }
     ],
-    "notes": [],
+    "notes": [
+      "2026-10-11 (step 10a; owner's review of the screenshots): a Planner run whose plan was locked before confirmations existed was labelled as the fixed reference plan; its label is now 'the Planner's reading of the claim; not verified by code; this run predates confirmation'. In the development database, runs 1 and 2 are the only ones changed."
+    ],
     "tests": [
       "tests/test_reading.py::test_the_label_says_whose_reading_it_is_and_that_a_person_confirms_it",
       "tests/test_reading.py::test_each_exclusion_rule_in_words",
@@ -7484,7 +7488,10 @@
       "tests/test_orchestrator.py::test_decision_b_prepare_stops_before_the_lock_with_the_question_as_tested_and_waits",
       "tests/test_cli_runs.py::test_run_prints_the_claim_and_the_planners_reading_before_the_report_and_show_keeps_it",
       "tests/test_cli_runs.py::test_a_fixed_plan_runs_reading_is_the_reference_plans",
-      "tests/test_confirmation.py::test_once_confirmed_the_question_as_tested_says_by_whom_and_when"
+      "tests/test_confirmation.py::test_once_confirmed_the_question_as_tested_says_by_whom_and_when",
+      "tests/test_reading_step10.py::test_a_planner_run_locked_before_confirmations_is_never_labelled_as_the_fixed_plan",
+      "tests/test_reading_step10.py::test_a_waiting_planner_run_is_labelled_not_yet_confirmed_and_once_confirmed_says_by_whom",
+      "tests/test_web_runs.py::test_confirming_records_the_signed_in_name_and_exactly_the_text_shown_and_runs_nothing"
     ]
   },
   {
@@ -7966,7 +7973,9 @@
         "note": "Second-model re-check (docs/reviews/step08b_recheck_chatgpt.md) and the owner's decisions: rendered in the current format always (the earlier claim that the wording follows the recorded format was unsupported); not-fitted branch; spread whenever its figures exist."
       }
     ],
-    "notes": [],
+    "notes": [
+      "2026-10-11 (step 10a; owner's decision to keep format 2): format 2's provenance label of the question as tested was corrected for Planner runs that predate confirmation. Such a run, whose plan was locked before confirmations existed (migration 0007) and which stored no reading with its Planner stage, was labelled \"the fixed reference plan; not read from the claim\"; it now reads \"the Planner's reading of the claim; not verified by code; this run predates confirmation\". No run after confirmations existed is affected. In the development database, runs 1 and 2 are the only ones changed."
+    ],
     "tests": [
       "tests/test_statement.py::test_the_reference_run_s_statement",
       "tests/test_statement.py::test_the_statement_is_present_when_the_analyst_fails_and_holds_nothing_it_wrote",
@@ -8831,5 +8840,464 @@
     ],
     "history": [],
     "notes": []
+  },
+  {
+    "key": "signed_in_name",
+    "name": "The signed-in person's name, fixed for the session",
+    "state": "in_force",
+    "statement": "The sign-in form takes the shared password and the person's name (1 to 200 characters, spaces collapsed). The name is kept in the signed session cookie and is the name recorded by every action that names a person on the website (in step 10a: confirming the question as tested and cancelling a run). It cannot change within a session: signing in again while signed in is refused, so a new name means signing out and in again. A session signed before step 10a, which has no name, may read but not act. Nothing proves who typed the name: under the one shared password it records who said they acted, as --by does on the command line.",
+    "value": {
+      "text": "name at sign-in; 1-200 characters; fixed for the session",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every confirmation and cancellation made on the website.",
+    "reason": "Owner's answer 1 to the step 10 plan (name at sign-in) and addition 3 (the name cannot change within a session).",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.security:NAME_MAX",
+          "equals": 200
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_signing_in_needs_a_name_and_keeps_it_with_a_token",
+      "tests/test_web_runs.py::test_the_name_cannot_change_within_a_session",
+      "tests/test_web_runs.py::test_a_session_without_a_name_cannot_act",
+      "tests/test_web_runs.py::test_cancel_records_the_signed_in_name",
+      "tests/test_login.py::test_cookie_holds_only_the_signed_in_flag_the_name_and_the_form_token"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "csrf_tokens",
+    "name": "Every website action that writes carries the session's token",
+    "state": "in_force",
+    "statement": "A random token (32 bytes, URL-safe) is made at sign-in and kept in the signed session cookie. Every form that writes carries it in the hidden field csrf_token, and the server compares it in constant time before doing anything; a request without the session's token, with an empty one or with another session's, is refused with 403 and writes nothing. In step 10a the writes are confirm and cancel; dispatch, dispatch again, domain confirmation and source registration (step 10b) will carry it too. Sign-out writes nothing and carries none. The cookie is also SameSite=Lax.",
+    "value": {
+      "text": "a token per session, checked on every write",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every website action that writes.",
+    "reason": "Owner's addition 1 to the step 10 plan.",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.security:CSRF_FIELD",
+          "equals": "csrf_token"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_a_write_without_the_sessions_token_is_refused_and_writes_nothing",
+      "tests/test_web_runs.py::test_another_sessions_token_is_refused"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "confirmation_shown_fingerprint",
+    "name": "A confirmation is of the content the page showed",
+    "state": "in_force",
+    "statement": "The confirmation page sends back the SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8) of the content it displayed and the exact text it displayed, together. confirmation.confirm reads the content and renders the text inside the transaction that records the confirmation, and refuses any difference from what was shown as content_changed, so the text stored is exactly the text the person saw (a renderer changed between showing and confirming is refused). A page that sends no fingerprint is refused the same way; the command line's confirm checks the text it printed the same way. The website is the second caller of confirm, after the command line; confirm still takes one run and one name.",
+    "value": {
+      "text": "SHA-256 of the content and the text shown",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every confirmation made on the website.",
+    "reason": "Owner's addition 2 to the step 10 plan.",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.confirmation:shown_fingerprint"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_confirmation_step10.py::test_the_fingerprint_is_the_sha256_of_the_contents_canonical_json_and_changes_with_any_item",
+      "tests/test_confirmation_step10.py::test_the_fingerprint_covers_the_content_and_the_text_together",
+      "tests/test_confirmation_step10.py::test_a_renderer_changed_between_display_and_submission_is_refused",
+      "tests/test_confirmation_step10.py::test_what_is_stored_is_exactly_the_text_the_fingerprint_covered",
+      "tests/test_confirmation_step10.py::test_another_fingerprint_is_refused_as_content_changed_and_nothing_is_recorded",
+      "tests/test_confirmation_step10.py::test_content_that_changed_after_it_was_shown_is_refused",
+      "tests/test_web_fix1.py::test_finding_1_a_page_confirmed_after_the_renderer_changed_is_refused",
+      "tests/test_web_runs.py::test_a_confirmation_of_content_other_than_what_was_shown_is_refused",
+      "tests/test_web_runs.py::test_a_confirmation_without_the_shown_contents_fingerprint_is_refused",
+      "tests/test_confirmation.py::test_no_code_confirms_in_bulk_or_by_itself"
+    ],
+    "history": [
+      {
+        "from": "2026-10-11",
+        "to": "2026-10-11",
+        "value": "SHA-256 of the canonical content",
+        "note": "the fingerprint covered the content only; ChatGPT's review of step 10a (finding 1) showed a renderer changed between showing and confirming passed it; the owner accepted the fix (2026-10-11)"
+      }
+    ],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11.",
+      "Fix round 1 (2026-10-11): the fingerprint covers the text shown as well (ChatGPT finding 1, accepted by the owner)."
+    ]
+  },
+  {
+    "key": "evidence_dial",
+    "name": "The evidence-level dial",
+    "state": "in_force",
+    "statement": "The run viewer shows the run's evidence level (set by code; it never changes the verdict) as a half circle of six separate segments in one blue that darkens with the level (never red to green), with a needle on the run's level and its segment outlined, and the words \"Level n of 6: <short label>\". The short labels: 6 tested answer, 5 exploratory answer, 4 coefficient only, 3 below the minimums, 2 no coefficient fitted, 1 nothing tested. The verdict is shown beside the dial, never in it. A marked test run's dial is hatched, with the stored test-run label ('test run' in the runs list). The runs list shows a small dial; a run not completed shows no level (\"failed: no evidence level\" for a failed run). The dial holds no text: every word is HTML beside it.",
+    "value": {
+      "text": "six segments; one hue; the labels stated",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The run viewer and the runs list.",
+    "reason": "Owner's step 10 brief; answer 2 (the draft labels); review of the screenshots, 2026-10-11 (no long wording under the dial; failed runs).",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.dial:SHADES",
+          "equals": [
+            "#dde6f3",
+            "#b9cbe7",
+            "#8ea9d6",
+            "#6286c2",
+            "#3a63a6",
+            "#1d3f78"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.statistics:EVIDENCE_SHORT"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.run_view:FAILED_NO_LEVEL",
+          "equals": "failed: no evidence level"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_the_short_labels_are_the_owners_set",
+      "tests/test_web_runs.py::test_the_dial_has_one_hue_that_darkens_with_the_level",
+      "tests/test_web_runs.py::test_the_needle_points_at_the_runs_level",
+      "tests/test_web_runs.py::test_the_dial_shows_the_level_and_label_with_the_verdict_beside_it_not_in_it",
+      "tests/test_web_runs.py::test_a_marked_test_runs_dial_is_hatched_with_a_badge",
+      "tests/test_web_runs.py::test_the_runs_list_shows_a_small_dial_for_every_run",
+      "tests/test_web_runs.py::test_the_large_dial_shows_the_level_label_without_the_long_wording"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "sensitivity_set_display_names",
+    "name": "Sensitivity sets shown by name, never by internal key",
+    "state": "in_force",
+    "statement": "The screens name each sensitivity set in words and describe its one change for readers; the internal keys are never shown. The ninth set keeps its approved name, \"without the group with the largest share of slope information\", with the eligibility code's description. The survivor set's description is the owner's: \"Conflicting values, left out of the main result, are included once each, using the survivor's value.\"",
+    "value": {
+      "text": "display names and descriptions",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The run viewer's sensitivity table.",
+    "reason": "Owner's step 10 brief (display names, never internal names) and review of the screenshots (the survivor set's wording).",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.run_view:SET_DISPLAY_NAMES"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.run_view:SET_DESCRIPTIONS"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_sensitivity_sets_are_shown_by_display_name_never_by_internal_name",
+      "tests/test_web_runs.py::test_every_sensitivity_set_has_a_display_name_and_a_description",
+      "tests/test_web_runs.py::test_the_survivor_set_says_that_conflicting_values_are_normally_left_out"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "live_run_state",
+    "name": "An open run's page updates itself and stops when the run ends",
+    "state": "in_force",
+    "statement": "While a run is queued, waiting or running, its page asks for the run's state every 5 seconds (static/poll.js, a script of our own, not HTMX). The server decides when this ends: an open run's state carries its own address, an ended run's (completed or failed) carries none; the script asks again only when the state it received carries an address, and on an ended state reloads the page once to show the results. Every state read is read-only and comes from one database snapshot (a read-only REPEATABLE READ transaction for the whole page; fix round 1, finding 2); the web service never claims a run or runs a stage, so closing the browser or restarting the web service never affects a run (criterion 14.4).",
+    "value": {
+      "text": "every 5 s while the run is open",
+      "unit": "seconds"
+    },
+    "category": "operational",
+    "affects": "The run viewer.",
+    "reason": "Owner's step 10 brief (the page updates by itself) and answer of 2026-10-11 (a script of our own; polling stops at an end state, with a test).",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.run_view:OPEN_STATUSES",
+          "equals": [
+            "queued",
+            "waiting",
+            "running"
+          ]
+        },
+        {
+          "ref": "file:hypocurate/web/static/poll.js:var INTERVAL_MS = 5000;"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_state.py::test_an_open_runs_page_polls_its_own_state_and_an_ended_runs_page_does_not",
+      "tests/test_web_state.py::test_the_state_fragment_carries_the_address_while_open_and_says_ended_once_ended",
+      "tests/test_web_state.py::test_the_script_asks_again_only_when_the_state_it_received_carries_an_address",
+      "tests/test_web_state.py::test_14_4_a_run_goes_on_to_its_end_across_a_restart_of_the_web_process",
+      "tests/test_web_isolation.py::test_opening_every_run_page_loads_no_model_library_and_no_pipeline_runner",
+      "tests/test_web_fix1.py::test_finding_2_a_run_that_completes_while_its_page_is_read_is_shown_in_one_state",
+      "tests/test_web_fix1.py::test_finding_2_the_state_fragment_of_such_a_run_keeps_polling"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "screen_text",
+    "name": "How text is shown on the screens",
+    "state": "in_force",
+    "statement": "No text on any screen is smaller than 12 px (sizes in rem, at least 0.75rem). The Analyst's text is shown in a small safe subset of Markdown (paragraphs, bold, bulleted and numbered lists, simple tables), with everything the model wrote escaped first. Exponents in units are written as superscripts on the screens only; stored text and the command line keep \"^\".",
+    "value": {
+      "text": "at least 12 px; a safe subset; superscripts on screens",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every screen.",
+    "reason": "Owner's addition 6 to the step 10 plan and review of the screenshots (2026-10-11).",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.web.textfmt:model_text"
+        },
+        {
+          "ref": "python:hypocurate.web.textfmt:units"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_no_text_on_any_screen_is_smaller_than_12px",
+      "tests/test_web_textfmt.py::test_bold_lists_and_a_simple_table_are_rendered_and_no_raw_signs_remain",
+      "tests/test_web_textfmt.py::test_everything_the_model_writes_is_escaped",
+      "tests/test_web_runs.py::test_units_are_written_with_a_real_superscript_on_the_screens"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11."
+    ]
+  },
+  {
+    "key": "parallel_suite",
+    "name": "The regression suite runs serially; a parallel run is for step 11",
+    "state": "in_force",
+    "statement": "The suite runs serially (plain `pytest -q`). A parallel run with pytest-xdist was tried in step 10a and taken out: on 4 workers locally (2-core machine) it took 34 min 10 s against 36 min 06 s serially, and a test with a 6 s stall allowance (test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance) failed under the load although it ran in a group on one worker; on 2 workers it took 31 min 37 s locally against 35 min 58 s serially (the same 2,292 tests and outcomes), and on GitHub the suite step took 26 min 20 s (green) and 26 min 45 s (that test failed again), against about 32 minutes serially. Every test has a database of its own with a random name, except the shared read-only world fixture of tests/test_web_runs.py (one database for that module's tests that only read); the files that would need keeping apart from other load are listed in tests/conftest.py SERIAL_FILES. The suite's speed is revisited in step 11 as its own reviewed change.",
+    "value": {
+      "text": "serial; revisit in step 11",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every run of the regression suite, locally and on GitHub.",
+    "reason": "The GitHub suite step took about 32 of the job's 40 minutes; the owner's answer 4 to the step 10 plan approved a parallel run on conditions (no test sees another's data; no re-runs); the owner chose serial for 10a on 2026-10-11 after the stall-allowance test failed under parallel load on GitHub.",
+    "evidence": [
+      "Step 10 plan approved by the owner on 2026-10-11, with additions 1-6, the answers at the screenshot review and the overnight answers (quoted in docs/reviews/step10a_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": 11,
+      "note": "Isolation checks kept: tests/test_parallel_isolation.py."
+    },
+    "tests": [
+      "tests/test_parallel_isolation.py::test_databases_are_made_only_by_conftest_with_random_names",
+      "tests/test_parallel_isolation.py::test_only_the_read_only_health_tests_open_the_shared_database",
+      "tests/test_parallel_isolation.py::test_each_test_database_is_made_from_a_template_of_this_process",
+      "tests/test_parallel_isolation.py::test_the_serial_group_names_only_existing_test_files"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-11.",
+      "2026-10-11: corrected after ChatGPT's review of step 10a: the shared read-only world fixture is the one exception to a database per test (owner)."
+    ]
+  },
+  {
+    "key": "runs_list_pages",
+    "name": "The runs list has pages of 50, followed by an ID cursor",
+    "state": "in_force",
+    "statement": "The runs list shows the newest 50 runs, then, through \"Older runs\", the 50 runs older than the last run shown (an ID cursor: /runs?before=<run>), and so on, with a link back to the newest runs. A run's id never changes, so following \"Older runs\" goes through every run that existed when the list was opened exactly once, newest first, however many runs are dispatched between page requests; runs dispatched meanwhile appear on the newest page. Each page is read from one database snapshot. A cursor below 1 is not found.",
+    "value": {
+      "text": "50 runs a page; an ID cursor",
+      "unit": "runs"
+    },
+    "category": "operational",
+    "affects": "The runs list.",
+    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size (50) was Claude Code's proposal, approved by the owner on 2026-10-11. Fix round 2 (ChatGPT's re-check, 2026-10-11): the first version paged by offset, which shifted when runs were added between pages (repeating runs and never reaching older ones); the owner decided the ID cursor.",
+    "evidence": [
+      "docs/reviews/step10a_review_chatgpt.md, finding 3; docs/reviews/step10a_fix_packet.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.run_view:RUNS_PER_PAGE",
+          "equals": 50
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix1.py::test_fix_2_paging_goes_through_every_run_once_while_runs_are_added",
+      "tests/test_web_fix1.py::test_finding_3_an_old_waiting_run_stays_reachable_through_the_runs_list",
+      "tests/test_web_fix1.py::test_finding_3_the_list_says_which_runs_a_page_shows"
+    ],
+    "history": [
+      {
+        "from": "2026-10-11",
+        "to": "2026-10-11",
+        "value": "50 runs a page (by offset)",
+        "note": "an offset repeated runs when runs were added between page requests (ChatGPT's re-check); replaced by an ID cursor"
+      }
+    ],
+    "notes": [
+      "Wording and page size (50) approved by the owner, 2026-10-11.",
+      "2026-10-11: reworded for the ID cursor (fix round 2; the owner's decision to fix and merge)."
+    ]
   }
 ]

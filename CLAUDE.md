@@ -64,7 +64,7 @@ The access layer and its tests guard against **our own code** leaking data to a 
 
 - `PRD_sprint1.md` — the specification (PDF copy alongside).
 - `HypoCurate_Combined_Overview_2026-10-04_v3.13.pdf` — background and research questions.
-- `glossary.json` — the 41 explanation texts for popups and the Help page. One source; do not duplicate the texts in templates.
+- The glossary is no longer here: since step 10a it is `hypocurate/web/glossary.json` (the deployed image holds no `docs/`; owner, 2026-10-11). It holds the explanation texts for popups and the Help page. One source; do not duplicate the texts in templates.
 - `mockup_screens/` — the nine target screens.
 - `reference/worked_example.py`, `reference/calibration_example.py` — the scripts that produced the reference numbers. They contain file paths from another machine; treat them as a statement of method, not as code to import.
 

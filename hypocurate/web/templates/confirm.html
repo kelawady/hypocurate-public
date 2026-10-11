@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% set active = "runs" %}
+{% block title %}Confirm run {{ r.run }} · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/runs">Runs</a> › <a href="/runs/{{ r.run }}">{{ r.query }} · run {{ r.run }}</a> › confirmation</p>
+<h1>Confirm the question as tested {{ info("confirmation") }}</h1>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if r.content is none %}
+  <p>Run {{ r.run }} is not waiting for a confirmation ({{ r.status_words }}{% if r.confirmed %}; already confirmed{% endif %}).</p>
+  <p><a href="/runs/{{ r.run }}">Back to the run</a></p>
+{% else %}
+<section class="confirm-what">
+  <p>The run waits at the rules lock. Nothing is locked until a named person confirms what will be tested. Read it all; your confirmation records your name, the time, and exactly this text.</p>
+</section>
+<section class="confirm-text" aria-label="What you confirm">
+  {% for row in r.rows %}
+    <div class="crow{% if row.indent %} indent{% endif %}">{% if row.head %}<span class="chead">{{ row.head }}:</span> {% endif %}{{ row.value }}</div>
+  {% endfor %}
+</section>
+<form method="post" action="/runs/{{ r.run }}/confirm" class="confirm-form">
+  <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+  <input type="hidden" name="shown_fingerprint" value="{{ r.shown_fingerprint }}">
+  <p>Confirming as <strong>{{ signed_in_as }}</strong>. Once you confirm, the question as tested is labelled: {{ r.label_after }}.</p>
+  <button type="submit">Confirm the question as tested</button>
+  <a class="button secondary" href="/runs/{{ r.run }}">Back without confirming</a>
+</form>
+<form method="post" action="/runs/{{ r.run }}/cancel" class="cancel-form">
+  <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+  <button type="submit" class="secondary">Cancel this run instead</button>
+</form>
+<p class="muted small">Fingerprint of what is shown {{ r.shown_fingerprint }}</p>
+{% endif %}
+{% endblock %}
