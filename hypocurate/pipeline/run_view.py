@@ -76,7 +76,7 @@ FAILED_NO_LEVEL = "failed: no evidence level"  # owner, 2026-10-11
 TEST_RUN_BADGE = TEST_RUN_LABEL
 
 
-RUNS_PER_PAGE = 50  # fix round 1, finding 3: the runs list has pages, so every run stays reachable
+RUNS_PER_PAGE = 50  # fix rounds 1 and 2: the runs list has pages of 50, followed by an ID cursor
 
 
 @contextmanager
@@ -435,20 +435,24 @@ class NoSuchPage(LookupError):
     pass
 
 
-def runs_list(engine: Engine, page: int = 1, per_page: int = RUNS_PER_PAGE) -> dict:
-    """One page of every run, newest first (query, claim, status, outcome, evidence level and cost), with the page's
-    place in the whole (fix round 1, finding 3: every run stays reachable). One snapshot for the count and the rows."""
+def runs_list(engine: Engine, before: int | None = None, per_page: int = RUNS_PER_PAGE) -> dict:
+    """One page of runs, newest first (query, claim, status, outcome, evidence level and cost): the newest, or with
+    `before`, the runs older than that run. The next page's cursor is the last run shown (fix round 2, ChatGPT's
+    re-check: an offset shifted when runs were added between pages, repeating some and never reaching others; a run's
+    id never changes, so following "older runs" goes through every run that existed when the list was opened exactly
+    once). One snapshot for the count and the rows."""
+    if before is not None and before < 1:
+        raise NoSuchPage(f"no runs before run {before}")
     with snapshot(engine) as conn:
         total = conn.execute(text("SELECT count(*) FROM run")).scalar_one()
-        pages = max(1, -(-total // per_page))
-        if not 1 <= page <= pages:
-            raise NoSuchPage(f"no page {page} of the runs list (pages 1 to {pages})")
         rows = conn.execute(text(
             "SELECT r.id, r.status, r.evidence_level, r.verdict, r.experiment_flags, h.number, hv.text, "
             "r.outcome, to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
             "coalesce(t.cap_cost, 0) AS cost FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
             "JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN model_call_totals_by_run t ON t.run_id = r.id "
-            "ORDER BY r.id DESC LIMIT :n OFFSET :o"), dict(n=per_page, o=(page - 1) * per_page)).all()
+            "WHERE CAST(:before AS bigint) IS NULL OR r.id < :before ORDER BY r.id DESC LIMIT :n"),
+            dict(before=before, n=per_page + 1)).all()  # one more than shown: is there an older page?
+    more, rows = len(rows) > per_page, rows[:per_page]
     out = []
     for r in rows:
         test_run = bool((r.experiment_flags or {}).get("constructed_test_data"))
@@ -457,10 +461,13 @@ def runs_list(engine: Engine, page: int = 1, per_page: int = RUNS_PER_PAGE) -> d
                     "outcome": r.outcome.replace("_", " ") + " in the sources searched" if r.outcome else None,
                     "evidence": evidence(r.evidence_level, None, None, test_run, failed=r.status == "failed"),
                     "cost": money(r.cost)})
-    first = (page - 1) * per_page + 1
-    return {"runs": out, "page": page, "pages": pages, "total": total,
-            "words": (f"Runs {first} to {first + len(out) - 1} of {total}, newest first." if out else "No run yet."),
-            "previous": page - 1 if page > 1 else None, "next": page + 1 if page < pages else None}
+    if before is None:
+        words = f"{total} run{'' if total == 1 else 's'} in all; the newest first." if total else "No run yet."
+    else:
+        words = (f"{total} run{'' if total == 1 else 's'} in all; runs older than run {before}, newest first."
+                 if out else f"No run older than run {before}.")
+    return {"runs": out, "total": total, "words": words, "before": before, "newest": before is not None,
+            "older": out[-1]["run"] if more else None}
 
 
 def _text_rows(words: str) -> list[dict]:

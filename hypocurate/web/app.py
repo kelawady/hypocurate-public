@@ -163,10 +163,10 @@ def create_app(
     # --- the run pages (step 10a) ---------------------------------------------------------------------------------
 
     @app.get("/runs", response_class=HTMLResponse)
-    def runs(request: Request, page_number: int = Query(1, alias="page")):
+    def runs(request: Request, before: int | None = Query(None)):
         from hypocurate.pipeline import run_view
         try:
-            listed = run_view.runs_list(engine, page_number)
+            listed = run_view.runs_list(engine, before)
         except run_view.NoSuchPage as error:
             raise HTTPException(status_code=404, detail=str(error)) from None
         return page(request, "runs.html", {"listed": listed, "runs": listed["runs"]})

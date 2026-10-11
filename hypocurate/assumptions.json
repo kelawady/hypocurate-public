@@ -9249,16 +9249,16 @@
   },
   {
     "key": "runs_list_pages",
-    "name": "The runs list has pages of 50",
+    "name": "The runs list has pages of 50, followed by an ID cursor",
     "state": "in_force",
-    "statement": "The runs list shows every run, newest first, in pages of 50, with \"Runs a to b of n\" and links to the newer and older pages, so every run stays reachable however many newer runs there are. Each page is read from one database snapshot (the count and the rows together). A page outside the list is not found.",
+    "statement": "The runs list shows the newest 50 runs, then, through \"Older runs\", the 50 runs older than the last run shown (an ID cursor: /runs?before=<run>), and so on, with a link back to the newest runs. A run's id never changes, so following \"Older runs\" goes through every run that existed when the list was opened exactly once, newest first, however many runs are dispatched between page requests; runs dispatched meanwhile appear on the newest page. Each page is read from one database snapshot. A cursor below 1 is not found.",
     "value": {
-      "text": "50 runs a page",
+      "text": "50 runs a page; an ID cursor",
       "unit": "runs"
     },
     "category": "operational",
     "affects": "The runs list.",
-    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size (50) was Claude Code's proposal, approved by the owner on 2026-10-11.",
+    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size (50) was Claude Code's proposal, approved by the owner on 2026-10-11. Fix round 2 (ChatGPT's re-check, 2026-10-11): the first version paged by offset, which shifted when runs were added between pages (repeating runs and never reaching older ones); the owner decided the ID cursor.",
     "evidence": [
       "docs/reviews/step10a_review_chatgpt.md, finding 3; docs/reviews/step10a_fix_packet.md."
     ],
@@ -9283,12 +9283,21 @@
       "note": null
     },
     "tests": [
+      "tests/test_web_fix1.py::test_fix_2_paging_goes_through_every_run_once_while_runs_are_added",
       "tests/test_web_fix1.py::test_finding_3_an_old_waiting_run_stays_reachable_through_the_runs_list",
       "tests/test_web_fix1.py::test_finding_3_the_list_says_which_runs_a_page_shows"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-11",
+        "to": "2026-10-11",
+        "value": "50 runs a page (by offset)",
+        "note": "an offset repeated runs when runs were added between page requests (ChatGPT's re-check); replaced by an ID cursor"
+      }
+    ],
     "notes": [
-      "Wording and page size (50) approved by the owner, 2026-10-11."
+      "Wording and page size (50) approved by the owner, 2026-10-11.",
+      "2026-10-11: reworded for the ID cursor (fix round 2; the owner's decision to fix and merge)."
     ]
   }
 ]

@@ -135,11 +135,54 @@ def test_finding_3_an_old_waiting_run_stays_reachable_through_the_runs_list(own,
 
 
 def test_finding_3_the_list_says_which_runs_a_page_shows(own):
+    """Fix round 2 (the cursor): the first page is the newest runs; "Older runs" carries the last run shown; a later
+    page says which runs it shows; a cursor below 1 is not found. (Fix round 1 checked page numbers, now gone.)"""
     engine, url = own
-    for _ in range(run_view.RUNS_PER_PAGE + 3):
-        to.dispatched(engine, fixed_plan=True)
+    runs = [to.dispatched(engine, fixed_plan=True) for _ in range(run_view.RUNS_PER_PAGE + 3)]
+    total = len(runs)
     c = signed_in(engine, url)
-    total = run_view.RUNS_PER_PAGE + 3
-    assert f"Runs 1 to {run_view.RUNS_PER_PAGE} of {total}, newest first." in plain(c.get("/runs").text)
-    assert f"Runs {run_view.RUNS_PER_PAGE + 1} to {total} of {total}, newest first." in plain(c.get("/runs?page=2").text)
-    assert c.get("/runs?page=0").status_code == 404 and c.get("/runs?page=99").status_code == 404
+    first = c.get("/runs").text
+    assert f"{total} runs in all; the newest first." in plain(first)
+    shown, older = follow_older(c, "/runs")
+    assert shown == sorted(runs, reverse=True)[:run_view.RUNS_PER_PAGE]
+    assert older == f"/runs?before={shown[-1]}" and 'rel="first"' not in first
+    second = c.get(older).text
+    assert f"{total} runs in all; runs older than run {shown[-1]}, newest first." in plain(second)
+    assert follow_older(c, older) == (sorted(runs, reverse=True)[run_view.RUNS_PER_PAGE:], None)
+    assert '<a rel="first" href="/runs">Newest runs</a>' in second
+    assert "No run older than run 1." in plain(c.get("/runs?before=1").text)
+    assert c.get("/runs?before=0").status_code == 404
+
+
+# --- fix round 2 (ChatGPT's re-check, accepted by the owner, 2026-10-11): an ID cursor, not an offset ---------------
+
+def follow_older(c, address):
+    """Opens the list at `address`; returns the run ids shown in order and the address of the next older page."""
+    page = c.get(address)
+    assert page.status_code == 200, address
+    shown = [int(x) for x in re.findall(r'<td data-label="Run"><a href="/runs/(\d+)"', page.text)]
+    nxt = re.search(r'<a [^>]*rel="next"[^>]*href="([^"]+)"', page.text)
+    return shown, (nxt.group(1).replace("&amp;", "&") if nxt else None)
+
+
+def test_fix_2_paging_goes_through_every_run_once_while_runs_are_added(own, stub):
+    """The re-check's case: between page requests a block of new runs is dispatched. Following "older runs" must show
+    every run that existed when the list was opened exactly once, in order, and reach the old waiting run; with an
+    offset, the same block came back again and again."""
+    engine, url = own
+    old = waiting(engine, stub)
+    existing = [to.dispatched(engine, fixed_plan=True) for _ in range(run_view.RUNS_PER_PAGE * 2 + 20)]
+    c = signed_in(engine, url)
+    order, address, pages = [], "/runs", 0
+    while address and pages < 20:
+        shown, address = follow_older(c, address)
+        order += shown
+        pages += 1
+        for _ in range(run_view.RUNS_PER_PAGE):  # a page's worth of new runs before the next request
+            to.dispatched(engine, fixed_plan=True)
+    first_page_top = order[0]
+    seen = [r for r in order if r <= first_page_top]
+    assert len(seen) == len(set(seen)), "a run was shown twice"
+    assert seen == sorted({old, *existing}, reverse=True), "not every run, once, newest first"
+    assert pages == -(-len({old, *existing}) // run_view.RUNS_PER_PAGE) and seen[-1] == old  # 121 runs: 3 pages
+    assert "waiting at the rules lock" in plain(c.get(f"/runs/{old}").text)
