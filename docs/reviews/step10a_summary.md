@@ -1,5 +1,32 @@
 # Build step 10a — summary for review
 
+> **Update, 2026-10-11: the re-check and the owner's merge decision.** ChatGPT's re-check (`step10a_recheck_chatgpt.md`) closed findings 1, 2 and 4. It found one remaining problem: the runs list paged by offset, which shifted when runs were added between page requests (runs repeated, and older ones might never be reached).
+>
+> **The owner's decision, verbatim:** "Fix it, then merge step 10a without another review round. This is my decision, provided the fix has a test that fails on the current code, mutation checks catch it, the reference runs stay byte-identical, and the GitHub run on the new head is green."
+>
+> **The fix** (`a983108`):
+> - `runs_list(before=)` shows the 50 runs older than the last run shown (`/runs?before=<run>`), with "Older runs" and "Newest runs" links.
+> - A run's id never changes, so paging goes through every run that existed when the list was opened exactly once.
+> - The register entry `runs_list_pages` is reworded; its offset wording is kept in its history. The owner approved 50 a page (`c1d2719`).
+>
+> **The evidence:**
+> - **Failed first:** `test_fix_2_paging_goes_through_every_run_once_while_runs_are_added` adds a page's worth of runs between page requests. On the offset code it failed: the same 50 runs came back on all 20 pages.
+> - **Changed test:** `test_finding_3_the_list_says_which_runs_a_page_shows` now checks the cursor's words and links instead of page numbers.
+> - **Mutation checks:** 6 of 6 cursor faults caught; the control run is clean.
+> - **Reference runs:** byte-identical to `main` in all six dumps.
+>
+> **GitHub suite step times** ("Run the suite in the test image"):
+>
+> | Run | Head | Suite | Job | Result |
+> |---|---|---|---|---|
+> | 38142724721 | `5662200` (2 workers) | 26:20 | 27:47 | green |
+> | 38144600449 | `f8f5671` (2 workers) | 26:45 | 27:58 | failed: the stall-allowance test |
+> | 38149431419 | `9fc3d9a` (serial) | 34:59 | 36:27 | green |
+> | 38154910618 | `0e2e428` (fix round 1, serial) | 24:50 | 25:59 | green |
+> | (pending) | the fix-round-2 head | — | — | filled in before the merge |
+>
+> **The job limit** is 60 minutes since `8e55c81` (the owner's decision).
+
 > **Update, 2026-10-11: fix round 1.** ChatGPT's review (`step10a_review_chatgpt.md`) found 10a **not safe to merge**: three code problems and one gap in a test. The owner accepted all four. Each fix came with tests written first, and those tests failed on the reviewed code where the code was at fault. The evidence is in `step10a_fix_packet.md`.
 >
 > | Finding | What was wrong | What changed |
