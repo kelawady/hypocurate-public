@@ -23,7 +23,7 @@
 > | 38144600449 | `f8f5671` (2 workers) | 26:45 | 27:58 | failed: the stall-allowance test |
 > | 38149431419 | `9fc3d9a` (serial) | 34:59 | 36:27 | green |
 > | 38154910618 | `0e2e428` (fix round 1, serial) | 24:50 | 25:59 | green |
-> | (pending) | the fix-round-2 head | — | — | filled in before the merge |
+> | 38161046149 | `abd4223` (fix round 2, serial) | 24:18 | 25:31 | green |
 >
 > **The job limit** is 60 minutes since `8e55c81` (the owner's decision).
 
@@ -56,7 +56,7 @@
 >
 > The sections below describe 10a before this round, except where they say otherwise.
 
-Date: 2026-10-11. Branch: `step-10a-run-pages` (from `main` at `ba83c3d`). **Status: built, pushed, not merged; register entries approved by the owner (2026-10-11); stopped for the second-model review.**
+Date: 2026-10-11. Branch: `step-10a-run-pages` (from `main` at `ba83c3d`). **Status: merged by the owner's decision after the re-check (fix round 2 done, with the evidence the owner required).**
 
 PRD Section 15, step 10 ("Website screens"), first part. The owner split step 10 into:
 - **10a (this part):** the run pages (runs list, run viewer, evidence dial, confirmation and cancel, live state), the fixes from the first live runs, and a faster suite;
