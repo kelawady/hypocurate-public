@@ -55,21 +55,21 @@ def command(args, engine: Engine) -> int:
         ceiling = _ceiling(args.ceiling)
         if args.command == "run":
             q = queries.create(engine, args.claim, [k.strip() for k in args.sources.split(",") if k.strip()],
-                               domain=args.domain, sufficiency=args.sufficiency)
-            queries.submit(engine, q.version_id)
+                               domain=args.domain, sufficiency=args.sufficiency, by=args.by)
+            queries.submit(engine, q.version_id, by=args.by)
             queries.confirm_domain(engine, q.version_id, by=args.by)
             run_id = queries.dispatch(engine, q.version_id, fixed_plan=args.fixed_plan,
-                                      constructed_test_data=args.test_data, ceiling=ceiling)
+                                      constructed_test_data=args.test_data, ceiling=ceiling, by=args.by)
             number = q.number
         elif args.again:
-            run_id, number = queries.dispatch_again(engine, args.number, ceiling=ceiling), args.number
+            run_id, number = queries.dispatch_again(engine, args.number, ceiling=ceiling, by=args.by), args.number
         else:
             if args.by is None:
                 raise ValueError("--by names the person confirming the domain")
             vid = queries.submitted_version(engine, args.number)
             queries.confirm_domain(engine, vid, by=args.by)
             # A narrower question's plan follows from its link (finding 1).
-            run_id = queries.dispatch(engine, vid, ceiling=ceiling)
+            run_id = queries.dispatch(engine, vid, ceiling=ceiling, by=args.by)
             number = args.number
     except queries.QueryRefused as refused:
         print(f"error: {refused.code}: {refused.reason}", file=sys.stderr)

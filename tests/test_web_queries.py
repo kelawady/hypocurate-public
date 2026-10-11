@@ -26,6 +26,13 @@ CLAIM = to.FCC_CLAIM
 NAME = "Grace Reviewer"
 
 
+def shown(c, path: str) -> dict:
+    """The version a page's form shows (step 10b, fix round 1): its id and fingerprint, sent back with every write."""
+    page = c.get(path).text
+    return {"version_id": re.search(r'name="version_id" value="(\d+)"', page).group(1),
+            "version_fingerprint": re.search(r'name="version_fingerprint" value="([0-9a-f]{64})"', page).group(1)}
+
+
 @pytest.fixture
 def own(migrated_database):
     e = make_engine(migrated_database)
@@ -65,7 +72,8 @@ def test_a_query_goes_from_draft_through_review_to_a_dispatched_run_under_the_si
     v = latest(engine, number)
     assert (v.version_number, v.status, v.text, v.note) == (1, "draft", CLAIM, "please check the band")
     assert "Edit the draft" in plain(c.get(f"/queries/{number}").text)
-    r = c.post(f"/queries/{number}/edit", data={"csrf_token": token(c), "claim": CLAIM + " (edited)",
+    r = c.post(f"/queries/{number}/edit", data={"csrf_token": token(c), **shown(c, f"/queries/{number}/edit"),
+                                                "claim": CLAIM + " (edited)",
                                                 "sources": ["mpea"], "domain": "grain_size_strengthening",
                                                 "sufficiency": "use_available", "note": "", "action": "submit"})
     assert r.status_code == 303
@@ -74,7 +82,7 @@ def test_a_query_goes_from_draft_through_review_to_a_dispatched_run_under_the_si
     page = plain(c.get(f"/review/{number}").text)
     assert f"{number} · version 1" in page and "Dispatching as Grace Reviewer" in page
     r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening",
-                                                  "ceiling": "0.40"})
+                                                  "ceiling": "0.40", **shown(c, f"/review/{number}")})
     assert r.status_code == 303 and r.headers["location"].startswith("/runs/")
     rid = int(r.headers["location"].rsplit("/", 1)[1])
     v = latest(engine, number)
@@ -90,13 +98,15 @@ def test_a_returned_query_is_edited_as_its_next_version_and_the_returned_one_is_
     engine, url = own
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit")
-    r = c.post(f"/review/{number}/return", data={"csrf_token": token(c), "comment": "name the test type"})
+    r = c.post(f"/review/{number}/return", data={"csrf_token": token(c), "comment": "name the test type",
+                                                  **shown(c, f"/review/{number}")})
     assert r.status_code == 303
     v = latest(engine, number)
     assert v.status == "returned" and v.review_comment == f"returned by {NAME}: name the test type"
     form = plain(c.get(f"/queries/{number}/edit").text)
     assert "Saving creates version 2; version 1 is kept unchanged" in form
-    r = c.post(f"/queries/{number}/edit", data={"csrf_token": token(c), "claim": CLAIM + " in tension",
+    r = c.post(f"/queries/{number}/edit", data={"csrf_token": token(c), **shown(c, f"/queries/{number}/edit"),
+                                                "claim": CLAIM + " in tension",
                                                 "sources": ["mpea", "tamu_fcc"], "domain": "grain_size_strengthening",
                                                 "sufficiency": "fixed_minimum", "note": "", "action": "save"})
     assert r.status_code == 303
@@ -113,7 +123,7 @@ def test_return_needs_a_comment(own):
     engine, url = own
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit")
-    r = c.post(f"/review/{number}/return", data={"csrf_token": token(c), "comment": "  "})
+    r = c.post(f"/review/{number}/return", data={"csrf_token": token(c), "comment": "  ", **shown(c, f"/review/{number}")})
     assert r.status_code == 409 and "say what to change" in plain(r.text)
     assert latest(engine, number).status == "submitted"
 
@@ -122,14 +132,16 @@ def test_dispatch_again_makes_a_new_run_once_the_last_one_ended(own):
     engine, url = own
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit")
-    first = int(c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c),
+    first = int(c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), **shown(c, f"/review/{number}"),
                                                           "domain": "grain_size_strengthening"}).headers["location"]
                 .rsplit("/", 1)[1])
-    r = c.post(f"/queries/{number}/again", data={"csrf_token": token(c)})
+    vid = one(engine, "SELECT hypothesis_version_id FROM run WHERE id = :r", r=first)  # (no form while it is open)
+    r = c.post(f"/queries/{number}/again", data={"csrf_token": token(c), "version_id": str(vid),
+                                                 "version_fingerprint": queries.version_fingerprint(engine, vid)})
     assert r.status_code == 409 and queries.REASONS["already_open"] in plain(r.text)  # the first run is still open
     queries.cancel(engine, first, by=NAME)
     assert "Dispatch again" in plain(c.get(f"/queries/{number}").text)
-    r = c.post(f"/queries/{number}/again", data={"csrf_token": token(c)})
+    r = c.post(f"/queries/{number}/again", data={"csrf_token": token(c), **shown(c, f"/queries/{number}")})
     assert r.status_code == 303 and int(r.headers["location"].rsplit("/", 1)[1]) > first
 
 
@@ -140,7 +152,8 @@ def test_dispatch_at_the_monthly_cap_is_refused_with_the_owners_words(own):
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit")
     _spend_this_month(engine, spend.MONTH_CAP_USD)
-    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening"})
+    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening",
+                                                  **shown(c, f"/review/{number}")})
     assert r.status_code == 409 and queries.REASONS["month_cap_reached"] in plain(r.text)
     assert latest(engine, number).status == "submitted"
 
@@ -150,7 +163,8 @@ def test_dispatch_of_constructed_test_data_is_refused_with_its_reason(own):
     pw.registered(engine, ("controlled_duplicates",))
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit", sources=("mpea", "controlled_duplicates"))
-    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening"})
+    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening",
+                                                  **shown(c, f"/review/{number}")})
     assert r.status_code == 409
     assert queries.REASONS["constructed_source_unmarked"].format(source="controlled_duplicates") in plain(r.text)
 
@@ -159,7 +173,8 @@ def test_a_domain_not_yet_supported_cannot_be_dispatched_and_the_message_says_wh
     engine, url = own
     c = signed_in(engine, url, NAME)
     number = new_query(c, action="submit", domain="fatigue")
-    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "fatigue"})
+    r = c.post(f"/review/{number}/dispatch", data={"csrf_token": token(c), "domain": "fatigue",
+                                                  **shown(c, f"/review/{number}")})
     assert r.status_code == 409 and "the confirmed domain is not supported yet" in plain(r.text)
     assert one(engine, "SELECT count(*) FROM run") == 0
 

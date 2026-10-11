@@ -27,6 +27,8 @@
     </dl>
     <form method="post" action="/review/{{ q.number }}/dispatch" class="query-form">
       <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+      <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
       <fieldset><legend>Domain: confirm or change {{ info("domain") }}</legend>
         {% for d in q.options.domains %}
         <label class="choice"><input type="radio" name="domain" value="{{ d.key }}"{% if d.key == q.domain_key %} checked{% endif %}> {{ d.name }}{% if not d.supported %} <span class="muted">(not yet supported)</span>{% endif %}</label>
@@ -39,6 +41,8 @@
     </form>
     <form method="post" action="/review/{{ q.number }}/return" class="query-form">
       <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+      <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
       <label for="comment">Return for edits: what should change?</label>
       <textarea id="comment" name="comment" rows="2" required></textarea>
       <button type="submit" class="secondary">Return for edits</button>

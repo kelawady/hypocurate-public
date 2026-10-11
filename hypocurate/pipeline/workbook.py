@@ -15,12 +15,19 @@ Four sheets:
 Every sheet's first line states the workbook's format and the code version that built it. The workbook's document
 dates are the run's dispatch time; the same stored rows give the same cells (the zip file's own timestamps, written by
 the spreadsheet library, are not fixed, so the bytes may differ). Read in one snapshot.
+
+No formulas (step 10b, fix round 1; ChatGPT's review, the owner's decision of 2026-10-11): every text cell of the
+workbook is written as a string cell, whatever it begins with, so stored text (a hypothesis, a paper reference, a
+note, a name, the Analyst's text) is never read as a formula. In the CSV, which a spreadsheet opens as typed, a text
+that begins with =, +, -, @, a tab or a carriage return gets a leading apostrophe (`FORMULA_STARTS`, `csv_cell`); a
+genuine number is written as it is.
 """
 from __future__ import annotations
 
 import csv
 import io
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -34,6 +41,26 @@ WORKBOOK_FORMAT = 1
 SHEETS = ("Records used", "Records not used", "Significance and commentary", "Run summary")
 BASE_COLUMNS = ("record", "source", "item", "alloy", "kind of data", "paper reference", "paper DOI")
 COMMENTARY_NONE = "No commentary: the Commentator is not built in sprint 1 (PRD 15, step 12)."
+# Fix round 1: what a spreadsheet may read as the start of a formula in a CSV cell, and what a genuine number is.
+FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
+CSV_TEXT_MARK = "'"
+_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+
+
+def csv_cell(value: Any) -> Any:
+    """A CSV cell: text beginning with a formula sign gets a leading apostrophe; numbers (and text that is exactly a
+    number) are kept as they are."""
+    if isinstance(value, str) and value.startswith(FORMULA_STARTS) and not _NUMBER.fullmatch(value):
+        return CSV_TEXT_MARK + value
+    return value
+
+
+def _append(ws, values) -> None:
+    """One row; every text cell a string cell (never a formula)."""
+    ws.append(list(values))
+    for cell in ws[ws.max_row]:
+        if isinstance(cell.value, str):
+            cell.data_type = "s"
 
 
 def version_line() -> str:
@@ -122,10 +149,18 @@ def _summary(conn: Connection, run_id: int) -> list[tuple[str, Any]]:
         "SELECT s.key, sv.label, sv.fingerprint, rs.search_status FROM run_source rs JOIN source s ON s.id = "
         "rs.source_id LEFT JOIN source_version sv ON sv.id = rs.source_version_id WHERE rs.run_id = :r ORDER BY s.key"),
         dict(r=run_id)).all()
+    version = conn.execute(text(
+        "SELECT hv.id, hv.note, hv.review_comment FROM run r JOIN hypothesis_version hv ON hv.id = "
+        "r.hypothesis_version_id WHERE r.id = :r"), dict(r=run_id)).one()
+    done = conn.execute(text(
+        "SELECT action, channel, actor, to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS at FROM "
+        "action_record WHERE hypothesis_version_id = :v OR run_id = :r ORDER BY id"),
+        dict(v=version.id, r=run_id)).all()
     cp = page["checkpoints"]
     rows: list[tuple[str, Any]] = [
         ("Query", f"{page['query']}, version {page['version']}"), ("Run", run_id),
-        ("Hypothesis", page["claim"]), ("Domain", page["domain"]), ("Tags", "; ".join(page["tags"]) or None),
+        ("Hypothesis", page["claim"]), ("Note", version.note), ("Review", version.review_comment),
+        ("Domain", page["domain"]), ("Tags", "; ".join(page["tags"]) or None),
         ("Status", page["status_words"]), ("Outcome", page["outcome"]), ("Verdict", page["verdict"]),
         ("Evidence level", page["evidence"]["words"]),
         ("Question as tested", (page["question_as_tested"] or {}).get("text")),
@@ -155,6 +190,9 @@ def _summary(conn: Connection, run_id: int) -> list[tuple[str, Any]]:
              ("Agent mode", head.agent_mode.replace("_", " ")),
              ("Agent settings versions", "; ".join(f"{r.role} {r.version}" for r in settings) or None),
              ("Dispatched (UTC)", head.queued), ("Started (UTC)", head.started), ("Ended (UTC)", head.ended)]
+    # Fix round 1 (0009): who did what to this version and this run, as recorded.
+    rows += [(f"Action: {a.action.replace('_', ' ')} ({a.channel})", f"{a.actor or 'no name given'}, {a.at} UTC")
+             for a in done]
     return rows
 
 
@@ -208,16 +246,16 @@ def build(engine: Engine, run_id: int) -> bytes | None:
     for title, rows, extra in ((SHEETS[0], used, ()), (SHEETS[1], other, ("eligible", "rule", "flags",
                                                                            "sensitivity sets"))):
         ws = wb.create_sheet(title)
-        ws.append([version_line()])
-        ws.append([*columns, *extra])
+        _append(ws, [version_line()])
+        _append(ws, [*columns, *extra])
         for r in rows:
-            ws.append([r.get(c) for c in (*columns, *extra)])
+            _append(ws, [r.get(c) for c in (*columns, *extra)])
     for title, rows in ((SHEETS[2], significance), (SHEETS[3], summary)):
         ws = wb.create_sheet(title)
-        ws.append([version_line()])
-        ws.append(["Item", "Value"])
+        _append(ws, [version_line()])
+        _append(ws, ["Item", "Value"])
         for item, value in rows:
-            ws.append([item, value])
+            _append(ws, [item, value])
     wb.properties.created = wb.properties.modified = when
     wb.properties.creator = "HypoCurate"
     out = io.BytesIO()
@@ -235,7 +273,7 @@ def records_csv(engine: Engine, run_id: int) -> str | None:
     w = csv.writer(buf, lineterminator="\n")
     w.writerow([f"# {version_line()}"])
     header = [*columns, "used in the test", "eligible", "rule", "flags", "sensitivity sets"]
-    w.writerow(header)
+    w.writerow([csv_cell(c) for c in header])
     for r in records:
-        w.writerow([r.get(c) if c != "used in the test" else ("yes" if r["_used"] else "no") for c in header])
+        w.writerow([csv_cell(r.get(c)) if c != "used in the test" else ("yes" if r["_used"] else "no") for c in header])
     return buf.getvalue()

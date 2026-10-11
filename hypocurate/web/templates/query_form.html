@@ -10,6 +10,8 @@
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="{% if number %}/queries/{{ number }}/edit{% else %}/queries{% endif %}" class="query-form">
   <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+  {% if shown_version %}<input type="hidden" name="version_id" value="{{ shown_version.version_id }}">
+  <input type="hidden" name="version_fingerprint" value="{{ shown_version.version_fingerprint }}">{% endif %}
   <label for="claim">Hypothesis {{ info("hypothesis") }}</label>
   <textarea id="claim" name="claim" rows="3" required>{{ values.claim if values else "" }}</textarea>
   <fieldset><legend>Domain {{ info("domain") }}</legend>

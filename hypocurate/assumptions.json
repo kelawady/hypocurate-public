@@ -9312,7 +9312,7 @@
     "key": "query_versions_on_the_website",
     "name": "Query versions on the website",
     "state": "in_force",
-    "statement": "A new query is saved as a draft or submitted for review. A draft is edited in place (it was never submitted). A submitted query is reviewed: the reviewer confirms or changes the domain under the signed-in name ('domain confirmed on the website by <name>') and dispatches it, with an optional ceiling, or returns it for edits with a comment ('returned by <name>: <comment>'). A returned or dispatched version never changes: editing a returned query creates its next version, a draft, and earlier versions are kept (PRD 9.2). A query whose last run ended can be dispatched again as a new run. Every write carries the session's CSRF token; refusals are shown in code's words (the monthly cap, constructed test data, a domain not yet supported).",
+    "statement": "A new query is saved as a draft or submitted for review. A draft is edited in place (it was never submitted). A submitted query is reviewed: the reviewer confirms or changes the domain under the signed-in name ('domain confirmed on the website by <name>') and dispatches it, with an optional ceiling, or returns it for edits with a comment ('returned by <name>: <comment>'). A returned or dispatched version never changes: editing a returned query creates its next version, a draft, and earlier versions are kept (PRD 9.2). A query whose last run ended can be dispatched again as a new run. Every write carries the session's CSRF token, acts only on the version the page showed (act_on_version_shown) and is recorded with the signed-in name (action_record); refusals are shown in code's words (the monthly cap, constructed test data, a domain not yet supported).",
     "value": {
       "text": "draft in place; returned -> next version",
       "unit": null
@@ -9346,10 +9346,6 @@
           "ref": "python:hypocurate.pipeline.queries:return_for_edits"
         },
         {
-          "ref": "python:hypocurate.pipeline.queries:WEBSITE",
-          "equals": "on the website"
-        },
-        {
           "ref": "python:hypocurate.pipeline.queries:CLAIM_MAX",
           "equals": 2000
         },
@@ -9360,6 +9356,13 @@
         {
           "ref": "python:hypocurate.pipeline.queries:COMMENT_MAX",
           "equals": 2000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:WHERE_WORDS",
+          "equals": {
+            "command line": "at the command line",
+            "website": "on the website"
+          }
         }
       ],
       "note": null
@@ -9372,7 +9375,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording drafted by Claude Code for the owner's review (2026-10-11, revised in fix round 1)."
     ]
   },
   {
@@ -9639,7 +9642,7 @@
     "key": "web_source_registration",
     "name": "Registering a source from the website",
     "state": "in_force",
-    "statement": "The data sources page lists every registered source and every source defined in code that is not registered yet; registering one calls sources.versions.register (as the command line's 'sources register'), under the signed-in name and with the session's CSRF token; a request without the token is refused and writes nothing. 'Test connection and show sample records' only reads. A source of a person's own, from a form, needs an adapter in code first and is for a later sprint.",
+    "statement": "The data sources page lists every registered source and every source defined in code that is not registered yet; registering one calls sources.versions.register (as the command line's 'sources register') with the session's CSRF token, and a version it seals is recorded with the signed-in name in action_record, in the same transaction; a request without the token is refused and writes nothing. 'Test connection and show sample records' only reads. A source of a person's own, from a form, needs an adapter in code first and is for a later sprint.",
     "value": {
       "text": "code-defined sources only; CSRF",
       "unit": null
@@ -9672,11 +9675,12 @@
     "tests": [
       "tests/test_web_catalog.py::test_registering_a_source_from_the_website_records_it_and_names_the_person",
       "tests/test_web_catalog.py::test_registration_without_the_sessions_token_is_refused_and_writes_nothing",
-      "tests/test_web_catalog.py::test_the_connection_test_shows_sample_records_and_writes_nothing"
+      "tests/test_web_catalog.py::test_the_connection_test_shows_sample_records_and_writes_nothing",
+      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name"
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording drafted by Claude Code for the owner's review (2026-10-11, revised in fix round 1)."
     ]
   },
   {
@@ -9770,6 +9774,180 @@
     "history": [],
     "notes": [
       "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+    ]
+  },
+  {
+    "key": "action_record",
+    "name": "Who did what: the action record",
+    "state": "in_force",
+    "statement": "Every write a person makes records, in the same transaction, one row of action_record (migration 0009): the action (create, edit, new version, submit, return, domain confirmation, dispatch, dispatch again, cancel, confirmation of the question as tested, registering a source), where it was done (the website, the command line, or code), the name given, what it acted on, and the database's time. On the website the name is the signed-in name, and the database refuses a website row without one. At the command line it is --by where the command takes it; a command without --by is recorded with no name, as such. A narrower question code creates is recorded as code's, with no name. Rows are never changed or deleted. Confirmation and cancel keep their own records as before (rules_confirmation, the run's failure reason); their row here repeats the name so that who did what is in one place. Nothing proves who typed a name (see signed_in_name). It is a record, not a gate: no rule reads it.",
+    "value": {
+      "text": "one row per action; append-only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every query, run and source-registration write.",
+    "reason": "ChatGPT's review of 10b, finding 3 (create, submit, edit and dispatch again kept no name); the owner's answer: a new table action_record, migration 0009, with rows for confirm and cancel too.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:ACTIONS",
+          "equals": [
+            "create",
+            "edit",
+            "new_version",
+            "submit",
+            "return",
+            "confirm_domain",
+            "dispatch",
+            "dispatch_again",
+            "cancel",
+            "confirm_rules",
+            "register_source"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.models:CHANNELS",
+          "equals": [
+            "website",
+            "command line",
+            "code"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.actions:ACTOR_MAX",
+          "equals": 200
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_every_website_write_stores_the_signed_in_name",
+      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name",
+      "tests/test_web_fix10b.py::test_action_records_are_append_only",
+      "tests/test_migrations_step10b.py::test_an_action_on_the_website_names_its_person",
+      "tests/test_migrations_step10b.py::test_each_action_names_exactly_what_it_acts_on",
+      "tests/test_migrations_step10b.py::test_rows_are_never_changed_deleted_or_truncated"
+    ],
+    "history": [],
+    "notes": [
+      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
+    ]
+  },
+  {
+    "key": "act_on_version_shown",
+    "name": "A page acts only on the version it showed",
+    "state": "in_force",
+    "statement": "Every website form that writes to a query (edit, review's dispatch and return, dispatch again) sends the version it displayed and a fingerprint of that version's content (SHA-256 of its query, number, status, hypothesis, domains, option, note, sources and review comment). The pipeline compares both with the stored version under the version lock, in the write's own transaction, and refuses a difference with \"This query has changed since you opened it; reload the page\". A form that sends neither is refused the same way. So an old review tab never dispatches or returns a newer version, and an old edit form never overwrites a newer draft or makes a second new version. Saving and submitting from one form is one transaction. The command line names the version it acts on and is not checked this way.",
+    "value": {
+      "text": "version id + content fingerprint, checked under the lock",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The query pages (PRD 9.2, 9.3).",
+    "reason": "ChatGPT's review of 10b, finding 1 (a stale review page dispatched a version it never showed); the owner's fix, in the owner's words for the refusal.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:STALE",
+          "equals": "This query has changed since you opened it; reload the page"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_a_review_tab_opened_on_version_1_cannot_dispatch_version_2",
+      "tests/test_web_fix10b.py::test_a_changed_version_is_refused_even_with_the_same_id",
+      "tests/test_web_fix10b.py::test_an_old_edit_form_of_a_returned_version_cannot_make_a_second_new_version",
+      "tests/test_web_fix10b.py::test_a_form_without_the_version_it_showed_is_refused",
+      "tests/test_web_fix10b.py::test_the_pipeline_refuses_a_stale_fingerprint_under_the_version_lock"
+    ],
+    "history": [],
+    "notes": [
+      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
+    ]
+  },
+  {
+    "key": "export_no_formulas",
+    "name": "No formulas in exports",
+    "state": "in_force",
+    "statement": "In the workbook every text cell is written as a string cell, whatever it begins with, so stored text (a hypothesis, a paper reference, a note, a name, the Analyst's text) is never a formula. In the records CSV a text beginning with =, +, -, @, a tab or a carriage return gets a leading apostrophe; a number, or a text that is exactly a number, is written as it is. The stored rows are unchanged.",
+    "value": {
+      "text": "workbook: string cells; CSV: leading apostrophe",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The workbook and records CSV (PRD 11) and 'hypocurate export'.",
+    "reason": "ChatGPT's review of 10b, finding 2 (a stored '=1+1' became a formula cell); the owner's fix.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.workbook:FORMULA_STARTS",
+          "equals": [
+            "=",
+            "+",
+            "-",
+            "@",
+            "\t",
+            "\r"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.workbook:CSV_TEXT_MARK",
+          "equals": "'"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_every_text_cell_of_the_workbook_is_a_string_cell",
+      "tests/test_web_fix10b.py::test_the_csv_neutralises_formula_text_and_keeps_numbers"
+    ],
+    "history": [],
+    "notes": [
+      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
     ]
   }
 ]

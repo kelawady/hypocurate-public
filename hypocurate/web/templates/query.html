@@ -12,6 +12,8 @@
   {% if q.can_dispatch_again %}
   <form method="post" action="/queries/{{ q.number }}/again">
     <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+    <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
     <button type="submit">Dispatch again (a new run)</button>
   </form>{% endif %}
 </div>

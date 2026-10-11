@@ -440,6 +440,46 @@ class RunClaim(Base):
     )
 
 
+
+# Step 10b, fix round 1 (0009; owner, 2026-10-11): who did what. The same lists as migration 0009 (tests check both).
+ACTIONS = ("create", "edit", "new_version", "submit", "return", "confirm_domain", "dispatch", "dispatch_again",
+           "cancel", "confirm_rules", "register_source")
+CHANNELS = ("website", "command line", "code")
+# What each action names: v = the query version, r = the run, s = the source version.
+ACTION_TARGETS = {"create": "v", "edit": "v", "new_version": "v", "submit": "v", "return": "v", "confirm_domain": "v",
+                  "dispatch": "vr", "dispatch_again": "vr", "cancel": "r", "confirm_rules": "r", "register_source": "s"}
+_TARGET_COLUMNS = {"v": "hypothesis_version_id", "r": "run_id", "s": "source_version_id"}
+
+
+def _targets_check() -> str:
+    return " OR ".join(
+        f"(action = '{action}' AND " + " AND ".join(
+            f"{col} IS {'NOT ' if k in kinds else ''}NULL" for k, col in _TARGET_COLUMNS.items()) + ")"
+        for action, kinds in ACTION_TARGETS.items())
+
+
+class ActionRecord(Base):
+    """Step 10b, fix round 1 (0009): one row per person's action, written in the same transaction as the write it
+    records: the action, where (website, command line, code), the name given (required on the website), what it acted
+    on, and the database's time. Append-only. A record, not a gate."""
+    __tablename__ = "action_record"
+    id: Mapped[int] = pk()
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    action: Mapped[str] = mapped_column(Text)
+    channel: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str | None] = mapped_column(Text)
+    hypothesis_version_id: Mapped[int | None] = mapped_column(ForeignKey("hypothesis_version.id"), index=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("run.id"), index=True)
+    source_version_id: Mapped[int | None] = mapped_column(ForeignKey("source_version.id"))
+    __table_args__ = (
+        CheckConstraint(one_of("action", ACTIONS), name="action"),
+        CheckConstraint(one_of("channel", CHANNELS), name="channel"),
+        CheckConstraint("actor IS NULL OR (actor = btrim(actor) AND length(actor) BETWEEN 1 AND 200)", name="actor"),
+        CheckConstraint("channel <> 'website' OR actor IS NOT NULL", name="website_named"),
+        CheckConstraint("channel <> 'code' OR actor IS NULL", name="code_unnamed"),
+        CheckConstraint(_targets_check(), name="targets"),
+    )
+
 class Plan(Base):
     """The locked plan (PRD 5.1, 5.6). Inserted at the rules lock, never changed.
     The columns the database checks against are explicit; the rest is `content`."""

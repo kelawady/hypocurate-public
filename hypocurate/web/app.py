@@ -12,6 +12,9 @@ The web service never calls a model, never claims a run and never runs a pipelin
 through `pipeline.run_view` and writes only through the pipeline's own functions: `confirmation.confirm` and
 `queries.cancel` in 10a. A confirmed run is taken up by the worker; closing the browser or restarting this service
 never affects a run (criterion 14.4).
+
+Step 10b, fix round 1: every write passes the signed-in name (recorded in `action_record`), and every form that writes
+to a query sends the version it showed and its fingerprint, which the pipeline checks under the version lock.
 """
 from __future__ import annotations
 
@@ -247,7 +250,7 @@ def create_app(
             if not shown_fingerprint:
                 raise queries.QueryRefused("content_changed", "the page sent no fingerprint of what it showed; show "
                                                               "it again before confirming")
-            confirmation.confirm(engine, run_id, name, shown_fingerprint=shown_fingerprint)
+            confirmation.confirm(engine, run_id, name, shown_fingerprint=shown_fingerprint, via=queries.WEBSITE)
         except queries.QueryRefused as refused:
             shown = run_view.confirmation_page(engine, run_id, request.session.get("name"))
             if shown is None:
@@ -264,7 +267,7 @@ def create_app(
         if run_view.run_page(engine, run_id) is None:
             raise HTTPException(status_code=404, detail=f"no run {run_id}")
         try:
-            queries.cancel(engine, run_id, by=name)
+            queries.cancel(engine, run_id, by=name, via=queries.WEBSITE)
         except queries.QueryRefused as refused:
             shown = run_view.run_page(engine, run_id)
             if shown is None:
@@ -285,6 +288,12 @@ def create_app(
         if isinstance(error, IntegrityError):
             return database_message(error)
         raise error
+
+    def shown_version(form) -> dict:
+        """The version a form showed: its id and fingerprint as sent (fix round 1; checked by the pipeline)."""
+        raw = (form.get("version_id") or "").strip()
+        return {"version_id": int(raw) if raw.isdigit() else None,
+                "version_fingerprint": (form.get("version_fingerprint") or "").strip() or None}
 
     def form_values(form) -> dict:
         return {"claim": form.get("claim", ""), "domain": form.get("domain", ""),
@@ -311,13 +320,11 @@ def create_app(
         from hypocurate.pipeline import queries, query_view
         form = await request.form()
         security.check_csrf(request, form.get(security.CSRF_FIELD))
-        security.signed_in_name(request)
+        name = security.signed_in_name(request)
         v = form_values(form)
         try:
             q = queries.create(engine, v["claim"], v["sources"], domain=v["domain"], sufficiency=v["sufficiency"],
-                               note=v["note"])
-            if v["action"] == "submit":
-                queries.submit(engine, q.version_id)
+                               note=v["note"], by=name, via=queries.WEBSITE, submit=v["action"] == "submit")
         except Exception as error:  # noqa: BLE001 (refused_words re-raises anything that is not a fixed refusal)
             return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": None,
                                                      "values": v, "error": refused_words(error), "active": "new"},
@@ -344,28 +351,32 @@ def create_app(
         values = {"claim": latest["claim"], "note": latest["note"] or "", "sufficiency": latest["sufficiency_key"],
                   "sources": [s["key"] for s in latest["sources"]], "domain": latest["domain_key"]}
         return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
-                                                 "q": shown, "values": values, "error": None, "active": "queries"})
+                                                 "q": shown, "values": values, "error": None, "active": "queries",
+                                                 "shown_version": {"version_id": latest["id"],
+                                                                   "version_fingerprint": latest["fingerprint"]}})
 
     @app.post("/queries/{number}/edit")
     async def edit_query(request: Request, number: str):
         from hypocurate.pipeline import queries, query_view
         form = await request.form()
         security.check_csrf(request, form.get(security.CSRF_FIELD))
-        security.signed_in_name(request)
-        v = form_values(form)
+        name = security.signed_in_name(request)
+        v, sent = form_values(form), shown_version(form)
         try:
             shown = query_view.query_page(engine, number)
         except query_view.NoSuchQuery as error:
             raise HTTPException(status_code=404, detail=str(error)) from None
         try:
+            # The pipeline checks, under the version lock, that the version edited is the one this form showed.
             change = queries.new_version if shown["latest"]["status"] == "returned" else queries.update_draft
-            vid = change(engine, number, v["claim"], v["sources"], v["domain"], v["sufficiency"], v["note"])
-            if v["action"] == "submit":
-                queries.submit(engine, vid)
+            change(engine, number, v["claim"], v["sources"], v["domain"], v["sufficiency"], v["note"], by=name,
+                   via=queries.WEBSITE, submit=v["action"] == "submit", expected_version=sent["version_id"],
+                   expected_fingerprint=sent["version_fingerprint"])
         except Exception as error:  # noqa: BLE001
+            # The form keeps the version it showed: after a refusal as stale, only a reload acts on the newer one.
             return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
                                                      "q": shown, "values": v, "error": refused_words(error),
-                                                     "active": "queries"}, status_code=409)
+                                                     "active": "queries", "shown_version": sent}, status_code=409)
         return RedirectResponse(f"/queries/{number}", status_code=303)
 
     @app.post("/queries/{number}/again")
@@ -373,9 +384,12 @@ def create_app(
         from hypocurate.pipeline import queries, query_view
         form = await request.form()
         security.check_csrf(request, form.get(security.CSRF_FIELD))
-        security.signed_in_name(request)
+        name = security.signed_in_name(request)
+        sent = shown_version(form)
         try:
-            rid = queries.dispatch_again(engine, number)
+            rid = queries.dispatch_again(engine, number, by=name, via=queries.WEBSITE,
+                                         expected_version=sent["version_id"],
+                                         expected_fingerprint=sent["version_fingerprint"])
         except Exception as error:  # noqa: BLE001
             try:
                 shown = query_view.query_page(engine, number)
@@ -401,6 +415,10 @@ def create_app(
         return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
                                              "queue": shown.get("queue"), "error": None, "active": "review"})
 
+    def queries_fingerprint(version_id: int) -> str | None:
+        from hypocurate.pipeline import queries
+        return queries.version_fingerprint(engine, version_id)
+
     async def review_action(request: Request, number: str, act):
         from hypocurate.pipeline import query_view
         form = await request.form()
@@ -410,12 +428,18 @@ def create_app(
             shown = query_view.review_page(engine, number)
         except query_view.NoSuchQuery as error:
             raise HTTPException(status_code=404, detail=str(error)) from None
+        sent = shown_version(form)
         try:
+            from hypocurate.pipeline.queries import STALE, QueryRefused
+            # Fix round 1: a form for another version, or one changed since, says so first (the pipeline checks it
+            # again under the version lock).
+            if sent["version_id"] is None or sent["version_id"] != shown["latest"]["id"] or \
+                    sent["version_fingerprint"] != queries_fingerprint(sent["version_id"]):
+                raise QueryRefused("stale", STALE)
             if not shown["reviewable"]:
-                from hypocurate.pipeline.queries import QueryRefused
                 raise QueryRefused("not_submitted", f"query {number} is {shown['latest']['status_words']}; only a "
                                                     "submitted query is reviewed")
-            return act(form, name, shown)
+            return act(form, name, sent["version_id"], sent["version_fingerprint"])
         except Exception as error:  # noqa: BLE001
             return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
                                                  "queue": shown.get("queue"), "active": "review",
@@ -425,7 +449,7 @@ def create_app(
     async def review_dispatch(request: Request, number: str):
         from hypocurate.pipeline import queries
 
-        def act(form, name, shown):
+        def act(form, name, version_id, fingerprint):
             ceiling = (form.get("ceiling") or "").strip()
             try:
                 ceiling = Decimal(ceiling) if ceiling else None
@@ -433,9 +457,10 @@ def create_app(
                 raise queries.QueryRefused("ceiling", "the ceiling is a number of US dollars") from None
             if ceiling is not None and not ceiling > 0:
                 raise queries.QueryRefused("ceiling", "the ceiling is a positive number of US dollars")
-            queries.confirm_domain(engine, shown["version_id"], by=name, domain=form.get("domain") or None,
-                                   where=queries.WEBSITE)
-            rid = queries.dispatch(engine, shown["version_id"], ceiling=ceiling)
+            confirmed = queries.confirm_domain(engine, version_id, by=name, domain=form.get("domain") or None,
+                                               via=queries.WEBSITE, expected_fingerprint=fingerprint)
+            rid = queries.dispatch(engine, version_id, ceiling=ceiling, by=name, via=queries.WEBSITE,
+                                   expected_fingerprint=confirmed)
             return RedirectResponse(f"/runs/{rid}", status_code=303)
 
         return await review_action(request, number, act)
@@ -444,8 +469,9 @@ def create_app(
     async def review_return(request: Request, number: str):
         from hypocurate.pipeline import queries
 
-        def act(form, name, shown):
-            queries.return_for_edits(engine, shown["version_id"], by=name, comment=form.get("comment", ""))
+        def act(form, name, version_id, fingerprint):
+            queries.return_for_edits(engine, version_id, by=name, comment=form.get("comment", ""), via=queries.WEBSITE,
+                                     expected_fingerprint=fingerprint)
             return RedirectResponse(f"/queries/{number}", status_code=303)
 
         return await review_action(request, number, act)
@@ -475,13 +501,13 @@ def create_app(
     @app.post("/sources/{key}/register")
     async def source_register(request: Request, key: str):
         """Registers a source defined in code (sources.versions.register; a safeguard write, with the CSRF token)."""
-        from hypocurate.pipeline import catalog_view
+        from hypocurate.pipeline import catalog_view, queries
         from hypocurate.sources import versions
         form = await request.form()
         security.check_csrf(request, form.get(security.CSRF_FIELD))
         name = security.signed_in_name(request)
         try:
-            done = versions.register(engine, key)
+            done = versions.register(engine, key, by=name, via=queries.WEBSITE)
         except versions.RegistrationError as error:
             return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None,
                                                   "message": None, "active": "sources",

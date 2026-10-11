@@ -46,8 +46,9 @@ def release(w, cid, reason="finished"):
 
 # --- the migration ------------------------------------------------------------------------------------------
 
-def test_0008_is_the_head_and_follows_0007():
-    assert migrate.head_revision() == "0008" and m0008().down_revision == "0007"
+def test_0008_follows_0007():
+    # Step 10b, fix round 1: 0009 is now the head (tests/test_migrations_step10b.py).
+    assert m0008().down_revision == "0007"
 
 
 def test_0008_replaces_no_earlier_function():
@@ -86,7 +87,8 @@ def test_the_downgrade_refuses_while_a_claim_exists(db):
     before = snapshot(db)
     with pytest.raises(Exception, match="0008 is in use"):
         migrate.downgrade(db, "0007")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0008"
+    # Step 10b: the database stays at the head, now 0009 (0009's own downgrade is undone with the refused transaction).
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()
 
 
 def test_the_release_reasons_are_the_codes():

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, Engine, text
 
-from hypocurate.pipeline import run_view
+from hypocurate.pipeline import queries, run_view
 from hypocurate.pipeline.run_view import STATUS_WORDS, money, snapshot, tokens
 
 # Short source names for the queries list (owner's review, 2026-10-11); a query's own page gives the full names.
@@ -106,7 +106,9 @@ def query_page(engine: Engine, number: str) -> dict:
                                                    failed=r.status == "failed")}
                     for r in conn.execute(text("SELECT id, status, evidence_level, experiment_flags FROM run WHERE "
                                                "hypothesis_version_id = :v ORDER BY id DESC"), dict(v=v.id)).all()]
-            versions.append({"version": v.version_number, "claim": v.text, "status": v.status,
+            # Fix round 1: the version's id and fingerprint, from this snapshot, so a form acts only on what it shows.
+            versions.append({"id": v.id, "fingerprint": queries.version_fingerprint(conn, v.id),
+                             "version": v.version_number, "claim": v.text, "status": v.status,
                              "status_words": VERSION_STATUS_WORDS[v.status], "note": v.note,
                              "review_comment": v.review_comment, "created": v.created,
                              "domain": v.confirmed_domain or v.domain, "domain_key": v.domain_key,
@@ -173,10 +175,9 @@ def review_page(engine: Engine, number: str) -> dict:
     latest = page["latest"]
     if latest["status"] != "submitted":
         return {**page, "reviewable": False}
+    # Fix round 1: the version acted on is the one shown (its id and fingerprint from query_page's snapshot).
+    version_id, domain_key = latest["id"], latest["domain_key"]
     with snapshot(engine) as conn:
-        version_id, domain_key = conn.execute(text(
-            "SELECT v.id, d.key FROM hypothesis_version v JOIN hypothesis h ON h.id = v.hypothesis_id JOIN domain d "
-            "ON d.id = v.domain_id WHERE h.number = :n AND v.status = 'submitted'"), dict(n=number)).one()
         agents = [{"role": role, "version": conn.execute(text(
             "SELECT max(version) FROM agent_setting WHERE role = :r"), dict(r=role)).scalar_one()}
             for role in settings.RUN_ROLES]
