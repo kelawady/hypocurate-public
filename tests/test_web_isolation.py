@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import textwrap
@@ -61,7 +62,9 @@ def test_opening_every_run_page_loads_no_model_library_and_no_pipeline_runner(en
         stub.close()
     probe = tmp_path / "probe.py"
     probe.write_text(PROBE, encoding="utf-8")
-    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH",)}
+    # The package from this checkout (installed in a venv, or only on the path as in the test image).
+    root = pathlib.Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(root)}
     out = subprocess.run([sys.executable, str(probe), migrated_database, str(done), str(waiting)], cwd=tmp_path,
                          env=env, capture_output=True, text=True, timeout=300)
     assert out.returncode == 0, out.stderr[-2000:]
