@@ -4,8 +4,8 @@
 {% block main_attrs %} class="wide"{% endblock %}
 {% block content %}
 <h1>Runs</h1>
-<p class="muted">Every dispatched run, newest first. {{ info("queue") }}</p>
-{% if not runs %}<p>No run yet.</p>{% else %}
+<p class="muted">{{ listed.words }} {{ info("queue") }}</p>
+{% if runs %}
 <table class="data runs">
   <thead><tr><th>Evidence {{ info("evidence_level") }}</th><th>Run</th><th>Claim</th><th>Status {{ info("status") }}</th><th>Outcome {{ info("outcome") }}</th><th>Cost {{ info("cost") }}</th></tr></thead>
   <tbody>{% for x in runs %}
@@ -19,5 +19,12 @@
     </tr>
   {% endfor %}</tbody>
 </table>
+{% endif %}
+{% if listed.previous or listed.next %}
+<nav class="pages" aria-label="Pages of the runs list">
+  {% if listed.previous %}<a rel="prev" href="/runs?page={{ listed.previous }}">Newer runs</a>{% endif %}
+  <span>Page {{ listed.page }} of {{ listed.pages }}</span>
+  {% if listed.next %}<a rel="next" href="/runs?page={{ listed.next }}">Older runs</a>{% endif %}
+</nav>
 {% endif %}
 {% endblock %}

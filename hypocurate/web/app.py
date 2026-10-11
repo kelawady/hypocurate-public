@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -163,9 +163,13 @@ def create_app(
     # --- the run pages (step 10a) ---------------------------------------------------------------------------------
 
     @app.get("/runs", response_class=HTMLResponse)
-    def runs(request: Request):
+    def runs(request: Request, page_number: int = Query(1, alias="page")):
         from hypocurate.pipeline import run_view
-        return page(request, "runs.html", {"runs": run_view.runs_list(engine)})
+        try:
+            listed = run_view.runs_list(engine, page_number)
+        except run_view.NoSuchPage as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "runs.html", {"listed": listed, "runs": listed["runs"]})
 
     @app.get("/runs/{run_id}", response_class=HTMLResponse)
     def run(request: Request, run_id: int):
@@ -195,17 +199,17 @@ def create_app(
         return page(request, "confirm.html", {"r": shown, "error": None})
 
     @app.post("/runs/{run_id}/confirm")
-    def confirm(request: Request, run_id: int, csrf_token: str = Form(""), content_fingerprint: str = Form("")):
+    def confirm(request: Request, run_id: int, csrf_token: str = Form(""), shown_fingerprint: str = Form("")):
         from hypocurate.pipeline import confirmation, queries, run_view
         security.check_csrf(request, csrf_token)
         name = security.signed_in_name(request)
         if run_view.run_page(engine, run_id) is None:
             raise HTTPException(status_code=404, detail=f"no run {run_id}")
         try:
-            if not content_fingerprint:
+            if not shown_fingerprint:
                 raise queries.QueryRefused("content_changed", "the page sent no fingerprint of what it showed; show "
                                                               "it again before confirming")
-            confirmation.confirm(engine, run_id, name, shown_fingerprint=content_fingerprint)
+            confirmation.confirm(engine, run_id, name, shown_fingerprint=shown_fingerprint)
         except queries.QueryRefused as refused:
             shown = run_view.confirmation_page(engine, run_id, request.session.get("name"))
             if shown is None:

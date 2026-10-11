@@ -172,7 +172,9 @@ def _confirm(engine: Engine, run_id: int, by: str, to_queue: bool = False) -> in
         raise queries.QueryRefused("not_waiting", f"run {run_id} is not waiting for confirmation (it is {status})")
     content, words = confirmation.show(engine, run_id)
     print(words, flush=True)
-    confirmation.confirm(engine, run_id, by, shown=content)
+    # Fix round 1, finding 1: the text printed is checked too, so what is stored is exactly what was printed.
+    confirmation.confirm(engine, run_id, by, shown=content,
+                         shown_fingerprint=confirmation.shown_fingerprint(content, words))
     if to_queue:  # step 9b (R2): confirmed; a worker takes it up
         print(json.dumps({"run": run_id, "status": "waiting", "confirmed": True, "queued": True}), flush=True)
         return 0

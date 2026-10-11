@@ -11,8 +11,9 @@ the orchestrator nor recovery (tests/test_web_isolation.py).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 from sqlalchemy import Connection, Engine, text
 
@@ -75,6 +76,20 @@ FAILED_NO_LEVEL = "failed: no evidence level"  # owner, 2026-10-11
 TEST_RUN_BADGE = TEST_RUN_LABEL
 
 
+RUNS_PER_PAGE = 50  # fix round 1, finding 3: the runs list has pages, so every run stays reachable
+
+
+@contextmanager
+def snapshot(engine: Engine) -> Iterator[Connection]:
+    """One read-only REPEATABLE READ transaction (fix round 1, finding 2): every read of a page sees the database as it
+    was at the page's first read, so its status, statement, verdict and evidence level always belong together."""
+    with engine.connect() as conn:
+        conn.execution_options(isolation_level="REPEATABLE READ")
+        with conn.begin():
+            conn.execute(text("SET TRANSACTION READ ONLY"))
+            yield conn
+
+
 def _set_description(key: str | None) -> str:
     from hypocurate.pipeline.eligibility import INFLUENCE_KEY, SENSITIVITY_CHANGES
     if key == INFLUENCE_KEY:
@@ -106,6 +121,11 @@ def question_as_tested(engine: Engine, run_id: int) -> dict | None:
         return reading.stored(conn, run_id)
 
 
+def _question_as_tested(conn: Connection, run_id: int) -> dict | None:
+    from hypocurate.pipeline import reading
+    return reading.stored(conn, run_id)
+
+
 def analyst_text(explained) -> dict:
     """The Analyst's stored explanation, always with its label; or that it is unavailable (code's own words)."""
     from hypocurate.pipeline.agents import analyst
@@ -120,6 +140,11 @@ def critic_flags(engine: Engine, run_id: int) -> list[dict]:
     """Each flag as shown: code's kind and category, its records, and the Critic's class or why there is none."""
     from hypocurate.pipeline.agents import critic
     return critic.flag_display(engine, run_id)
+
+
+def _critic_flags(conn: Connection, run_id: int) -> list[dict]:
+    from hypocurate.pipeline.agents import critic
+    return critic.flag_display_in(conn, run_id)
 
 
 def queue_rows(engine: Engine) -> list[dict]:
@@ -153,41 +178,46 @@ def queue_rows(engine: Engine) -> list[dict]:
 
 
 def show(engine: Engine, run_id: int) -> dict | None:
+    with snapshot(engine) as conn:
+        return show_in(conn, run_id)
+
+
+def show_in(conn: Connection, run_id: int) -> dict | None:
+    """`show` on a given connection: one snapshot for the whole output (fix round 1, finding 2)."""
     from hypocurate.pipeline import statement
-    with engine.connect() as conn:
-        run = conn.execute(text(
-            "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
-            "r.fixed_plan, h.number, hv.text, hv.sufficiency_option, h.narrower_of_run_id FROM run r "
-            "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
-            "WHERE r.id = :r"), dict(r=run_id)).one_or_none()
-        if run is None:
-            return None
+    run = conn.execute(text(
+        "SELECT r.id, r.status, r.outcome, r.verdict, r.exploratory, r.evidence_level, r.failure_reason, "
+        "r.fixed_plan, h.number, hv.text, hv.sufficiency_option, h.narrower_of_run_id FROM run r "
+        "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
+        "WHERE r.id = :r"), dict(r=run_id)).one_or_none()
+    if run is None:
+        return None
 
-        def output(stage):
-            return conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s "
-                                     "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
+    def output(stage):
+        return conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = :s "
+                                 "ORDER BY id DESC LIMIT 1"), dict(r=run_id, s=stage)).scalar_one_or_none()
 
-        stats, gap, narrowing, explained = output("statistics"), output("gap_facts"), output("narrowing"), output("analyst")
-        results = [dict(r._mapping) for r in conn.execute(text(
-            "SELECT ar.scope, s.key AS source, a.key AS analysis_set, ar.n_records, ar.n_alloys, ar.n_groups, "
-            "ar.resid_df, ar.check1_passed, ar.check2_passed, ar.minimums_met, ar.withheld, ar.estimate, ar.std_error, "
-            "ar.p_value, ar.label FROM analysis_result ar JOIN analysis_set a ON a.id = ar.analysis_set_id "
-            "LEFT JOIN source s ON s.id = ar.source_id WHERE ar.run_id = :r ORDER BY ar.id"), dict(r=run_id)).all()]
-        narrower = conn.execute(text("SELECT number FROM hypothesis WHERE narrower_of_run_id = :r"),
-                                dict(r=run_id)).scalar_one_or_none()
-        original = conn.execute(text("SELECT h.number FROM run r JOIN hypothesis_version hv ON hv.id = "
-                                     "r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE r.id = :r"),
-                                dict(r=run.narrower_of_run_id)).scalar_one_or_none() if run.narrower_of_run_id else None
-        cost = conn.execute(text("SELECT * FROM model_call_totals_by_run WHERE run_id = :r"), dict(r=run_id)).one_or_none()
+    stats, gap, narrowing, explained = output("statistics"), output("gap_facts"), output("narrowing"), output("analyst")
+    results = [dict(r._mapping) for r in conn.execute(text(
+        "SELECT ar.scope, s.key AS source, a.key AS analysis_set, ar.n_records, ar.n_alloys, ar.n_groups, "
+        "ar.resid_df, ar.check1_passed, ar.check2_passed, ar.minimums_met, ar.withheld, ar.estimate, ar.std_error, "
+        "ar.p_value, ar.label FROM analysis_result ar JOIN analysis_set a ON a.id = ar.analysis_set_id "
+        "LEFT JOIN source s ON s.id = ar.source_id WHERE ar.run_id = :r ORDER BY ar.id"), dict(r=run_id)).all()]
+    narrower = conn.execute(text("SELECT number FROM hypothesis WHERE narrower_of_run_id = :r"),
+                            dict(r=run_id)).scalar_one_or_none()
+    original = conn.execute(text("SELECT h.number FROM run r JOIN hypothesis_version hv ON hv.id = "
+                                 "r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id WHERE r.id = :r"),
+                            dict(r=run.narrower_of_run_id)).scalar_one_or_none() if run.narrower_of_run_id else None
+    cost = conn.execute(text("SELECT * FROM model_call_totals_by_run WHERE run_id = :r"), dict(r=run_id)).one_or_none()
     decision = (stats or {}).get("decision") or (narrowing or {}).get("decision") or {}
-    built = statement.build(engine, run_id)  # decision A: code's statement, for every completed run
+    built = statement.build_in(conn, run_id)  # decision A: code's statement, for every completed run
     return {
         # One presentation everywhere (owner, after the re-check): code's statement first, then the Analyst's text,
         # only with the statement and only under its label; `run` and `dispatch` print this same output.
         "statement": built["lines"] if built else None,
         "analyst_text": analyst_text(explained) if built else None,
         "run": run.id, "query": run.number, "claim": run.text, "outcome_code": run.outcome,
-        "question_as_tested": question_as_tested(engine, run.id), "status": run.status,
+        "question_as_tested": _question_as_tested(conn, run.id), "status": run.status,
         "narrower_question_of": original, "narrower_question": narrower,
         # A8: a narrower question's plan is shown as coming from its original's narrowing decision.
         "plan": ("from the narrowing decision" if original is not None else "fixed") if run.fixed_plan
@@ -205,7 +235,7 @@ def show(engine: Engine, run_id: int) -> dict | None:
         "sources": (gap or {}).get("sources"),
         "statement_format": ({"current": built["format_version"], "recorded": built["recorded_format_version"]}
                              if built else None),
-        "flags": critic_flags(engine, run_id),
+        "flags": _critic_flags(conn, run_id),
         "tokens_and_cost": {k: v for k, v in cost._mapping.items() if k != "run_id"} if cost else None,
         "p_value_description": st.P_VALUE_DESCRIPTION if any(r["p_value"] is not None for r in results) else None,
         # Step 9a: only for a waiting run, so every other run's output is as before.
@@ -322,40 +352,44 @@ def _time(conn: Connection, column: str, table: str, run_id: int, key: str = "ru
 
 
 def run_page(engine: Engine, run_id: int) -> dict | None:
-    """Everything the run viewer shows, as ready-made words and numbers."""
+    """Everything the run viewer shows, as ready-made words and numbers, from one snapshot."""
+    with snapshot(engine) as conn:
+        return run_page_in(conn, run_id)
+
+
+def run_page_in(conn: Connection, run_id: int) -> dict | None:
     from hypocurate.access.stage import actual_stage
-    shown = show(engine, run_id)
+    shown = show_in(conn, run_id)
     if shown is None:
         return None
-    with engine.connect() as conn:
-        head = conn.execute(text(
-            "SELECT r.status, r.experiment_flags, r.spending_ceiling, r.agent_mode, hv.version_number, d.name AS domain, "
-            "to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS queued, "
-            "to_char(coalesce(r.completed_at, r.failed_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS ended, "
-            "EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS confirmed "
-            "FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
-            "JOIN domain d ON d.id = coalesce(hv.confirmed_domain_id, hv.domain_id) WHERE r.id = :r"),
-            dict(r=run_id)).one()
-        tags = conn.execute(text(
-            "SELECT tv.kind, tv.value FROM run_tag rt JOIN tag_value tv ON tv.id = rt.tag_value_id WHERE rt.run_id = :r "
-            "ORDER BY tv.kind, tv.value"), dict(r=run_id)).all()
-        plan = conn.execute(text("SELECT fingerprint FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one_or_none()
-        freeze = conn.execute(text("SELECT fingerprint, n_records FROM run_snapshot WHERE run_id = :r"),
-                              dict(r=run_id)).one_or_none()
-        locked_at, frozen_at = _time(conn, "locked_at", "plan", run_id), _time(conn, "frozen_at", "run_snapshot", run_id)
-        stats = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'statistics' AND "
-                                  "status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
-        kinds = dict(conn.execute(text("SELECT s.key, s.data_kind FROM run_source rs JOIN source s ON s.id = "
-                                       "rs.source_id WHERE rs.run_id = :r"), dict(r=run_id)).all())
-        sources = conn.execute(text(
-            "SELECT s.key, s.name, rs.search_status, rs.nothing_found FROM run_source rs JOIN source s ON s.id = "
-            "rs.source_id WHERE rs.run_id = :r ORDER BY s.key"), dict(r=run_id)).all()
-        stages = conn.execute(text(
-            "SELECT sr.stage, sr.attempt, sr.status, sr.model, t.calls, t.input_tokens, t.output_tokens, t.reported_cost "
-            "FROM stage_result sr LEFT JOIN model_call_totals_by_stage t ON t.stage_result_id = sr.id "
-            "WHERE sr.run_id = :r ORDER BY sr.id"), dict(r=run_id)).all()
-        stage = actual_stage(conn, run_id, head.status) if head.status == "running" else None
-        facts = _claim_facts(conn, run_id) if head.status in ("queued", "waiting", "running") else None
+    head = conn.execute(text(
+        "SELECT r.status, r.experiment_flags, r.spending_ceiling, r.agent_mode, hv.version_number, d.name AS domain, "
+        "to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS queued, "
+        "to_char(coalesce(r.completed_at, r.failed_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS \"UTC\"') AS ended, "
+        "EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS confirmed "
+        "FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
+        "JOIN domain d ON d.id = coalesce(hv.confirmed_domain_id, hv.domain_id) WHERE r.id = :r"),
+        dict(r=run_id)).one()
+    tags = conn.execute(text(
+        "SELECT tv.kind, tv.value FROM run_tag rt JOIN tag_value tv ON tv.id = rt.tag_value_id WHERE rt.run_id = :r "
+        "ORDER BY tv.kind, tv.value"), dict(r=run_id)).all()
+    plan = conn.execute(text("SELECT fingerprint FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one_or_none()
+    freeze = conn.execute(text("SELECT fingerprint, n_records FROM run_snapshot WHERE run_id = :r"),
+                          dict(r=run_id)).one_or_none()
+    locked_at, frozen_at = _time(conn, "locked_at", "plan", run_id), _time(conn, "frozen_at", "run_snapshot", run_id)
+    stats = conn.execute(text("SELECT output FROM stage_result WHERE run_id = :r AND stage = 'statistics' AND "
+                              "status = 'done' ORDER BY id DESC LIMIT 1"), dict(r=run_id)).scalar_one_or_none()
+    kinds = dict(conn.execute(text("SELECT s.key, s.data_kind FROM run_source rs JOIN source s ON s.id = "
+                                   "rs.source_id WHERE rs.run_id = :r"), dict(r=run_id)).all())
+    sources = conn.execute(text(
+        "SELECT s.key, s.name, rs.search_status, rs.nothing_found FROM run_source rs JOIN source s ON s.id = "
+        "rs.source_id WHERE rs.run_id = :r ORDER BY s.key"), dict(r=run_id)).all()
+    stages = conn.execute(text(
+        "SELECT sr.stage, sr.attempt, sr.status, sr.model, t.calls, t.input_tokens, t.output_tokens, t.reported_cost "
+        "FROM stage_result sr LEFT JOIN model_call_totals_by_stage t ON t.stage_result_id = sr.id "
+        "WHERE sr.run_id = :r ORDER BY sr.id"), dict(r=run_id)).all()
+    stage = actual_stage(conn, run_id, head.status) if head.status == "running" else None
+    facts = _claim_facts(conn, run_id) if head.status in ("queued", "waiting", "running") else None
     test_run = bool((head.experiment_flags or {}).get("constructed_test_data"))
     cost = shown["tokens_and_cost"] or {}
     tables = _tables(stats or {}, kinds)
@@ -397,15 +431,24 @@ def run_page(engine: Engine, run_id: int) -> dict | None:
     }
 
 
-def runs_list(engine: Engine, limit: int = 200) -> list[dict]:
-    """Every run, newest first: query, claim, status, outcome, evidence level and cost."""
-    with engine.connect() as conn:
+class NoSuchPage(LookupError):
+    pass
+
+
+def runs_list(engine: Engine, page: int = 1, per_page: int = RUNS_PER_PAGE) -> dict:
+    """One page of every run, newest first (query, claim, status, outcome, evidence level and cost), with the page's
+    place in the whole (fix round 1, finding 3: every run stays reachable). One snapshot for the count and the rows."""
+    with snapshot(engine) as conn:
+        total = conn.execute(text("SELECT count(*) FROM run")).scalar_one()
+        pages = max(1, -(-total // per_page))
+        if not 1 <= page <= pages:
+            raise NoSuchPage(f"no page {page} of the runs list (pages 1 to {pages})")
         rows = conn.execute(text(
             "SELECT r.id, r.status, r.evidence_level, r.verdict, r.experiment_flags, h.number, hv.text, "
             "r.outcome, to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
             "coalesce(t.cap_cost, 0) AS cost FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
             "JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN model_call_totals_by_run t ON t.run_id = r.id "
-            "ORDER BY r.id DESC LIMIT :n"), dict(n=limit)).all()
+            "ORDER BY r.id DESC LIMIT :n OFFSET :o"), dict(n=per_page, o=(page - 1) * per_page)).all()
     out = []
     for r in rows:
         test_run = bool((r.experiment_flags or {}).get("constructed_test_data"))
@@ -414,7 +457,10 @@ def runs_list(engine: Engine, limit: int = 200) -> list[dict]:
                     "outcome": r.outcome.replace("_", " ") + " in the sources searched" if r.outcome else None,
                     "evidence": evidence(r.evidence_level, None, None, test_run, failed=r.status == "failed"),
                     "cost": money(r.cost)})
-    return out
+    first = (page - 1) * per_page + 1
+    return {"runs": out, "page": page, "pages": pages, "total": total,
+            "words": (f"Runs {first} to {first + len(out) - 1} of {total}, newest first." if out else "No run yet."),
+            "previous": page - 1 if page > 1 else None, "next": page + 1 if page < pages else None}
 
 
 def _text_rows(words: str) -> list[dict]:
@@ -433,20 +479,22 @@ def _text_rows(words: str) -> list[dict]:
 
 
 def confirmation_page(engine: Engine, run_id: int, name: str | None) -> dict | None:
-    """A waiting run's confirmation: the content and its text exactly as `confirm` shows them, the content's
-    fingerprint, which the page sends back (owner's addition 2), and the label the question as tested will carry once
-    `name` confirms it."""
+    """A waiting run's confirmation, from one snapshot: the content and its text exactly as `confirm` shows them, the
+    fingerprint of both (owner's addition 2; fix round 1, finding 1), which the page sends back, and the label the
+    question as tested will carry once `name` confirms it."""
     from hypocurate.pipeline import confirmation
-    page = run_page(engine, run_id)
-    if page is None:
-        return None
-    if not page["can_confirm"]:
-        return {**page, "content": None}
-    content, words = confirmation.show(engine, run_id)
+    with snapshot(engine) as conn:
+        page = run_page_in(conn, run_id)
+        if page is None:
+            return None
+        if not page["can_confirm"]:
+            return {**page, "content": None}
+        content = confirmation.content(conn, run_id)
+    words = confirmation.render(content)
     after = confirmation.label_once_confirmed(content["question_as_tested"]["label"], by=name or "you",
                                               at="the time you confirm (UTC)")
     return {**page, "content": content, "text": words, "rows": _text_rows(words),
-            "content_fingerprint": confirmation.content_fingerprint(content), "label_after": after}
+            "shown_fingerprint": confirmation.shown_fingerprint(content, words), "label_after": after}
 
 
 def spending(engine: Engine) -> dict:

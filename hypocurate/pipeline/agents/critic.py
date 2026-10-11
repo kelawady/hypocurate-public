@@ -221,10 +221,15 @@ def flag_display(engine: Engine, run_id: int) -> list[dict]:
     Critic's class and reason with ADVICE_LABEL beside them, or NOT_SENT for a single-record flag, or 'not classified'
     (shown, never decided on)."""
     with engine.connect() as conn:
-        rows = conn.execute(text(
-            "SELECT f.id, f.kind, f.category, f.critic_class, f.critic_reason, "
-            "(SELECT count(*) FROM flag_record fr WHERE fr.flag_id = f.id) AS n FROM flag f WHERE f.run_id = :r "
-            "ORDER BY f.id"), dict(r=run_id)).all()
+        return flag_display_in(conn, run_id)
+
+
+def flag_display_in(conn: Connection, run_id: int) -> list[dict]:
+    """`flag_display` on a given connection (step 10a, fix round 1, finding 2: the run page reads one snapshot)."""
+    rows = conn.execute(text(
+        "SELECT f.id, f.kind, f.category, f.critic_class, f.critic_reason, "
+        "(SELECT count(*) FROM flag_record fr WHERE fr.flag_id = f.id) AS n FROM flag f WHERE f.run_id = :r "
+        "ORDER BY f.id"), dict(r=run_id)).all()
     out = []
     for r in rows:
         if r.n < MIN_RECORDS:

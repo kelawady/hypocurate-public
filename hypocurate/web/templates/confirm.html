@@ -20,7 +20,7 @@
 </section>
 <form method="post" action="/runs/{{ r.run }}/confirm" class="confirm-form">
   <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
-  <input type="hidden" name="content_fingerprint" value="{{ r.content_fingerprint }}">
+  <input type="hidden" name="shown_fingerprint" value="{{ r.shown_fingerprint }}">
   <p>Confirming as <strong>{{ signed_in_as }}</strong>. Once you confirm, the question as tested is labelled: {{ r.label_after }}.</p>
   <button type="submit">Confirm the question as tested</button>
   <a class="button secondary" href="/runs/{{ r.run }}">Back without confirming</a>
@@ -29,6 +29,6 @@
   <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
   <button type="submit" class="secondary">Cancel this run instead</button>
 </form>
-<p class="muted small">Content fingerprint {{ r.content_fingerprint }}</p>
+<p class="muted small">Fingerprint of what is shown {{ r.shown_fingerprint }}</p>
 {% endif %}
 {% endblock %}

@@ -269,11 +269,16 @@ def render(c: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def content_fingerprint(c: Mapping[str, Any]) -> str:
-    """SHA-256 of the content's canonical JSON (keys sorted, no spaces, UTF-8): what a confirmation page sends back so
-    that `confirm` can check it is still the content shown (owner's addition 2 of 2026-10-11)."""
-    canonical = json.dumps(c, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+def shown_fingerprint(c: Mapping[str, Any], words: str) -> str:
+    """SHA-256 of the canonical JSON (keys sorted, no spaces, UTF-8) of the content and the exact text shown together:
+    what a confirmation page (or the command line) sends back, so that `confirm` records only what the person saw
+    (owner's addition 2 of 2026-10-11; fix round 1, finding 1: the text too, so a renderer changed between showing and
+    confirming is refused)."""
+    canonical = json.dumps({"content": c, "text": words}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+_fingerprint = shown_fingerprint  # `confirm`'s own parameter has the same name
 
 
 def show(engine: Engine, run_id: int) -> tuple[dict, str]:
@@ -286,9 +291,10 @@ def show(engine: Engine, run_id: int) -> tuple[dict, str]:
 def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | None = None,
             shown_fingerprint: str | None = None) -> dict:
     """Records one named person's confirmation of one waiting run. `shown`: the content that was printed; or
-    `shown_fingerprint`: the `content_fingerprint` of the content a page displayed (step 10a, owner's addition 2). The
-    confirmation is refused as `content_changed` if either differs from the current content, read in the same
-    transaction as the insert. Returns the stored content and text."""
+    `shown_fingerprint`: the `shown_fingerprint` of the content and the text displayed (step 10a, owner's addition 2;
+    fix round 1, finding 1). The content is read and the text rendered in the same transaction as the insert; the
+    confirmation is refused as `content_changed` if either differs from what was shown, so the text stored is exactly
+    the text the fingerprint covered. Returns the stored content and text."""
     name = (by or "").strip()
     if not name or len(name) > CONFIRMED_BY_MAX:
         raise QueryRefused("name_required", f"a confirmation names the person (1 to {CONFIRMED_BY_MAX} characters)")
@@ -309,11 +315,11 @@ def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | Non
             c = content(conn, run_id)
         except NotLockable as error:
             raise QueryRefused(error.code, "the stored rows give no plan to lock") from None
+        words = render(c)
         if (shown is not None and dict(shown) != c) or \
-                (shown_fingerprint is not None and shown_fingerprint != content_fingerprint(c)):
+                (shown_fingerprint is not None and shown_fingerprint != _fingerprint(c, words)):
             raise QueryRefused("content_changed", "what was shown is no longer the run's current content; show it "
                                                   "again before confirming")
-        words = render(c)
         conn.execute(text(
             "INSERT INTO rules_confirmation (run_id, confirmed_by, plan_fingerprint, planner_stage_result_id, "
             "narrowing_stage_result_id, content, shown) VALUES (:r, :b, :fp, :p, :n, :c, :s)").bindparams(

@@ -261,7 +261,7 @@ def test_the_confirmation_page_shows_exactly_what_the_command_line_shows(world):
     content, words = confirmation.show(engine, runs["waiting"])
     for line in words.split("\n"):
         assert " ".join(line.split()) in plain(page), line
-    assert f'name="content_fingerprint" value="{confirmation.content_fingerprint(content)}"' in page
+    assert f'name="shown_fingerprint" value="{confirmation.shown_fingerprint(content, words)}"' in page
     assert f"Confirming as {NAME}" in plain(page)
 
 
@@ -283,10 +283,10 @@ def test_confirming_records_the_signed_in_name_and_exactly_the_text_shown_and_ru
     rid = waiting(engine, stub)
     c = signed_in(engine, url)
     page = c.get(f"/runs/{rid}/confirm").text
-    fp = re.search(r'name="content_fingerprint" value="([0-9a-f]{64})"', page).group(1)
+    fp = re.search(r'name="shown_fingerprint" value="([0-9a-f]{64})"', page).group(1)
     stages = one(engine, "SELECT count(*) FROM stage_result WHERE run_id = :r", r=rid)
     calls = len(stub.requests)
-    r = c.post(f"/runs/{rid}/confirm", data={"csrf_token": token(c), "content_fingerprint": fp})
+    r = c.post(f"/runs/{rid}/confirm", data={"csrf_token": token(c), "shown_fingerprint": fp})
     assert r.status_code == 303 and r.headers["location"] == f"/runs/{rid}?done=confirmed"
     with engine.connect() as conn:
         row = conn.execute(text("SELECT confirmed_by, shown FROM rules_confirmation WHERE run_id = :r"),
@@ -305,8 +305,8 @@ def test_a_confirmation_of_content_other_than_what_was_shown_is_refused(own, stu
     engine, url = own
     rid = waiting(engine, stub)
     c = signed_in(engine, url)
-    for fp in ("0" * 64, confirmation.content_fingerprint({"run": rid})):
-        r = c.post(f"/runs/{rid}/confirm", data={"csrf_token": token(c), "content_fingerprint": fp})
+    for fp in ("0" * 64, confirmation.shown_fingerprint({"run": rid}, "another text")):
+        r = c.post(f"/runs/{rid}/confirm", data={"csrf_token": token(c), "shown_fingerprint": fp})
         assert r.status_code == 409 and "show it again before confirming" in plain(r.text)
     assert one(engine, "SELECT count(*) FROM rules_confirmation WHERE run_id = :r", r=rid) == 0
 
@@ -326,9 +326,9 @@ def test_a_write_without_the_sessions_token_is_refused_and_writes_nothing(own, s
     engine, url = own
     rid = waiting(engine, stub)
     c = signed_in(engine, url)
-    fp = confirmation.content_fingerprint(confirmation.show(engine, rid)[0])
+    fp = confirmation.shown_fingerprint(*confirmation.show(engine, rid))
     extra = {} if sent is None else {"csrf_token": sent}
-    assert c.post(f"/runs/{rid}/confirm", data={"content_fingerprint": fp, **extra}).status_code == 403
+    assert c.post(f"/runs/{rid}/confirm", data={"shown_fingerprint": fp, **extra}).status_code == 403
     assert c.post(f"/runs/{rid}/cancel", data=extra).status_code == 403
     assert one(engine, "SELECT count(*) FROM rules_confirmation WHERE run_id = :r", r=rid) == 0
     assert one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "waiting"
@@ -365,7 +365,7 @@ def test_a_completed_run_has_no_confirmation_to_give(world):
     engine, url, runs = world
     c = signed_in(engine, url)
     assert "is not waiting for a confirmation" in plain(c.get(f"/runs/{runs['sufficient']}/confirm").text)
-    r = c.post(f"/runs/{runs['sufficient']}/confirm", data={"csrf_token": token(c), "content_fingerprint": "0" * 64})
+    r = c.post(f"/runs/{runs['sufficient']}/confirm", data={"csrf_token": token(c), "shown_fingerprint": "0" * 64})
     assert r.status_code == 409
 
 

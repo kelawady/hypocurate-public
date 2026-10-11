@@ -112,3 +112,4 @@ dd ul { margin: 0; padding-left: 1.2em; }
 @media (max-width: 60rem) { .statement-row { grid-template-columns: 1fr; } }
 .info.flip .info-text { left: auto; right: 0; }
 table.runs td:nth-child(2) { white-space: nowrap; }
+.pages { display: flex; gap: 16px; align-items: baseline; margin: 1rem 0; }

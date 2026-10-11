@@ -41,21 +41,25 @@ def confirmations(engine, rid):
 
 
 def test_the_fingerprint_is_the_sha256_of_the_contents_canonical_json_and_changes_with_any_item():
+    """Fix round 1, finding 1: the fingerprint covers the content and the text shown together (it covered the content
+    alone before); key order does not count, list order and any item do."""
     import hashlib
     import json
     c = {"run": 1, "query": "Q-0001", "cost_so_far": {"counted_usd": "0.017640", "calls": 1}, "names": ["ä", "b"]}
-    expected = hashlib.sha256(json.dumps(c, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-                              .encode("utf-8")).hexdigest()
-    assert confirmation.content_fingerprint(c) == expected
-    assert confirmation.content_fingerprint(dict(reversed(list(c.items())))) == expected  # key order does not count
-    assert confirmation.content_fingerprint({**c, "cost_so_far": {"counted_usd": "0.017641", "calls": 1}}) != expected
-    assert confirmation.content_fingerprint({**c, "names": ["b", "ä"]}) != expected  # list order does
+    words = "Run 1 of Q-0001 waits."
+    expected = hashlib.sha256(json.dumps({"content": c, "text": words}, sort_keys=True, separators=(",", ":"),
+                                         ensure_ascii=False).encode("utf-8")).hexdigest()
+    assert confirmation.shown_fingerprint(c, words) == expected
+    assert confirmation.shown_fingerprint(dict(reversed(list(c.items()))), words) == expected  # key order does not count
+    assert confirmation.shown_fingerprint({**c, "cost_so_far": {"counted_usd": "0.017641", "calls": 1}}, words) != expected
+    assert confirmation.shown_fingerprint({**c, "names": ["b", "ä"]}, words) != expected  # list order does
 
 
 def test_a_matching_fingerprint_confirms(engine, stub):
     rid = waiting(engine, stub)
     content, words = confirmation.show(engine, rid)
-    stored = confirmation.confirm(engine, rid, "Grace Reviewer", shown_fingerprint=confirmation.content_fingerprint(content))
+    stored = confirmation.confirm(engine, rid, "Grace Reviewer",
+                                  shown_fingerprint=confirmation.shown_fingerprint(content, words))
     assert stored["shown"] == words and confirmations(engine, rid) == 1
 
 
@@ -72,7 +76,7 @@ def test_content_that_changed_after_it_was_shown_is_refused(engine, stub, monkey
     """What `confirm` compares is the content as it reads inside its own transaction: content that differs from what
     the page showed (here one item more) is refused."""
     rid = waiting(engine, stub)
-    shown = confirmation.content_fingerprint(confirmation.show(engine, rid)[0])
+    shown = confirmation.shown_fingerprint(*confirmation.show(engine, rid))
     original = confirmation.content
     monkeypatch.setattr(confirmation, "content", lambda conn, run_id: {**original(conn, run_id), "changed": True})
     with pytest.raises(queries.QueryRefused) as refused:
@@ -92,7 +96,8 @@ def test_the_text_shown_says_informative_groups_the_label_now_and_once_confirmed
     assert "  Once confirmed, labelled: the Planner's reading of the claim; not verified by code; confirmed by the " \
            "person who confirms on the time of confirming (UTC)" in words.split("\n")
     assert content["cost_so_far"]["calls"] == 1 and "(reported $" in words and "; 1 model call, 0 without" in words
-    stored = confirmation.confirm(engine, rid, "Grace Reviewer", shown_fingerprint=confirmation.content_fingerprint(content))
+    stored = confirmation.confirm(engine, rid, "Grace Reviewer",
+                                  shown_fingerprint=confirmation.shown_fingerprint(content, words))
     assert stored["shown"] == words  # what is stored is exactly what was shown
 
 
@@ -102,3 +107,40 @@ def test_the_label_once_confirmed_follows_the_readings_own_wording():
         reading.CONFIRMED_LABEL.format(by="Ada", at="2026-10-11 10:00:00 UTC")
     assert confirmation.label_once_confirmed(reading.LABELS["narrower"], "Ada", "then") == \
         reading.LABELS["narrower"] + "; confirmed by Ada on then"
+
+
+# --- Fix round 1, finding 1 (ChatGPT, accepted by the owner, 2026-10-11): the fingerprint covers the text shown ------
+
+def test_a_renderer_changed_between_display_and_submission_is_refused(engine, stub, monkeypatch):
+    """The page showed one wording; the code that renders it changed before the person confirmed (a deploy). The
+    content is the same, but the text that would be stored is not what the person saw: refused, nothing recorded."""
+    rid = waiting(engine, stub)
+    content, words = confirmation.show(engine, rid)
+    shown = confirmation.shown_fingerprint(content, words)
+    original = confirmation.render
+    monkeypatch.setattr(confirmation, "render",
+                        lambda c: original(c).replace("informative groups", "independent groups"))
+    assert confirmation.render(content) != words  # only the renderer changed
+    with pytest.raises(queries.QueryRefused) as refused:
+        confirmation.confirm(engine, rid, "Grace Reviewer", shown_fingerprint=shown)
+    assert refused.value.code == "content_changed" and confirmations(engine, rid) == 0
+
+
+def test_the_fingerprint_covers_the_content_and_the_text_together():
+    c = {"run": 1, "query": "Q-0001"}
+    assert confirmation.shown_fingerprint(c, "a") != confirmation.shown_fingerprint(c, "b")
+    assert confirmation.shown_fingerprint(c, "a") != confirmation.shown_fingerprint({**c, "run": 2}, "a")
+    import hashlib
+    import json
+    assert confirmation.shown_fingerprint(c, "a") == hashlib.sha256(json.dumps(
+        {"content": c, "text": "a"}, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+def test_what_is_stored_is_exactly_the_text_the_fingerprint_covered(engine, stub):
+    rid = waiting(engine, stub)
+    content, words = confirmation.show(engine, rid)
+    stored = confirmation.confirm(engine, rid, "Grace Reviewer",
+                                  shown_fingerprint=confirmation.shown_fingerprint(content, words))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT shown FROM rules_confirmation WHERE run_id = :r"), dict(r=rid)).scalar() \
+            == words == stored["shown"]
