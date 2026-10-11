@@ -199,6 +199,27 @@ def create_app(
             "r": shown, "csrf_token": security.csrf_token(request), "csrf_field": security.CSRF_FIELD},
             headers={"Cache-Control": "no-store"})
 
+    @app.get("/runs/{run_id}/workbook")
+    def run_workbook(request: Request, run_id: int):
+        """PRD 11: the run's workbook, built on request from stored rows."""
+        from hypocurate.pipeline import workbook
+        data = workbook.build(engine, run_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"no run {run_id}")
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="hypocurate-run-{run_id}.xlsx"',
+                                 "Cache-Control": "no-store"})
+
+    @app.get("/runs/{run_id}/records.csv")
+    def run_records_csv(request: Request, run_id: int):
+        from hypocurate.pipeline import workbook
+        data = workbook.records_csv(engine, run_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"no run {run_id}")
+        return Response(data, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="hypocurate-run-{run_id}-records.csv"',
+                                 "Cache-Control": "no-store"})
+
     @app.get("/runs/{run_id}/confirm", response_class=HTMLResponse)
     def confirm_form(request: Request, run_id: int):
         from hypocurate.pipeline import run_view

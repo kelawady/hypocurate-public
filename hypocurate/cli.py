@@ -70,6 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     cancel.add_argument("--by", required=True, help="the name of the person cancelling")
     show = sub.add_parser("show", help="print a run's outcome and summary")
     show.add_argument("run", type=int)
+    export = sub.add_parser("export", help="write a run's workbook (PRD 11, 12), or with --csv its records")
+    export.add_argument("run", type=int)
+    export.add_argument("--out", required=True, help="the file to write")
+    export.add_argument("--csv", action="store_true", help="the records as CSV instead of the workbook")
     args = parser.parse_args(argv)
 
     settings = load_settings(web=False)
@@ -84,6 +88,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "worker":
         from hypocurate import worker as background
         return background.run(once=args.once, engine=engine)
+    if args.command == "export":  # step 10b: the same functions as the website's download
+        from hypocurate.pipeline import workbook
+        data = workbook.records_csv(engine, args.run) if args.csv else workbook.build(engine, args.run)
+        if data is None:
+            print(f"error: no run {args.run}", file=sys.stderr)
+            return 1
+        content = data.encode("utf-8") if isinstance(data, str) else data
+        with open(args.out, "wb") as f:
+            f.write(content)
+        print(json.dumps({"run": args.run, "written": args.out, "bytes": len(content)}))
+        return 0
     if args.command in ("run", "dispatch", "show", "confirm", "cancel", "queue"):
         from hypocurate.cli_runs import command
         return command(args, engine)

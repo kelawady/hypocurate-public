@@ -6,6 +6,7 @@
 <p class="crumbs"><a href="/runs">Runs</a> › {{ r.query }} · version {{ r.version }} · run {{ r.run }} {{ info("version") }} · <strong>{{ r.status_words }}</strong></p>
 <h1>{{ r.claim }}</h1>
 <p class="muted">Domain: {{ r.domain }}{% for t in r.tags %} · {{ t }}{% endfor %} · plan: {{ r.plan_kind }} · agent mode: {{ r.agent_mode }} · dispatched {{ r.queued }}{% if r.ended %} · ended {{ r.ended }}{% endif %}</p>
+<p class="downloads"><a class="button" href="/runs/{{ r.run }}/workbook">Download data (workbook)</a> <a href="/runs/{{ r.run }}/records.csv">Records as CSV</a> {{ info("download") }}</p>
 {% if r.test_run_badge %}<p class="badge test-run">{{ r.test_run_badge }}</p>{% endif %}
 {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
