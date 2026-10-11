@@ -242,3 +242,17 @@ def test_only_a_draft_is_edited_in_place_and_only_a_returned_query_gets_a_new_ve
     with pytest.raises(queries.QueryRefused) as refused:
         queries.return_for_edits(engine, q.version_id, by="", comment="x")
     assert refused.value.code == "reviewer_missing"
+
+
+def test_the_edit_form_keeps_the_versions_own_choices(own):
+    """The form opens with the version's domain, sufficiency option, sources and note (step 10b, found in the
+    screenshots: it fell back to the defaults)."""
+    engine, url = own
+    c = signed_in(engine, url, NAME)
+    number = new_query(c, sources=("tamu_fcc",), domain="fatigue", sufficiency="use_available", note="keep me")
+    form = c.get(f"/queries/{number}/edit").text
+    assert re.search(r'name="domain" value="fatigue" checked', form)
+    assert not re.search(r'name="domain" value="grain_size_strengthening" checked', form)
+    assert re.search(r'name="sufficiency" value="use_available" checked', form)
+    assert re.search(r'name="sources" value="tamu_fcc" checked', form)
+    assert not re.search(r'name="sources" value="mpea" checked', form) and "keep me" in form

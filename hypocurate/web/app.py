@@ -178,7 +178,14 @@ def create_app(
         shown = run_view.run_page(engine, run_id)
         if shown is None:
             raise HTTPException(status_code=404, detail=f"no run {run_id}")
-        return page(request, "run.html", {"r": shown, "message": DONE.get(request.query_params.get("done", ""))})
+        figure = None
+        if shown["status"] == "completed":  # step 10b: the plot, built on request from stored rows
+            from hypocurate.pipeline import plot
+            d = plot.data(engine, run_id)
+            figure = {**d, "svg": plot.svg(d) if d.get("plot") else None,
+                      "legend": plot.legend(d) if d.get("plot") else []}
+        return page(request, "run.html", {"r": shown, "plot": figure,
+                                          "message": DONE.get(request.query_params.get("done", ""))})
 
     @app.get("/runs/{run_id}/state", response_class=HTMLResponse)
     def run_state(request: Request, run_id: int):
@@ -304,8 +311,8 @@ def create_app(
         except query_view.NoSuchQuery as error:
             raise HTTPException(status_code=404, detail=str(error)) from None
         latest = shown["latest"]
-        values = {"claim": latest["claim"], "note": latest["note"] or "", "sufficiency": None,
-                  "sources": [s["key"] for s in latest["sources"]], "domain": None}
+        values = {"claim": latest["claim"], "note": latest["note"] or "", "sufficiency": latest["sufficiency_key"],
+                  "sources": [s["key"] for s in latest["sources"]], "domain": latest["domain_key"]}
         return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
                                                  "q": shown, "values": values, "error": None, "active": "queries"})
 

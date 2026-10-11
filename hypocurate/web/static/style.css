@@ -122,3 +122,5 @@ label.choice { display: block; margin: 4px 0; } label.choice input { width: auto
 .picker ul { list-style: none; margin: 0; padding: 0; } .picker li { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
 .picker li.current { border-color: var(--accent); background: #eef3fb; }
 @media (max-width: 60rem) { .review-grid { grid-template-columns: 1fr; } }
+.plot-box { overflow-x: auto; } svg.plot { width: 100%; min-width: 540px; height: auto; display: block; }
+.legend { margin: 8px 0; padding-left: 1.2em; }

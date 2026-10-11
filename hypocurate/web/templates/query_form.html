@@ -5,7 +5,7 @@
 {% if number %}<p class="crumbs"><a href="/queries">Queries</a> › <a href="/queries/{{ number }}">{{ number }}</a> › edit</p>{% endif %}
 <h1>{% if number %}Edit {{ number }}{% else %}New query{% endif %}</h1>
 {% if number and q and q.latest.status == "returned" %}
-<p class="notice">Version {{ q.latest.version }} was returned for edits: {{ q.latest.review_comment }}. Saving creates version {{ q.latest.version + 1 }}; version {{ q.latest.version }} is kept unchanged. {{ info("version") }}</p>
+<p class="notice">Version {{ q.latest.version }}: {{ q.latest.review_comment }}. Saving creates version {{ q.latest.version + 1 }}; version {{ q.latest.version }} is kept unchanged. {{ info("version") }}</p>
 {% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="{% if number %}/queries/{{ number }}/edit{% else %}/queries{% endif %}" class="query-form">

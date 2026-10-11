@@ -90,7 +90,7 @@ def query_page(engine: Engine, number: str) -> dict:
         versions = []
         for v in conn.execute(text(
                 "SELECT v.id, v.version_number, v.text, v.status, v.note, v.review_comment, v.sufficiency_option, "
-                "d.name AS domain, cd.name AS confirmed_domain, "
+                "d.name AS domain, d.key AS domain_key, cd.name AS confirmed_domain, "
                 "to_char(v.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS created "
                 "FROM hypothesis_version v JOIN domain d ON d.id = v.domain_id "
                 "LEFT JOIN domain cd ON cd.id = v.confirmed_domain_id WHERE v.hypothesis_id = :h "
@@ -104,7 +104,8 @@ def query_page(engine: Engine, number: str) -> dict:
             versions.append({"version": v.version_number, "claim": v.text, "status": v.status,
                              "status_words": VERSION_STATUS_WORDS[v.status], "note": v.note,
                              "review_comment": v.review_comment, "created": v.created,
-                             "domain": v.confirmed_domain or v.domain,
+                             "domain": v.confirmed_domain or v.domain, "domain_key": v.domain_key,
+                             "sufficiency_key": v.sufficiency_option,
                              "sufficiency": SUFFICIENCY_WORDS.get(v.sufficiency_option, v.sufficiency_option),
                              "sources": _sources(conn, v.id), "runs": runs})
         cost = conn.execute(text("SELECT * FROM model_call_totals_by_query WHERE hypothesis_id = :h"),

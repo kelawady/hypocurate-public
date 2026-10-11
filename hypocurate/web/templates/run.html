@@ -49,6 +49,17 @@
   {% endif %}
 </section>
 
+{% if plot %}
+<section class="plot-section">
+  <h2>Plot of the data and the fitted relationship {{ info("plot") }}</h2>
+  {% if plot.svg %}
+  <div class="plot-box">{{ plot.svg }}</div>
+  <ul class="legend">{% for line in plot.legend %}<li>{{ line|units }}</li>{% endfor %}</ul>
+  {% else %}<p>{{ plot.reason }}</p>{% endif %}
+  <p class="muted small">{{ plot.version }}</p>
+</section>
+{% endif %}
+
 {% if r.per_source %}
 <section>
   <h2>Each source alone, and all together {{ info("persource") }}</h2>
