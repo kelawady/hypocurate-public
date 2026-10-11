@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active = "runs" %}
+{% block title %}Runs · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Runs</h1>
+<p class="muted">Every dispatched run, newest first. {{ info("queue") }}</p>
+{% if not runs %}<p>No run yet.</p>{% else %}
+<table class="data runs">
+  <thead><tr><th>Evidence {{ info("evidence_level") }}</th><th>Run</th><th>Claim</th><th>Status {{ info("status") }}</th><th>Outcome {{ info("outcome") }}</th><th>Cost {{ info("cost") }}</th></tr></thead>
+  <tbody>{% for x in runs %}
+    <tr>
+      <td data-label="Evidence">{% with e = x.evidence, small = true %}{% include "_dial.html" %}{% endwith %}</td>
+      <td data-label="Run"><a href="/runs/{{ x.run }}">{{ x.query }} · run {{ x.run }}</a><div class="muted">{{ x.queued }}</div></td>
+      <td data-label="Claim">{{ x.claim }}</td>
+      <td data-label="Status">{{ x.status_words }}</td>
+      <td data-label="Outcome">{{ x.outcome or "—" }}</td>
+      <td data-label="Cost">{{ x.cost }}</td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+{% endif %}
+{% endblock %}

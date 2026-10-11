@@ -16,6 +16,7 @@ from hypocurate.web.app import SESSION_COOKIE, SESSION_MAX_AGE, create_app
 from hypocurate.web.login_throttle import MAX_FAILURES, LoginThrottle
 
 PASSWORD = "test-password-not-a-secret"
+NAME = "Test Person"
 SECRET = "s" * 40
 UNREACHABLE_DB = "postgresql://nobody:planted-pw-7319@127.0.0.1:1/none"
 # Paths that only look like the public ones (review finding 3).
@@ -42,7 +43,8 @@ def client(env="development", throttle=None, app=None):
 
 
 def sign_in(c, password=PASSWORD):
-    return c.post("/login", data={"password": password})
+    # Step 10a (owner, 2026-10-11, answer 1): the sign-in form also takes the person's name.
+    return c.post("/login", data={"password": password, "name": NAME})
 
 
 def cookie_payload(value):
@@ -119,10 +121,14 @@ def test_logout_ends_the_session():
 
 # --- the cookie ---------------------------------------------------------------------
 
-def test_cookie_holds_only_the_signed_in_flag():
+def test_cookie_holds_only_the_signed_in_flag_the_name_and_the_form_token():
+    """Step 10a (owner, 2026-10-11, answer 1 and addition 1): the cookie also holds the name given at sign-in and the
+    token every write carries; nothing else."""
     c = client()
     sign_in(c)
-    assert cookie_payload(c.cookies[SESSION_COOKIE]) == {"signed_in": True}
+    payload = cookie_payload(c.cookies[SESSION_COOKIE])
+    assert set(payload) == {"signed_in", "name", "csrf"}
+    assert payload["signed_in"] is True and payload["name"] == NAME and len(payload["csrf"]) >= 40
 
 
 def test_tampered_cookie_is_rejected():

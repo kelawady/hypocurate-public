@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set active = "runs" %}
+{% block title %}Run {{ r.run }} · {{ r.query }} · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/runs">Runs</a> › {{ r.query }} · version {{ r.version }} · run {{ r.run }} {{ info("version") }} · <strong>{{ r.status_words }}</strong></p>
+<h1>{{ r.claim }}</h1>
+<p class="muted">Domain: {{ r.domain }}{% for t in r.tags %} · {{ t }}{% endfor %} · plan: {{ r.plan_kind }} · agent mode: {{ r.agent_mode }} · dispatched {{ r.queued }}{% if r.ended %} · ended {{ r.ended }}{% endif %}</p>
+{% if r.test_run_badge %}<p class="badge test-run">{{ r.test_run_badge }}</p>{% endif %}
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% if r.status != "completed" %}{% include "_state.html" %}{% endif %}
+
+{% if r.status == "completed" %}
+<section class="statement">
+  <div class="statement-row">
+    <div class="statement-text">
+      <h2>Results statement (written by code) {{ info("sig") }}</h2>
+      {% for line in r.statement.body %}<p class="{{ 'indent' if line.startswith('  ') else '' }}">{{ line|units }}</p>{% endfor %}
+    </div>
+    <aside class="outcome" aria-label="Evidence level and verdict">
+      <h3>Evidence level {{ info("evidence_level") }}</h3>
+      {% with e = r.evidence, small = false %}{% include "_dial.html" %}{% endwith %}
+      <div class="verdict">
+        <div class="outcome-words">{{ r.outcome }} {{ info("outcome") }}</div>
+        <div class="verdict-words">{% if r.verdict %}Verdict: {{ r.verdict }}{% else %}No verdict{% endif %}</div>
+        {% if r.exploratory %}<div class="badge exploratory">exploratory {{ info("exploratory") }}</div>{% endif %}
+      </div>
+    </aside>
+  </div>
+</section>
+{% elif r.question_as_tested %}
+<section>
+  <h2>Question as tested</h2>
+  <p>{{ r.question_as_tested.text }}</p>
+  <p class="muted">{{ r.question_as_tested.label }}</p>
+</section>
+{% endif %}
+
+{% if r.status == "completed" %}
+<section class="analyst">
+  <h2>Explanation by the Analyst</h2>
+  {% if r.analyst and r.analyst.text %}
+    <p class="label">{{ r.analyst.label }}</p>
+    <div class="model-text">{{ r.analyst.text|model_text }}</div>
+  {% elif r.analyst %}
+    <p class="muted">{{ r.analyst.unavailable }}</p>
+  {% endif %}
+</section>
+
+{% if r.per_source %}
+<section>
+  <h2>Each source alone, and all together {{ info("persource") }}</h2>
+  <table class="data">
+    <thead><tr><th>Source</th><th>Kind of data {{ info("kinds") }}</th><th>Records</th><th>Alloys</th><th>Groups</th><th>Result</th><th>Against the pooled result</th></tr></thead>
+    <tbody>{% for x in r.per_source %}
+      <tr{% if loop.first %} class="pooled"{% endif %}><td data-label="Source">{{ x.name }}</td><td data-label="Kind of data">{{ x.kind }}</td><td data-label="Records">{{ x.records }}</td><td data-label="Alloys">{{ x.alloys }}</td><td data-label="Groups">{{ x.groups }}</td><td data-label="Result">{{ x.result|units }}</td><td data-label="Against the pooled result">{{ x.against }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% if r.p_value_description %}<p class="muted">Each ± is one standard error (cluster-robust, by group), not a confidence interval. Each p-value is an {{ r.p_value_description }}.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if r.sensitivity %}
+<section>
+  <h2>Sensitivity sets {{ info("sig_sens") }}</h2>
+  <p class="muted">Shown beside the verdict; they never change it.</p>
+  <table class="data">
+    <thead><tr><th>Set</th><th>Records</th><th>Alloys</th><th>Groups</th><th>Result</th><th>Against the pooled result</th></tr></thead>
+    <tbody>{% for x in r.sensitivity %}
+      <tr><td data-label="Set">{{ x.name }}<div class="muted">{{ x.change }}</div></td><td data-label="Records">{{ x.records }}</td><td data-label="Alloys">{{ x.alloys }}</td><td data-label="Groups">{{ x.groups }}</td><td data-label="Result">{{ x.result|units }}</td><td data-label="Against the pooled result">{{ x.against }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Cautions</h2>
+  {% for line in r.statement.cautions %}<p class="{{ 'indent' if line.startswith('  ') else '' }}">{{ line|units }}</p>{% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Checkpoints</h2>
+  <div class="cards">
+    <div class="card"><h3>Checkpoint 1: rules lock {{ info("lock") }}</h3>
+      {% if r.checkpoints.rules_lock.at %}<p>{{ r.checkpoints.rules_lock.at }}</p><p class="mono">{{ r.checkpoints.rules_lock.fingerprint }}</p>{% else %}<p class="muted">Not reached.</p>{% endif %}</div>
+    <div class="card"><h3>Checkpoint 2: dataset freeze {{ info("freeze") }}</h3>
+      {% if r.checkpoints.dataset_freeze.at %}<p>{{ r.checkpoints.dataset_freeze.at }} · {{ r.checkpoints.dataset_freeze.records }} records</p><p class="mono">{{ r.checkpoints.dataset_freeze.fingerprint }}</p>{% else %}<p class="muted">Not reached.</p>{% endif %}</div>
+  </div>
+</section>
+
+{% if r.sources %}
+<section>
+  <h2>Sources {{ info("sources") }}</h2>
+  <ul>{% for s in r.sources %}<li>{{ s.name }}: {{ s.status }}{% if s.nothing_found %} ({{ s.nothing_found }}){% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section>
+  <h2>Tokens and cost {{ info("cost") }}</h2>
+  <p>{{ r.cost.calls_words }} · {{ r.cost.input_tokens }} input and {{ r.cost.output_tokens }} output tokens · cost reported by the provider {{ r.cost.reported }} · counted toward the caps {{ r.cost.counted }}{% if r.cost.unconfirmed_calls %} ({{ r.cost.unconfirmed_calls }} calls without a reported cost, counted at their maximum){% endif %} · ceiling for this run {{ r.ceiling }}</p>
+  {% if r.stages %}
+  <table class="data">
+    <thead><tr><th>Stage {{ info("stages") }}</th><th>Attempt</th><th>Status</th><th>Model</th><th>Calls</th><th>Input tokens</th><th>Output tokens</th><th>Cost</th></tr></thead>
+    <tbody>{% for s in r.stages %}<tr><td data-label="Stage">{{ s.name }}</td><td data-label="Attempt">{{ s.attempt }}</td><td data-label="Status">{{ s.status }}</td><td data-label="Model">{{ s.model or "—" }}</td><td data-label="Calls">{{ s.calls }}</td><td data-label="Input tokens">{{ s.input_tokens }}</td><td data-label="Output tokens">{{ s.output_tokens }}</td><td data-label="Cost">{{ s.cost }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% if r.statement.format %}<p class="muted">{% for line in r.statement.format %}{{ line }} {% endfor %}</p>{% endif %}
+{% endblock %}

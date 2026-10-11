@@ -60,7 +60,8 @@ def test_every_category_has_entries_and_keys_are_unique():
 # Step 7 completed tamu_grouping_unit, papers_independent, validity_checks, fixed_minimums,
 # grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
 # the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
-PARTLY = {"constructed_test_runs", "question_as_tested"}  # step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
+# Step 10a: question_as_tested fully applied (the website's Confirm button).
+PARTLY = {"constructed_test_runs"}  # step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():
@@ -453,7 +454,8 @@ def page_client(register=None):
 
 def signed_in(register=None):
     c = page_client(register)
-    assert c.post("/login", data={"password": PASSWORD}).status_code == 303
+    # Step 10a (owner, 2026-10-11, answer 1): the sign-in form also takes the person's name.
+    assert c.post("/login", data={"password": PASSWORD, "name": "Test Person"}).status_code == 303
     return c
 
 

@@ -1,0 +1,29 @@
+{# The run's state; replaced while the run is open (step 10a, a3). #}
+<section class="state state-{{ r.status }}" id="run-state" aria-live="polite"
+  {%- if r.open %} data-poll="/runs/{{ r.run }}/state"{% else %} data-ended="true"{% endif %}>
+  <h2>Status {{ info("status") }}</h2>
+  <p class="state-line"><strong>{{ r.status_words }}</strong>{% if r.stage_words and r.status == "running" %}: {{ r.stage_words }}{% endif %}</p>
+  {% if r.status == "waiting" %}
+    {% if r.confirmed %}<p>Confirmed; waiting for a worker to take it up.</p>
+    {% else %}<p>Waits for {{ r.waiting_for }}.</p>{% endif %}
+  {% endif %}
+  {% if r.failure %}<p class="error">Failed: {{ r.failure }}</p>{% endif %}
+  {% if r.claim_facts %}
+  <dl class="facts">
+    <dt>Worker</dt><dd>{{ r.claim_facts.worker or "none holds it" }}{% if r.claim_facts.claimed %} (since {{ r.claim_facts.claimed }}){% endif %}</dd>
+    <dt>Heartbeat</dt><dd>{{ r.claim_facts.heartbeat_age + " ago" if r.claim_facts.heartbeat_age else "none" }}</dd>
+    <dt>Last write</dt><dd>{{ r.claim_facts.since_last_write }} ago</dd>
+    <dt>Claims; recoveries</dt><dd>{{ r.claim_facts.claims }}; {{ r.claim_facts.recoveries }}</dd>
+  </dl>
+  {% endif %}
+  {% if r.can_confirm or r.can_cancel %}
+  <div class="actions">
+    {% if r.can_confirm %}<a class="button" href="/runs/{{ r.run }}/confirm">Review and confirm the question as tested</a>{% endif %}
+    {% if r.can_cancel %}
+    <form method="post" action="/runs/{{ r.run }}/cancel">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <button type="submit" class="secondary">Cancel this run</button>
+    </form>{% endif %}
+  </div>
+  {% endif %}
+</section>
