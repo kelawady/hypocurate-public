@@ -96,3 +96,26 @@ def db(migrated_database):
     engine = make_engine(migrated_database)
     yield engine
     engine.dispose()
+
+
+# Step 10a, a5 (owner, 2026-10-11): the suite runs in parallel with pytest-xdist (`-n 4 --dist loadgroup`, pyproject).
+# Each test already has a database of its own (above): `migrated_database` and `empty_database` are new databases with
+# random names, dropped after the test, and every xdist worker makes its own template (`template_database` is
+# session-scoped, so once per worker process). Advisory locks are per database. The files below hold tests that
+# measure time, race threads or processes, or send signals: they run one after another on a single worker
+# (`xdist_group`, which never deselects a test). A test that fails even once in parallel and passes alone is added here
+# (or the suite drops to 2 workers), never re-run: there is no rerun plugin or retry flag.
+SERIAL_FILES = frozenset({
+    "test_access_dispatch.py", "test_access_layer.py", "test_agent_core.py", "test_checkpoints.py",
+    "test_cli_step9b.py", "test_concurrency.py", "test_confirmation.py", "test_guarded_parent.py",
+    "test_kill_matrix.py", "test_login.py", "test_login_throttle.py", "test_migrations.py",
+    "test_migrations_step9a.py", "test_queue.py", "test_source_versions.py", "test_web_state.py", "test_worker.py",
+    "test_worker_fix1.py", "test_write_retry.py",
+})
+SERIAL_GROUP = "serial"
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        if item.path.name in SERIAL_FILES:
+            item.add_marker(pytest.mark.xdist_group(SERIAL_GROUP))

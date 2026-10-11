@@ -30,7 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # statsmodels: the independent reference implementation of the statistics, test side only (step 7).
-dev = ["pytest>=8", "httpx2>=2.13", "pyyaml>=6", "statsmodels>=0.14"]
+dev = ["pytest>=8", "httpx2>=2.13", "pyyaml>=6", "statsmodels>=0.14", "pytest-xdist>=3.6"]
 
 [project.scripts]
 hypocurate = "hypocurate.cli:main"
@@ -40,4 +40,6 @@ include = ["hypocurate*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+# Step 10a (owner, 2026-10-11): 2 parallel workers (4 overloaded the 2-core machines; owner's overnight rule); the tests in conftest.SERIAL_FILES share one worker (loadgroup).
+addopts = "-ra -n 2 --dist loadgroup"
+markers = ["xdist_group(name): tests that run one after another on one xdist worker (tests/conftest.py)"]
