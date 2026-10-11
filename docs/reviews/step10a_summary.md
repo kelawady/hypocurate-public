@@ -1,5 +1,34 @@
 # Build step 10a — summary for review
 
+> **Update, 2026-10-11: fix round 1.** ChatGPT's review (`step10a_review_chatgpt.md`) found 10a **not safe to merge**: three code problems and one gap in a test. The owner accepted all four. Each fix came with tests written first, and those tests failed on the reviewed code where the code was at fault. The evidence is in `step10a_fix_packet.md`.
+>
+> | Finding | What was wrong | What changed |
+> |---|---|---|
+> | 1 | The confirmation fingerprint covered the content only, so a renderer changed between showing and confirming stored wording the person never saw. | `confirmation.shown_fingerprint(content, text)`: the page (field `shown_fingerprint`) and the command line send the fingerprint of the content and the exact text shown. `confirm` renders the text in its own transaction and refuses any difference, so the stored text is what was shown. |
+> | 2 | The run page read the run in several transactions, so a run completing mid-read showed "completed" with no statement and stopped polling. | `run_view.snapshot`: one read-only REPEATABLE READ transaction per page. `show`, the run page, the confirmation page and the runs list read everything in it. `show`'s output is unchanged. |
+> | 3 | The runs list showed at most 200 runs, with no pages. | Pages of 50 (`RUNS_PER_PAGE`), "Runs a to b of n", links to newer and older pages; a page outside the list is not found. |
+> | 4 | The 14.4 test recreated app objects in the test process; it never stopped a web process. | The test now starts uvicorn as its own process, holds a worker process at its Analyst request, stops the web process, starts a new one, and releases the worker. It checks completion with one claim and one model request. |
+> | Owner | — | Register entry `parallel_suite` names the one exception to a database per test: the shared read-only world fixture of `tests/test_web_runs.py`. |
+>
+> **Tests that failed first:** 8 failed on `431f880` (findings 1–3); a ninth, the command line's text check, was added after them. The new 14.4 test passes on the reviewed code too, as expected: finding 4 was a gap in the test, not in the code.
+>
+> **Reference runs:** byte-identical to `main` in all six dumps, `show`'s output included.
+>
+> **Register (157 entries):**
+> - `confirmation_shown_fingerprint` reworded, its earlier value kept in its history;
+> - `live_run_state` and `parallel_suite` corrected;
+> - new: `runs_list_pages` (50 a page; Claude Code's proposal, for the owner's review).
+>
+> **A workflow change (owner's decision, 2026-10-11):** the CI job limit goes from 40 to 60 minutes, in a single-line commit (`8e55c81`); nothing else in `.github/workflows/` changes. Why: run 38149431419 on `9fc3d9a` (serial) was green, with the suite step at 34 min 59 s and the job at 36 min 27 s of 40.
+>
+> **Mutation checks:** 8 faults, all caught, each by the test written for it; the control run is clean.
+>
+> **The whole suite:** 2,301 tests, all passing locally on `c157f51`. It took 44 min 38 s because a stale earlier suite ran beside it for its first 13 minutes; that suite was stopped. The tests that read the workflow file pass on the job-limit commit.
+>
+> **The GitHub run:** see the fix packet and the owner's report.
+>
+> The sections below describe 10a before this round, except where they say otherwise.
+
 Date: 2026-10-11. Branch: `step-10a-run-pages` (from `main` at `ba83c3d`). **Status: built, pushed, not merged; register entries approved by the owner (2026-10-11); stopped for the second-model review.**
 
 PRD Section 15, step 10 ("Website screens"), first part. The owner split step 10 into:
