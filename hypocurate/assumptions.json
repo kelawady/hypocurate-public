@@ -9258,7 +9258,7 @@
     },
     "category": "operational",
     "affects": "The runs list.",
-    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size is Claude Code's proposal.",
+    "reason": "ChatGPT's review of step 10a, finding 3: the list showed at most 200 runs with no pagination, so older runs, even waiting ones, could not be reached. The owner accepted the fix (2026-10-11); the page size (50) was Claude Code's proposal, approved by the owner on 2026-10-11.",
     "evidence": [
       "docs/reviews/step10a_review_chatgpt.md, finding 3; docs/reviews/step10a_fix_packet.md."
     ],
@@ -9288,7 +9288,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording and page size drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording and page size (50) approved by the owner, 2026-10-11."
     ]
   }
 ]
