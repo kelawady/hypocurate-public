@@ -53,7 +53,7 @@
 <section class="plot-section">
   <h2>Plot of the data and the fitted relationship {{ info("plot") }}</h2>
   {% if plot.svg %}
-  <div class="plot-box">{{ plot.svg }}</div>
+  <div class="plot-box">{{ plot.svg }}{{ plot.svg_narrow }}</div>
   <ul class="legend">{% for line in plot.legend %}<li>{{ line|units }}</li>{% endfor %}</ul>
   {% else %}<p>{{ plot.reason }}</p>{% endif %}
   <p class="muted small">{{ plot.version }}</p>

@@ -256,3 +256,24 @@ def test_the_edit_form_keeps_the_versions_own_choices(own):
     assert re.search(r'name="sufficiency" value="use_available" checked', form)
     assert re.search(r'name="sources" value="tamu_fcc" checked', form)
     assert not re.search(r'name="sources" value="mpea" checked', form) and "keep me" in form
+
+
+def test_the_queries_list_uses_short_source_names_and_the_query_page_full_ones(own):
+    engine, url = own
+    c = signed_in(engine, url, NAME)
+    number = new_query(c)
+    listed = plain(c.get("/queries").text)
+    assert "MPEA, Texas A&M" in listed and "Borg et al." not in listed
+    assert "MPEA dataset (Borg et al. 2020)" in plain(c.get(f"/queries/{number}").text)
+
+
+def test_every_menu_item_is_reachable_on_a_phone(own):
+    """The phone menu wraps (no item is pushed off the screen) and lists every page, Assumptions included."""
+    import pathlib
+    engine, url = own
+    page = signed_in(engine, url, NAME).get("/queries").text
+    nav = re.search(r'<nav class="menu".*?</nav>', page, re.S).group(0)
+    for label in ("Home", "Queries", "New query", "Review and dispatch", "Runs", "Assumptions"):
+        assert f">{label}</a>" in nav, label
+    css = (pathlib.Path(query_view.__file__).resolve().parents[1] / "web" / "static" / "style.css").read_text()
+    assert ".menu ul { flex-wrap: wrap; }" in css

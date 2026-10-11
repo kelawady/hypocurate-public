@@ -82,7 +82,8 @@ def test_records_are_marked_by_how_they_were_used_and_shaped_by_source(world):
     assert uses == {plot.USED, plot.SENSITIVITY_ONLY, plot.NOT_USED}
     assert [s["key"] for s in d["sources"]] == ["mpea", "tamu_fcc"] and d["sources"][0]["shape"] != d["sources"][1]["shape"]
     svg = str(plot.svg(d))
-    assert svg.count('class="fit"') == 22 and svg.count("<circle") + svg.count("<path") + svg.count("<rect") >= len(d["points"])
+    # Owner's review: records not used outside the view are not drawn (the legend counts them).
+    assert svg.count('class="fit"') == 22 and len(markers(svg)) == len(d["points"]) - plot.view(d)["outside"]
 
 
 def test_below_the_minimums_there_are_points_but_no_lines_and_the_reason(world):
@@ -120,10 +121,11 @@ def test_the_run_page_shows_the_plot_of_a_completed_run_only(world):
     engine, url, runs = world
     c = signed_in(engine, url)
     page = c.get(f"/runs/{runs['reference']}").text
-    assert '<svg class="plot"' in page and "built by code version" in plain(page)
+    assert '<svg class="plot plot-wide"' in page and '<svg class="plot plot-narrow"' in page
+    assert "built by code version" in plain(page)
     assert "each with the stored slope k = 424.9 MPa·µm^0.5" in plain(page)
     assert "No plot: no dataset was frozen" in plain(c.get(f"/runs/{runs['nothing_frozen']}").text)
-    assert '<svg class="plot"' not in c.get(f"/runs/{runs['open']}").text
+    assert '<svg class="plot' not in c.get(f"/runs/{runs['open']}").text
 
 
 def test_the_plots_text_is_never_drawn_below_12_px():
@@ -131,9 +133,69 @@ def test_the_plots_text_is_never_drawn_below_12_px():
     stylesheet's min-width, so FONT * min-width / W >= 12."""
     import pathlib
     css = (pathlib.Path(plot.__file__).resolve().parents[1] / "web" / "static" / "style.css").read_text()
-    min_width = float(re.search(r"svg\.plot \{[^}]*min-width: (\d+)px", css).group(1))
+    min_width = float(re.search(r"svg\.plot-wide \{[^}]*min-width: (\d+)px", css).group(1))
     assert plot.FONT * min_width / plot.W >= 12
     svg = str(plot.svg({"points": [{"x": 0.5, "y": 300.0, "source": "mpea", "use": plot.USED}], "segments": [],
                         "sources": [{"key": "mpea", "name": "MPEA", "shape": "circle"}]}))
     sizes = [float(x) for x in re.findall(r'font-size="([\d.]+)"', svg)]
     assert sizes and min(sizes) >= plot.FONT
+
+
+# --- the owner's screenshot review (2026-10-11) ------------------------------------------------------------------------
+
+def markers(svg: str) -> list[dict]:
+    return [dict(re.findall(r'data-(source|use|shape)="([^"]*)"', m)) for m in re.findall(r'<[^>]*class="pt"[^>]*>', svg)]
+
+
+@pytest.mark.parametrize("layout", ["wide", "narrow"])
+def test_every_marker_has_its_sources_fixed_shape_never_its_order(world, layout):
+    engine, _, runs = world
+    for key in ("reference", "coefficient_only"):
+        drawn = markers(str(plot.svg(plot.data(engine, runs[key]), layout)))
+        assert drawn
+        for m in drawn:
+            expected = "cross" if m["use"] == plot.SENSITIVITY_ONLY else plot.SOURCE_SHAPES[m["source"]]
+            assert m["shape"] == expected, m
+    reference = markers(str(plot.svg(plot.data(engine, runs["reference"]), layout)))
+    assert sum(1 for m in reference if m["source"] == "tamu_fcc" and m["use"] == plot.USED) == 21  # Texas A&M in the test
+    assert {m["shape"] for m in reference if m["source"] == "tamu_fcc" and m["use"] == plot.USED} == {"triangle"}
+
+
+def test_a_texas_a_and_m_only_runs_legend_says_triangles(world):
+    engine, _, runs = world
+    legend = plot.legend(plot.data(engine, runs["coefficient_only"]))
+    assert legend[0] == "Texas A&M FCC dataset (Mulukutla et al. 2026): triangles"
+
+
+def test_the_view_is_limited_to_the_records_in_the_fit_and_says_how_many_lie_outside(world):
+    engine, _, runs = world
+    d = plot.data(engine, runs["reference"])
+    v = plot.view(d)
+    kept = [p for p in d["points"] if p["use"] != plot.NOT_USED]
+    assert v["x1"] <= max(max(p["x"] for p in kept), max(s["x1"] for s in d["segments"])) * 1.05 + 1e-12
+    outside = [p for p in d["points"] if p["use"] == plot.NOT_USED and not (v["x0"] <= p["x"] <= v["x1"]
+                                                                          and v["y0"] <= p["y"] <= v["y1"])]
+    assert v["outside"] == len(outside) > 0
+    assert f"{len(outside)} records not used lie outside it." in " ".join(plot.legend(d))
+    drawn = markers(str(plot.svg(d)))
+    assert len(drawn) == len(d["points"]) - len(outside)  # nothing outside the view is drawn
+
+
+def test_a_coefficient_only_legend_does_not_call_the_fit_a_test(world):
+    engine, _, runs = world
+    legend = " ".join(plot.legend(plot.data(engine, runs["coefficient_only"])))
+    assert "Filled: used in the fit (coefficient only: no valid uncertainty, not a test)" in legend
+    assert "used in the test" not in legend and "one per alloy in the fit" in legend
+    assert "Filled: used in the test (97)" in " ".join(plot.legend(plot.data(engine, runs["reference"])))
+
+
+def test_the_phone_drawing_keeps_its_text_at_12_px_or_more():
+    """The narrow drawing is shown below 56rem on screens at least 360 px wide: the content is the screen less the
+    16 px gutters and the section's 12 px padding on each side (style.css)."""
+    import pathlib
+    css = (pathlib.Path(plot.__file__).resolve().parents[1] / "web" / "static" / "style.css").read_text()
+    assert "@media (max-width: 56rem) { svg.plot-wide { display: none; } svg.plot-narrow { display: block; } }" in css
+    n = plot.LAYOUTS["narrow"]
+    assert n["font"] * (360 - 2 * 16 - 2 * 12) / n["w"] >= 12
+    w = plot.LAYOUTS["wide"]
+    assert w["font"] * 540 / w["w"] >= 12

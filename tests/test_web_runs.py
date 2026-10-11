@@ -531,5 +531,5 @@ def test_a_narrower_questions_run_says_so(own, stub):
     engine, url = own
     rid, original = narrower_waiting(engine, stub)
     with engine.connect() as conn:
-        assert reading.provenance(conn, rid) == "narrower question's plan"
+        assert reading.provenance(conn, rid) == f"narrower question, built by code from run {original}"
         assert reading.provenance(conn, original) == "Planner's reading"  # partly sufficient: never locked

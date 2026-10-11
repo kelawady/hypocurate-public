@@ -183,6 +183,7 @@ def create_app(
             from hypocurate.pipeline import plot
             d = plot.data(engine, run_id)
             figure = {**d, "svg": plot.svg(d) if d.get("plot") else None,
+                      "svg_narrow": plot.svg(d, "narrow") if d.get("plot") else None,
                       "legend": plot.legend(d) if d.get("plot") else []}
         return page(request, "run.html", {"r": shown, "plot": figure,
                                           "message": DONE.get(request.query_params.get("done", ""))})

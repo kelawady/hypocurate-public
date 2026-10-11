@@ -11,6 +11,8 @@ from sqlalchemy import Connection, Engine, text
 from hypocurate.pipeline import run_view
 from hypocurate.pipeline.run_view import STATUS_WORDS, money, snapshot, tokens
 
+# Short source names for the queries list (owner's review, 2026-10-11); a query's own page gives the full names.
+SOURCE_SHORT_NAMES = {"mpea": "MPEA", "tamu_fcc": "Texas A&M", "controlled_duplicates": "controlled duplicates"}
 QUERIES_PER_PAGE = 50  # step 10b: as the runs list (register 'runs_list_pages' gives the reason for a cursor)
 VERSION_STATUS_WORDS = {"draft": "draft", "submitted": "submitted for review", "returned": "returned for edits",
                         "dispatched": "dispatched"}
@@ -67,7 +69,8 @@ def queries_list(engine: Engine, before: int | None = None, per_page: int = QUER
             out.append({
                 "id": r.id, "number": r.number, "version": r.version_number, "created": r.created, "domain": r.domain,
                 "claim": r.text, "narrower": r.narrower_of_run_id is not None,
-                "sources": ", ".join(s["name"] for s in _sources(conn, r.version_id)), "status_words": status,
+                "sources": ", ".join(SOURCE_SHORT_NAMES.get(s["key"], s["key"]) for s in _sources(conn, r.version_id)),
+                "status_words": status,
                 "outcome": (run.outcome.replace("_", " ") + " in the sources searched")
                 if run is not None and run.outcome else None,
                 "cost": money(r.cost), "action": _action(r.status, r.number, run.id if run else None)})
