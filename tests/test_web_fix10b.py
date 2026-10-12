@@ -301,3 +301,26 @@ def test_the_website_can_register_the_constructed_source_and_it_never_enters_a_r
     assert queries.REASONS["constructed_source_unmarked"].format(source="controlled_duplicates") in plain(r.text)
     assert one(engine, "SELECT count(*) FROM run r JOIN hypothesis_version v ON v.id = r.hypothesis_version_id "
                        "JOIN hypothesis h ON h.id = v.hypothesis_id WHERE h.number = :n", n=draft) == 0
+
+
+def test_the_websites_dispatch_again_carries_over_a_command_line_test_mark_and_never_creates_one(own):
+    """The owner's wording for web_source_registration (2026-10-12, after ChatGPT's re-check): the website's dispatch
+    again records what the query's last run recorded, so a test-run mark first set at the command line carries over;
+    an unmarked run's dispatch again stays unmarked (the website has no way to set the mark)."""
+    engine, url = own
+    pw.registered(engine, ("controlled_duplicates",))
+    c = signed_in(engine, url, ALICE)
+    runs = {}
+    for marked in (True, False):
+        sources = ["mpea", "controlled_duplicates"] if marked else ["mpea"]
+        q = queries.create(engine, CLAIM, sources, submit=True)
+        queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+        first = queries.dispatch(engine, q.version_id, constructed_test_data=marked)  # the command line's mark
+        queries.cancel(engine, first, by="Ada Reviewer")
+        r = c.post(f"/queries/{q.number}/again", data={"csrf_token": token(c), "test_data": "on",
+                                                       "constructed_test_data": "true",
+                                                       **shown(c.get(f"/queries/{q.number}").text)})
+        assert r.status_code == 303, plain(r.text)[:300]
+        runs[marked] = int(r.headers["location"].rsplit("/", 1)[1])
+    flags = {m: one(engine, "SELECT experiment_flags FROM run WHERE id = :r", r=rid) for m, rid in runs.items()}
+    assert flags == {True: {"constructed_test_data": True}, False: {}}, flags

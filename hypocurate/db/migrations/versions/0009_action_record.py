@@ -20,7 +20,8 @@ sources/versions.py). It is a record, not a gate: no other table's rule reads it
 
 Works with the previous release's code: it never reads or writes action_record.
 
-Downgrade refuses while any row exists (the rows are history), then drops what 0009 added.
+Downgrade locks the table (ACCESS EXCLUSIVE) and refuses while any row exists (the rows are history), then drops what 0009 added;
+the lock comes first, so an insert not yet committed is waited for and counted.
 
 Rules for every migration (README, "Database migrations"): it runs inside the one upgrade transaction; it keeps
 working with the previous release's code; and it has a downgrade.
@@ -114,6 +115,9 @@ def upgrade() -> None:
         op.execute(t)
 
 
+# Re-check item 1 (ChatGPT; the owner, 2026-10-12): the table is locked before it is looked at, in the downgrade's
+# own transaction, so an action inserted but not yet committed is waited for and seen, never dropped unseen.
+LOCK = "LOCK TABLE action_record IN ACCESS EXCLUSIVE MODE"
 IN_USE = """
     DO $$
     BEGIN
@@ -125,6 +129,7 @@ IN_USE = """
 
 
 def downgrade() -> None:
+    op.execute(LOCK)
     op.execute(IN_USE)
     op.drop_table('action_record')
     for f in FUNCTION_NAMES:

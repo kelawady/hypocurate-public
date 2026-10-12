@@ -23,6 +23,8 @@ import pytest
 import pipeline_world as pw
 import stub_provider as sp
 import test_orchestrator as to
+from sqlalchemy import text
+
 from hypocurate.db.engine import make_engine
 
 FORBIDDEN = ("dspy", "litellm", "hypocurate.pipeline.queue", "hypocurate.worker", "hypocurate.pipeline.orchestrator",
@@ -85,6 +87,7 @@ PROBE_10B = textwrap.dedent("""
     from hypocurate.config import Settings
     from hypocurate.web.app import create_app
     url, completed, draft, submitted, again = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]
+    waiting = int(sys.argv[6])
     s = Settings(env="development", database_url=url, password="test-password-not-a-secret", session_secret="s" * 40,
                  version="test")
     c = TestClient(create_app(s), base_url="http://testserver", follow_redirects=False)
@@ -108,14 +111,24 @@ PROBE_10B = textwrap.dedent("""
                                                        **shown(c.get(f"/queries/{draft}/edit").text)}).status_code,
         "return": c.post(f"/review/{draft}/return", data={"csrf_token": token, "comment": "narrow it",
                                                           **shown(c.get(f"/review/{draft}").text)}).status_code,
-        "dispatch": c.post(f"/review/{submitted}/dispatch", data={"csrf_token": token,
-                                                                  "domain": "grain_size_strengthening",
-                                                                  **shown(c.get(f"/review/{submitted}").text)}
-                           ).status_code,
+        # Re-check item 2: the returned query edited (its next version), confirm and cancel.
+        "new_version": c.post(f"/queries/{draft}/edit", data={**form, "action": "save",
+                                                              **shown(c.get(f"/queries/{draft}/edit").text)}
+                              ).status_code,
+    }
+    dispatched = c.post(f"/review/{submitted}/dispatch", data={"csrf_token": token, "domain": "grain_size_strengthening",
+                                                              **shown(c.get(f"/review/{submitted}").text)})
+    writes["dispatch"] = dispatched.status_code
+    queued = dispatched.headers["location"].rsplit("/", 1)[1]
+    writes["cancel"] = c.post(f"/runs/{queued}/cancel", data={"csrf_token": token}).status_code
+    fp = re.search(r'name="shown_fingerprint" value="([0-9a-f]{64})"', c.get(f"/runs/{waiting}/confirm").text).group(1)
+    writes["confirm"] = c.post(f"/runs/{waiting}/confirm", data={"csrf_token": token,
+                                                                 "shown_fingerprint": fp}).status_code
+    writes.update({
         "again": c.post(f"/queries/{again}/again", data={"csrf_token": token,
                                                          **shown(c.get(f"/queries/{again}").text)}).status_code,
         "register": c.post("/sources/tamu_fcc/register", data={"csrf_token": token}).status_code,
-    }
+    })
     print(json.dumps({"codes": codes, "writes": writes, "loaded": sorted(
         m for m in sys.modules if m.startswith(("dspy", "litellm", "hypocurate")))}))
 """)
@@ -135,6 +148,11 @@ def test_every_10b_page_and_write_loads_no_model_library_and_no_pipeline_runner(
         assert to.run(e, done, stub).status == "completed"
         draft = queries.create(e, to.FCC_CLAIM, ["mpea"]).number
         submitted = queries.create(e, to.FCC_CLAIM, ["mpea"], submit=True).number
+        w = queries.create(e, to.FCC_CLAIM, ["mpea"], submit=True)  # a Planner run waiting for confirmation
+        queries.confirm_domain(e, w.version_id, by="Ada Reviewer")
+        waiting = queries.dispatch(e, w.version_id)
+        from hypocurate.pipeline import orchestrator
+        assert orchestrator.run(e, waiting, client_options=sp.client_options(stub)).status == "waiting"
     finally:
         stub.close()
         e.dispose()
@@ -142,13 +160,22 @@ def test_every_10b_page_and_write_loads_no_model_library_and_no_pipeline_runner(
     probe.write_text(PROBE_10B, encoding="utf-8")
     root = pathlib.Path(__file__).resolve().parents[1]
     env = {**os.environ, "PYTHONPATH": str(root)}
-    out = subprocess.run([sys.executable, str(probe), migrated_database, str(done), draft, submitted, q.number],
+    out = subprocess.run([sys.executable, str(probe), migrated_database, str(done), draft, submitted, q.number,
+                          str(waiting)],
                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300)
     assert out.returncode == 0, out.stderr[-2000:]
     result = json.loads(out.stdout.strip().splitlines()[-1])
     assert set(result["codes"].values()) == {200}, result["codes"]
-    assert result["writes"] == {"create": 303, "edit": 303, "return": 303, "dispatch": 303, "again": 303,
-                                "register": 200}, result["writes"]
+    assert result["writes"] == {"create": 303, "edit": 303, "return": 303, "new_version": 303, "dispatch": 303,
+                                "cancel": 303, "confirm": 303, "again": 303, "register": 200}, result["writes"]
+    e = make_engine(migrated_database)
+    try:  # each write took effect, as the probe's own action rows show
+        with e.connect() as conn:
+            done_actions = set(conn.execute(text("SELECT action FROM action_record WHERE actor = 'Probe'")).scalars())
+    finally:
+        e.dispose()
+    assert {"create", "edit", "submit", "return", "new_version", "confirm_domain", "dispatch", "cancel",
+            "confirm_rules", "dispatch_again", "register_source"} <= done_actions, done_actions
     loaded = set(result["loaded"])
     assert {"hypocurate.pipeline.plot", "hypocurate.pipeline.workbook", "hypocurate.pipeline.queries",
             "hypocurate.sources.versions"} <= loaded  # the probe did load the 10b pages and writes

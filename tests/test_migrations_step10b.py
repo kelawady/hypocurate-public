@@ -143,3 +143,45 @@ def test_each_action_names_exactly_what_it_acts_on(w):
         extra = next(k for k in "vrs" if k not in kinds)  # with one it does not act on
         with pytest.raises(IntegrityError, match="ck_action_record_targets"):
             insert(w, action=action, **{k: targets[k] for k in kinds}, **{extra: targets[extra]})
+
+
+def test_the_downgrade_waits_for_an_uncommitted_action_and_then_refuses(db):
+    """Re-check item 1 (ChatGPT, 2026-10-12): an action inserted but not yet committed when the downgrade starts. The
+    downgrade locks the table before it looks for rows, so it waits for that insert, sees it once committed, and
+    refuses; the row is kept. (Without the lock it saw an empty table, then its DROP waited and deleted the row.)"""
+    import threading
+    import time
+    w = World(db)
+    vid = w.draft()
+    writer = db.connect()
+    tx = writer.begin()
+    writer.execute(text("INSERT INTO action_record (action, channel, actor, hypothesis_version_id) "
+                        "VALUES ('create', 'website', 'Ada', :v)"), dict(v=vid))
+    outcome = {}
+
+    def downgrade():
+        try:
+            migrate.downgrade(db, "0008")
+            outcome["result"] = "downgraded"
+        except Exception as error:  # noqa: BLE001
+            outcome["result"] = str(error)
+
+    t = threading.Thread(target=downgrade)
+    t.start()
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:  # the downgrade is waiting for the writer's lock
+            if w.val("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND "
+                     "wait_event_type = 'Lock'"):
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("the downgrade never waited for the uncommitted insert")
+        tx.commit()
+    finally:
+        writer.close()
+        t.join(120)
+    assert not t.is_alive()
+    assert "0009 is in use" in outcome["result"], outcome
+    assert migrate.current_revision(db) == "0009"
+    assert w.val("SELECT actor FROM action_record") == "Ada"
