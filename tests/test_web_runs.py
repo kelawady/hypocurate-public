@@ -501,3 +501,59 @@ def test_an_old_run_without_a_stored_ceiling_shows_not_recorded(own, stub):
         conn.execute(text("UPDATE run SET spending_ceiling = NULL WHERE id = :r"), dict(r=rid))
     page = plain(signed_in(engine, url).get(f"/runs/{rid}").text)
     assert "ceiling for this run not recorded" in page and "$0.000000" not in page.split("ceiling for this run")[1][:20]
+
+
+# --- step 10b: the runs list's "Plan" column (owner, 2026-10-11) -------------------------------------------------------
+
+def test_the_runs_list_says_where_each_runs_question_as_tested_came_from(own, stub):
+    """From what is stored, never a guess: a fixed-plan run, a Planner run waiting, a Planner run confirmed by a named
+    person, and a Planner-path run locked before confirmations existed (the shape of local runs 1 and 2)."""
+    from hypocurate.pipeline import confirmation, reading
+    from test_reading_step10 import planner_path_run_locked_before_confirmations
+    engine, url = own
+    fixed = to.dispatched(engine, fixed_plan=True)
+    planner = waiting(engine, stub)
+    confirmed = waiting(engine, stub)
+    confirmation.confirm(engine, confirmed, by="Ada Reviewer")
+    predates = planner_path_run_locked_before_confirmations(engine)
+    page = signed_in(engine, url).get("/runs").text
+    plans = dict((int(r), p) for r, p in re.findall(
+        r'<td data-label="Run"><a href="/runs/(\d+)".*?<td data-label="Plan">([^<]*)</td>', page, re.S))
+    assert plans[fixed] == reading.PROVENANCE_WORDS["fixed"] == "fixed reference plan"
+    assert plans[planner] == "Planner&#39;s reading"
+    assert plans[confirmed] == "Planner&#39;s reading, confirmed by Ada Reviewer"
+    assert plans[predates] == "Planner&#39;s reading; predates confirmation"
+
+
+def test_a_narrower_questions_run_says_so(own, stub):
+    from hypocurate.pipeline import reading
+    from test_confirmation import narrower_waiting
+    engine, url = own
+    rid, original = narrower_waiting(engine, stub)
+    with engine.connect() as conn:
+        assert reading.provenance(conn, rid) == f"narrower question, built by code from run {original}"
+        assert reading.provenance(conn, original) == "Planner's reading"  # partly sufficient: never locked
+
+
+# --- step 10b: each sensitivity set says what it changes compared with the main result (owner, 2026-10-11) ---------
+
+def test_every_set_description_says_what_the_main_result_does_instead():
+    from hypocurate.pipeline.eligibility import INFLUENCE_KEY
+    for key in SENSITIVITY_CHANGES:
+        assert "main result" in run_view._set_description(key), key
+    assert run_view._set_description(INFLUENCE_KEY).endswith("; the main result keeps them.")
+
+
+def test_the_one_at_pct_set_names_the_main_results_own_rounding_from_the_plan():
+    from hypocurate.pipeline.plan import reference_plan
+    plan = reference_plan(1)
+    assert "instead of to 0.1 at.%, as in the main result" in run_view._set_description("same_alloy_1_at_pct", plan)
+    plan["rules"]["same_alloy_decimals"] = 2
+    assert "instead of to 0.01 at.%, as in the main result" in run_view._set_description("same_alloy_1_at_pct", plan)
+
+
+def test_atomic_percent_is_written_out_once_on_the_run_page(world):
+    engine, url, runs = world
+    page = plain(signed_in(engine, url).get(f"/runs/{runs['sufficient']}").text)
+    assert page.count("atomic percent (at.%)") == 1
+    assert page.index("atomic percent (at.%)") < page.index("rounded to 1 at.%")

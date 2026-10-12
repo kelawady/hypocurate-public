@@ -329,6 +329,11 @@ def test_the_monitoring_query_is_time_limited(engine, stub):
         assert time.monotonic() - started < queue.MONITOR_TIMEOUT_MS / 1000 + 13
 
 
+TEST_STALL_SECONDS = 20     # the test's stall allowance (production: queue.STALL_SECONDS, 900)
+TEST_DOWNTIME_SECONDS = 22  # longer than TEST_STALL_SECONDS
+FIRST_WRITE_HOLD_SECONDS = 6  # longer than the stall watch's first sample (min(5, TEST_STALL_SECONDS / 4) s)
+
+
 def test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance(engine, stub):
     """A run stopped after its lock, idle for longer than the allowance, then taken up: the new child gets the full
     allowance from its launch and completes."""
@@ -337,9 +342,26 @@ def test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance(e
     queries.start(engine, rid)
     with engine.connect() as conn:
         checkpoints.lock_rules(engine, rid, confirmation.plan_to_lock(conn, rid))
-    time.sleep(7)  # idle: longer than the allowance below
+    # Step 10b (owner's decision, 2026-10-11): the test's allowance is 20 s, not 6 s, so a slow machine's child start
+    # fits in it (the image's run once judged the child stalled at 6 s); the downtime stays longer than the allowance,
+    # so the test still checks that downtime before the attempt does not count. Production keeps STALL_SECONDS (900).
+    # The child's first write waits FIRST_WRITE_HOLD_SECONDS (a one-shot test trigger), so the stall watch samples
+    # (every min(5, allowance / 4) s) before any new write: if downtime counted, that sample would see a last write
+    # older than the allowance and stop the child (9b fix round 1, mutation f16). The hold plus the child's start still
+    # fits in the allowance.
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE hc_test_hold_once (x int)"))
+        conn.execute(text("INSERT INTO hc_test_hold_once VALUES (1)"))
+        conn.execute(text(f"CREATE FUNCTION hc_test_hold_once() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                          f"IF EXISTS (SELECT 1 FROM hc_test_hold_once) THEN DELETE FROM hc_test_hold_once; "
+                          f"PERFORM pg_sleep({FIRST_WRITE_HOLD_SECONDS}); END IF; RETURN NULL; END $$"))
+        # On the child's first write only (its records); the parent's recovery bookkeeping, before the launch, writes
+        # stage rows and must not use up the hold.
+        conn.execute(text("CREATE TRIGGER zz_hc_test_hold_once BEFORE INSERT ON record "
+                          "FOR EACH STATEMENT EXECUTE FUNCTION hc_test_hold_once()"))
+    time.sleep(TEST_DOWNTIME_SECONDS)  # idle: longer than the allowance below
     c = queue.claim(engine, rid, "test:f6")
-    out = worker.work(engine, c, stall_seconds=6, heartbeat_interval=0.5)
+    out = worker.work(engine, c, stall_seconds=TEST_STALL_SECONDS, heartbeat_interval=0.5)
     assert out["release"] == "finished" and one(engine, "SELECT status FROM run WHERE id = :r", r=rid) == "completed"
 
 

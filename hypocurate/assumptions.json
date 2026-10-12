@@ -4994,7 +4994,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.writes:CONSTRUCTED_MARK",
@@ -5008,10 +5008,7 @@
           "ref": "python:hypocurate.pipeline.results:REAL_RUN"
         }
       ],
-      "done": "The mark and the refusals at storage, inclusion and freeze (step 6). Step 7: the label on every stored analysis and calibration result and on the statistics and gap-facts stage results of a marked run (checked by the database for result rows), and one named condition that leaves marked runs out of every aggregate (pipeline/results.py, REAL_RUN). Step 10a: the run viewer shows the label on a marked run, and the runs list marks it (a hatched dial and a 'test run' badge).",
-      "pending": "The label and the exclusion on the remaining screens and lists (step 10b).",
-      "step": 10,
-      "note": "The guard is in code; the database itself does not refuse a constructed record."
+      "note": "The guard is in code; the database itself does not refuse a constructed record. Step 10: the run page, the runs list and a query's runs show the label (hatched dial), and the workbook's summary."
     },
     "history": [
       {
@@ -5031,7 +5028,8 @@
       "tests/test_checkpoints.py::test_a_marked_run_takes_the_constructed_records",
       "tests/test_checkpoints.py::test_constructed_data_never_enters_a_run_not_marked_as_a_test",
       "tests/test_queries_step9a.py::test_dispatch_refuses_a_constructed_source_unless_the_run_is_a_marked_test",
-      "tests/test_web_runs.py::test_a_marked_test_runs_dial_is_hatched_with_a_badge"
+      "tests/test_web_runs.py::test_a_marked_test_runs_dial_is_hatched_with_a_badge",
+      "tests/test_workbook.py::test_the_reference_runs_workbook_has_the_four_sheets_and_the_records_in_the_test"
     ]
   },
   {
@@ -9058,7 +9056,7 @@
     "key": "sensitivity_set_display_names",
     "name": "Sensitivity sets shown by name, never by internal key",
     "state": "in_force",
-    "statement": "The screens name each sensitivity set in words and describe its one change for readers; the internal keys are never shown. The ninth set keeps its approved name, \"without the group with the largest share of slope information\", with the eligibility code's description. The survivor set's description is the owner's: \"Conflicting values, left out of the main result, are included once each, using the survivor's value.\"",
+    "statement": "The screens name each sensitivity set in words and say what its one change does compared with the main result, with the main result's own rule read from the run's locked plan; the internal keys are never shown. 'atomic percent (at.%)' is written out once, in the 1 at.% set's name. The ninth set keeps its approved name, 'without the group with the largest share of slope information'. The survivor set's description is the owner's: 'Conflicting values, left out of the main result, are included once each, using the survivor's value.'",
     "value": {
       "text": "display names and descriptions",
       "unit": null
@@ -9094,11 +9092,21 @@
     "tests": [
       "tests/test_web_runs.py::test_sensitivity_sets_are_shown_by_display_name_never_by_internal_name",
       "tests/test_web_runs.py::test_every_sensitivity_set_has_a_display_name_and_a_description",
-      "tests/test_web_runs.py::test_the_survivor_set_says_that_conflicting_values_are_normally_left_out"
+      "tests/test_web_runs.py::test_the_survivor_set_says_that_conflicting_values_are_normally_left_out",
+      "tests/test_web_runs.py::test_every_set_description_says_what_the_main_result_does_instead",
+      "tests/test_web_runs.py::test_the_one_at_pct_set_names_the_main_results_own_rounding_from_the_plan"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-11",
+        "to": "2026-10-11",
+        "value": "display names and descriptions",
+        "note": "the descriptions named the set's change only; the owner asked (2026-10-11) that each say what it changes compared with the main result"
+      }
+    ],
     "notes": [
-      "Wording approved by the owner, 2026-10-11."
+      "Wording approved by the owner, 2026-10-11.",
+      "2026-10-11 (step 10b): reworded for the owner's request; Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9298,6 +9306,652 @@
     "notes": [
       "Wording and page size (50) approved by the owner, 2026-10-11.",
       "2026-10-11: reworded for the ID cursor (fix round 2; the owner's decision to fix and merge)."
+    ]
+  },
+  {
+    "key": "query_versions_on_the_website",
+    "name": "Query versions on the website",
+    "state": "in_force",
+    "statement": "A new query is saved as a draft or submitted for review. A draft is edited in place (it was never submitted). A submitted query is reviewed: the reviewer confirms or changes the domain under the signed-in name ('domain confirmed on the website by <name>') and dispatches it, with an optional ceiling, or returns it for edits with a comment ('returned by <name>: <comment>'). A returned or dispatched version never changes: editing a returned query creates its next version, a draft, and earlier versions are kept (PRD 9.2). A query whose last run ended can be dispatched again as a new run. Every write carries the session's CSRF token, acts only on the version the page showed (act_on_version_shown) and is recorded with the signed-in name (action_record); refusals are shown in code's words (the monthly cap, constructed test data, a domain not yet supported).",
+    "value": {
+      "text": "draft in place; returned -> next version",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The query pages (PRD 9.1 to 9.3).",
+    "reason": "PRD 9.1 to 9.3; the owner's go for 10b; the default for drafts stated to the owner on 2026-10-11.",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:update_draft"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:new_version"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:return_for_edits"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:CLAIM_MAX",
+          "equals": 2000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:NOTE_MAX",
+          "equals": 2000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:COMMENT_MAX",
+          "equals": 2000
+        },
+        {
+          "ref": "python:hypocurate.pipeline.queries:WHERE_WORDS",
+          "equals": {
+            "command line": "at the command line",
+            "website": "on the website"
+          }
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_queries.py::test_a_query_goes_from_draft_through_review_to_a_dispatched_run_under_the_signed_in_name",
+      "tests/test_web_queries.py::test_a_returned_query_is_edited_as_its_next_version_and_the_returned_one_is_kept",
+      "tests/test_web_queries.py::test_every_query_write_refuses_a_request_without_the_sessions_token",
+      "tests/test_web_queries.py::test_only_a_draft_is_edited_in_place_and_only_a_returned_query_gets_a_new_version"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "queries_list",
+    "name": "The queries list",
+    "state": "in_force",
+    "statement": "The queries list shows every query, newest first, in pages of 50 followed by an ID cursor (as the runs list), with short source names (MPEA, Texas A&M); a query's own page gives the full names. Each row's action is the PRD's: Edit for a draft or returned query, Review for a submitted one, Open run for a dispatched one.",
+    "value": {
+      "text": "50 a page; short source names",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The queries list (PRD 9.1).",
+    "reason": "PRD 9.1; the owner's screenshot review of 2026-10-11 (short source names).",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.query_view:QUERIES_PER_PAGE",
+          "equals": 50
+        },
+        {
+          "ref": "python:hypocurate.pipeline.query_view:SOURCE_SHORT_NAMES"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_queries.py::test_the_queries_list_goes_through_every_query_once_while_queries_are_added",
+      "tests/test_web_queries.py::test_the_queries_list_uses_short_source_names_and_the_query_page_full_ones"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "runs_list_plan_column",
+    "name": "The runs list's Plan column",
+    "state": "in_force",
+    "statement": "The runs list says where each run's question as tested came from, from what is stored (the run's fixed-plan flag, its narrower link, its locked plan, its confirmation), never a guess: 'fixed reference plan', 'Planner's reading', 'Planner's reading, confirmed by <name>', 'Planner's reading; predates confirmation', or 'narrower question, built by code from run <N>'.",
+    "value": {
+      "text": "the owner's wording",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The runs list.",
+    "reason": "The owner's requests of 2026-10-11.",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.reading:PROVENANCE_WORDS"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reading:provenance"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_runs.py::test_the_runs_list_says_where_each_runs_question_as_tested_came_from",
+      "tests/test_web_runs.py::test_a_narrower_questions_run_says_so"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "failure_explanations",
+    "name": "A failed run explained in plain English",
+    "state": "in_force",
+    "statement": "A failed run's page explains the failure in plain English first: what happened, what was and was not done (read from the stored rows: plan locked, sources searched, dataset frozen), and what the person can do next, one fixed explanation per stored failure code; the Planner's stored rejection reasons in code's words; then 'Technical detail: <code>, <detail>.' A source a run never reached reads 'not searched (the run ended first)'. The runs list shows a short plain form.",
+    "value": {
+      "text": "plain words first, codes second",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Failed runs' pages and the runs list.",
+    "reason": "The owner's request of 2026-10-11.",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.failure_words:EXPLAIN"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.failure_words:SHORT"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.run_view:NOT_REACHED",
+          "equals": "not searched (the run ended first)"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_failure_words.py::test_the_owners_example_a_planner_refused_twice",
+      "tests/test_failure_words.py::test_every_failure_code_the_orchestrator_stores_has_its_own_explanation",
+      "tests/test_failure_words.py::test_the_runs_list_says_it_in_plain_words_too"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "run_plot",
+    "name": "The plot of a run",
+    "state": "in_force",
+    "statement": "Built on request from stored rows, never stored: each record's own outcome (MPa) against grain size^-1/2; a fixed marker shape per source (circles MPEA, triangles Texas A&M, squares the controlled duplicates, diamonds any other), filled for a record in the test, a cross for one used only in a sensitivity set, hollow for one not used. One line per alloy in the test over its own grain sizes, all with the stored slope; no lines below the minimums or with no coefficient, with the reason; no plot when nothing was frozen. A coefficient-only fit says 'used in the fit (coefficient only: no valid uncertainty, not a test)'. The axes cover the records used and the sensitivity-only ones, and a line says how many records not used lie outside. A narrow drawing is shown on a phone so the text stays at least 12 px. It states its format and the code version that built it.",
+    "value": {
+      "text": "raw values; per-alloy lines with the stored slope",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The run page (PRD 9.4).",
+    "reason": "The owner's answer of 2026-10-11 (raw values and per-alloy lines) and screenshot review (markers by source, limited axes, phone, coefficient-only wording).",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.plot:PLOT_FORMAT",
+          "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.pipeline.plot:SOURCE_SHAPES",
+          "equals": {
+            "mpea": "circle",
+            "tamu_fcc": "triangle",
+            "controlled_duplicates": "square"
+          }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.plot:USED_COEFFICIENT_ONLY"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.plot:LAYOUTS"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_plot.py::test_the_used_points_fit_back_to_the_stored_slope_and_each_alloy_gets_one_line",
+      "tests/test_plot.py::test_every_marker_has_its_sources_fixed_shape_never_its_order",
+      "tests/test_plot.py::test_the_view_is_limited_to_the_records_in_the_fit_and_says_how_many_lie_outside",
+      "tests/test_plot.py::test_the_plot_states_its_format_and_the_code_version_that_built_it",
+      "tests/test_plot.py::test_the_phone_drawing_keeps_its_text_at_12_px_or_more"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "run_workbook",
+    "name": "The run's workbook and records CSV",
+    "state": "in_force",
+    "statement": "Built on request from stored rows, never stored, for every outcome: PRD 11's four sheets (records used; records not used with the rule, flags and sensitivity sets; significance and commentary; run summary) and a records CSV. Each states its format and the code version that built it. The website's download and the command line's export use the same functions. The artifact table stays unused in sprint 1.",
+    "value": {
+      "text": "four sheets; built on request",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The download (PRD 11) and 'hypocurate export'.",
+    "reason": "PRD 11; the owner's answer 3 to the step 10 plan (built on request).",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.workbook:WORKBOOK_FORMAT",
+          "equals": 1
+        },
+        {
+          "ref": "python:hypocurate.pipeline.workbook:SHEETS",
+          "equals": [
+            "Records used",
+            "Records not used",
+            "Significance and commentary",
+            "Run summary"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_workbook.py::test_the_reference_runs_workbook_has_the_four_sheets_and_the_records_in_the_test",
+      "tests/test_workbook.py::test_the_workbooks_totals_equal_the_recorded_model_calls",
+      "tests/test_workbook.py::test_every_outcome_has_a_workbook",
+      "tests/test_workbook.py::test_the_website_download_and_the_command_lines_export_give_the_same_workbook"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "web_source_registration",
+    "name": "Registering a source from the website",
+    "state": "in_force",
+    "statement": "The data sources page lists every registered source and every source defined in code that is not registered yet; registering one calls sources.versions.register (as the command line's 'sources register') with the session's CSRF token, and a version it seals is recorded with the signed-in name in action_record, in the same transaction; a request without the token is refused and writes nothing. The website can register the constructed test-data source (controlled duplicates) as well; it stays marked as constructed test data (the mark is in code's source definition, which the website cannot change) and can never be used in a real run: a dispatch that chooses it is refused unless the run is marked as a test with constructed data, which only the command line can do. The website's 'dispatch again' can carry over a test-run mark first set at the command line (the new run records what the query's last run recorded), but never creates one. 'Test connection and show sample records' only reads. A source of a person's own, from a form, needs an adapter in code first and is for a later sprint.",
+    "value": {
+      "text": "code-defined sources only; CSRF",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The data sources page (PRD 9.6).",
+    "reason": "The owner's addition 4 to the step 10 plan (a safeguard, with the same review as the other write paths).",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.versions:register"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_catalog.py::test_registering_a_source_from_the_website_records_it_and_names_the_person",
+      "tests/test_web_catalog.py::test_registration_without_the_sessions_token_is_refused_and_writes_nothing",
+      "tests/test_web_catalog.py::test_the_connection_test_shows_sample_records_and_writes_nothing",
+      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name",
+      "tests/test_web_fix10b.py::test_the_website_can_register_the_constructed_source_and_it_never_enters_a_real_run",
+      "tests/test_web_fix10b.py::test_the_websites_dispatch_again_carries_over_a_command_line_test_mark_and_never_creates_one"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12.",
+      "2026-10-12: the sentence on the constructed test-data source added at the owner's request, with the approval.",
+      "2026-10-12: the sentence on dispatch again added at the owner's request, after ChatGPT's re-check."
+    ]
+  },
+  {
+    "key": "agent_pages",
+    "name": "The agent pages",
+    "state": "in_force",
+    "statement": "One read-only page per role with its latest stored settings version and a 'Fixed in code' panel: what the role receives at each stage (the access layer's own allow-lists and field descriptions), what it returns (the role's own output description), what it may call and what it may not do (fixed sentences summarizing CLAUDE.md's rules).",
+    "value": {
+      "text": "read-only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The agent pages (PRD 9.5).",
+    "reason": "PRD 9.5.",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.catalog_view:MAY_CALL"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.catalog_view:MAY_NOT"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_catalog.py::test_each_agent_page_shows_exactly_what_the_access_layer_lets_the_role_receive",
+      "tests/test_web_catalog.py::test_each_agent_page_says_what_the_role_returns_from_the_roles_own_description"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "help_page",
+    "name": "The Help page and the information buttons",
+    "state": "in_force",
+    "statement": "Every explanation lives in one file, hypocurate/web/glossary.json; every entry has an information button on some screen, every button names an entry, no template repeats an explanation's text, and the Help page lists every entry by where it appears, with a search.",
+    "value": {
+      "text": "one glossary file",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every screen; the Help page (PRD 9.7).",
+    "reason": "PRD 9.7; criterion 14.5.",
+    "evidence": [
+      "Step 10b: the owner's go and screenshot review of 2026-10-11 (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:hypocurate/web/glossary.json:\"key\":\"outcome\""
+        },
+        {
+          "ref": "python:hypocurate.web.app:STATEMENT_TERMS"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_help.py::test_every_glossary_entry_has_a_button_and_every_button_has_an_entry",
+      "tests/test_help.py::test_no_template_repeats_an_explanations_text",
+      "tests/test_help.py::test_the_help_page_lists_every_explanation_and_where_it_appears"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "action_record",
+    "name": "Who did what: the action record",
+    "state": "in_force",
+    "statement": "Every write a person makes records, in the same transaction, one row of action_record (migration 0009): the action (create, edit, new version, submit, return, domain confirmation, dispatch, dispatch again, cancel, confirmation of the question as tested, registering a source), where it was done (the website, the command line, or code), the name given, what it acted on, and the database's time. On the website the name is the signed-in name, and the database refuses a website row without one. At the command line it is --by where the command takes it; a command without --by is recorded with no name, as such. A narrower question code creates is recorded as code's, with no name. Rows are never changed or deleted. Confirmation and cancel keep their own records as before (rules_confirmation, the run's failure reason); their row here repeats the name so that who did what is in one place. Nothing proves who typed a name (see signed_in_name). It is a record, not a gate: no rule reads it.",
+    "value": {
+      "text": "one row per action; append-only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every query, run and source-registration write.",
+    "reason": "ChatGPT's review of 10b, finding 3 (create, submit, edit and dispatch again kept no name); the owner's answer: a new table action_record, migration 0009, with rows for confirm and cancel too.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:ACTIONS",
+          "equals": [
+            "create",
+            "edit",
+            "new_version",
+            "submit",
+            "return",
+            "confirm_domain",
+            "dispatch",
+            "dispatch_again",
+            "cancel",
+            "confirm_rules",
+            "register_source"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.models:CHANNELS",
+          "equals": [
+            "website",
+            "command line",
+            "code"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.actions:ACTOR_MAX",
+          "equals": 200
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_every_website_write_stores_the_signed_in_name",
+      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name",
+      "tests/test_web_fix10b.py::test_action_records_are_append_only",
+      "tests/test_migrations_step10b.py::test_an_action_on_the_website_names_its_person",
+      "tests/test_migrations_step10b.py::test_each_action_names_exactly_what_it_acts_on",
+      "tests/test_migrations_step10b.py::test_rows_are_never_changed_deleted_or_truncated"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "act_on_version_shown",
+    "name": "A page acts only on the version it showed",
+    "state": "in_force",
+    "statement": "Every website form that writes to a query (edit, review's dispatch and return, dispatch again) sends the version it displayed and a fingerprint of that version's content (SHA-256 of its query, number, status, hypothesis, domains, option, note, sources and review comment). The pipeline compares both with the stored version under the version lock, in the write's own transaction, and refuses a difference with \"This query has changed since you opened it; reload the page\". A form that sends neither is refused the same way. So an old review tab never dispatches or returns a newer version, and an old edit form never overwrites a newer draft or makes a second new version. Saving and submitting from one form is one transaction. The command line names the version it acts on and is not checked this way.",
+    "value": {
+      "text": "version id + content fingerprint, checked under the lock",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The query pages (PRD 9.2, 9.3).",
+    "reason": "ChatGPT's review of 10b, finding 1 (a stale review page dispatched a version it never showed); the owner's fix, in the owner's words for the refusal.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.queries:STALE",
+          "equals": "This query has changed since you opened it; reload the page"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_a_review_tab_opened_on_version_1_cannot_dispatch_version_2",
+      "tests/test_web_fix10b.py::test_a_changed_version_is_refused_even_with_the_same_id",
+      "tests/test_web_fix10b.py::test_an_old_edit_form_of_a_returned_version_cannot_make_a_second_new_version",
+      "tests/test_web_fix10b.py::test_a_form_without_the_version_it_showed_is_refused",
+      "tests/test_web_fix10b.py::test_the_pipeline_refuses_a_stale_fingerprint_under_the_version_lock"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
+    ]
+  },
+  {
+    "key": "export_no_formulas",
+    "name": "No formulas in exports",
+    "state": "in_force",
+    "statement": "In the workbook every text cell is written as a string cell, whatever it begins with, so stored text (a hypothesis, a paper reference, a note, a name, the Analyst's text) is never a formula. In the records CSV a text beginning with =, +, -, @, a tab or a carriage return gets a leading apostrophe; a number, or a text that is exactly a number, is written as it is. The stored rows are unchanged.",
+    "value": {
+      "text": "workbook: string cells; CSV: leading apostrophe",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The workbook and records CSV (PRD 11) and 'hypocurate export'.",
+    "reason": "ChatGPT's review of 10b, finding 2 (a stored '=1+1' became a formula cell); the owner's fix.",
+    "evidence": [
+      "Step 10b, fix round 1: ChatGPT's review of 2026-10-11 (docs/reviews/step10b_review_chatgpt.md), its three findings accepted by the owner the same day, with the owner's answer on storage (quoted in docs/reviews/step10b_summary.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-11"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.workbook:FORMULA_STARTS",
+          "equals": [
+            "=",
+            "+",
+            "-",
+            "@",
+            "\t",
+            "\r"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.workbook:CSV_TEXT_MARK",
+          "equals": "'"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_web_fix10b.py::test_every_text_cell_of_the_workbook_is_a_string_cell",
+      "tests/test_web_fix10b.py::test_the_csv_neutralises_formula_text_and_keeps_numbers"
+    ],
+    "history": [],
+    "notes": [
+      "Wording approved by the owner, 2026-10-12."
     ]
   }
 ]

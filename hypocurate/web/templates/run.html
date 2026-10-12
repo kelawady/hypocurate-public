@@ -6,6 +6,7 @@
 <p class="crumbs"><a href="/runs">Runs</a> › {{ r.query }} · version {{ r.version }} · run {{ r.run }} {{ info("version") }} · <strong>{{ r.status_words }}</strong></p>
 <h1>{{ r.claim }}</h1>
 <p class="muted">Domain: {{ r.domain }}{% for t in r.tags %} · {{ t }}{% endfor %} · plan: {{ r.plan_kind }} · agent mode: {{ r.agent_mode }} · dispatched {{ r.queued }}{% if r.ended %} · ended {{ r.ended }}{% endif %}</p>
+<p class="downloads"><a class="button" href="/runs/{{ r.run }}/workbook">Download data (workbook)</a> <a href="/runs/{{ r.run }}/records.csv">Records as CSV</a> {{ info("download") }}</p>
 {% if r.test_run_badge %}<p class="badge test-run">{{ r.test_run_badge }}</p>{% endif %}
 {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
@@ -18,6 +19,7 @@
     <div class="statement-text">
       <h2>Results statement (written by code) {{ info("sig") }}</h2>
       {% for line in r.statement.body %}<p class="{{ 'indent' if line.startswith('  ') else '' }}">{{ line|units }}</p>{% endfor %}
+      <p class="terms muted">Terms: {% for k in statement_terms %}{{ term(k) }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
     </div>
     <aside class="outcome" aria-label="Evidence level and verdict">
       <h3>Evidence level {{ info("evidence_level") }}</h3>
@@ -49,6 +51,17 @@
   {% endif %}
 </section>
 
+{% if plot %}
+<section class="plot-section">
+  <h2>Plot of the data and the fitted relationship {{ info("plot") }}</h2>
+  {% if plot.svg %}
+  <div class="plot-box">{{ plot.svg }}{{ plot.svg_narrow }}</div>
+  <ul class="legend">{% for line in plot.legend %}<li>{{ line|units }}</li>{% endfor %}</ul>
+  {% else %}<p>{{ plot.reason }}</p>{% endif %}
+  <p class="muted small">{{ plot.version }}</p>
+</section>
+{% endif %}
+
 {% if r.per_source %}
 <section>
   <h2>Each source alone, and all together {{ info("persource") }}</h2>
@@ -76,8 +89,24 @@
 {% endif %}
 
 <section>
+  <h2>Commentary {{ info("commentary") }}</h2>
+  <p class="muted">No commentary: the Commentator is not built in sprint 1 (PRD 15, step 12).</p>
+</section>
+
+<section>
   <h2>Cautions</h2>
   {% for line in r.statement.cautions %}<p class="{{ 'indent' if line.startswith('  ') else '' }}">{{ line|units }}</p>{% endfor %}
+</section>
+{% endif %}
+
+{% if r.flags %}
+<section>
+  <h2>Flags raised by code {{ info("records") }}</h2>
+  <table class="data">
+    <thead><tr><th>Flag</th><th>Kind</th><th>Category</th><th>Records</th><th>The Critic's class</th></tr></thead>
+    <tbody>{% for f in r.flags %}<tr><td data-label="Flag">{{ f.flag }}</td><td data-label="Kind">{{ f.kind_words }}</td><td data-label="Category">{{ f.category or "—" }}</td><td data-label="Records">{{ f.records }}</td>
+      <td data-label="The Critic's class">{{ f.critic }}{% if f.critic_label %}<div class="label">{{ f.critic_label }}</div>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
 </section>
 {% endif %}
 

@@ -289,12 +289,14 @@ def show(engine: Engine, run_id: int) -> tuple[dict, str]:
 
 
 def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | None = None,
-            shown_fingerprint: str | None = None) -> dict:
+            shown_fingerprint: str | None = None, *, via: str = "command line") -> dict:
     """Records one named person's confirmation of one waiting run. `shown`: the content that was printed; or
     `shown_fingerprint`: the `shown_fingerprint` of the content and the text displayed (step 10a, owner's addition 2;
     fix round 1, finding 1). The content is read and the text rendered in the same transaction as the insert; the
     confirmation is refused as `content_changed` if either differs from what was shown, so the text stored is exactly
-    the text the fingerprint covered. Returns the stored content and text."""
+    the text the fingerprint covered. Returns the stored content and text. Step 10b, fix round 1 (owner): an
+    `action_record` row too, in the same transaction (`via`: the command line or the website); the confirmation's own
+    row is unchanged."""
     name = (by or "").strip()
     if not name or len(name) > CONFIRMED_BY_MAX:
         raise QueryRefused("name_required", f"a confirmation names the person (1 to {CONFIRMED_BY_MAX} characters)")
@@ -326,6 +328,8 @@ def confirm(engine: Engine, run_id: int, by: str, shown: Mapping[str, Any] | Non
             bindparam("c", type_=JSONB)), dict(r=run_id, b=name, fp=c["plan_fingerprint"],
                                                 p=c["planner_stage_result_id"], n=c["narrowing_stage_result_id"],
                                                 c=c, s=words))
+        from hypocurate.db import actions
+        actions.record(conn, "confirm_rules", name, via, run=run_id)
         return {"content": c, "shown": words}
 
     try:

@@ -7,7 +7,11 @@
     {% if r.confirmed %}<p>Confirmed; waiting for a worker to take it up.</p>
     {% else %}<p>Waits for {{ r.waiting_for }}.</p>{% endif %}
   {% endif %}
-  {% if r.failure %}<p class="error">Failed: {{ r.failure }}</p>{% endif %}
+  {% if r.failure_plain %}
+  <p class="failure-words">{{ r.failure_plain.words }}</p>
+  {% if r.failure_plain.reasons %}<p>Code's reasons for refusing the Planner's answers: {% for x in r.failure_plain.reasons %}{{ x }}{% if not loop.last %}; {% endif %}{% endfor %}.</p>{% endif %}
+  <p class="muted small">{{ r.failure_plain.technical }}</p>
+  {% elif r.failure %}<p class="error">Failed: {{ r.failure }}</p>{% endif %}
   {% if r.claim_facts %}
   <dl class="facts">
     <dt>Worker</dt><dd>{{ r.claim_facts.worker or "none holds it" }}{% if r.claim_facts.claimed %} (since {{ r.claim_facts.claimed }}){% endif %}</dd>

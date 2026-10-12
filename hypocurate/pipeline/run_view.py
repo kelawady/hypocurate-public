@@ -18,7 +18,7 @@ from typing import Any, Iterator, Mapping
 from sqlalchemy import Connection, Engine, text
 
 from hypocurate.db.models import TEST_RUN_LABEL
-from hypocurate.pipeline import display, progress
+from hypocurate.pipeline import display, failure_words, progress
 from hypocurate.pipeline import statistics as st
 
 # What a run's status is called on the screens (step 10a; the live-run record's open item 3: a waiting run is shown as
@@ -42,25 +42,30 @@ SET_DISPLAY_NAMES = {
     "no_exclusions": "with no exclusion rules",
     "tension_and_compression": "with tension and compression tests",
     "six_batches_as_groups": "with Texas A&M grouped by its six batches",
-    "same_alloy_1_at_pct": "with alloys matched at 1 at.%",
+    "same_alloy_1_at_pct": "with alloys matched at 1 atomic percent (at.%)",
     "source_only_assignments": "with values assigned from the source only",
     "scope_not_confirmed_included": "with records of unconfirmed scope included",
     "possible_duplicates_separate": "with possible duplicates counted separately",
     "conflicts_survivor_value": "with conflicting values counted once (survivor rule)",
 }
-# The one change of each set, in words for people (the eligibility code's own description, `SENSITIVITY_CHANGES`,
-# names internal sets; the ninth set's description is that one, which names none).
+# The one change of each set, in words for people, and what the main result does instead (owner's review,
+# 2026-10-11). The main result's rule is read from the run's locked plan ({…} filled by `_set_description`).
 SET_DESCRIPTIONS = {
-    "no_exclusions": "The plan's exclusion rules are dropped; the scope is kept.",
-    "tension_and_compression": "Tests in tension and in compression are both accepted.",
-    "six_batches_as_groups": "The Texas A&M records are grouped by their six batches instead of as one group; the "
-                             "records are the same.",
-    "same_alloy_1_at_pct": "Compositions are rounded to 1 at.% when deciding whether two records are the same alloy.",
-    "source_only_assignments": "Only values converted or assigned from the source are accepted; values assigned by "
-                               "decision are left out.",
-    "scope_not_confirmed_included": "Records whose scope cannot be confirmed are treated as in scope.",
+    "no_exclusions": "The plan's exclusion rules are dropped ({exclusions}); the main result applies them. The scope is "
+                     "kept.",
+    "tension_and_compression": "Tests in tension and in compression are both accepted, instead of {test_types} only, "
+                               "as in the main result.",
+    "six_batches_as_groups": "The Texas A&M records are grouped by their six batches, instead of as one group (the "
+                             "whole dataset), as in the main result; the records are the same.",
+    "same_alloy_1_at_pct": "Compositions are rounded to 1 at.% when deciding whether two records are the same alloy, "
+                           "instead of to {main_rounding} at.%, as in the main result.",
+    "source_only_assignments": "Only values converted or assigned from the source are accepted; the main result also "
+                               "accepts values assigned by decision.",
+    "scope_not_confirmed_included": "Records whose scope cannot be confirmed are treated as in scope; the main result "
+                                    "leaves them out.",
     "possible_duplicates_separate": "Records in unresolved or possible duplicate groups count as separate "
-                                    "measurements.",
+                                    "measurements; in the main result a possible duplicate group counts once (by the "
+                                    "survivor rule) and an unresolved one is left out.",
     # Owner's wording (2026-10-11): say that these values are normally left out.
     "conflicts_survivor_value": "Conflicting values, left out of the main result, are included once each, using the "
                                 "survivor's value.",
@@ -71,6 +76,7 @@ STAGE_NAMES = {"planner": "Planner", "narrowing": "narrowing decision (code)", "
                "gap_facts": "gap facts (code)", "analyst": "Analyst"}
 OPEN_STATUSES = ("queued", "waiting", "running")  # the screens update these by themselves (static/poll.js)
 NOT_COMPLETED = "No evidence level yet (not completed)"
+NOT_REACHED = "not searched (the run ended first)"
 FAILED_NO_LEVEL = "failed: no evidence level"  # owner, 2026-10-11
 # The stored label of a marked run (register 'constructed_test_runs'), shown as it is stored.
 TEST_RUN_BADGE = TEST_RUN_LABEL
@@ -90,11 +96,21 @@ def snapshot(engine: Engine) -> Iterator[Connection]:
             yield conn
 
 
-def _set_description(key: str | None) -> str:
+def _set_description(key: str | None, plan: Mapping | None = None) -> str:
+    """The set's one change and what the main result does instead, with the main result's rule from `plan` (the run's
+    locked plan; the profile's defaults when none is given)."""
+    from hypocurate.pipeline import plan as plans
+    from hypocurate.pipeline import reading
     from hypocurate.pipeline.eligibility import INFLUENCE_KEY, SENSITIVITY_CHANGES
     if key == INFLUENCE_KEY:
-        return SENSITIVITY_CHANGES[INFLUENCE_KEY][:1].upper() + SENSITIVITY_CHANGES[INFLUENCE_KEY][1:] + "."
-    return SET_DESCRIPTIONS.get(key or "", "")
+        return (SENSITIVITY_CHANGES[INFLUENCE_KEY][:1].upper() + SENSITIVITY_CHANGES[INFLUENCE_KEY][1:]
+                + "; the main result keeps them.")
+    p = plan or plans.reference_plan(0)
+    rules = p.get("exclusion_rules") or []
+    values = {"exclusions": "; ".join(reading.exclusion_words(r) for r in rules) if rules else "none in this plan",
+              "test_types": " and ".join(p["scope"]["test_type"]),
+              "main_rounding": f"{10 ** -p['rules']['same_alloy_decimals']:g}"}
+    return SET_DESCRIPTIONS.get(key or "", "").format(**values)
 
 
 def _set_display_name(key: str | None) -> str:
@@ -155,8 +171,8 @@ def queue_rows(engine: Engine) -> list[dict]:
     out = []
     with engine.connect() as conn:
         runs = conn.execute(text(
-            "SELECT r.id, r.status, h.number, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE rc.run_id = r.id) AS "
-            "confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
+            "SELECT r.id, r.status, h.number, r.experiment_flags, EXISTS (SELECT 1 FROM rules_confirmation rc WHERE "
+            "rc.run_id = r.id) AS confirmed, c.worker, extract(epoch FROM clock_timestamp() - c.heartbeat_at) AS heartbeat_age, "
             "(SELECT count(*) FROM run_claim x WHERE x.run_id = r.id AND x.released_at IS NOT NULL AND "
             "x.release_reason NOT IN ('waiting', 'finished')) AS recoveries FROM run r "
             "JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id JOIN hypothesis h ON h.id = hv.hypothesis_id "
@@ -173,7 +189,9 @@ def queue_rows(engine: Engine) -> list[dict]:
                 "worker": r.worker, "heartbeat_age_seconds": round(float(r.heartbeat_age), 1)
                 if r.heartbeat_age is not None else None,
                 "seconds_since_last_write": round(progress.seconds_since_last_write(conn, r.id), 1),
-                "recoveries": int(r.recoveries)})
+                "recoveries": int(r.recoveries),
+                # Step 10b (register 'constructed_test_runs'): the label on every list.
+                "test_run": bool((r.experiment_flags or {}).get("constructed_test_data"))})
     return out
 
 
@@ -281,7 +299,7 @@ def _counts_words(e: Mapping) -> dict:
             "informative": c.get("n_groups_informative"), "resid_df": c.get("resid_df")}
 
 
-def _tables(stats: Mapping, kinds: Mapping[str, str]) -> dict:
+def _tables(stats: Mapping, kinds: Mapping[str, str], plan: Mapping | None = None) -> dict:
     """Per-source and sensitivity rows from the stored statistics output (the order `statement` uses)."""
     from hypocurate.pipeline import analyst_names as an
     from hypocurate.pipeline.statement import _ordered, _source_name
@@ -306,7 +324,7 @@ def _tables(stats: Mapping, kinds: Mapping[str, str]) -> dict:
         against = "—"
         if inference and e.get("estimate") is not None:
             against = an.label_words({**e, "label": st.label(e, pooled, alpha)})
-        sensitivity.append({"name": _set_display_name(e.get("set")), "change": _set_description(e.get("set")),
+        sensitivity.append({"name": _set_display_name(e.get("set")), "change": _set_description(e.get("set"), plan),
                             **_counts_words(e), "result": _result_words(e, withheld), "against": against})
     return {"pooled": pooled, "per_source": per_source, "sensitivity": sensitivity}
 
@@ -373,7 +391,8 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     tags = conn.execute(text(
         "SELECT tv.kind, tv.value FROM run_tag rt JOIN tag_value tv ON tv.id = rt.tag_value_id WHERE rt.run_id = :r "
         "ORDER BY tv.kind, tv.value"), dict(r=run_id)).all()
-    plan = conn.execute(text("SELECT fingerprint FROM plan WHERE run_id = :r"), dict(r=run_id)).scalar_one_or_none()
+    locked = conn.execute(text("SELECT fingerprint, content FROM plan WHERE run_id = :r"), dict(r=run_id)).one_or_none()
+    plan = locked.fingerprint if locked else None
     freeze = conn.execute(text("SELECT fingerprint, n_records FROM run_snapshot WHERE run_id = :r"),
                           dict(r=run_id)).one_or_none()
     locked_at, frozen_at = _time(conn, "locked_at", "plan", run_id), _time(conn, "frozen_at", "run_snapshot", run_id)
@@ -392,7 +411,7 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     facts = _claim_facts(conn, run_id) if head.status in ("queued", "waiting", "running") else None
     test_run = bool((head.experiment_flags or {}).get("constructed_test_data"))
     cost = shown["tokens_and_cost"] or {}
-    tables = _tables(stats or {}, kinds)
+    tables = _tables(stats or {}, kinds, locked.content if locked else None)
     return {
         "run": run_id, "query": shown["query"], "version": head.version_number, "claim": shown["claim"],
         "status": head.status, "status_words": STATUS_WORDS[head.status],
@@ -415,9 +434,12 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
         "checkpoints": {"rules_lock": {"at": locked_at, "fingerprint": plan},
                         "dataset_freeze": {"at": frozen_at, "fingerprint": freeze.fingerprint if freeze else None,
                                            "records": freeze.n_records if freeze else None}},
-        "sources": [{"name": s.name, "status": s.search_status.replace("_", " "),
+        "failure_plain": failure_words.explain(conn, run_id, shown["failure"]) if head.status == "failed" else None,
+        # Owner, 2026-10-11: a source a run never reached because it ended first is "not searched", never "pending".
+        "sources": [{"name": s.name, "status": (NOT_REACHED if s.search_status == "pending" and head.status in
+                                                ("completed", "failed") else s.search_status.replace("_", " ")),
                      "nothing_found": s.nothing_found.replace("_", " ") if s.nothing_found else None} for s in sources],
-        "flags": shown["flags"],
+        "flags": [{**f, "kind_words": f["kind"].replace("_", " ")} for f in shown["flags"]],
         "stages": [{"name": STAGE_NAMES.get(s.stage, s.stage), "attempt": s.attempt, "status": s.status,
                     "model": s.model, "calls": int(s.calls or 0), "input_tokens": tokens(s.input_tokens),
                     "output_tokens": tokens(s.output_tokens), "cost": money(s.reported_cost)} for s in stages],
@@ -441,23 +463,28 @@ def runs_list(engine: Engine, before: int | None = None, per_page: int = RUNS_PE
     re-check: an offset shifted when runs were added between pages, repeating some and never reaching others; a run's
     id never changes, so following "older runs" goes through every run that existed when the list was opened exactly
     once). One snapshot for the count and the rows."""
+    from hypocurate.pipeline import reading
     if before is not None and before < 1:
         raise NoSuchPage(f"no runs before run {before}")
     with snapshot(engine) as conn:
         total = conn.execute(text("SELECT count(*) FROM run")).scalar_one()
         rows = conn.execute(text(
             "SELECT r.id, r.status, r.evidence_level, r.verdict, r.experiment_flags, h.number, hv.text, "
-            "r.outcome, to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
+            "r.outcome, r.failure_reason, "
+            "to_char(r.queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI \"UTC\"') AS queued, "
             "coalesce(t.cap_cost, 0) AS cost FROM run r JOIN hypothesis_version hv ON hv.id = r.hypothesis_version_id "
             "JOIN hypothesis h ON h.id = hv.hypothesis_id LEFT JOIN model_call_totals_by_run t ON t.run_id = r.id "
             "WHERE CAST(:before AS bigint) IS NULL OR r.id < :before ORDER BY r.id DESC LIMIT :n"),
             dict(before=before, n=per_page + 1)).all()  # one more than shown: is there an older page?
-    more, rows = len(rows) > per_page, rows[:per_page]
+        more, rows = len(rows) > per_page, rows[:per_page]
+        plans = {r.id: reading.provenance(conn, r.id) for r in rows}  # step 10b: the "Plan" column, same snapshot
+        failures = {r.id: failure_words.explain(conn, r.id, r.failure_reason) for r in rows if r.status == "failed"}
     out = []
     for r in rows:
         test_run = bool((r.experiment_flags or {}).get("constructed_test_data"))
-        out.append({"run": r.id, "query": r.number, "claim": r.text, "status": r.status,
-                    "status_words": STATUS_WORDS[r.status], "queued": r.queued,
+        out.append({"run": r.id, "query": r.number, "claim": r.text, "status": r.status, "plan": plans[r.id],
+                    "status_words": failures[r.id]["short"] if r.id in failures else STATUS_WORDS[r.status],
+                    "queued": r.queued,
                     "outcome": r.outcome.replace("_", " ") + " in the sources searched" if r.outcome else None,
                     "evidence": evidence(r.evidence_level, None, None, test_run, failed=r.status == "failed"),
                     "cost": money(r.cost)})

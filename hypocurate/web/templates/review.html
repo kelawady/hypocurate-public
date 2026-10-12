@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Review and dispatch · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Review and dispatch {{ info("review") }}</h1>
+<div class="review-grid">
+  <nav class="picker" aria-label="Submitted queries">
+    <h2>Submitted {{ info("picker") }}</h2>
+    {% if not picker %}<p class="muted">No query is waiting for review.</p>{% endif %}
+    <ul>{% for p in picker %}
+      <li{% if q and q.number == p.number %} class="current"{% endif %}><a href="/review/{{ p.number }}">{{ p.number }} · version {{ p.version }}</a>
+        <div class="muted">{{ p.submitted }} · {{ p.domain }}</div><div>{{ p.claim }}</div></li>
+    {% endfor %}</ul>
+  </nav>
+  <div>
+  {% if error %}<p class="error" role="alert">Not done: {{ error }}</p>{% endif %}
+  {% if q and q.reviewable %}
+  <section>
+    <h2>{{ q.number }} · version {{ q.latest.version }}</h2>
+    <p>{{ q.latest.claim }}</p>
+    <dl class="facts">
+      <dt>How much data is enough {{ info("sufficiency") }}</dt><dd>{{ q.latest.sufficiency }}</dd>
+      <dt>Sources</dt><dd>{% for s in q.latest.sources %}{{ s.name }} ({{ s.data_kind }}){% if not loop.last %}; {% endif %}{% endfor %}</dd>
+      <dt>Agent settings {{ info("agentversion") }}</dt><dd>{% for a in q.agents %}{{ a.role }}: {% if a.version %}version {{ a.version }}{% else %}none stored yet{% endif %}{% if not loop.last %}; {% endif %}{% endfor %} <span class="muted">(dispatch records the code's current settings, a new version if they changed)</span></dd>
+      <dt>Spending caps {{ info("cap") }}</dt><dd>{{ q.caps.per_run }} per run; {{ q.caps.monthly }} per month</dd>
+      {% if q.latest.note %}<dt>Note</dt><dd>{{ q.latest.note }}</dd>{% endif %}
+    </dl>
+    <form method="post" action="/review/{{ q.number }}/dispatch" class="query-form">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+      <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
+      <fieldset><legend>Domain: confirm or change {{ info("domain") }}</legend>
+        {% for d in q.options.domains %}
+        <label class="choice"><input type="radio" name="domain" value="{{ d.key }}"{% if d.key == q.domain_key %} checked{% endif %}> {{ d.name }}{% if not d.supported %} <span class="muted">(not yet supported)</span>{% endif %}</label>
+        {% endfor %}
+      </fieldset>
+      <label for="ceiling">Ceiling for this run in US dollars (optional; at most the per-run cap)</label>
+      <input id="ceiling" name="ceiling" inputmode="decimal" placeholder="{{ q.caps.per_run }}">
+      <p>Dispatching as <strong>{{ signed_in_as }}</strong>.</p>
+      <button type="submit">Dispatch</button>
+    </form>
+    <form method="post" action="/review/{{ q.number }}/return" class="query-form">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+      <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
+      <label for="comment">Return for edits: what should change?</label>
+      <textarea id="comment" name="comment" rows="2" required></textarea>
+      <button type="submit" class="secondary">Return for edits</button>
+    </form>
+  </section>
+  {% elif q %}
+  <p>{{ q.number }} is {{ q.latest.status_words }}; only a submitted query is reviewed. <a href="/queries/{{ q.number }}">Open it</a>.</p>
+  {% endif %}
+  <section>
+    <h2>Run queue {{ info("queue") }}</h2>
+    {% if not queue %}<p class="muted">No run is queued, waiting or running.</p>{% else %}
+    <table class="data">
+      <thead><tr><th>Run</th><th>Query</th><th>Status</th><th>Stage</th><th>Worker</th></tr></thead>
+      <tbody>{% for x in queue %}<tr><td data-label="Run"><a href="/runs/{{ x.run }}">run {{ x.run }}</a></td><td data-label="Query">{{ x.query }}{% if x.test_run %} <span class="badge test-run">test run</span>{% endif %}</td><td data-label="Status">{{ x.status }}</td><td data-label="Stage">{{ x.stage }}</td><td data-label="Worker">{{ x.worker or "none" }}</td></tr>{% endfor %}</tbody>
+    </table>{% endif %}
+  </section>
+  </div>
+</div>
+{% endblock %}

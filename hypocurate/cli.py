@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     sources_sub = sources.add_subparsers(dest="sources_command", required=True)
     register = sources_sub.add_parser("register", help="register and seal the frozen sources")
     register.add_argument("keys", nargs="*", help="source keys (default: all)")
+    register.add_argument("--by", help="the name of the person registering (recorded with each version sealed)")
     test = sources_sub.add_parser("test", help="read a source and show sample records")
     test.add_argument("key")
     test.add_argument("-n", type=int, default=5, help="number of sample records (default 5)")
@@ -52,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--queue", action="store_true", help="dispatch and return at once; a worker runs it (step 9b)")
     dispatch = sub.add_parser("dispatch", help="dispatch a submitted query by its number and run it (may cost money)")
     dispatch.add_argument("number", help="the query number, e.g. Q-0002")
-    dispatch.add_argument("--by", help="the name of the person confirming the domain (not with --again)")
+    dispatch.add_argument("--by", help="the name of the person confirming the domain and dispatching (required "
+                                       "without --again; with --again, recorded if given)")
     dispatch.add_argument("--ceiling", help="the most this run's model calls may cost, in USD")
     dispatch.add_argument("--queue", action="store_true", help="dispatch and return at once; a worker runs it")
     dispatch.add_argument("--again", action="store_true",
@@ -70,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     cancel.add_argument("--by", required=True, help="the name of the person cancelling")
     show = sub.add_parser("show", help="print a run's outcome and summary")
     show.add_argument("run", type=int)
+    export = sub.add_parser("export", help="write a run's workbook (PRD 11, 12), or with --csv its records")
+    export.add_argument("run", type=int)
+    export.add_argument("--out", required=True, help="the file to write")
+    export.add_argument("--csv", action="store_true", help="the records as CSV instead of the workbook")
     args = parser.parse_args(argv)
 
     settings = load_settings(web=False)
@@ -84,6 +90,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "worker":
         from hypocurate import worker as background
         return background.run(once=args.once, engine=engine)
+    if args.command == "export":  # step 10b: the same functions as the website's download
+        from hypocurate.pipeline import workbook
+        data = workbook.records_csv(engine, args.run) if args.csv else workbook.build(engine, args.run)
+        if data is None:
+            print(f"error: no run {args.run}", file=sys.stderr)
+            return 1
+        content = data.encode("utf-8") if isinstance(data, str) else data
+        with open(args.out, "wb") as f:
+            f.write(content)
+        print(json.dumps({"run": args.run, "written": args.out, "bytes": len(content)}))
+        return 0
     if args.command in ("run", "dispatch", "show", "confirm", "cancel", "queue"):
         from hypocurate.cli_runs import command
         return command(args, engine)
@@ -100,7 +117,7 @@ def _sources(args, engine) -> int:
     try:
         if args.sources_command == "register":
             for key in args.keys or list(SOURCES):
-                r = register(engine, key)
+                r = register(engine, key, by=args.by)
                 state = "registered and sealed" if r.created else "already registered"
                 print(f"{r.key}: {state}; version {r.version_id} ({r.label}); fingerprint {r.fingerprint}")
             return 0

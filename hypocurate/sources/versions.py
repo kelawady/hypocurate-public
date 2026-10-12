@@ -271,14 +271,27 @@ def _register_in(conn: Connection, d: SourceDefinition, files: dict[str, bytes],
     return Registered(d.key, source_id, version_id, label, digest, identity, created=True)
 
 
-def register(engine: Engine, key: str, data_dir: Path = DATA_DIR, manifest: dict | None = None) -> Registered:
+def register(engine: Engine, key: str, data_dir: Path = DATA_DIR, manifest: dict | None = None, *,
+             by: str | None = None, via: str = "command line") -> Registered:
     """Registers source `key` and seals its version, or returns the identical sealed
-    version if it is already registered. One transaction, retried on 40P01 / 40001."""
+    version if it is already registered. One transaction, retried on 40P01 / 40001.
+    Step 10b, fix round 1: a version sealed here is recorded in `action_record` with the name
+    given (`by`; required on the website) in the same transaction; finding it already
+    registered writes nothing."""
+    from hypocurate.db import actions
     if key not in SOURCES:
         raise RegistrationError(f"unknown source {key!r}; known: {', '.join(SOURCES)}")
+    actions.actor(by, via)
     d = SOURCES[key]
     files, obtained = read_definition_files(d, data_dir, manifest)
-    return run_transaction(engine, lambda conn: _register_in(conn, d, files, obtained))
+
+    def body(conn: Connection) -> Registered:
+        done = _register_in(conn, d, files, obtained)
+        if done.created:
+            actions.record(conn, "register_source", by, via, source_version=done.version_id)
+        return done
+
+    return run_transaction(engine, body)
 
 
 # --- Loading a sealed version for an adapter ----------------------------------------

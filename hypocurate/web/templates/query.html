@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ q.number }} · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/queries">Queries</a> › {{ q.number }}</p>
+<h1>{{ q.latest.claim }}</h1>
+<p class="muted">{{ q.number }} · version {{ q.latest.version }} · {{ q.latest.status_words }}{% if q.narrower_of %} · the narrower question of <a href="/queries/{{ q.narrower_of }}">{{ q.narrower_of }}</a>{% endif %} · {{ q.cost.calls }} model call{{ "" if q.cost.calls == 1 else "s" }}, {{ q.cost.input_tokens }} input and {{ q.cost.output_tokens }} output tokens, {{ q.cost.counted }} {{ info("cost") }}</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<div class="actions">
+  {% if q.can_edit %}<a class="button" href="/queries/{{ q.number }}/edit">{% if q.latest.status == "returned" %}Edit (a new version){% else %}Edit the draft{% endif %}</a>{% endif %}
+  {% if q.can_review %}<a class="button" href="/review/{{ q.number }}">Review and dispatch</a>{% endif %}
+  {% if q.can_dispatch_again %}
+  <form method="post" action="/queries/{{ q.number }}/again">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="version_id" value="{{ q.latest.id }}">
+    <input type="hidden" name="version_fingerprint" value="{{ q.latest.fingerprint }}">
+    <button type="submit">Dispatch again (a new run)</button>
+  </form>{% endif %}
+</div>
+{% for v in q.versions %}
+<section>
+  <h2>Version {{ v.version }} · {{ v.status_words }} {{ info("version") }}</h2>
+  <p>{{ v.claim }}</p>
+  <dl class="facts">
+    <dt>Domain</dt><dd>{{ v.domain }}</dd>
+    <dt>Sources</dt><dd>{% for s in v.sources %}{{ s.name }} ({{ s.data_kind }}){% if not loop.last %}; {% endif %}{% endfor %}</dd>
+    <dt>How much data is enough</dt><dd>{{ v.sufficiency }}</dd>
+    <dt>Created</dt><dd>{{ v.created }}</dd>
+    {% if v.note %}<dt>Note</dt><dd>{{ v.note }}</dd>{% endif %}
+    {% if v.review_comment %}<dt>Review</dt><dd>{{ v.review_comment }}</dd>{% endif %}
+  </dl>
+  {% if v.runs %}
+  <table class="data runs">
+    <thead><tr><th>Evidence</th><th>Run</th><th>Status</th></tr></thead>
+    <tbody>{% for x in v.runs %}
+      <tr><td data-label="Evidence">{% with e = x.evidence, small = true %}{% include "_dial.html" %}{% endwith %}</td>
+          <td data-label="Run"><a href="/runs/{{ x.run }}">run {{ x.run }}</a></td><td data-label="Status">{{ x.status_words }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

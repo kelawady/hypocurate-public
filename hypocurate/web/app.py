@@ -12,9 +12,13 @@ The web service never calls a model, never claims a run and never runs a pipelin
 through `pipeline.run_view` and writes only through the pipeline's own functions: `confirmation.confirm` and
 `queries.cancel` in 10a. A confirmed run is taken up by the worker; closing the browser or restarting this service
 never affects a run (criterion 14.4).
+
+Step 10b, fix round 1: every write passes the signed-in name (recorded in `action_record`), and every form that writes
+to a query sends the version it showed and its fingerprint, which the pipeline checks under the version lock.
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -56,7 +60,15 @@ def _info(key: str) -> Markup:
         f'<span class="info-text" role="tooltip" id="{tip}" hidden>{Markup.escape(e["text"])}</span></span>')
 
 
-templates.env.globals.update(info=_info, dial=dial.svg)
+def _term(key: str) -> Markup:
+    """A glossary term's name with its information button (PRD 9.7)."""
+    return Markup(f'<span class="term">{Markup.escape(glossary.entry(key)["term"])}{_info(key)}</span>')
+
+
+# The terms of the results statement and the calibration, each with its button (PRD 9.7: every row of the record
+# of statistical significance has one).
+STATEMENT_TERMS = ("sig_estimate", "sig_test", "sig_validity", "sig_data", "sig_suff", "sig_source", "sig_other", "cal")
+templates.env.globals.update(info=_info, dial=dial.svg, term=_term, statement_terms=STATEMENT_TERMS)
 templates.env.filters.update(units=textfmt.units, model_text=textfmt.model_text)
 
 
@@ -177,7 +189,15 @@ def create_app(
         shown = run_view.run_page(engine, run_id)
         if shown is None:
             raise HTTPException(status_code=404, detail=f"no run {run_id}")
-        return page(request, "run.html", {"r": shown, "message": DONE.get(request.query_params.get("done", ""))})
+        figure = None
+        if shown["status"] == "completed":  # step 10b: the plot, built on request from stored rows
+            from hypocurate.pipeline import plot
+            d = plot.data(engine, run_id)
+            figure = {**d, "svg": plot.svg(d) if d.get("plot") else None,
+                      "svg_narrow": plot.svg(d, "narrow") if d.get("plot") else None,
+                      "legend": plot.legend(d) if d.get("plot") else []}
+        return page(request, "run.html", {"r": shown, "plot": figure,
+                                          "message": DONE.get(request.query_params.get("done", ""))})
 
     @app.get("/runs/{run_id}/state", response_class=HTMLResponse)
     def run_state(request: Request, run_id: int):
@@ -189,6 +209,27 @@ def create_app(
         return templates.TemplateResponse(request, "_state.html", {
             "r": shown, "csrf_token": security.csrf_token(request), "csrf_field": security.CSRF_FIELD},
             headers={"Cache-Control": "no-store"})
+
+    @app.get("/runs/{run_id}/workbook")
+    def run_workbook(request: Request, run_id: int):
+        """PRD 11: the run's workbook, built on request from stored rows."""
+        from hypocurate.pipeline import workbook
+        data = workbook.build(engine, run_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"no run {run_id}")
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="hypocurate-run-{run_id}.xlsx"',
+                                 "Cache-Control": "no-store"})
+
+    @app.get("/runs/{run_id}/records.csv")
+    def run_records_csv(request: Request, run_id: int):
+        from hypocurate.pipeline import workbook
+        data = workbook.records_csv(engine, run_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"no run {run_id}")
+        return Response(data, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="hypocurate-run-{run_id}-records.csv"',
+                                 "Cache-Control": "no-store"})
 
     @app.get("/runs/{run_id}/confirm", response_class=HTMLResponse)
     def confirm_form(request: Request, run_id: int):
@@ -209,7 +250,7 @@ def create_app(
             if not shown_fingerprint:
                 raise queries.QueryRefused("content_changed", "the page sent no fingerprint of what it showed; show "
                                                               "it again before confirming")
-            confirmation.confirm(engine, run_id, name, shown_fingerprint=shown_fingerprint)
+            confirmation.confirm(engine, run_id, name, shown_fingerprint=shown_fingerprint, via=queries.WEBSITE)
         except queries.QueryRefused as refused:
             shown = run_view.confirmation_page(engine, run_id, request.session.get("name"))
             if shown is None:
@@ -226,7 +267,7 @@ def create_app(
         if run_view.run_page(engine, run_id) is None:
             raise HTTPException(status_code=404, detail=f"no run {run_id}")
         try:
-            queries.cancel(engine, run_id, by=name)
+            queries.cancel(engine, run_id, by=name, via=queries.WEBSITE)
         except queries.QueryRefused as refused:
             shown = run_view.run_page(engine, run_id)
             if shown is None:
@@ -234,6 +275,271 @@ def create_app(
             return page(request, "run.html", {"r": shown, "message": None, "error": f"Not cancelled: {refused.reason}"},
                         status_code=409)
         return RedirectResponse(f"/runs/{run_id}?done=cancelled", status_code=303)
+
+    # --- the query pages (step 10b; PRD 9.1 to 9.3) ----------------------------------------------------------------
+
+    def refused_words(error: Exception) -> str:
+        """A refusal in code's fixed words: a query refusal's reason, or the database's own fixed message."""
+        from sqlalchemy.exc import IntegrityError
+        from hypocurate.pipeline import queries
+        from hypocurate.pipeline.writes import database_message
+        if isinstance(error, queries.QueryRefused):
+            return error.reason
+        if isinstance(error, IntegrityError):
+            return database_message(error)
+        raise error
+
+    def shown_version(form) -> dict:
+        """The version a form showed: its id and fingerprint as sent (fix round 1; checked by the pipeline)."""
+        raw = (form.get("version_id") or "").strip()
+        return {"version_id": int(raw) if raw.isdigit() else None,
+                "version_fingerprint": (form.get("version_fingerprint") or "").strip() or None}
+
+    def form_values(form) -> dict:
+        return {"claim": form.get("claim", ""), "domain": form.get("domain", ""),
+                "sufficiency": form.get("sufficiency", "fixed_minimum"), "note": form.get("note", ""),
+                "sources": form.getlist("sources"), "action": form.get("action", "save")}
+
+    @app.get("/queries", response_class=HTMLResponse)
+    def queries_page(request: Request, before: int | None = Query(None)):
+        from hypocurate.pipeline import query_view
+        try:
+            listed = query_view.queries_list(engine, before)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "queries.html", {"listed": listed, "active": "queries"})
+
+    @app.get("/queries/new", response_class=HTMLResponse)
+    def new_query_form(request: Request):
+        from hypocurate.pipeline import query_view
+        return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": None,
+                                                 "values": None, "error": None, "active": "new"})
+
+    @app.post("/queries")
+    async def new_query(request: Request):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        v = form_values(form)
+        try:
+            q = queries.create(engine, v["claim"], v["sources"], domain=v["domain"], sufficiency=v["sufficiency"],
+                               note=v["note"], by=name, via=queries.WEBSITE, submit=v["action"] == "submit")
+        except Exception as error:  # noqa: BLE001 (refused_words re-raises anything that is not a fixed refusal)
+            return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": None,
+                                                     "values": v, "error": refused_words(error), "active": "new"},
+                        status_code=409)
+        return RedirectResponse(f"/queries/{q.number}", status_code=303)
+
+    @app.get("/queries/{number}", response_class=HTMLResponse)
+    def query_detail(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "query.html", {"q": shown, "error": None, "active": "queries"})
+
+    @app.get("/queries/{number}/edit", response_class=HTMLResponse)
+    def edit_query_form(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        latest = shown["latest"]
+        values = {"claim": latest["claim"], "note": latest["note"] or "", "sufficiency": latest["sufficiency_key"],
+                  "sources": [s["key"] for s in latest["sources"]], "domain": latest["domain_key"]}
+        return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
+                                                 "q": shown, "values": values, "error": None, "active": "queries",
+                                                 "shown_version": {"version_id": latest["id"],
+                                                                   "version_fingerprint": latest["fingerprint"]}})
+
+    @app.post("/queries/{number}/edit")
+    async def edit_query(request: Request, number: str):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        v, sent = form_values(form), shown_version(form)
+        try:
+            shown = query_view.query_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        try:
+            # The pipeline checks, under the version lock, that the version edited is the one this form showed.
+            change = queries.new_version if shown["latest"]["status"] == "returned" else queries.update_draft
+            change(engine, number, v["claim"], v["sources"], v["domain"], v["sufficiency"], v["note"], by=name,
+                   via=queries.WEBSITE, submit=v["action"] == "submit", expected_version=sent["version_id"],
+                   expected_fingerprint=sent["version_fingerprint"])
+        except Exception as error:  # noqa: BLE001
+            # The form keeps the version it showed: after a refusal as stale, only a reload acts on the newer one.
+            return page(request, "query_form.html", {"options": query_view.form_options(engine), "number": number,
+                                                     "q": shown, "values": v, "error": refused_words(error),
+                                                     "active": "queries", "shown_version": sent}, status_code=409)
+        return RedirectResponse(f"/queries/{number}", status_code=303)
+
+    @app.post("/queries/{number}/again")
+    async def dispatch_again(request: Request, number: str):
+        from hypocurate.pipeline import queries, query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        sent = shown_version(form)
+        try:
+            rid = queries.dispatch_again(engine, number, by=name, via=queries.WEBSITE,
+                                         expected_version=sent["version_id"],
+                                         expected_fingerprint=sent["version_fingerprint"])
+        except Exception as error:  # noqa: BLE001
+            try:
+                shown = query_view.query_page(engine, number)
+            except query_view.NoSuchQuery as missing:
+                raise HTTPException(status_code=404, detail=str(missing)) from None
+            return page(request, "query.html", {"q": shown, "error": f"Not dispatched: {refused_words(error)}",
+                                                "active": "queries"}, status_code=409)
+        return RedirectResponse(f"/runs/{rid}", status_code=303)
+
+    @app.get("/review", response_class=HTMLResponse)
+    def review_index(request: Request):
+        from hypocurate.pipeline import query_view, run_view
+        return page(request, "review.html", {"picker": query_view.review_list(engine), "q": None,
+                                             "queue": run_view.queue_rows(engine), "error": None, "active": "review"})
+
+    @app.get("/review/{number}", response_class=HTMLResponse)
+    def review_query(request: Request, number: str):
+        from hypocurate.pipeline import query_view
+        try:
+            shown = query_view.review_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
+                                             "queue": shown.get("queue"), "error": None, "active": "review"})
+
+    def queries_fingerprint(version_id: int) -> str | None:
+        from hypocurate.pipeline import queries
+        return queries.version_fingerprint(engine, version_id)
+
+    async def review_action(request: Request, number: str, act):
+        from hypocurate.pipeline import query_view
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        try:
+            shown = query_view.review_page(engine, number)
+        except query_view.NoSuchQuery as error:
+            raise HTTPException(status_code=404, detail=str(error)) from None
+        sent = shown_version(form)
+        try:
+            from hypocurate.pipeline.queries import STALE, QueryRefused
+            # Fix round 1: a form for another version, or one changed since, says so first (the pipeline checks it
+            # again under the version lock).
+            if sent["version_id"] is None or sent["version_id"] != shown["latest"]["id"] or \
+                    sent["version_fingerprint"] != queries_fingerprint(sent["version_id"]):
+                raise QueryRefused("stale", STALE)
+            if not shown["reviewable"]:
+                raise QueryRefused("not_submitted", f"query {number} is {shown['latest']['status_words']}; only a "
+                                                    "submitted query is reviewed")
+            return act(form, name, sent["version_id"], sent["version_fingerprint"])
+        except Exception as error:  # noqa: BLE001
+            return page(request, "review.html", {"picker": query_view.review_list(engine), "q": shown,
+                                                 "queue": shown.get("queue"), "active": "review",
+                                                 "error": refused_words(error)}, status_code=409)
+
+    @app.post("/review/{number}/dispatch")
+    async def review_dispatch(request: Request, number: str):
+        from hypocurate.pipeline import queries
+
+        def act(form, name, version_id, fingerprint):
+            ceiling = (form.get("ceiling") or "").strip()
+            try:
+                ceiling = Decimal(ceiling) if ceiling else None
+            except InvalidOperation:
+                raise queries.QueryRefused("ceiling", "the ceiling is a number of US dollars") from None
+            if ceiling is not None and not ceiling > 0:
+                raise queries.QueryRefused("ceiling", "the ceiling is a positive number of US dollars")
+            confirmed = queries.confirm_domain(engine, version_id, by=name, domain=form.get("domain") or None,
+                                               via=queries.WEBSITE, expected_fingerprint=fingerprint)
+            rid = queries.dispatch(engine, version_id, ceiling=ceiling, by=name, via=queries.WEBSITE,
+                                   expected_fingerprint=confirmed)
+            return RedirectResponse(f"/runs/{rid}", status_code=303)
+
+        return await review_action(request, number, act)
+
+    @app.post("/review/{number}/return")
+    async def review_return(request: Request, number: str):
+        from hypocurate.pipeline import queries
+
+        def act(form, name, version_id, fingerprint):
+            queries.return_for_edits(engine, version_id, by=name, comment=form.get("comment", ""), via=queries.WEBSITE,
+                                     expected_fingerprint=fingerprint)
+            return RedirectResponse(f"/queries/{number}", status_code=303)
+
+        return await review_action(request, number, act)
+
+    # --- data sources and agents (step 10b; PRD 9.5, 9.6) ---------------------------------------------------------
+
+    @app.get("/sources", response_class=HTMLResponse)
+    def sources_page(request: Request):
+        from hypocurate.pipeline import catalog_view
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None, "error": None,
+                                              "message": None, "active": "sources"})
+
+    @app.get("/sources/{key}/test", response_class=HTMLResponse)
+    def source_test(request: Request, key: str):
+        from hypocurate.pipeline import catalog_view
+        try:
+            report = catalog_view.connection_page(engine, key)
+        except Exception as error:  # noqa: BLE001 (an unknown or unregistered source: the reason in words)
+            return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None,
+                                                  "message": None, "active": "sources",
+                                                  "error": f"Connection test not done for {key}: the source is not "
+                                                           "registered, or its sealed version could not be read."},
+                        status_code=409)
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": report, "error": None,
+                                              "message": None, "active": "sources"})
+
+    @app.post("/sources/{key}/register")
+    async def source_register(request: Request, key: str):
+        """Registers a source defined in code (sources.versions.register; a safeguard write, with the CSRF token)."""
+        from hypocurate.pipeline import catalog_view, queries
+        from hypocurate.sources import versions
+        form = await request.form()
+        security.check_csrf(request, form.get(security.CSRF_FIELD))
+        name = security.signed_in_name(request)
+        try:
+            done = versions.register(engine, key, by=name, via=queries.WEBSITE)
+        except versions.RegistrationError as error:
+            return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None,
+                                                  "message": None, "active": "sources",
+                                                  "error": f"Not registered: {error}"}, status_code=409)
+        message = (f"{key} registered by {name}: version {done.label}, fingerprint {done.fingerprint[:12]}."
+                   if done.created else f"{key} was already registered with this version ({done.fingerprint[:12]}).")
+        return page(request, "sources.html", {"s": catalog_view.sources_page(engine), "report": None, "error": None,
+                                              "message": message, "active": "sources"})
+
+    @app.get("/agents", response_class=HTMLResponse)
+    def agents_index(request: Request):
+        return RedirectResponse("/agents/planner", status_code=303)
+
+    @app.get("/agents/{role}", response_class=HTMLResponse)
+    def agent(request: Request, role: str):
+        from hypocurate.pipeline import catalog_view
+        shown = catalog_view.agent_page(engine, role)
+        if shown is None:
+            raise HTTPException(status_code=404, detail=f"no role {role}")
+        return page(request, "agent.html", {"a": shown, "active": "agents"})
+
+    @app.get("/help", response_class=HTMLResponse)
+    def help_page(request: Request, q: str = ""):
+        """PRD 9.7: every explanation, where it appears, searchable; read from the glossary file only."""
+        q = q.strip()
+        entries = list(glossary.entries())
+        shown = [e for e in entries if not q or q.lower() in (e["term"] + " " + e["text"] + " " + e["screen"]).lower()]
+        groups: dict[str, list] = {}
+        for e in shown:
+            groups.setdefault(e["screen"], []).append(e)
+        return page(request, "help.html", {"q": q, "shown": shown, "total": len(entries),
+                                           "groups": list(groups.items()), "active": "help"}, spending=False)
 
     @app.get("/health")
     def health(request: Request) -> Response:

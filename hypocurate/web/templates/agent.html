@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ a.name }} · Agents · HypoCurate{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
+{% block content %}
+<h1>Agents {{ info("agents") }}</h1>
+<nav class="pages" aria-label="Roles">{% for r in a.roles %}<a href="/agents/{{ r.role }}"{% if r.role == a.role %} aria-current="page"{% endif %}>{{ r.name }}</a>{% endfor %}</nav>
+<section>
+  <h2>{{ a.name }}: settings {% if a.stored %}version {{ a.stored.version }}{% endif %} {{ info("agentversion") }}</h2>
+  <p class="muted">Read-only in sprint 1. A run records the settings version it used; editing and "save as new version" come later.</p>
+  {% if a.stored %}
+  <dl class="facts">
+    <dt>Model</dt><dd>{{ a.stored.model }}</dd>
+    <dt>Saved</dt><dd>{{ a.stored.created }}</dd>
+    <dt>Limits</dt><dd>{{ a.stored.limits|join("; ") or "none" }}</dd>
+    <dt>Role settings</dt><dd>{{ a.stored.settings|join("; ") or "none" }}</dd>
+  </dl>
+  <h3>Instruction</h3>
+  <pre class="instruction">{{ a.stored.instruction }}</pre>
+  {% else %}<p>No settings version is stored for this role yet; the first run that uses it records one.</p>{% endif %}
+</section>
+<section>
+  <h2>Fixed in code {{ info("fixed") }}</h2>
+  <h3>Receives</h3>
+  {% if a.receives %}{% for st in a.receives %}
+  <p><strong>At the {{ st.stage }} stage:</strong></p>
+  <ul>{% for f in st.fields %}<li><strong>{{ f.field }}</strong>: {{ f.words }}</li>{% endfor %}</ul>
+  {% endfor %}{% else %}<p>Nothing, at any stage.</p>{% endif %}
+  <h3>Returns</h3><p>{{ a.returns }}</p>
+  <h3>May call</h3><p>{{ a.may_call }}</p>
+  <h3>May not</h3><p>{{ a.may_not }}</p>
+</section>
+{% endblock %}
