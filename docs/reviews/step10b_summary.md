@@ -334,3 +334,53 @@ Two 10b drafts were revised:
 - **`web_source_registration`:** "under the signed-in name" is now true and says where the name is stored.
 
 `signed_in_name` (10a, approved wording) is unchanged.
+
+## Re-check (ChatGPT, 2026-10-12) and the owner's merge decision
+
+ChatGPT's re-check is saved verbatim as `docs/reviews/step10b_recheck_chatgpt.md`. It confirmed the three fixes,
+found two small items and qualified one wording ("not safe to merge").
+
+**The owner's decision:** "Fix them, then merge step 10b without another review round. This is my decision, provided
+each fix has a test that fails on the current code where that applies, the mutation checks catch the lock fix, the
+reference runs stay byte-identical, and the GitHub run on the new head is green." The approval commit `6895b92` is
+included.
+
+### The fixes (`04a7ebb`)
+
+1. **0009's downgrade locks the table first.** `downgrade()` takes `LOCK TABLE action_record IN ACCESS EXCLUSIVE
+   MODE` before it looks for rows, in the same transaction.
+   - **The two-connection test:** one connection holds an uncommitted insert. The downgrade waits for it, sees the row
+     once it commits, and refuses; the row is kept.
+   - **Failed before:** on the earlier code the downgrade went through and dropped the committed row.
+   - **Mutation:** removing the lock is caught by this test.
+2. **The fresh-process probe covers every write path.** The 10b probe now also does three successful writes before
+   the loaded-modules check, and reads back their action rows:
+   - editing the returned query (the new-version path);
+   - confirming a waiting run;
+   - cancelling the run that its own dispatch queued.
+
+   This was a coverage gap, not a fault, so the probe passes on the earlier code too. Three mutations show it now
+   covers these paths: an orchestrator import put into the confirm route, the cancel route and the new-version path
+   is each caught. The harness's first run reported them as surviving, because the probe's child imports the package
+   next to the test file, which was the unmutated repository. The rerun from a full copy of package and tests catches
+   all three; both runs are in the fix packet's mutation log.
+3. **The wording.** `web_source_registration` adds: "The website's 'dispatch again' can carry over a test-run mark
+   first set at the command line (the new run records what the query's last run recorded), but never creates one."
+   A test proves both halves: a marked run's dispatch again from the website stays marked, and an unmarked one stays
+   unmarked even when the form posts a mark.
+
+### Checks
+
+- **Reference runs:** byte-identical to `main` in all six dumps.
+- **The whole suite on `04a7ebb`:** 2,422 tests, all passing locally (42 min 51 s) and in the test image (46 min 19 s).
+- **Images:** rebuilt on `04a7ebb`. The package's SHA-256 is the same in the repository, the runtime image and the test image. The test image's `tests/` equals the repository's, the runtime image holds no `tests/` or `docs/`, and the guard checks pass in it. The build cache was pruned.
+- **GitHub suite times:**
+
+  | Run | Head | Suite step |
+  |---|---|---|
+  | 38177624362 (the first 10b push) | `a25caf0` | 26 min 35 s |
+  | 38192769616 (fix round 1) | `8ff922d` | 28 min 56 s |
+  | The re-check head | `04a7ebb` | in the merge commit's message |
+
+- **Scope of the merge:** no `render.yaml`, Dockerfile, Compose or workflow file changes, and 0009 is the only
+  migration.
