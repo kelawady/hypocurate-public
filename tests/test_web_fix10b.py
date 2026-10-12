@@ -271,3 +271,33 @@ def test_every_formula_sign_is_neutralised_in_a_csv_cell_and_numbers_are_kept():
     for number in (-5.0, 12, 0.5, "-5", "+1e3", "-0.25"):
         assert workbook.csv_cell(number) == number
     assert workbook.csv_cell("plain text") == "plain text" and workbook.csv_cell(None) is None
+
+
+def test_the_website_can_register_the_constructed_source_and_it_never_enters_a_real_run(own):
+    """The owner's addition to web_source_registration (2026-10-12): the website can register the constructed test-data
+    source; it stays marked as constructed test data, and a run using it is refused unless marked as a test run, which
+    the website cannot do (the mark is the command line's)."""
+    from hypocurate.sources.versions import SOURCES
+    engine, url = own
+    c = signed_in(engine, url, ALICE)
+    page = plain(c.get("/sources").text)
+    assert "Register" in page and SOURCES["controlled_duplicates"].name in page  # offered, since it is not registered
+    assert c.post("/sources/controlled_duplicates/register", data={"csrf_token": token(c)}).status_code == 200
+    assert actions(engine)[-1] == ("register_source", ALICE, False, False, True)
+    assert SOURCES["controlled_duplicates"].constructed  # the mark is code's, not the website's
+    page = plain(c.get("/sources").text)
+    assert "constructed test data: only in a marked test run" in page
+    draft = new_query(c, action="save")
+    r = c.post(f"/queries/{draft}/edit", data={
+        "csrf_token": token(c), "claim": CLAIM, "sources": ["mpea", "controlled_duplicates"],
+        "domain": "grain_size_strengthening", "sufficiency": "fixed_minimum", "note": "", "action": "submit",
+        **shown(c.get(f"/queries/{draft}/edit").text)})
+    assert r.status_code == 303
+    # The form cannot mark the run as a test: a posted mark is ignored, and the dispatch is refused with the reason.
+    r = c.post(f"/review/{draft}/dispatch", data={"csrf_token": token(c), "domain": "grain_size_strengthening",
+                                                  "constructed_test_data": "true", "test_data": "on",
+                                                  **shown(c.get(f"/review/{draft}").text)})
+    assert r.status_code == 409
+    assert queries.REASONS["constructed_source_unmarked"].format(source="controlled_duplicates") in plain(r.text)
+    assert one(engine, "SELECT count(*) FROM run r JOIN hypothesis_version v ON v.id = r.hypothesis_version_id "
+                       "JOIN hypothesis h ON h.id = v.hypothesis_id WHERE h.number = :n", n=draft) == 0

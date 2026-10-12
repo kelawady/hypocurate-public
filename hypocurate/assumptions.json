@@ -9106,7 +9106,7 @@
     ],
     "notes": [
       "Wording approved by the owner, 2026-10-11.",
-      "2026-10-11 (step 10b): reworded for the owner's request; Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "2026-10-11 (step 10b): reworded for the owner's request; Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9375,7 +9375,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11, revised in fix round 1)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9422,7 +9422,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9468,7 +9468,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9519,7 +9519,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9580,7 +9580,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9635,14 +9635,14 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
     "key": "web_source_registration",
     "name": "Registering a source from the website",
     "state": "in_force",
-    "statement": "The data sources page lists every registered source and every source defined in code that is not registered yet; registering one calls sources.versions.register (as the command line's 'sources register') with the session's CSRF token, and a version it seals is recorded with the signed-in name in action_record, in the same transaction; a request without the token is refused and writes nothing. 'Test connection and show sample records' only reads. A source of a person's own, from a form, needs an adapter in code first and is for a later sprint.",
+    "statement": "The data sources page lists every registered source and every source defined in code that is not registered yet; registering one calls sources.versions.register (as the command line's 'sources register') with the session's CSRF token, and a version it seals is recorded with the signed-in name in action_record, in the same transaction; a request without the token is refused and writes nothing. The website can register the constructed test-data source (controlled duplicates) as well; it stays marked as constructed test data (the mark is in code's source definition, which the website cannot change) and can never be used in a real run: a dispatch that chooses it is refused unless the run is marked as a test with constructed data, which only the command line can do. 'Test connection and show sample records' only reads. A source of a person's own, from a form, needs an adapter in code first and is for a later sprint.",
     "value": {
       "text": "code-defined sources only; CSRF",
       "unit": null
@@ -9676,11 +9676,13 @@
       "tests/test_web_catalog.py::test_registering_a_source_from_the_website_records_it_and_names_the_person",
       "tests/test_web_catalog.py::test_registration_without_the_sessions_token_is_refused_and_writes_nothing",
       "tests/test_web_catalog.py::test_the_connection_test_shows_sample_records_and_writes_nothing",
-      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name"
+      "tests/test_web_fix10b.py::test_registering_a_source_and_confirming_a_run_store_the_name",
+      "tests/test_web_fix10b.py::test_the_website_can_register_the_constructed_source_and_it_never_enters_a_real_run"
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11, revised in fix round 1)."
+      "Wording approved by the owner, 2026-10-12.",
+      "2026-10-12: the sentence on the constructed test-data source added at the owner's request, with the approval."
     ]
   },
   {
@@ -9726,7 +9728,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9773,7 +9775,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9845,7 +9847,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9892,7 +9894,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   },
   {
@@ -9947,7 +9949,7 @@
     ],
     "history": [],
     "notes": [
-      "Wording drafted by Claude Code for the owner's review (2026-10-11, fix round 1)."
+      "Wording approved by the owner, 2026-10-12."
     ]
   }
 ]
