@@ -1,6 +1,6 @@
 # Build step 10b — summary for review
 
-Date: 2026-10-11. Branch: `step-10b-screens` (from `main` at `7620f77`, step 10a merged). **Status: built, pushed once for the review round, not merged; register entries waiting for the owner's approval; stopped for the second-model review.**
+Date: 2026-10-11. Branch: `step-10b-screens` (from `main` at `7620f77`, step 10a merged). **Status: fix round 1 built (ChatGPT's three findings, accepted by the owner); pushed once for the re-check, not merged; register entries waiting for the owner's approval.** The fix round is the last section.
 
 PRD Section 15, step 10 ("Website screens"), second part. 10a (run pages) is merged and live. 10b builds the rest of PRD 9 and 11:
 - the query pages;
@@ -141,7 +141,7 @@ The plan, with every owner decision, is in the step 10 plan file (quoted in the 
   - **Not caused by 10b:** the worker's child imports none of 10b's new modules (checked).
   - **Not re-run to hide it.** It passed in the local run of the same head. It is a timing-sensitive test that the image's slower run can fail; how to handle it is the owner's decision.
 
-**GitHub run:** on the pushed head; its result and suite time are reported to the owner and go into this summary in the review round's first commit.
+**GitHub run:** run 38177624362 on `a25caf0`, green; the suite step took 26 min 35 s (job 27 min 50 s).
 
 ## Register
 
@@ -191,3 +191,146 @@ The plan, with every owner decision, is in the step 10 plan file (quoted in the 
 3. Is any failure explanation or Plan wording stronger than what is stored supports?
 4. Can a query version change in a way the database's rules or PRD 9.2 do not allow?
 5. Is any claim here, in the code or in the register stronger than the code supports?
+
+## Fix round 1 (ChatGPT's review of 2026-10-11: "not safe to merge")
+
+The review is saved verbatim as `docs/reviews/step10b_review_chatgpt.md`. The owner accepted all three findings, with
+the instruction: "Fix them on step-10b-screens, each with a failing test first, then write a fix packet for a short
+re-check. Do not merge." The fix packet is `docs/reviews/step10b_fix_packet.md`.
+
+**The owner's approvals during the round (2026-10-12):**
+- keep the extra rows in the workbook's run summary sheet (note, review comment, who did what);
+- the changed `confirm` parameter test, listed below as a changed test;
+- command-line actions without a name are stored as such.
+
+### Finding 1: act only on the version shown
+
+**The bug:** the review page's Dispatch and Return used the query's latest version at the time of the click, so an
+old tab could dispatch a version it never showed. An old edit form could also overwrite a newer draft.
+
+**The fix:**
+- **What the forms send:** the edit form, both review forms and Dispatch again send the version they displayed and a
+  fingerprint of its content (`queries.version_fingerprint`). That is a SHA-256 of the canonical JSON of its query,
+  number, status, hypothesis, domains, option, note, sources and review comment.
+- **Read from the page's own snapshot:** the id and fingerprint come from the same snapshot as the content the page
+  shows (`query_view.query_page`). `review_page` no longer reads the version a second time.
+- **Checked under the version lock:** every write (`update_draft`, `new_version`, `return_for_edits`,
+  `confirm_domain`, `dispatch`, `dispatch_again`) compares both with the stored version inside its own transaction.
+  A difference is refused with the owner's words: "This query has changed since you opened it; reload the page". On
+  the website both are required, so a form that sends neither is refused the same way.
+- **Confirm, then dispatch:** the review's dispatch confirms the domain first, then dispatches with the fingerprint
+  that confirmation returned. A change between the two transactions is therefore refused too.
+- **An old edit form after a refusal:** it keeps the version it showed, so only a reload acts on the newer one.
+- **Saving and submitting** from one form is now one transaction (`submit=True`).
+- **The command line** names the version it acts on and is not checked this way.
+
+### Finding 2: no formulas in exports
+
+- **The workbook:** every text cell is written as a string cell (`workbook._append`), whatever it begins with.
+- **The CSV:** text beginning with =, +, -, @, a tab or a carriage return gets a leading apostrophe
+  (`workbook.csv_cell`). Numbers, and text that is exactly a number, are written as they are.
+- **Two rows added to the run summary sheet:** the query's note and review comment, and who did what (from
+  `action_record`). They were added so that notes and names are among the cells tested.
+
+### Finding 3: record who did it (migration 0009, `action_record`)
+
+**The owner's answer:** "New table action_record, migration 0009, as you recommend. Also write a row for confirm and
+cancel, which already store the name elsewhere, so that 'who did what' is complete in one place; keep their existing
+records unchanged."
+
+**What a row holds:** one row per action, written in the same transaction as the write it records
+(`db/actions.record`):
+- the action, from a fixed list: create, edit, new version, submit, return, domain confirmation, dispatch, dispatch
+  again, cancel, confirmation of the question as tested, and registering a source;
+- where it was done: the website, the command line or code;
+- the name given;
+- what it acted on, which the database checks per action;
+- the database's time.
+
+**What the database enforces:**
+- the rows are append-only;
+- a website row must have a name, and code's row has none;
+- the downgrade refuses while any row exists.
+
+**Where the name comes from:**
+- **The website:** every write passes the signed-in name.
+- **The command line:** passes `--by` where the command has it. `sources register` gains an optional `--by`, and
+  `dispatch --again` records `--by` if given. A command without a name is recorded with none, as such.
+- **Code:** a narrower question that code creates is recorded as code's, with no name.
+
+**Unchanged:** the confirmation's and the cancellation's own records, and the stored review-comment words.
+
+### Isolation
+
+A second fresh-process probe (`test_web_isolation.py`) checks every 10b page and every website write. That is the
+queries, new query, query, edit, review, sources, the connection test, each agent page, help, the run page with its
+plot, the workbook and the CSV. None of them loads a model library or the queue, worker, orchestrator, recovery or
+guarded runner.
+
+### The stall test (the owner's decision, before the review)
+
+`test_worker_fix1.py::test_downtime_before_an_attempt_does_not_count_against_its_stall_allowance` failed once in the
+test image. The owner decided: "widen it now".
+- **The test-only allowance:** 20 s, with a 22 s downtime before the attempt.
+- **A one-shot hold on the first `record` insert** makes the child's write come after the monitor's first sample.
+- **The production value (900 s)** is unchanged.
+- **Its mutation is still caught:** downtime counted against the allowance. The control run is clean (`a4b29d9`).
+
+### Tests
+
+- **The whole suite:** 2,419 tests, all passing locally on `410eaa7`, serially, in 40 min 26 s (the first run on `c3cb765`: 2,418 passed and 1 failed, the pinned `confirm` signature, listed below).
+- **New tests:**
+  - `test_web_fix10b.py`, 11 tests:
+    - two-session tests for review and editing;
+    - a form that sends no version, or a forged one;
+    - the pipeline's own refusal;
+    - exported cell types, with formula-like text planted in the hypothesis, the paper references, the note, the
+      names and the Analyst's text;
+    - every CSV formula sign;
+    - every website write's stored name;
+    - registration and confirmation rows;
+    - append-only rows.
+  - `test_migrations_step10b.py`: migration 0009.
+  - In `test_web_isolation.py`: the 10b pages and writes probe.
+- **Failed before:** the new tests, run against the reviewed package (`a4b29d9`):
+  - `test_migrations_step10b.py` cannot import there: there is no `db.actions` module;
+  - all 12 others fail (the 11 in `test_web_fix10b.py` and the isolation probe): no version fields on the forms, a stale dispatch accepted, no `by` or `submit` parameters,
+    and no `action_record` table.
+
+  Several stop at a missing parameter before reaching the behaviour. The mutation checks show each behaviour is
+  tested.
+- **Mutation checks:** 16 faults, all caught, each by a test written for it; the control run is clean (27 tests).
+
+  | Finding | Faults |
+  |---|---|
+  | 1, act on the version shown | no stale check; the website may send no version; review acts on the latest version (the original bug); edit uses the latest version; a fingerprint without the content |
+  | 2, no formulas in exports | formula cells in the workbook; the CSV not neutralised; only "=" neutralised |
+  | 3, who did it | no action rows; a website create with no name; no confirmation row; no registration row; dispatch again with no name; the time not forced to the database's; rows mutable; a website row without a name allowed |
+- **Reference runs:** byte-identical to `main` in all six dumps.
+- **Images:** rebuilt on `410eaa7`. The package's SHA-256 is the same in the repository, the runtime image and the test image (checked again after a Codespace restart). The test image's `tests/` equals the repository's, the runtime image holds no `tests/` or `docs/`, and the guard checks pass in it. The suite in the test image: 2,419 passed (44 min 23 s). The Docker build cache was pruned.
+- **Schema:** now 0009. The summary's "not changed" list above said the migrations stay at 0008; that was true of
+  10b before this fix round.
+
+**Changed tests, and why** (none weakened, none removed):
+
+| Test | Change | Reason |
+|---|---|---|
+| `test_web_queries.py`: 7 tests that post to the query forms | each sends the version its page showed (`shown`); the dispatch-again refusal while a run is open sends the stored version, as there is no form then | the website now refuses a write without the version shown (finding 1) |
+| `test_migrations_step9b.py::test_0008_is_the_head_and_follows_0007` | now `test_0008_follows_0007` | 0009 is the head; the head check moved to `test_migrations_step10b.py` |
+| `test_migrations_step9b.py::test_the_downgrade_refuses_while_a_claim_exists` | expects the head (0009) after the refused downgrade, not "0008" | the database stays at the head |
+| `test_migrations.py::expected_triggers` | adds 0009's triggers | the new table |
+| `test_confirmation.py::test_no_code_confirms_in_bulk_or_by_itself` | the pinned parameter list gains `via` | where the confirmation was made, for its action row; still one run, one name, the same two callers |
+
+### Register
+
+**169 entries.** Three new ones, drafts for the owner's review:
+- `action_record`;
+- `act_on_version_shown`;
+- `export_no_formulas`.
+
+Two 10b drafts were revised:
+- **`query_versions_on_the_website`:** says that writes act only on the version shown and are recorded; its setting
+  `queries.WEBSITE` is replaced by `queries.WHERE_WORDS`, because `WEBSITE` now names where a write came from.
+- **`web_source_registration`:** "under the signed-in name" is now true and says where the name is stored.
+
+`signed_in_name` (10a, approved wording) is unchanged.
