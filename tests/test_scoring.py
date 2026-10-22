@@ -122,8 +122,10 @@ def test_recovery_leaves_out_compilation_records_the_annotation_states_only_in_a
         v = lambda x: NS(value=x)  # noqa: E731
         return NS(paper_doi="10.1000/score.1", source_item_key=key, alloy="CoCrFeNiMo0.2",
                   harmonized={"composition": v(None), "grain_size": v(gs), "yield_strength": v(ys),
-                              "test_type": v("tension"), "test_temperature": v(25.0)})
-    records = [rec("r1", 0.8, 1100.0), rec("r2", 1.2, 950.0), rec("r3", 3.2, 649.0), rec("r0", 0.7, None)]
+                              "test_type": v("tension"), "test_temperature": v(25.0),
+                              "microstructure": v("FCC" if key != "rb" else "FCC+BCC")})
+    records = [rec("r1", 0.8, 1100.0), rec("r2", 1.2, 950.0), rec("r3", 3.2, 649.0), rec("r0", 0.7, None),
+               rec("rb", 0.8, 1100.0)]  # rb: not FCC under Sprint 1's rule, never scored
     annotation = [ann("a1", "0.8", "1100"), ann("a2", "1.2", "", ys_stated="figure only")]  # r3 not annotated
     comp, note = sc.compilation_obs(records, PAPER, annotation)
     assert note == "1 compilation record(s) of this paper lack a grain size or a yield strength: not scored"
@@ -206,3 +208,43 @@ def test_the_extraction_workbook_shows_every_candidates_provenance_as_text(db):
     assert first["snapshot"].startswith("S0 #") and first["against_compilation"] == "not scored"
     formula = [r for r in ws.iter_rows() if r[5].value == "=1+1"]
     assert formula and formula[0][5].data_type == "s"
+
+
+# --- the owner's rules of 2026-10-23 (afternoon) -------------------------------------------------------------------
+
+def test_a_number_with_an_ambiguity_note_is_compared_and_its_flag_reported():
+    q = quantity("grain_size", "14.9", "µm", ambiguous=True, note='verification: not answered')
+    assert (q.kind, q.low, q.flag) == ("number", Decimal("14.9"), "verifier")
+    assert quantity("grain_size", "1", None, ambiguous=True,
+                    note="the extractor gave no provenance and no ambiguity note").flag == "no provenance"
+    assert quantity("grain_size", "1", None, ambiguous=True, note="two specimens share the row").flag == "extractor"
+    flagged = obs("prediction", "p1", "0.8", "1100")
+    flagged.gs = quantity("grain_size", "0.8", "µm", ambiguous=True, note="verification: cannot tell")
+    wrong = obs("prediction", "p2", "9.9", "123")
+    wrong.ys = quantity("yield_strength", "123", "MPa", ambiguous=True, note="unsure")
+    r = m([flagged, wrong])
+    assert r["matched"] == 1 and r["correct_but_flagged"] == 1 and r["wrong_and_flagged"] == 1
+
+
+def test_an_empty_condition_does_not_block_pairing_and_is_counted_a_stated_different_one_does():
+    r = m([pred("p1", "0.8", "1100", test_type="", temp=""), pred("p2", "1.2", "950", temp="")])
+    assert r["matched"] == 2 and r["condition_not_stated"] == 2
+    assert m([pred("p1", "0.8", "1100", test_type="compression")])["matched"] == 0  # self-check 4 still holds
+    assert m([pred("p1", "0.8", "1100", temp="800 °c")])["matched"] == 0
+
+
+def test_tension_and_compression_words_are_recognised_anywhere():
+    from hypocurate.pipeline.extraction.identity import test_type_key
+    assert test_type_key("uniaxial tensile tests") == test_type_key("Tension") == "tension"
+    assert test_type_key("quasi-static compressive loading") == "compression"
+    assert test_type_key("tension and compression") == "tension and compression"  # both: kept as text
+    assert test_type_key("nanoindentation") == "nanoindentation"
+
+
+def test_descriptive_words_are_stripped_from_alloy_names_before_the_formula_is_read():
+    from hypocurate.pipeline.extraction import identity as idm
+    assert idm.alloy_key("equiatomic CrCoNi") == idm.alloy_key("CoCrNi") == idm.alloy_key("Co33.33Cr33.33Ni33.33")
+    assert idm.alloy_key("CrMnFeCoNi HEA") == idm.alloy_key("CoCrFeMnNi")
+    assert idm.alloy_key("Cantor alloy") == "name:cantoralloy" and idm.IDENTITY_VERSION == "3"
+    assert idm.DESCRIPTIVE_WORDS == ("equiatomic", "alloy", "alloys", "hea", "heas", "mea", "meas", "high-entropy",
+                                     "medium-entropy", "single-phase", "fcc", "bcc")

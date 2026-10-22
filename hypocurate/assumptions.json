@@ -10201,7 +10201,7 @@
     "key": "pilot_observation_identity",
     "name": "R-identity: one observation",
     "state": "in_force",
-    "statement": "One observation is one paper, one alloy, one processing state, one test type, one test temperature and one specimen: the source's specimen or replicate label where the paper gives one, otherwise the observation's location in the source (table and row, or page and sentence). Defined once (pipeline/extraction/identity.py, identity version 2) and used by the Extractor's records, the annotation rows, the re-report rule and the scorer. The scorer and the re-report rule match one-to-one on the match key: every identity field except the processing state, whose text is reported per pair ('state text differs') and listed for adjudication, never matched; against MPEA (no table locations) the re-report rule matches alloy, test type, temperature and the values within tolerance, and two candidates matching one compilation record are reported as a duplicate, never as two re-reports. Normalization: paper = Sprint 1's DOI key (a row reporting another paper's data: 'cited:<citation>'); alloy = Sprint 1's same-alloy key (at.% rounded to 0.1) from the composition, else from the name read as a formula, else 'name:<name>'; text case-folded with whitespace collapsed; test type tension/compression when the text says so; temperature converted from K to °C, then rounded to the degree, and a stated 'room temperature' or any rounded temperature from 20 to 25 °C (Sprint 1's room-temperature range) keys to the band 'room temperature'.",
+    "statement": "One observation is one paper, one alloy, one processing state, one test type, one test temperature and one specimen: the source's specimen or replicate label where the paper gives one, otherwise the observation's location in the source (table and row, or page and sentence). Defined once (pipeline/extraction/identity.py, identity version 2) and used by the Extractor's records, the annotation rows, the re-report rule and the scorer. The scorer and the re-report rule match one-to-one on the match key: every identity field except the processing state, whose text is reported per pair ('state text differs') and listed for adjudication, never matched; against MPEA (no table locations) the re-report rule matches alloy, test type, temperature and the values within tolerance, and two candidates matching one compilation record are reported as a duplicate, never as two re-reports. Normalization: paper = Sprint 1's DOI key (a row reporting another paper's data: 'cited:<citation>'); alloy = Sprint 1's same-alloy key (at.% rounded to 0.1) from the composition, else from the name read as a formula, else 'name:<name>'; text case-folded with whitespace collapsed; test type tension or compression when the text says so anywhere (not both); descriptive words (DESCRIPTIVE_WORDS: equiatomic, alloy, HEA, MEA, high-entropy, medium-entropy, single-phase, FCC, BCC) stripped from an alloy name before it is read as a formula; temperature converted from K to °C, then rounded to the degree, and a stated 'room temperature' or any rounded temperature from 20 to 25 °C (Sprint 1's room-temperature range) keys to the band 'room temperature'.",
     "value": {
       "text": "paper + alloy + processing state + test type + test temperature + (label, else location); match key without processing state",
       "unit": null
@@ -10213,7 +10213,8 @@
       "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 (R-identity) and R7.",
       "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Add explicit columns\" (specimen_label, observation_location).",
       "The owner's answer of 2026-10-23 to Friday question 2: 'Location decides', with the note on R-rereport against MPEA.",
-      "The owner's answer of 2026-10-23 to Friday question 3: 'Confirm all five.' For (4): convert K to °C before rounding; a stated 'room temperature' keys to the band, matching 20 °C or 25 °C."
+      "The owner's answer of 2026-10-23 to Friday question 3: 'Confirm all five.' For (4): convert K to °C before rounding; a stated 'room temperature' keys to the band, matching 20 °C or 25 °C.",
+      "The owner's answers of 2026-10-23 (afternoon) to the scorer questions 2 and 3: 'All three recommended.'"
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -10230,7 +10231,7 @@
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.extraction.identity:IDENTITY_VERSION",
-          "equals": "2"
+          "equals": "3"
         },
         {
           "ref": "python:hypocurate.pipeline.extraction.identity:MATCH_FIELDS",
@@ -10253,6 +10254,23 @@
             20.0,
             25.0
           ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.extraction.identity:DESCRIPTIVE_WORDS",
+          "equals": [
+            "equiatomic",
+            "alloy",
+            "alloys",
+            "hea",
+            "heas",
+            "mea",
+            "meas",
+            "high-entropy",
+            "medium-entropy",
+            "single-phase",
+            "fcc",
+            "bcc"
+          ]
         }
       ],
       "note": null
@@ -10263,7 +10281,9 @@
       "tests/test_extraction_interface.py::test_an_observation_without_a_paper_or_without_label_and_location_is_refused",
       "tests/test_extraction_interface.py::test_kelvin_is_converted_before_rounding_and_room_temperature_is_the_band",
       "tests/test_extraction_interface.py::test_the_match_key_leaves_out_the_processing_state_only",
-      "tests/test_extractor.py::test_a_figure_only_value_is_stored_ambiguous_and_a_cited_row_is_never_this_papers"
+      "tests/test_extractor.py::test_a_figure_only_value_is_stored_ambiguous_and_a_cited_row_is_never_this_papers",
+      "tests/test_scoring.py::test_tension_and_compression_words_are_recognised_anywhere",
+      "tests/test_scoring.py::test_descriptive_words_are_stripped_from_alloy_names_before_the_formula_is_read"
     ],
     "history": [
       {
@@ -10271,6 +10291,12 @@
         "from": "2026-10-22",
         "to": "2026-10-23",
         "note": "Normalization details proposed by the builder."
+      },
+      {
+        "value": "identity version 2 (test type only when the text begins with it; alloy names read as formulas as written)",
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "note": null
       }
     ],
     "notes": []
@@ -11188,7 +11214,7 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "partly",
+      "status": "yes",
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.extraction.identity:CITED",
@@ -11199,13 +11225,11 @@
           "equals": "this paper"
         }
       ],
-      "done": "The output schema, the prompt and S0 carry reported_from; a cited row's identity names the cited paper.",
-      "pending": "The scorer's counting of cited rows.",
-      "step": "pilot-2",
       "note": null
     },
     "tests": [
-      "tests/test_extractor.py::test_a_figure_only_value_is_stored_ambiguous_and_a_cited_row_is_never_this_papers"
+      "tests/test_extractor.py::test_a_figure_only_value_is_stored_ambiguous_and_a_cited_row_is_never_this_papers",
+      "tests/test_scoring.py::test_a_marked_cited_row_is_outside_recall_and_precision"
     ],
     "history": [],
     "notes": []
@@ -11214,7 +11238,7 @@
     "key": "pilot_scoring_rules",
     "name": "How the scorer counts",
     "state": "in_force",
-    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot.",
+    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot. Added 2026-10-23 (afternoon): without a specimen label, values decide (grain size and yield strength both within 2 per cent; location and processing state reported per pair and listed when they differ); a number carrying an ambiguity note is compared like any other, its flag and source (extractor, no provenance, verifier) reported, with 'correct but flagged' and 'wrong and flagged' counts; a test type or temperature the prediction leaves empty does not block pairing and is counted per paper as 'condition not stated' (a signal of whether the Extractor carries methods-section context into its records), a stated different one blocks it; the compilation side scores only the reach selection's FCC grain-size records with both values, the others counted in a note; the group keys are recomputed from the stored values with the current identity rules (S0 is never changed).",
     "value": {
       "text": "match key; units converted; 2%; figure-only and ranges set apart; precision strict and pending",
       "unit": null
@@ -11223,7 +11247,8 @@
     "affects": "The P6 recovery and recall tables and the results note.",
     "reason": "Scores must reflect extraction, not wording or deferred figure reading, and must not count human misses against the extractor.",
     "evidence": [
-      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): the figure-only rule, Q-B, Q-C (with the annotation's 'stated as' columns) and Q-D."
+      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): the figure-only rule, Q-B, Q-C (with the annotation's 'stated as' columns) and Q-D.",
+      "The owner's answers of 2026-10-23: the location question ('Values decide, location reported', with the figure-only rule) and the scorer questions 1 and 2, with the per-paper count of 'condition not stated'."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -11236,11 +11261,40 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": "pilot-2",
-      "note": "Built with the scorer (R7) today."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.scoring.score:TOLERANCE"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:DUPLICATE_TOLERANCE",
+          "equals": 0.02
+        },
+        {
+          "ref": "python:hypocurate.scoring.score:FIGURE_ONLY",
+          "equals": "figure only"
+        },
+        {
+          "ref": "python:hypocurate.scoring.score:CANONICAL",
+          "equals": {
+            "yield_strength": "mpa",
+            "grain_size": "µm"
+          }
+        }
+      ],
+      "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_scoring.py::test_self_check_1_a_planted_wrong_value",
+      "tests/test_scoring.py::test_self_check_2_correct_numbers_attached_to_the_wrong_specimen",
+      "tests/test_scoring.py::test_self_check_3_a_duplicate_prediction_for_one_observation_is_one_hit_and_one_duplicate",
+      "tests/test_scoring.py::test_self_check_4_a_wrong_unit_or_a_wrong_test_condition",
+      "tests/test_scoring.py::test_self_check_5_two_observations_differing_only_in_label_or_location_score_as_two",
+      "tests/test_scoring.py::test_a_figure_only_value_is_matched_on_the_other_value_and_a_number_there_is_an_error",
+      "tests/test_scoring.py::test_recovery_leaves_out_compilation_records_the_annotation_states_only_in_a_figure",
+      "tests/test_scoring.py::test_a_number_with_an_ambiguity_note_is_compared_and_its_flag_reported",
+      "tests/test_scoring.py::test_an_empty_condition_does_not_block_pairing_and_is_counted_a_stated_different_one_does"
+    ],
     "history": [],
     "notes": []
   },

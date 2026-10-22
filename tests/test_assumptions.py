@@ -61,7 +61,7 @@ def test_every_category_has_entries_and_keys_are_unique():
 # grain_size_transformation_at_analysis and reference_numbers; records_without_group was open, with
 # the code failing closed until the owner decided it in step 7b (2026-10-06): applied "yes".
 # Step 10a: question_as_tested fully applied (the website's Confirm button).
-PARTLY: set = {"pilot_extractor_models", "pilot_cited_rows"}  # Sprint 2 pilot (2026-10-23): the Opus second method and the scorer's count of cited rows pending; step 10b: constructed_test_runs fully applied (its label on every screen); step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
+PARTLY: set = {"pilot_extractor_models"}  # Sprint 2 pilot (2026-10-23): the Opus second method pending; step 10b: constructed_test_runs fully applied (its label on every screen); step 8b: agent_models fully applied (the Planner's, Critic's and Analyst's settings); fix round 1: question_as_tested (its confirmation by a person is step 10)
 
 
 def test_the_owners_eight_decisions_are_recorded_as_decided():

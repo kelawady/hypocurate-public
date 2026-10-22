@@ -31,7 +31,12 @@ from hypocurate.sources.normalize import doi_group_key, formula_to_atomic_percen
 ROOM_TEMPERATURE = "room temperature"
 _RT = re.compile(r"^(room[\s-]*temperature|rt|ambient(\s+temperature)?)$", re.I)
 _NUMBER = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*(°\s*c|℃|c|k)?\s*$", re.I)
-IDENTITY_VERSION = "2"  # 2 (owner, 2026-10-23): the room-temperature band; the match key without processing state
+IDENTITY_VERSION = "3"  # 2 (owner, 2026-10-23): the room-temperature band; the match key without processing state;
+# 3 (owner, 2026-10-23): tension/compression words anywhere in the text; descriptive words stripped from alloy names
+# Words that describe an alloy without naming its composition, removed before a name is read as a formula
+# (owner, 2026-10-23); register 'pilot_observation_identity'.
+DESCRIPTIVE_WORDS = ("equiatomic", "alloy", "alloys", "hea", "heas", "mea", "meas", "high-entropy", "medium-entropy",
+                     "single-phase", "fcc", "bcc")
 MATCH_FIELDS = ("paper", "alloy", "test_type", "test_temperature", "specimen", "version")
 
 
@@ -42,20 +47,28 @@ def _text(s: str | None) -> str:
     return " ".join(s.split()).casefold()
 
 
+def _strip_descriptive(name: str) -> str:
+    words = [w for w in re.split(r"\s+", name.strip()) if w and w.casefold().strip(",;:()") not in DESCRIPTIVE_WORDS]
+    return " ".join(words)
+
+
 def alloy_key(alloy: str | None, composition: str | None = None) -> str:
     for candidate in (composition, alloy):
         if candidate and candidate.strip():
-            comp, _ = formula_to_atomic_percent(candidate.replace("-", "").replace(" ", ""))
+            comp, _ = formula_to_atomic_percent(_strip_descriptive(candidate).replace("-", "").replace(" ", ""))
             if comp is not None:
                 return same_alloy_key(comp)
     return "name:" + _text(alloy).replace(" ", "") if alloy and alloy.strip() else ""
 
 
 def test_type_key(test_type: str | None) -> str:
+    """'tension' or 'compression' when the text says so anywhere ('uniaxial tensile tests'), but not both."""
     t = _text(test_type)
-    if t.startswith("tens") or t == "t":
+    tension = t == "t" or bool(re.search(r"\btens(ion|ile)\b", t))
+    compression = t == "c" or bool(re.search(r"\bcompress(ion|ive)?\b", t))
+    if tension and not compression:
         return "tension"
-    if t.startswith("compress") or t == "c":
+    if compression and not tension:
         return "compression"
     return t
 

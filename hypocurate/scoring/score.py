@@ -41,6 +41,7 @@ from hypocurate.pipeline import profile
 from hypocurate.pipeline.extraction import provenance as pv
 from hypocurate.pipeline.extraction.identity import (ROOM_TEMPERATURE, alloy_key, temperature_key, test_type_key)
 from hypocurate.pipeline.extraction.interface import ParsedDocument, Provenance
+from hypocurate.documents.select import phase_field
 from hypocurate.sources.normalize import doi_group_key
 
 TOLERANCE = Decimal(str(profile.DUPLICATE_TOLERANCE))  # Sprint 1's 2 per cent (register 'values_disagree_tolerance')
@@ -57,15 +58,28 @@ _ONE = re.compile(rf"^[~∼≈<>]?\s*{_NUM}\s*([a-zA-Zµμ/^0-9]*)\s*$")
 
 @dataclass(frozen=True)
 class Quantity:
-    """A value as the scorer compares it: a number, a range, figure-only, ambiguous, or missing."""
-    kind: str  # 'number', 'range', 'figure', 'ambiguous', 'missing', 'unreadable'
+    """A value as the scorer compares it: a number, a range, figure-only, missing or unreadable. A number with an
+    ambiguity note is compared like any other and carries the flag and where it came from (owner, 2026-10-23)."""
+    kind: str  # 'number', 'range', 'figure', 'missing', 'unreadable'
     low: Decimal | None = None
     high: Decimal | None = None
     unit_known: bool = True
+    flag: str | None = None  # 'verifier', 'no provenance', 'extractor' (from the stored ambiguity note), or None
+
+
+def flag_of(note: str | None, ambiguous: bool) -> str | None:
+    if not ambiguous:
+        return None
+    n = (note or "").casefold()
+    if "verification:" in n:
+        return "verifier"
+    if n.startswith("the extractor gave no provenance"):
+        return "no provenance"
+    return "extractor"
 
 
 def quantity(field_: str, text_: str | None, unit: str | None, *, ambiguous: bool = False,
-             stated_as: str | None = None) -> Quantity:
+             stated_as: str | None = None, note: str | None = None) -> Quantity:
     t = (text_ or "").strip()
     if stated_as and stated_as.strip().casefold() == FIGURE_ONLY or t.casefold().startswith(FIGURE_ONLY):
         return Quantity("figure")
@@ -73,8 +87,9 @@ def quantity(field_: str, text_: str | None, unit: str | None, *, ambiguous: boo
         return Quantity("missing")
     m = _RANGE.match(t.replace(",", ""))
     one = None if m else _ONE.match(t.replace(",", ""))
+    flag = flag_of(note, ambiguous)
     if not (m or one):
-        return Quantity("ambiguous" if ambiguous else "unreadable")
+        return Quantity("unreadable", flag=flag)
     inline = (m.group(3) if m else one.group(2)) or ""
     u = (unit or inline or CANONICAL[field_]).strip().casefold().replace(" ", "")
     factor = UNITS[field_].get(u)
@@ -82,9 +97,9 @@ def quantity(field_: str, text_: str | None, unit: str | None, *, ambiguous: boo
     factor = factor or Decimal(1)
     if m:
         lo, hi = Decimal(m.group(1)) * factor, Decimal(m.group(2)) * factor
-        return Quantity("range", min(lo, hi), max(lo, hi), known)
+        return Quantity("range", min(lo, hi), max(lo, hi), known, flag)
     v = Decimal(one.group(1)) * factor
-    return Quantity("ambiguous" if ambiguous else "number", v, v, known)
+    return Quantity("number", v, v, known, flag)
 
 
 def close(a: Decimal, b: Decimal) -> bool:
@@ -124,8 +139,24 @@ class Obs:
         return (self.paper, self.alloy, self.test_type, self.temperature)
 
     @property
+    def flagged(self) -> bool:
+        return bool(self.gs.flag or self.ys.flag)
+
+    @property
+    def condition_not_stated(self) -> bool:
+        return not self.test_type or not self.temperature
+
+
+    @property
     def cited(self) -> bool:
         return self.reported_from.strip().casefold() != "this paper"
+
+
+def same_group(p: "Obs", r: "Obs") -> bool:
+    """Same paper and alloy; a test type or temperature the prediction leaves empty does not block pairing, a stated
+    and different one does (owner, 2026-10-23)."""
+    return (p.paper == r.paper and p.alloy == r.alloy and (not p.test_type or p.test_type == r.test_type)
+            and (not p.temperature or p.temperature == r.temperature))
 
 
 def pair_ok(p: Obs, a: Obs) -> tuple[bool, str | None]:
@@ -157,6 +188,8 @@ class Pair:
     link_correct: bool
     provenance_ok: bool | None
     figure_error: str | None
+    flags: str | None = None  # where a matched value's ambiguity note came from
+    condition_not_stated: bool = False
 
 
 @dataclass
@@ -174,6 +207,8 @@ class PaperScore:
     predictions: int = 0
     figure_errors: int = 0
     note: str | None = None
+    flagged_unmatched: int = 0
+    conditions_not_stated: int = 0  # own predictions with no test type or temperature (a prompt-quality signal)
 
     def metrics(self) -> dict:
         own = self.predictions
@@ -195,6 +230,9 @@ class PaperScore:
                 "provenance_resolves": sum(1 for p in self.pairs if p.provenance_ok),
                 "state_text_differs": sum(p.state_differs for p in self.pairs),
                 "location_differs": sum(p.location_differs for p in self.pairs),
+                "correct_but_flagged": sum(1 for p in self.pairs if p.flags and p.figure_error is None),
+                "wrong_and_flagged": self.flagged_unmatched,
+                "condition_not_stated": self.conditions_not_stated,
                 "strict_errors": strict_wrong, "note": self.note}
 
 
@@ -209,13 +247,14 @@ def score_paper(predictions: list[Obs], references: list[Obs], against: str) -> 
     own = [p for p in predictions if not p.cited]
     s.cited_marked = [p.ref for p in predictions if p.cited]
     s.predictions = len(own)
+    s.conditions_not_stated = sum(1 for p in own if p.condition_not_stated)
     s.references = len(refs)
     s.deferred = sum(1 for r in refs if _deferred(r, against))
     # candidate pairs within each group, closest first
     candidates = []
     for p in own:
         for r in refs:
-            if p.group != r.group:
+            if not same_group(p, r):
                 continue
             ok, ferr = pair_ok(p, r)
             if ok:
@@ -236,13 +275,16 @@ def score_paper(predictions: list[Obs], references: list[Obs], against: str) -> 
                             _norm(p.location) != _norm(r.location) and bool(r.location),
                             r.gs.kind == "figure" or agree(p.gs, r.gs), r.ys.kind == "figure" or agree(p.ys, r.ys),
                             all(p.units_as_written.get(k) for k in p.units_as_written) and p.gs.unit_known
-                            and p.ys.unit_known, p.link_asserted, p.provenance_ok, ferr))
+                            and p.ys.unit_known, p.link_asserted, p.provenance_ok, ferr,
+                            ", ".join(sorted({f for f in (p.gs.flag, p.ys.flag) if f})) or None,
+                            p.condition_not_stated))
     # a reference left out of the denominator (figure-only or range) is never counted as recovered
     s.matched = sum(1 for pr in s.pairs if not _deferred(by_r[pr.reference], against))
     for p in own:
         if p.ref in taken_p:
             continue
-        same = [r for r in refs if r.group == p.group]
+        s.flagged_unmatched += p.flagged
+        same = [r for r in refs if same_group(p, r)]
         if any(pair_ok(p, r)[0] for r in same):
             s.duplicates.append(p.ref)
         elif any(agree(p.gs, r.gs) for r in same) and any(agree(p.ys, r.ys) for r in same):
@@ -285,7 +327,8 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
                            dict(x=output_id)).one()
         document = ParsedDocument.load(conn, out.document_parse_id)
         rows = conn.execute(text(
-            "SELECT o.id, o.identity, v.field, v.value_text, v.unit, v.provenance, v.ambiguous FROM candidate_observation o "
+            "SELECT o.id, o.identity, v.field, v.value_text, v.unit, v.provenance, v.ambiguous, v.ambiguity_note "
+            "FROM candidate_observation o "
             "JOIN candidate_value v ON v.observation_id = o.id WHERE o.extraction_output_id = :x "
             "AND o.id IN (SELECT object_id FROM evidence_state_event e WHERE e.id = ANY(:ids) AND object_kind = 'observation') "
             "ORDER BY o.id, v.id"),
@@ -317,11 +360,17 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
         units = {f: (v[f].unit is not None or bool(re.search(r"[a-zA-Zµμ]", v[f].value_text)))
                  for f in ("grain_size", "yield_strength") if f in v and v[f].value_text.strip().casefold() != FIGURE_ONLY}
         label = ident["specimen"][len("label:"):] if ident["specimen"].startswith("label:") else None
-        obs.append(Obs("prediction", f"obs:{oid}", ident["paper"], ident["alloy"], ident["test_type"],
-                       ident["test_temperature"], label,
-                       quantity("grain_size", _t(v, "grain_size"), _u(v, "grain_size"), ambiguous=_a(v, "grain_size")),
+        # the group fields are recomputed from the stored values with the current identity rules (S0 is never changed)
+        temp = v.get("test_temperature")
+        obs.append(Obs("prediction", f"obs:{oid}", ident["paper"],
+                       ident["alloy"] if ident["paper"].startswith("cited:") else
+                       alloy_key(_t(v, "alloy"), _t(v, "composition")),
+                       test_type_key(_t(v, "test_type")),
+                       temperature_key(_t(v, "test_temperature"), temp.unit if temp else None), label,
+                       quantity("grain_size", _t(v, "grain_size"), _u(v, "grain_size"), ambiguous=_a(v, "grain_size"),
+                                note=_n(v, "grain_size")),
                        quantity("yield_strength", _t(v, "yield_strength"), _u(v, "yield_strength"),
-                                ambiguous=_a(v, "yield_strength")),
+                                ambiguous=_a(v, "yield_strength"), note=_n(v, "yield_strength")),
                        location=ident["specimen"], state=ident["processing_state"],
                        reported_from=ident.get("reported_from", "this paper"), link_asserted=bool(links.get(oid)),
                        provenance_ok=(all(prov_ok) if prov_ok else None), units_as_written=units))
@@ -341,6 +390,10 @@ def _u(v, f):
 
 def _a(v, f):
     return bool(v[f].ambiguous) if f in v else False
+
+
+def _n(v, f):
+    return v[f].ambiguity_note if f in v else None
 
 
 def annotation_obs(engine: Engine, doi_key: str, annotator: str | None = None) -> list[Obs]:
@@ -372,6 +425,8 @@ def compilation_obs(records: Iterable, doi_key: str, annotation: list[Obs] | Non
         if not r.paper_doi or doi_group_key(r.paper_doi) != doi_key:
             continue
         h = r.harmonized
+        if h[phase_field()].value not in profile.PHASE_CLASSES:
+            continue  # the reach selection's rule (Sprint 1's FCC definition): only those records are scored
         if h["grain_size"].value is None or h["yield_strength"].value is None:
             without += 1  # not an H1 observation in the compilation: counted, never scored
             continue
