@@ -3,13 +3,16 @@
 
 Every Appendix B column is kept, with its meaning unchanged. Three are added so that the scorer can match on R-identity
 without reading free text: `observation_location` and `specimen_label`, placed right after `processing_state` so the
-annotator fills the identity before the values, and `test_temperature_unit`. One column list (`COLUMNS`); the .xlsx is
+annotator fills the identity before the values, and `test_temperature_unit`. Version 2 (owner, 2026-10-23) adds, for
+each value, how the paper states it (`grain_size_stated_as`, `yield_strength_stated_as`: a number, a range, or only in
+a figure); the scorer reads them to set figure-only and range records apart. One column list (`COLUMNS`); the .xlsx is
 generated from it, and the loader reads by it."""
 from __future__ import annotations
 
 import io
 
-TEMPLATE_VERSION = "B1+identity-1"
+TEMPLATE_VERSION = "B1+identity-2"
+STATED_AS = ("number", "range", "figure only")  # how the paper states a value (version 2)
 
 # (column, what to enter, example) in the order of the sheet.
 COLUMNS: tuple[tuple[str, str, str], ...] = (
@@ -23,12 +26,15 @@ COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("specimen_label", "The paper's specimen or replicate label, if it gives one; blank if it gives none.", "A1"),
     ("grain_size_value", "As written.", "4.4"),
     ("grain_size_unit", "µm or as written.", "µm"),
+    ("grain_size_stated_as", "How the paper states it: number / range / figure only (fill it whenever the paper gives "
+                             "a grain size; for 'figure only' leave the value blank).", "number"),
     ("grain_size_method", "Linear intercept / equivalent diameter / as stated; twins counted if stated.",
      "linear intercept, twins excluded"),
     ("grain_size_location", "Page and table and row, or page and sentence, or figure number and caption.",
      "p. 5, Table 2, row 1"),
     ("yield_strength_value", "As written.", "360"),
     ("yield_strength_unit", "MPa or as written.", "MPa"),
+    ("yield_strength_stated_as", "How the paper states it: number / range / figure only (as for grain size).", "number"),
     ("yield_strength_definition", "0.2 % offset or as stated.", "0.2 % offset"),
     ("yield_strength_location", "As for grain size.", "p. 5, Table 2, row 1"),
     ("test_type", "tension / compression.", "tension"),
@@ -53,6 +59,9 @@ READ_ME = (
     "which specimen it belongs to. Time yourself per paper.",
     "Fill the identity first: processing_state, observation_location, specimen_label. Every row needs an "
     "observation_location; specimen_label only when the paper labels its specimens.",
+    "For each value, say how the paper states it in the 'stated_as' column: 'number' (a stated number), 'range' (e.g. "
+    "'0.95-1.1 GPa': write the range as the value), or 'figure only' (the value can only be read off a figure: leave "
+    "the value blank and give the figure as its location).",
     "",
     "Example 1 (illustration, not from a real paper): a paper that labels its specimens. Table 2 on page 5 lists "
     "specimens A1 and A2, both annealed 1 h at 800 °C, with their grain sizes and yield strengths.",

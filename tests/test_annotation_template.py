@@ -28,10 +28,14 @@ APPENDIX_B = ("paper_doi", "alloy_as_written", "composition_at_pct", "processing
 def test_every_appendix_b_column_is_kept_in_order_and_three_identity_columns_are_added_where_agreed():
     names = template.NAMES
     assert tuple(n for n in names if n in APPENDIX_B) == APPENDIX_B
-    assert set(names) - set(APPENDIX_B) == {"observation_location", "specimen_label", "test_temperature_unit"}
+    assert set(names) - set(APPENDIX_B) == {"observation_location", "specimen_label", "test_temperature_unit",
+                                            "grain_size_stated_as", "yield_strength_stated_as"}
     i = names.index("processing_state")
     assert names[i + 1:i + 3] == ("observation_location", "specimen_label")
     assert names[names.index("test_temperature") + 1] == "test_temperature_unit"
+    assert names[names.index("grain_size_unit") + 1] == "grain_size_stated_as"
+    assert names[names.index("yield_strength_unit") + 1] == "yield_strength_stated_as"
+    assert template.TEMPLATE_VERSION == "B1+identity-2" and template.STATED_AS == ("number", "range", "figure only")
 
 
 def test_the_workbook_has_the_read_me_with_both_examples_and_a_header_only_annotation_sheet():
@@ -55,7 +59,8 @@ def sheet(rows, header=template.NAMES) -> bytes:
 
 ROW = {"paper_doi": "10.1016/j.actamat.2013.06.018", "alloy_as_written": "CrMnFeCoNi",
        "processing_state": "annealed 1 h at 800 °C", "observation_location": "p. 5, Table 2, row 1",
-       "grain_size_value": "4.4", "grain_size_unit": "µm", "yield_strength_value": "360", "yield_strength_unit": "MPa",
+       "grain_size_value": "4.4", "grain_size_unit": "µm", "grain_size_stated_as": "number",
+       "yield_strength_value": "360", "yield_strength_unit": "MPa", "yield_strength_stated_as": "number",
        "test_type": "tension", "test_temperature": "293", "test_temperature_unit": "K",
        "link_evidence": "same table row", "annotator": "K. El-Awady", "minutes": "25"}
 
@@ -106,3 +111,24 @@ def test_the_xlsx_template_round_trips_through_the_loader():
     wb.save(buf)
     rows, blank = annotation.parse("filled.xlsx", buf.getvalue())
     assert len(rows) == 1 and rows[0].cells["specimen_label"] == "" and rows[0].identity["specimen"].startswith("location:")
+
+
+def test_every_value_says_how_the_paper_states_it():
+    """Version 2 (owner, 2026-10-23): number, range or figure only; a figure-only value is blank, a number or range
+    is filled. The scorer reads this column to set figure-only and range records apart."""
+    fig = ROW | {"yield_strength_value": "", "yield_strength_stated_as": "figure only",
+                 "yield_strength_location": "Fig. 5b"}
+    rng = ROW | {"observation_location": "p. 8, sentence: YS=0.95-1.1 GPa", "yield_strength_value": "0.95-1.1",
+                 "yield_strength_unit": "GPa", "yield_strength_stated_as": "Range"}
+    rows, _ = annotation.parse("ok.csv", sheet([fig, rng]))
+    assert [r.cells["yield_strength_stated_as"] for r in rows] == ["figure only", "Range"]
+    bad = [ROW | {"grain_size_stated_as": ""}, ROW | {"yield_strength_stated_as": "estimated"},
+           fig | {"yield_strength_value": "300"}, ROW | {"grain_size_value": "", "grain_size_stated_as": "number",
+                                                         "grain_size_location": "Table 1"}]
+    with pytest.raises(annotation.AnnotationRefused) as e:
+        annotation.parse("bad.csv", sheet(bad))
+    assert e.value.problems == [
+        "row 2: grain_size_stated_as is required when the paper gives a grain_size",
+        "row 3: yield_strength_stated_as 'estimated' is not one of number, range, figure only",
+        "row 4: yield_strength is 'figure only', so its value is left blank",
+        "row 5: grain_size is stated as a number, so its value is filled"]

@@ -10226,20 +10226,21 @@
     "key": "pilot_annotation_template",
     "name": "Annotation template",
     "state": "in_force",
-    "statement": "PRD Appendix B's columns, unchanged and in order, plus observation_location and specimen_label right after processing_state (identity before values) and test_temperature_unit after test_temperature. The .xlsx has a 'Read me' with one example with specimen labels and one where the location stands in. The loader refuses a file whole, listing every problem, on wrong columns or a row with no paper, no annotator, or neither label nor location.",
+    "statement": "PRD Appendix B's columns, unchanged and in order, plus observation_location and specimen_label right after processing_state (identity before values) and test_temperature_unit after test_temperature; version 2 adds, after each value's unit, how the paper states it (grain_size_stated_as, yield_strength_stated_as: number, range or figure only), required whenever the paper gives the value, with a figure-only value left blank. The .xlsx has a 'Read me' with one example with specimen labels and one where the location stands in. The loader refuses a file whole, listing every problem, on wrong columns or a row with no paper, no annotator, or neither label nor location.",
     "value": {
-      "text": "B1+identity-1",
+      "text": "B1+identity-2",
       "unit": null
     },
     "category": "data_handling",
     "affects": "The owner's first-pass annotation (R8) and the scorer (R7).",
     "reason": "The scorer must match on R-identity without parsing free text.",
     "evidence": [
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Add explicit columns ... observation_location and specimen_label immediately after processing_state\"."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Add explicit columns ... observation_location and specimen_label immediately after processing_state\".",
+      "The owner's answer of 2026-10-23 to Q-C: 'figure-only or range' is determined from the annotation, which records for every value whether the paper states it as a number, a range, or only in a figure."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10252,7 +10253,15 @@
       "settings": [
         {
           "ref": "python:hypocurate.scoring.template:TEMPLATE_VERSION",
-          "equals": "B1+identity-1"
+          "equals": "B1+identity-2"
+        },
+        {
+          "ref": "python:hypocurate.scoring.template:STATED_AS",
+          "equals": [
+            "number",
+            "range",
+            "figure only"
+          ]
         }
       ],
       "note": null
@@ -10260,9 +10269,17 @@
     "tests": [
       "tests/test_annotation_template.py::test_every_appendix_b_column_is_kept_in_order_and_three_identity_columns_are_added_where_agreed",
       "tests/test_annotation_template.py::test_the_workbook_has_the_read_me_with_both_examples_and_a_header_only_annotation_sheet",
-      "tests/test_annotation_template.py::test_a_file_is_refused_whole_and_lists_every_problem"
+      "tests/test_annotation_template.py::test_a_file_is_refused_whole_and_lists_every_problem",
+      "tests/test_annotation_template.py::test_every_value_says_how_the_paper_states_it"
     ],
-    "history": [],
+    "history": [
+      {
+        "value": "B1+identity-1 (Appendix B plus observation_location, specimen_label, test_temperature_unit)",
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "note": "Replaced before any annotation was made with it."
+      }
+    ],
     "notes": []
   },
   {

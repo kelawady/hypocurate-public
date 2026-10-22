@@ -2,7 +2,9 @@
 identity computed by the one R-identity function (`pipeline.extraction.identity`).
 
 A file is refused whole, with every problem listed, when its columns differ from the template's, or any row lacks a
-paper DOI, an annotator, or both a specimen label and an observation location (the identity needs one). Wholly blank
+paper DOI, an annotator, or both a specimen label and an observation location (the identity needs one), or when a
+value's 'stated as' cell is missing, not one of number / range / figure only, or disagrees with its value cell (a
+figure-only value is left blank; a number or range is filled). Wholly blank
 rows are skipped and counted. Nothing is corrected: cells are stored as written (strings), with the identity code
 computed beside them."""
 from __future__ import annotations
@@ -19,7 +21,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from hypocurate.db.retry import run_transaction
 from hypocurate.pipeline.extraction.identity import IdentityError, identity
-from hypocurate.scoring.template import NAMES, TEMPLATE_VERSION
+from hypocurate.scoring.template import NAMES, STATED_AS, TEMPLATE_VERSION
 from hypocurate.sources.normalize import doi_group_key
 
 FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.](xlsx|csv)$")
@@ -85,6 +87,18 @@ def parse(filename: str, content: bytes) -> tuple[list[Row], int]:
             problems.append(f"row {number}: no paper_doi")
         if not cells["annotator"]:
             problems.append(f"row {number}: no annotator")
+        for field in ("grain_size", "yield_strength"):
+            stated = cells[f"{field}_stated_as"].casefold()
+            given = cells[f"{field}_value"] or cells[f"{field}_location"]
+            if stated and stated not in STATED_AS:
+                problems.append(f"row {number}: {field}_stated_as {cells[f'{field}_stated_as']!r} is not one of "
+                                f"{', '.join(STATED_AS)}")
+            elif given and not stated:
+                problems.append(f"row {number}: {field}_stated_as is required when the paper gives a {field}")
+            elif stated == "figure only" and cells[f"{field}_value"]:
+                problems.append(f"row {number}: {field} is 'figure only', so its value is left blank")
+            elif stated in ("number", "range") and not cells[f"{field}_value"]:
+                problems.append(f"row {number}: {field} is stated as a {stated}, so its value is filled")
         minutes = None
         if cells["minutes"]:
             try:
