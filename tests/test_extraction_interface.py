@@ -136,6 +136,9 @@ def test_a_table_provenance_resolves_only_at_the_cited_row_with_the_snippet():
     assert "on page 2, not 1" in provenance.problem(doc, Provenance(1, "4.4", 0, 1))
     assert "not in the row" in provenance.problem(doc, Provenance(2, "4.4 265", 0, 1))  # 265 is in row 2
     assert "not in the document" in provenance.problem(doc, Provenance(7, "4.4", 0, 1))
+    # the rendering's cell separator is not a word of the paper; an elision is (the snippet is not verbatim)
+    assert provenance.problem(doc, Provenance(2, "CoCrFeMnNi | annealed 800 °C 1 h | 4.4 | 360", 0, 1)) is None
+    assert "['...']" in provenance.problem(doc, Provenance(2, "CoCrFeMnNi | ... | 360", 0, 1))
 
 
 def test_a_sentence_provenance_resolves_only_on_its_page_with_the_snippet_inside():

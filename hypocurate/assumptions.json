@@ -10836,7 +10836,7 @@
     "key": "pilot_provenance_resolution",
     "name": "When a provenance resolves",
     "state": "in_force",
-    "statement": "A table provenance resolves when the table exists, is on the cited page (when the parser gave it a page), has the cited row, and every word of the snippet occurs in that row; a sentence provenance when the sentence is on the cited page and the snippet is in the sentence (case-folded, whitespace collapsed). This is the 'supported' check, a provenance check, not a correctness check.",
+    "statement": "A table provenance resolves when the table exists, is on the cited page (when the parser gave it a page), has the cited row, and every word of the snippet occurs in that row (the cell separator '|' of the Extractor's rendering is ignored, since it is not a word of the paper); a sentence provenance when the sentence is on the cited page and the snippet is in the sentence (case-folded, whitespace collapsed). This is the 'supported' check, a provenance check, not a correctness check.",
     "value": {
       "text": "snippet words in the cited row, or snippet in the cited sentence on the page",
       "unit": null
@@ -10863,6 +10863,10 @@
       "settings": [
         {
           "ref": "python:hypocurate.pipeline.extraction.provenance:problem"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.extraction.provenance:CELL_SEPARATOR",
+          "equals": "|"
         }
       ],
       "note": null
@@ -10879,7 +10883,9 @@
         "note": "Proposed by the builder (Claude Code); in the register pending the owner's confirmation."
       }
     ],
-    "notes": []
+    "notes": [
+      "2026-10-23: the separator rule added after the first live extraction, whose table snippets copied the rendering's ' | ' separators."
+    ]
   },
   {
     "key": "pilot_texas_am_excluded",
