@@ -591,3 +591,19 @@ def test_the_service_does_not_start_with_an_invalid_register():
 
 def test_the_home_page_links_to_the_register():
     assert 'href="/assumptions"' in signed_in().get("/").text
+
+
+def test_the_pilot_step_is_accepted_beside_build_steps_5_to_12():
+    """Sprint 2 (owner, 2026-10-22): pilot entries name 'pilot-2' as their step; BUILD_STEPS stays 5 to 12, so no
+    Sprint 1 entry is read differently."""
+    from hypocurate import assumptions as reg
+    assert reg.BUILD_STEPS == range(5, 13) and reg.PILOT_STEPS == ("pilot-2",)
+    for step, ok in (("pilot-2", True), (5, True), (12, True), ("pilot-3", False), (13, False), (4, False),
+                     (True, False), ("5", False)):
+        e = copy.deepcopy(BY_KEY["session_length"])
+        e.update(applied={"status": "not_yet", "step": step, "note": None}, tests=[])
+        if ok:
+            reg.validate([e])
+        else:
+            with pytest.raises(reg.RegisterError, match="build step from 5 to 12, or the pilot step"):
+                reg.validate([e])

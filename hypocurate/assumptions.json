@@ -9953,5 +9953,888 @@
     "notes": [
       "Wording approved by the owner, 2026-10-12."
     ]
+  },
+  {
+    "key": "pilot_evidence_state_storage",
+    "name": "Evidence states and stop reasons in side tables",
+    "state": "in_force",
+    "statement": "States of observations and links (proposed, supported, accepted, disputed, unresolved) are append-only events in evidence_state_event, each by one named rule or one named person, at the database's time; the current state is the newest event. A run's stop reason is a row of run_stop_reason written when the run ends. Nothing is added to record or run; migration 0010 adds no column to any existing table.",
+    "value": {
+      "text": "append-only side tables (evidence_state_event, run_stop_reason)",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Migration 0010; every pilot state; R6's acceptance matrix and freeze invariant; the Sprint 1 reference dumps.",
+    "reason": "record is append-only and a final run is never updated under Sprint 1's triggers, and the Sprint 1 reference dumps read every column of record, run and agent_invocation: columns would change a rule or the dumps. Clarifies R1's wording 'evidence_state on record ... stop_reason on run'.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R1.",
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Side tables, append-only\"; the freeze invariant reads the newest event per object and stores the event ids it relied on."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:EVIDENCE_STATES",
+          "equals": [
+            "proposed",
+            "supported",
+            "accepted",
+            "disputed",
+            "unresolved"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.models:STATE_OBJECTS",
+          "equals": [
+            "observation",
+            "link"
+          ]
+        },
+        {
+          "ref": "sql:evidence_state_event"
+        },
+        {
+          "ref": "sql:run_stop_reason"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_migrations_step0010.py::test_no_column_is_added_to_an_existing_table",
+      "tests/test_migrations_step0010.py::test_every_new_table_is_append_only",
+      "tests/test_migrations_step0010.py::test_a_stop_reason_is_written_once_when_the_run_has_ended"
+    ],
+    "history": [],
+    "notes": [
+      "The R6 freeze invariant (newest event per object; event ids stored with the freeze) is built on Saturday; 'mapping' joins the object kinds with the Reconciler (R5)."
+    ]
+  },
+  {
+    "key": "pilot_snapshot_definitions",
+    "name": "Snapshots S0, S1, S2",
+    "state": "in_force",
+    "statement": "Each snapshot is the state events up to a time T, stored with T, the ascending list of event ids and their SHA-256; no copies of records. S0, per extraction output, is the Extractor's output as returned: stored and frozen in one transaction with its raw hash, holding exactly the extraction's own 'proposed' events; the database refuses any other event on the output's objects before S0 and any new candidate after it. S1: after the Reconciler's mappings and the acceptance rules, before any human correction. S2: after the owner's acceptance decisions and corrections. Every metric names its snapshot.",
+    "value": {
+      "text": "S0, S1, S2 = state events up to T (T and event ids stored)",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The scoring (R7), the acceptance matrix (R6) and every reported metric (P6).",
+    "reason": "The extractor's recall and precision must be computed before anything uses the compilation (D26); events up to T make each snapshot reproducible without copies.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4.",
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"S0, S1 and S2 are each defined as 'state events up to time T' with T stored\"."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:SNAPSHOT_NAMES",
+          "equals": [
+            "S0",
+            "S1",
+            "S2"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.models:EXTRACTION_RULE",
+          "equals": "extraction"
+        },
+        {
+          "ref": "sql:hc_evidence_snapshot_insert"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_migrations_step0010.py::test_s0_holds_exactly_the_extractions_proposed_events_and_its_raw_hash",
+      "tests/test_migrations_step0010.py::test_no_other_event_before_s0_and_no_extraction_event_or_candidate_after_it",
+      "tests/test_extraction_interface.py::test_s0_is_frozen_with_its_hash_in_the_same_transaction_and_never_changes",
+      "tests/test_extraction_interface.py::test_nothing_that_uses_the_compilation_imports_s0"
+    ],
+    "history": [],
+    "notes": [
+      "S1 and S2 are taken from Friday (R5) and Saturday (R6, R10)."
+    ]
+  },
+  {
+    "key": "pilot_invocation_scope_document",
+    "name": "Document scope and the pilot roles (safeguard change)",
+    "state": "in_force",
+    "statement": "agent_invocation gains a third scope, 'document' (the Extractor, in no run; the parsed document it reads is its document_invocation row, required when the transaction ends), and two roles: 'extractor' (document scope only) and 'reconciler' (run scope only). Every Sprint 1 combination is accepted or refused as before. The Extractor's access allow-list is the only place S0's reference-blindness is enforced; its planted-value test plants a compilation value and a compilation record id; the Reconciler's list may include compilation records, so its outputs are S1, never S0, and an extractor call cannot be bound with the Reconciler's list.",
+    "value": {
+      "text": "scopes run, registration, document; roles + extractor, reconciler",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Migration 0010 (agent_invocation, model_call, stage_result, agent_setting role lists; two 0005 functions replaced with one added branch each); the access layer (Friday).",
+    "reason": "The Extractor's calls must be reserved and recorded like every model call (CLAUDE.md rule 12), and S0 belongs to the document, not a run (Design D11).",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"New scope + roles, approved as a safeguard change\", with the two conditions stated here."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:INVOCATION_SCOPES",
+          "equals": [
+            "run",
+            "registration",
+            "document"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.db.models:PILOT_ROLES",
+          "equals": [
+            "extractor",
+            "reconciler"
+          ]
+        },
+        {
+          "ref": "sql:hc_document_invocation_required"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_migrations_step0010.py::test_a_document_invocation_is_the_extractors_on_a_parsed_document_in_no_run",
+      "tests/test_migrations_step0010.py::test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one",
+      "tests/test_migrations_step0010.py::test_sprint1_combinations_are_unchanged",
+      "tests/test_migrations_step0010.py::test_a_document_call_belongs_to_no_run_and_has_its_invocations_role"
+    ],
+    "history": [],
+    "notes": [
+      "The access allow-lists and their planted-value tests come with the Extractor's model call (Friday); no Extractor model call is made before they exist."
+    ]
+  },
+  {
+    "key": "pilot_document_cap",
+    "name": "Spending cap per document",
+    "state": "in_force",
+    "statement": "Each Extractor call is reserved before it is sent, against a cap of $2 per document invocation and the $50 monthly cap; the per-run cap becomes a run parameter with its default unchanged ($2).",
+    "value": {
+      "text": "2",
+      "unit": "USD per document invocation"
+    },
+    "category": "operational",
+    "affects": "The Extractor's model calls (R4) and the H2 corpus (R11).",
+    "reason": "The H2 corpus and parallel Extractor calls are the first workloads that could approach the caps.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md); the owner's session brief of 2026-10-22."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": "pilot-2",
+      "note": "Built with the Extractor's model call (Friday) in pipeline/agents/spend.py."
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_observation_identity",
+    "name": "R-identity: one observation",
+    "state": "in_force",
+    "statement": "One observation is one paper, one alloy, one processing state, one test type, one test temperature and one specimen: the source's specimen or replicate label where the paper gives one, otherwise the observation's location in the source (table and row, or page and sentence). Defined once (pipeline/extraction/identity.py) and used by the Extractor's records, the annotation rows, the re-report rule and the scorer; matching is on the whole key and one-to-one. Normalization: paper = Sprint 1's DOI key; alloy = Sprint 1's same-alloy key (at.% rounded to 0.1) from the composition, else from the name read as a formula, else 'name:<name>'; text case-folded with whitespace collapsed; test type tension/compression when the text says so; temperature in °C rounded to the degree from °C or K, or the band 'room temperature'.",
+    "value": {
+      "text": "paper + alloy + processing state + test type + test temperature + (label, else location)",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The scorer (R7), the re-report rule (R6), the annotation template (R8) and the S0 records (R4).",
+    "reason": "PRD 4 requires one identity everywhere so that two predictions for one observation count as one hit and one duplicate, and separately reported specimens stay separate (Appendix A1).",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 (R-identity) and R7.",
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Add explicit columns\" (specimen_label, observation_location)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.extraction.identity:IDENTITY_VERSION",
+          "equals": "1"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.extraction.identity:ROOM_TEMPERATURE",
+          "equals": "room temperature"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_extraction_interface.py::test_a_composition_not_a_spelling_is_the_alloy",
+      "tests/test_extraction_interface.py::test_celsius_kelvin_and_room_temperature",
+      "tests/test_extraction_interface.py::test_a_label_else_the_location_separates_observations_under_identical_conditions",
+      "tests/test_extraction_interface.py::test_an_observation_without_a_paper_or_without_label_and_location_is_refused"
+    ],
+    "history": [],
+    "notes": [
+      "The normalization details (rounding to the degree; how a name that is not a formula is kept) are the builder's, for the owner's confirmation; how processing-state text is compared in the scorer's match is an open question for Friday."
+    ]
+  },
+  {
+    "key": "pilot_annotation_template",
+    "name": "Annotation template",
+    "state": "in_force",
+    "statement": "PRD Appendix B's columns, unchanged and in order, plus observation_location and specimen_label right after processing_state (identity before values) and test_temperature_unit after test_temperature. The .xlsx has a 'Read me' with one example with specimen labels and one where the location stands in. The loader refuses a file whole, listing every problem, on wrong columns or a row with no paper, no annotator, or neither label nor location.",
+    "value": {
+      "text": "B1+identity-1",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The owner's first-pass annotation (R8) and the scorer (R7).",
+    "reason": "The scorer must match on R-identity without parsing free text.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Add explicit columns ... observation_location and specimen_label immediately after processing_state\"."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.scoring.template:TEMPLATE_VERSION",
+          "equals": "B1+identity-1"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_annotation_template.py::test_every_appendix_b_column_is_kept_in_order_and_three_identity_columns_are_added_where_agreed",
+      "tests/test_annotation_template.py::test_the_workbook_has_the_read_me_with_both_examples_and_a_header_only_annotation_sheet",
+      "tests/test_annotation_template.py::test_a_file_is_refused_whole_and_lists_every_problem"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_reach_selection",
+    "name": "Which papers the reach covers",
+    "state": "in_force",
+    "statement": "The papers behind MPEA's FCC grain-size records: Sprint 1's FCC definition as eligibility reads it (single phase required: the microstructure field, from the column 'PROPERTY: Microstructure', equals FCC), a grain size converted to µm, papers told apart by Sprint 1's normalized DOI. Pinned: 28 papers, 107 records, 92 with a yield strength. The reach table records the phase column.",
+    "value": {
+      "text": "28 papers, 107 records (microstructure = FCC, grain size converted)",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The reach table (R2, P1) and the fallback corpus (PRD Table 6).",
+    "reason": "So the count is reproducible from Sprint 1's own rule, not a new definition.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Use the same FCC definition the Sprint 1 eligibility rules already use ... record ... which phase column defined it\"."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:SINGLE_PHASE",
+          "equals": "required"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:PHASE_CLASSES",
+          "equals": [
+            "FCC"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_the_selection_uses_sprint1s_fcc_definition_and_is_pinned",
+      "tests/test_documents_reach.py::test_the_selection_follows_the_profiles_phase_rule"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_reach_milestones",
+    "name": "The four reach milestones and the access causes",
+    "state": "in_force",
+    "statement": "1 open-access flag (Unpaywall's where it answered, else OpenAlex's); 2 full text downloaded by a program; 3 text and tables parsed (with the parser and the tables found); 4 supplements available: 'yes' when a landing page links a supplementary file, otherwise 'not found by automatic check', and the column is never used to assert 'none'. A PDF a person fetched in a browser is shown apart ('fetched by hand', with the URL used and why automation failed); its cause is 'free to read in a browser, not fetchable by a program', distinct from 'not open access in the lookup services (paywalled)'.",
+    "value": {
+      "text": "four milestones; supplements 'yes' or 'not found by automatic check'",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The reach number in the results note (P1, P10) and the H2 gap report's causes (R11).",
+    "reason": "The milestones differ (Design 6.3); 'none' would claim an absence the check cannot see; the automated reach must stay as measured when a person fills a gap.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): milestone 4 approved with the wording change; by-hand fetches record the URL and the reason automation failed, as their own cause."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.lookup:NOT_FOUND_BY_AUTOMATIC_CHECK",
+          "equals": "not found by automatic check"
+        },
+        {
+          "ref": "python:hypocurate.documents.store:BROWSER_ONLY",
+          "equals": "free to read in a browser, not fetchable by a program"
+        },
+        {
+          "ref": "python:hypocurate.documents.reach:NOT_OPEN_ACCESS",
+          "equals": "not open access in the lookup services (paywalled)"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_the_supplement_check_says_yes_or_not_found_by_automatic_check_never_none",
+      "tests/test_documents_reach.py::test_gather_parse_and_the_reach_table_over_two_papers",
+      "tests/test_documents_reach.py::test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_and_is_shown_apart"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_publisher_pdf_patterns",
+    "name": "Publishers' standard PDF addresses",
+    "state": "in_force",
+    "statement": "For an open-access paper with no fetched PDF, code tries the publisher's standard PDF address before any fetch by hand: Taylor & Francis (/doi/pdf/<doi>) and MDPI (landing page + /pdf). Elsevier's free-to-read articles have no such address (a page script builds it), so they are not tried.",
+    "value": {
+      "text": "Taylor & Francis and MDPI patterns",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The reach steps (R2).",
+    "reason": "The owner chose to try patterns automatically, then fetch by hand what stays blocked.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Try patterns, then by hand\"."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.lookup:TANDF_PDF",
+          "equals": "https://www.tandfonline.com/doi/pdf/{doi}?download=true"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_publisher_patterns_for_tandf_and_mdpi_and_none_for_elsevier"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_unpaywall_contact",
+    "name": "Contact address for OpenAlex and Unpaywall",
+    "state": "in_force",
+    "statement": "Requests to OpenAlex and Unpaywall carry the owner's contact address, as their polite-use terms ask; logged URLs show {contact} in its place.",
+    "value": {
+      "text": "khalid@eksentricity.ai",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The reach lookups (R2).",
+    "reason": "Unpaywall requires an email; the owner named this one.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.lookup:CONTACT_EMAIL",
+          "equals": "khalid@eksentricity.ai"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_the_lookup_prefers_unpaywalls_flag_and_lists_pdf_addresses_once"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_parser_choice",
+    "name": "PDF parser",
+    "state": "in_force",
+    "statement": "Docling (2.141.0) first; pymupdf (2.0) when Docling fails or finds no tables; pymupdf's result is kept only when it found tables (or Docling failed), otherwise Docling's; every attempt is listed in the stored parse. The parsers live only in the parse environment (requirements-parse.lock), never in a project lock or a Docker image; parsing runs locally.",
+    "value": {
+      "text": "Docling 2.141.0, pymupdf 2.0 fallback",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every parsed document (R2) and so every provenance.",
+    "reason": "Docling keeps tables as tables (R-link-1 needs table rows); pymupdf is the light fallback; PyTorch must not enter the deployed image.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Docling, pymupdf fallback\".",
+      "The fallback rule when neither finds tables (keep Docling's text) is the builder's, for the owner's confirmation."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:requirements-parse.in:docling==2.141.0"
+        },
+        {
+          "ref": "file:requirements-parse.in:pymupdf==2.0"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_docling_first_then_pymupdf_when_docling_fails_or_finds_no_tables",
+      "tests/test_skeleton.py::test_the_parsers_are_in_no_project_lock_and_no_image",
+      "tests/test_skeleton.py::test_the_parse_lock_is_pinned_with_hashes_and_matches_its_input"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_parsed_storage",
+    "name": "Parsed documents as canonical JSON",
+    "state": "in_force",
+    "statement": "One canonical JSON text per parse (format hypocurate-parse-1: texts and tables with page, table and row indexes, the attempts), sorted keys and no spaces, with its SHA-256 checked by the database; a re-parse is a new row. A provenance names the document, the parse hash, the page and a table row or sentence.",
+    "value": {
+      "text": "hypocurate-parse-1",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Provenance (R4), the workbook (R12) and the scorer (R7).",
+    "reason": "S0 is hashed per document, so the parse it was read from must be fixed and hashable.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"JSON per document\"."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.parse_worker:FORMAT",
+          "equals": "hypocurate-parse-1"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_the_canonical_json_is_byte_stable",
+      "tests/test_migrations_step0010.py::test_a_parse_carries_its_hash_or_a_failure_with_its_reason"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_document_max_bytes",
+    "name": "Largest stored document",
+    "state": "in_force",
+    "statement": "A fetched PDF is stored only up to 50 MiB, checked by code before storing and by the database.",
+    "value": {
+      "text": "52428800",
+      "unit": "bytes"
+    },
+    "category": "operational",
+    "affects": "Document storage (R2).",
+    "reason": "Sprint 1's 5 MiB file cap is too small for papers with figures; 50 MiB bounds the database.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R1 (document store)."
+    ],
+    "decided": {
+      "by": "builder (Claude Code), for the owner's confirmation in the daily report",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:DOCUMENT_MAX_BYTES",
+          "equals": 52428800
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_documents_reach.py::test_a_download_keeps_only_a_pdf_within_the_cap_and_records_every_attempt"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_extractor_models",
+    "name": "Extractor models",
+    "state": "in_force",
+    "statement": "Claude Sonnet 5.5 for the first pass over every paper; Claude Opus 5.5 as a second method on the annotated papers only, added after S0 scoring works on the first paper; the one-paper increment runs on Sonnet only.",
+    "value": {
+      "text": "Sonnet 5.5 first pass; Opus 5.5 second method on annotated papers",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The Extractor (R4) and the per-method scoring (R7).",
+    "reason": "Cost and a second value on the method dimension of the scoring.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": "pilot-2",
+      "note": "Applied with the Extractor's model call (Friday)."
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_human_operated_label",
+    "name": "Label for steps done by hand",
+    "state": "in_force",
+    "statement": "Steps the owner performs by hand in the pilot are labelled 'done by hand in this pilot', from one glossary entry, in the pipeline view, the search log and the workbook.",
+    "value": {
+      "text": "done by hand in this pilot",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "The pipeline view (R13), the workbook (R12), the search log.",
+    "reason": "Plain English that says it is temporary.",
+    "evidence": [
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": "pilot-2",
+      "note": "The glossary entry and its uses come with the workbook columns and the view."
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_evidence_specifications",
+    "name": "Evidence specifications H1 and H2",
+    "state": "in_force",
+    "statement": "PRD Appendix A's specifications as locked files (pipeline/extraction/specs/H1_v1.json, H2_v1.json) with their SHA-256; H2's qualifying grain size is either type, recorded per record (D27). Which sections the Extractor may read is decided with its access allow-list (Friday).",
+    "value": {
+      "text": "H1 v1, H2 v1",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "Extraction (R4), the H1 runs (R9) and the H2 inventory (R11).",
+    "reason": "The specifications are the sprint's lock, since the Planner does not produce them yet.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Appendix A (approved by the owner on 2026-10-22)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "file:hypocurate/pipeline/extraction/specs/H1_v1.json:\"version\": \"1\""
+        },
+        {
+          "ref": "file:hypocurate/pipeline/extraction/specs/H2_v1.json:Either (a) the as-processed grain size"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_extraction_interface.py::test_the_evidence_specifications_are_locked_files_with_hashes"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_no_provenance_marker",
+    "name": "A value or link returned without provenance",
+    "state": "in_force",
+    "statement": "A value or link the Extractor returns with neither a provenance nor an ambiguity note is stored as ambiguous with the code-written note 'the extractor gave no provenance and no ambiguity note'; the raw output keeps what was returned. A link naming a value its record lacks refuses the whole output.",
+    "value": {
+      "text": "stored ambiguous with a code-written note",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "S0 (R4) and every analysis set.",
+    "reason": "R4 requires provenance or an explicit 'ambiguous' marker on every stored record; dropping such values would hide them from the scorer, and inventing a provenance would be a silent repair.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R4."
+    ],
+    "decided": {
+      "by": "builder (Claude Code), for the owner's confirmation in the daily report",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.extraction.s0:NO_PROVENANCE",
+          "equals": "the extractor gave no provenance and no ambiguity note"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_extraction_interface.py::test_every_value_and_link_has_provenance_or_an_explicit_marker",
+      "tests/test_extraction_interface.py::test_a_link_to_a_value_the_record_lacks_is_refused_whole"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_provenance_resolution",
+    "name": "When a provenance resolves",
+    "state": "in_force",
+    "statement": "A table provenance resolves when the table exists, is on the cited page (when the parser gave it a page), has the cited row, and every word of the snippet occurs in that row; a sentence provenance when the sentence is on the cited page and the snippet is in the sentence (case-folded, whitespace collapsed). This is the 'supported' check, a provenance check, not a correctness check.",
+    "value": {
+      "text": "snippet words in the cited row, or snippet in the cited sentence on the page",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The 'supported' state (R6) and acceptance criterion 2.",
+    "reason": "A cited value must be findable where cited, tolerant of how parsers split cells.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4."
+    ],
+    "decided": {
+      "by": "builder (Claude Code), for the owner's confirmation in the daily report",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.extraction.provenance:problem"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_extraction_interface.py::test_a_table_provenance_resolves_only_at_the_cited_row_with_the_snippet",
+      "tests/test_extraction_interface.py::test_a_sentence_provenance_resolves_only_on_its_page_with_the_snippet_inside"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_texas_am_excluded",
+    "name": "Texas A&M left out of the pilot (D24)",
+    "state": "in_force",
+    "statement": "H1 runs three conditions: MPEA only; extracted only under 'use what is available'; the augmented pool of MPEA plus extracted with re-reports counted once. The Sprint 1 pooled anchor (MPEA plus Texas A&M) is re-run once as a regression check only.",
+    "value": {
+      "text": "three H1 conditions, no Texas A&M",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "The H1 runs (R9).",
+    "reason": "A dataset that is not a paper adds a run and an unexplained comparison without adding evidence (Design D24).",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 3; Design v1.6, D24."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": "pilot-2",
+      "note": "The three H1 runs are built on Saturday (R9)."
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_h2_inventory",
+    "name": "H2 as an evidence inventory (D25, D27)",
+    "state": "in_force",
+    "statement": "No analysis of H2 runs in the sprint: extraction and reconciliation run, every candidate is stored with its state and its grain-size type (as-processed, or at or after the test temperature), and the inventory reports counts by cause for what was not recovered.",
+    "value": {
+      "text": "inventory; analysis deferred to a versioned protocol",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "R11.",
+    "reason": "Design D25; the qualifying grain size approved as either type, recorded (D27).",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 3 and R11; Design v1.6, D25 and D27."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "not_yet",
+      "step": "pilot-2",
+      "note": "Built on Sunday (R11)."
+    },
+    "tests": [],
+    "history": [],
+    "notes": []
   }
 ]
