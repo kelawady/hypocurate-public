@@ -57,6 +57,10 @@ ANNOTATION_NOTES = {"doi:10.1080/21663831.2018.1553803": "annotator informed tha
 _NUM = r"(\d+(?:\.\d+)?)"
 _RANGE = re.compile(rf"^[~∼≈]?\s*{_NUM}\s*(?:-|–|—|to)\s*[~∼≈]?\s*{_NUM}\s*([a-zA-Zµμ/^0-9]*)\s*$")
 _ONE = re.compile(rf"^[~∼≈<>]?\s*{_NUM}\s*([a-zA-Zµμ/^0-9]*)\s*$")
+# A stated uncertainty ('1198 ± 27') is not part of the value compared: the central value is (2026-10-23).
+_UNCERTAINTY = re.compile(r"\s*(?:±|\+/-|\+-)\s*\d+(?:\.\d+)?")
+# A condition whose text says it is not stated counts as not stated (2026-10-23).
+_NOT_STATED = re.compile(r"\bnot\s+(?:stated|given|reported|specified)\b", re.I)
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,7 @@ def quantity(field_: str, text_: str | None, unit: str | None, *, ambiguous: boo
         return Quantity("figure")
     if not t:
         return Quantity("missing")
+    t = _UNCERTAINTY.sub("", t)
     m = _RANGE.match(t.replace(",", ""))
     one = None if m else _ONE.match(t.replace(",", ""))
     flag = flag_of(note, ambiguous)
@@ -146,6 +151,7 @@ class Obs:
         return bool(self.gs.flag or self.ys.flag)
 
     methods_context: bool = False  # a test condition copied from the methods (prompt v3's definition)
+    annotator: str | None = None  # for an annotation row: the annotator as the file names them
 
     @property
     def condition_not_stated(self) -> bool:
@@ -213,6 +219,7 @@ class PaperScore:
     figure_errors: int = 0
     note: str | None = None
     flagged_unmatched: int = 0
+    annotators: tuple = ()
     conditions_not_stated: int = 0  # own predictions with no test type or temperature (a prompt-quality signal)
     conditions_from_methods: int = 0  # own predictions carrying a condition copied from the methods
 
@@ -221,7 +228,8 @@ class PaperScore:
         denominator = self.references - self.deferred
         strict_wrong = len(self.duplicates) + len(self.wrong_specimen) + len(self.pending) + self.figure_errors
         correct = sum(1 for p in self.pairs if p.figure_error is None)
-        return {"paper": self.paper, "against": self.reference, "reference_rows": self.references,
+        return {"paper": self.paper, "against": self.reference, "annotator": ", ".join(self.annotators) or None,
+                "reference_rows": self.references,
                 "deferred": self.deferred, "denominator": denominator, "matched": self.matched,
                 "recall_or_recovery": _ratio(self.matched, denominator),
                 "predictions_own": own, "cited_rows_marked": len(self.cited_marked),
@@ -257,6 +265,7 @@ def score_paper(predictions: list[Obs], references: list[Obs], against: str) -> 
     s.conditions_not_stated = sum(1 for p in own if p.condition_not_stated)
     s.conditions_from_methods = sum(1 for p in own if p.methods_context)
     s.note = ANNOTATION_NOTES.get(paper)
+    s.annotators = tuple(sorted({r.annotator for r in refs if r.annotator}))
     s.references = len(refs)
     s.deferred = sum(1 for r in refs if _deferred(r, against))
     # candidate pairs within each group, closest first
@@ -374,8 +383,9 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
         obs.append(Obs("prediction", f"obs:{oid}", ident["paper"],
                        ident["alloy"] if ident["paper"].startswith("cited:") else
                        alloy_key(_t(v, "alloy"), _t(v, "composition")),
-                       test_type_key(_t(v, "test_type")),
-                       temperature_key(_t(v, "test_temperature"), temp.unit if temp else None), label,
+                       _condition(test_type_key(_t(v, "test_type")), _t(v, "test_type")),
+                       _condition(temperature_key(_t(v, "test_temperature"), temp.unit if temp else None),
+                                  _t(v, "test_temperature")), label,
                        quantity("grain_size", _t(v, "grain_size"), _u(v, "grain_size"), ambiguous=_a(v, "grain_size"),
                                 note=_n(v, "grain_size")),
                        quantity("yield_strength", _t(v, "yield_strength"), _u(v, "yield_strength"),
@@ -391,6 +401,11 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
                  "verification": out.method.get("verification"),
                  "not_answered": (out.method.get("verification") or {}).get("not answered", 0)}
     return obs, described
+
+
+def _condition(key: str, written: str | None) -> str:
+    """'' (not stated) when the written condition says it is not stated; else its normalized key."""
+    return "" if written and _NOT_STATED.search(written) else key
 
 
 def _t(v, f):
@@ -425,7 +440,8 @@ def annotation_obs(engine: Engine, doi_key: str, annotator: str | None = None) -
                                 stated_as=c.get("grain_size_stated_as")),
                        quantity("yield_strength", c["yield_strength_value"], c["yield_strength_unit"],
                                 stated_as=c.get("yield_strength_stated_as")),
-                       location=c.get("observation_location", ""), state=c.get("processing_state", "")))
+                       location=c.get("observation_location", ""), state=c.get("processing_state", ""),
+                       annotator=r.annotator))
     return out
 
 

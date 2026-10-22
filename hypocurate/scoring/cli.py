@@ -81,17 +81,24 @@ def _score_all(engine: Engine, key: str, outputs: list[int], version) -> int:
                  "rule": m.get("conversion_rule", "none"), "parse": parser_version,
                  "reconverted_from": m.get("reconverted_from")}
         tables = [("vs annotation", sc.score_paper(preds, annotation, "annotation"))] if annotation else []
-        comp, note = sc.compilation_obs(records, key, annotation)
+        comp, comp_note = sc.compilation_obs(records, key, annotation)
         tables.append(("vs compilation (MPEA)", sc.score_paper(preds, comp, "compilation")))
         passages = _passages(engine, output)
         for name, s in tables:
             r = s.metrics()
-            print(json.dumps(label | {"table": name, "denominator": r["denominator"], "matched": r["matched"],
+            print(json.dumps(label | {"table": name, "annotator": r["annotator"], "deferred": r["deferred"],
+                                      "denominator": r["denominator"], "matched": r["matched"],
+                                      "precision_strict": r["precision_strict"],
+                                      "precision_pending": r["precision_pending"],
+                                      "figure_value_asserted": r["figure_value_asserted"],
+                                      "duplicates": r["duplicates"],
+                                      "values_from_different_specimens": r["values_from_different_specimens"],
                                       "own": r["predictions_own"], "pending": r["unmatched_pending_adjudication"],
                                       "condition_not_stated": r["condition_not_stated"],
                                       "condition_from_methods": r["condition_from_methods"],
                                       "not_answered": described["not_answered"], "passage_provenances": passages,
-                                      "note": "; ".join(x for x in (r["note"], note) if x) or None}))
+                                      "note": "; ".join(x for x in (r["note"], comp_note if name.startswith("vs compilation")
+                                                                     else None) if x) or None}))
     return 0
 
 

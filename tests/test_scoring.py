@@ -174,6 +174,7 @@ def test_s0_predictions_are_read_from_the_snapshot_with_provenance_checked(db):
     annotation.load(db, "score.csv", buf.getvalue().encode(), "K. El-Awady")
     refs = sc.annotation_obs(db, "doi:10.1000/score.1")
     r = sc.score_paper(preds, refs, "annotation").metrics()
+    assert r["annotator"] == "K. El-Awady"  # every table names its annotator
     # the fixture's rows have no test type or temperature, the annotation none either: one row matches by values
     assert r["matched"] == 1 and r["predictions_own"] == 3 and r["unmatched_pending_adjudication"] == 2
     out = sc.report([("vs annotation", sc.score_paper(preds, refs, "annotation"))], described)
@@ -280,3 +281,13 @@ def test_prompt_v4_makes_every_listed_condition_a_record_and_is_frozen_for_the_p
     v4 = extractor_variant("extract", "H1_v1")["instruction"]
     assert "Return one record for every specimen or condition a table lists" in v4
     assert "Return one record for every specimen" not in extractor_variant("extract", "H1_v1", "v3")["instruction"]
+
+
+
+def test_a_stated_uncertainty_is_not_part_of_the_value_and_a_not_stated_condition_is_not_stated():
+    """2026-10-23: '1198 ± 27' compares as 1198; a temperature written 'not stated for tension tests' counts as not
+    stated (it does not block pairing)."""
+    assert quantity("yield_strength", "1198 ± 27", "MPa").low == Decimal("1198")
+    assert quantity("yield_strength", "1.1 +/- 0.05", "GPa").low == Decimal("1100.0")
+    assert sc._condition("not stated for tension tests", "not stated for tension tests") == ""
+    assert sc._condition("800 °c", "800 °C") == "800 °c"

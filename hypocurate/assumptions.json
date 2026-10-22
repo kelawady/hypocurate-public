@@ -11252,7 +11252,7 @@
     "key": "pilot_scoring_rules",
     "name": "How the scorer counts",
     "state": "in_force",
-    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot. Added 2026-10-23 (afternoon): without a specimen label, values decide (grain size and yield strength both within 2 per cent; location and processing state reported per pair and listed when they differ); a number carrying an ambiguity note is compared like any other, its flag and source (extractor, no provenance, verifier) reported, with 'correct but flagged' and 'wrong and flagged' counts; a test type or temperature the prediction leaves empty does not block pairing and is counted per paper as 'condition not stated' (a signal of whether the Extractor carries methods-section context into its records), a stated different one blocks it; the compilation side scores only the reach selection's FCC grain-size records with both values, the others counted in a note; the group keys are recomputed from the stored values with the current identity rules (S0 is never changed). From prompt v3: per paper, the records carrying a condition copied from the methods ('condition from methods', the definition 'from methods, applies to all specimens') are counted beside 'condition not stated', and the verifier's 'not answered' count is reported with the snapshot.",
+    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot. Added 2026-10-23 (afternoon): without a specimen label, values decide (grain size and yield strength both within 2 per cent; location and processing state reported per pair and listed when they differ); a number carrying an ambiguity note is compared like any other, its flag and source (extractor, no provenance, verifier) reported, with 'correct but flagged' and 'wrong and flagged' counts; a test type or temperature the prediction leaves empty does not block pairing and is counted per paper as 'condition not stated' (a signal of whether the Extractor carries methods-section context into its records), a stated different one blocks it; the compilation side scores only the reach selection's FCC grain-size records with both values, the others counted in a note; the group keys are recomputed from the stored values with the current identity rules (S0 is never changed). From prompt v3: per paper, the records carrying a condition copied from the methods ('condition from methods', the definition 'from methods, applies to all specimens') are counted beside 'condition not stated', and the verifier's 'not answered' count is reported with the snapshot. Reading rules (2026-10-23, found while scoring the first annotation): a stated uncertainty ('1198 ± 27') is not part of the compared value (the central value is); a condition whose text says it is not stated ('not stated for tension tests') counts as not stated. Every table names its annotator.",
     "value": {
       "text": "match key; units converted; 2%; figure-only and ranges set apart; precision strict and pending",
       "unit": null
@@ -11312,7 +11312,8 @@
       "tests/test_scoring.py::test_a_figure_only_value_is_matched_on_the_other_value_and_a_number_there_is_an_error",
       "tests/test_scoring.py::test_recovery_leaves_out_compilation_records_the_annotation_states_only_in_a_figure",
       "tests/test_scoring.py::test_a_number_with_an_ambiguity_note_is_compared_and_its_flag_reported",
-      "tests/test_scoring.py::test_an_empty_condition_does_not_block_pairing_and_is_counted_a_stated_different_one_does"
+      "tests/test_scoring.py::test_an_empty_condition_does_not_block_pairing_and_is_counted_a_stated_different_one_does",
+      "tests/test_scoring.py::test_a_stated_uncertainty_is_not_part_of_the_value_and_a_not_stated_condition_is_not_stated"
     ],
     "history": [],
     "notes": []
@@ -11558,6 +11559,46 @@
     },
     "tests": [
       "tests/test_scoring.py::test_prompt_v4_makes_every_listed_condition_a_record_and_is_frozen_for_the_pilot"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_annotation_ke_v1",
+    "name": "The first annotation: AI-assisted, reviewed by the owner",
+    "state": "in_force",
+    "statement": "annotation_KE_v1 (25 rows on the four annotated papers) is a reference-blind AI annotation reviewed by the owner, not a human key: its annotator is 'Codex (AI-assisted for KE)', carried on every scoring table; its minutes are AI elapsed time, not owner correction time (never counted in P9's owner time); the results note states this and that the human pass comes in the review week. Loaded from annotation_KE_v1_corrected.xlsx: one cell corrected (row 10, grain_size_value '0.2-20' from the annotator's own note), recorded as an annotation slip in docs/sprint2/annotation_KE_v1_edit_log.md; the original file and its hash are kept.",
+    "value": {
+      "text": "Codex (AI-assisted for KE); not a human key",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The P6 tables (recall and precision against the annotation), P9 and the results note.",
+    "reason": "The scores against it are first-pass and must not be read as against a human key.",
+    "evidence": [
+      "The owner's message of 2026-10-23 with the file, and his answer on row 10 ('Recommended ... record the cause as an annotation slip')."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.scoring.score:PaperScore"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_scoring.py::test_s0_predictions_are_read_from_the_snapshot_with_provenance_checked"
     ],
     "history": [],
     "notes": []
