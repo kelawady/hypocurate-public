@@ -65,7 +65,9 @@ VALUE_FIELDS = ("alloy", "composition", "processing_state", "specimen_label", "g
                 "yield_strength", "test_type", "test_temperature", "strain_rate", "phase")
 LINK_KINDS = ("same_table_row", "specimen_label", "explicit_sentence", "methods_statement")
 EVIDENCE_STATES = ("proposed", "supported", "accepted", "disputed", "unresolved")
-STATE_OBJECTS = ("observation", "link")
+STATE_OBJECTS = ("observation", "link", "mapping")
+# The Reconciler's proposals (owner, 2026-10-23: per document, before the runs; register 'pilot_reconciler_placement').
+MAPPING_KINDS = ("alias_to_composition", "column_to_field", "condition_to_category", "same_observation")
 SNAPSHOT_NAMES = ("S0", "S1", "S2")
 EXTRACTION_RULE = "extraction"
 STOP_REASONS = ("corpus_processed", "full_text_inaccessible", "fetched_not_parsed", "specimen_metadata_missing",
@@ -94,7 +96,7 @@ SHAPE_0010 = (
     "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
     "AND source_version_id IS NOT NULL AND role = 'curator') "
     "OR (scope = 'document' AND run_id IS NULL AND stage_result_id IS NULL "
-    "AND source_version_id IS NULL AND role = 'extractor')")
+    "AND source_version_id IS NULL AND role IN ('extractor', 'reconciler'))")
 
 
 def _in(column: str, values) -> str:
@@ -271,8 +273,8 @@ FUNCTIONS = [
     CREATE FUNCTION hc_document_invocation_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
         IF NOT EXISTS (SELECT 1 FROM agent_invocation WHERE id = NEW.invocation_id AND scope = 'document'
-                         AND role = 'extractor') THEN
-            PERFORM hc_reject('a document invocation row belongs to an extractor invocation in the document scope');
+                         AND role IN ('extractor', 'reconciler')) THEN
+            PERFORM hc_reject('a document invocation row belongs to an extractor or reconciler invocation in the document scope');
         END IF;
         IF NOT EXISTS (SELECT 1 FROM document_parse WHERE id = NEW.document_parse_id AND status = 'parsed') THEN
             PERFORM hc_reject('a document invocation reads a parsed document');
@@ -297,8 +299,9 @@ FUNCTIONS = [
     CREATE FUNCTION hc_extraction_output_insert() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
         IF NEW.invocation_id IS NOT NULL AND NOT EXISTS (
-                SELECT 1 FROM document_invocation WHERE invocation_id = NEW.invocation_id
-                  AND document_parse_id = NEW.document_parse_id) THEN
+                SELECT 1 FROM document_invocation di JOIN agent_invocation i ON i.id = di.invocation_id
+                WHERE di.invocation_id = NEW.invocation_id AND di.document_parse_id = NEW.document_parse_id
+                  AND i.role = 'extractor') THEN
             PERFORM hc_reject('an extraction output comes from an extractor invocation on the same parsed document');
         END IF;
         NEW.created_at := now();
@@ -368,12 +371,14 @@ FUNCTIONS = [
     BEGIN
         IF NEW.object_kind = 'observation' THEN
             SELECT extraction_output_id INTO output_id FROM candidate_observation WHERE id = NEW.object_id;
+        ELSIF NEW.object_kind = 'mapping' THEN
+            SELECT extraction_output_id INTO output_id FROM reconciler_mapping WHERE id = NEW.object_id;
         ELSE
             SELECT o.extraction_output_id INTO output_id FROM extraction_link l
               JOIN candidate_observation o ON o.id = l.observation_id WHERE l.id = NEW.object_id;
         END IF;
         IF output_id IS NULL OR output_id <> NEW.extraction_output_id THEN
-            PERFORM hc_reject('a state event names an existing observation or link of its extraction output');
+            PERFORM hc_reject('a state event names an existing observation, link or mapping of its extraction output');
         END IF;
         PERFORM 1 FROM extraction_output WHERE id = output_id FOR UPDATE;
         has_s0 := EXISTS (SELECT 1 FROM evidence_snapshot WHERE name = 'S0' AND extraction_output_id = output_id);
@@ -385,6 +390,32 @@ FUNCTIONS = [
             PERFORM hc_reject('no other state event before the extraction output''s S0 is taken');
         END IF;
         NEW.at := now();
+        RETURN NEW;
+    END $$
+    """,
+    # A mapping (the Reconciler's proposal) is made after its output's S0, by a reconciler invocation on a parse of the
+    # same document; an observation it names belongs to that output.
+    """
+    CREATE FUNCTION hc_reconciler_mapping_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM evidence_snapshot WHERE name = 'S0'
+                         AND extraction_output_id = NEW.extraction_output_id) THEN
+            PERFORM hc_reject('a mapping is made after its extraction output''s S0');
+        END IF;
+        IF NEW.invocation_id IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM agent_invocation i JOIN document_invocation di ON di.invocation_id = i.id
+                JOIN document_parse p ON p.id = di.document_parse_id
+                JOIN extraction_output x ON x.id = NEW.extraction_output_id
+                JOIN document_parse xp ON xp.id = x.document_parse_id
+                WHERE i.id = NEW.invocation_id AND i.role = 'reconciler' AND p.document_id = xp.document_id) THEN
+            PERFORM hc_reject('a mapping comes from a reconciler invocation on the same document');
+        END IF;
+        IF NEW.observation_id IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM candidate_observation WHERE id = NEW.observation_id
+                  AND extraction_output_id = NEW.extraction_output_id) THEN
+            PERFORM hc_reject('a mapping names an observation of its extraction output');
+        END IF;
+        NEW.created_at := now();
         RETURN NEW;
     END $$
     """,
@@ -458,17 +489,18 @@ FUNCTIONS = [
 FUNCTION_NAMES = ["hc_document_insert()", "hc_document_parse_insert()", "hc_search_log_insert()",
                   "hc_document_invocation_insert()", "hc_document_invocation_required()", "hc_extraction_output_insert()", "hc_candidate_observation_insert()",
                   "hc_provenance_matches(bigint, jsonb)", "hc_candidate_value_insert()", "hc_extraction_link_insert()",
-                  "hc_evidence_state_event_insert()", "hc_evidence_snapshot_insert()", "hc_run_stop_reason_insert()",
+                  "hc_evidence_state_event_insert()", "hc_reconciler_mapping_insert()", "hc_evidence_snapshot_insert()",
+                  "hc_run_stop_reason_insert()",
                   "hc_annotation_file_insert()"]
 
 NEW_TABLES = ["document", "document_parse", "search_log", "document_invocation", "extraction_output", "candidate_observation",
-              "candidate_value", "extraction_link", "evidence_state_event", "evidence_snapshot", "run_stop_reason",
-              "annotation_file", "annotation_row"]
+              "candidate_value", "extraction_link", "reconciler_mapping", "evidence_state_event", "evidence_snapshot",
+              "run_stop_reason", "annotation_file", "annotation_row"]
 APPEND_ONLY = NEW_TABLES
 CHECKED = [(t, "INSERT", f"hc_{t}_insert", f"hc_{t}_insert") for t in
            ["document", "document_parse", "search_log", "document_invocation", "extraction_output", "candidate_observation",
-            "candidate_value", "extraction_link", "evidence_state_event", "evidence_snapshot", "run_stop_reason",
-            "annotation_file"]]
+            "candidate_value", "extraction_link", "reconciler_mapping", "evidence_state_event", "evidence_snapshot",
+            "run_stop_reason", "annotation_file"]]
 TRIGGERS = (
     [f"CREATE TRIGGER hc_{t}_append_only BEFORE UPDATE OR DELETE ON {t} "
      f"FOR EACH ROW EXECUTE FUNCTION hc_append_only()" for t in APPEND_ONLY]
@@ -691,6 +723,36 @@ def _tables() -> None:
         sa.UniqueConstraint('from_value_id', 'to_value_id', name=ck('uq_extraction_link_from_value_id_to_value_id')),
     )
     op.create_index('ix_extraction_link_observation_id', 'extraction_link', ['observation_id'])
+
+    op.create_table(
+        'reconciler_mapping',
+        sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column('extraction_output_id', sa.BigInteger(), nullable=False),
+        sa.Column('observation_id', sa.BigInteger(), nullable=True),
+        sa.Column('kind', sa.Text(), nullable=False),
+        sa.Column('subject', sa.Text(), nullable=False),
+        sa.Column('proposed', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column('applied', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('quote', sa.Text(), nullable=True),
+        sa.Column('compilation_key', sa.Text(), nullable=True),
+        sa.Column('mapping_version', sa.Text(), nullable=False),
+        sa.Column('invocation_id', sa.BigInteger(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.CheckConstraint(_in('kind', MAPPING_KINDS), name=ck('ck_reconciler_mapping_kind')),
+        sa.CheckConstraint(f"length(subject) BETWEEN 1 AND {DETAIL_MAX} AND length(coalesce(quote, '')) <= {DETAIL_MAX}",
+                           name=ck('ck_reconciler_mapping_bounded')),
+        sa.CheckConstraint("(kind = 'same_observation') = (compilation_key IS NOT NULL)",
+                           name=ck('ck_reconciler_mapping_same_observation_names_record')),
+        sa.CheckConstraint("jsonb_typeof(proposed) = 'object'", name=ck('ck_reconciler_mapping_proposed_object')),
+        sa.CheckConstraint("length(mapping_version) BETWEEN 1 AND 100", name=ck('ck_reconciler_mapping_version')),
+        sa.ForeignKeyConstraint(['extraction_output_id'], ['extraction_output.id'],
+                                name=ck('fk_reconciler_mapping_extraction_output_id')),
+        sa.ForeignKeyConstraint(['observation_id'], ['candidate_observation.id'],
+                                name=ck('fk_reconciler_mapping_observation_id')),
+        sa.ForeignKeyConstraint(['invocation_id'], ['agent_invocation.id'], name=ck('fk_reconciler_mapping_invocation_id')),
+        sa.PrimaryKeyConstraint('id', name=ck('pk_reconciler_mapping')),
+    )
+    op.create_index('ix_reconciler_mapping_extraction_output_id', 'reconciler_mapping', ['extraction_output_id'])
 
     op.create_table(
         'evidence_state_event',

@@ -685,7 +685,7 @@ INVOCATION_SHAPE = (
     "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
     "AND source_version_id IS NOT NULL AND role = 'curator') "
     "OR (scope = 'document' AND run_id IS NULL AND stage_result_id IS NULL "
-    "AND source_version_id IS NULL AND role = 'extractor')")
+    "AND source_version_id IS NULL AND role IN ('extractor', 'reconciler'))")
 
 
 class AgentInvocation(Base):
@@ -1131,7 +1131,9 @@ VALUE_FIELDS = ("alloy", "composition", "processing_state", "specimen_label", "g
                 "yield_strength", "test_type", "test_temperature", "strain_rate", "phase")
 LINK_KINDS = ("same_table_row", "specimen_label", "explicit_sentence", "methods_statement")
 EVIDENCE_STATES = ("proposed", "supported", "accepted", "disputed", "unresolved")
-STATE_OBJECTS = ("observation", "link")
+STATE_OBJECTS = ("observation", "link", "mapping")
+# The Reconciler's proposals (owner, 2026-10-23: per document, before the runs; register 'pilot_reconciler_placement').
+MAPPING_KINDS = ("alias_to_composition", "column_to_field", "condition_to_category", "same_observation")
 SNAPSHOT_NAMES = ("S0", "S1", "S2")
 EXTRACTION_RULE = "extraction"  # the rule that records every new candidate as 'proposed'
 STOP_REASONS = ("corpus_processed", "full_text_inaccessible", "fetched_not_parsed", "specimen_metadata_missing",
@@ -1349,6 +1351,35 @@ class ExtractionLink(Base):
         CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name="provenance_shape"),
         CheckConstraint(f"ambiguous = (ambiguity_note IS NOT NULL) AND length(coalesce(ambiguity_note, '')) <= "
                         f"{DETAIL_MAX}", name="ambiguity_noted"),
+    )
+
+
+class ReconcilerMapping(Base):
+    """One proposal of the Reconciler on one extraction output's S0 (owner, 2026-10-23: per document, before the runs):
+    an alias to a composition, a column to a field, condition text to a category, or 'same observation' as a
+    compilation record, with its quote; `applied` is what code made of it with Sprint 1's normalizers (the original
+    stays in `subject`). Made after the output's S0. Its state is in evidence_state_event. Append-only."""
+    __tablename__ = "reconciler_mapping"
+    id: Mapped[int] = pk()
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"), index=True)
+    observation_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_observation.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    proposed: Mapped[dict] = mapped_column(JSONB)
+    applied: Mapped[dict | None] = mapped_column(JSONB)
+    quote: Mapped[str | None] = mapped_column(Text)
+    compilation_key: Mapped[str | None] = mapped_column(Text)
+    mapping_version: Mapped[str] = mapped_column(Text)
+    invocation_id: Mapped[int | None] = mapped_column(ForeignKey("agent_invocation.id"))
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        CheckConstraint(one_of("kind", MAPPING_KINDS), name="kind"),
+        CheckConstraint(f"length(subject) BETWEEN 1 AND {DETAIL_MAX} AND length(coalesce(quote, '')) <= {DETAIL_MAX}",
+                        name="bounded"),
+        CheckConstraint("(kind = 'same_observation') = (compilation_key IS NOT NULL)",
+                        name="same_observation_names_record"),
+        CheckConstraint("jsonb_typeof(proposed) = 'object'", name="proposed_object"),
+        CheckConstraint("length(mapping_version) BETWEEN 1 AND 100", name="version"),
     )
 
 

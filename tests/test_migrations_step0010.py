@@ -157,7 +157,7 @@ def test_the_lists_are_the_codes():
     assert m10.ROLES == models.ROLES and m10.PILOT_ROLES == models.PILOT_ROLES == ("extractor", "reconciler")
     assert m10.INVOCATION_SCOPES == models.INVOCATION_SCOPES and m10.SHAPE_0010 == models.INVOCATION_SHAPE
     for name in ("DOCUMENT_KINDS", "OA_SOURCES", "ACCESS_METHODS", "PARSERS", "PARSE_STATUSES", "SEARCH_ACTIONS", "SEARCH_OUTCOMES",
-                 "EXTRACTION_STATUSES", "VALUE_FIELDS", "LINK_KINDS", "EVIDENCE_STATES", "STATE_OBJECTS",
+                 "EXTRACTION_STATUSES", "VALUE_FIELDS", "LINK_KINDS", "EVIDENCE_STATES", "STATE_OBJECTS", "MAPPING_KINDS",
                  "SNAPSHOT_NAMES", "STOP_REASONS", "DOCUMENT_MAX_BYTES", "EXTRACTION_RULE", "PROVENANCE_SHAPE"):
         assert getattr(m10, name) == getattr(models, name), name
     assert m10.MAX_FILE_BYTES == models.MAX_FILE_BYTES
@@ -230,7 +230,9 @@ def test_a_document_invocation_is_the_extractors_on_a_parsed_document_in_no_run(
                    d=document(w, doi="10.1000/abc.2"))
     with pytest.raises(IntegrityError, match="reads a parsed document"):
         doc_invocation(w, failed)
-    for role in ("reconciler", "curator", "planner"):  # only the extractor reads a document
+    # Owner, 2026-10-23: the Reconciler also reads a document, before the runs (register 'pilot_reconciler_placement')
+    assert doc_invocation(w, p, role="reconciler")
+    for role in ("curator", "planner"):  # no other role reads a document
         with pytest.raises(IntegrityError, match="ck_agent_invocation_shape"):
             w.val(DOC_INV, sc="document", r=None, s=None, v=None, o=role, a=w.agent_setting(role))
     rid = w.running(agents=True)
@@ -238,7 +240,7 @@ def test_a_document_invocation_is_the_extractors_on_a_parsed_document_in_no_run(
     with pytest.raises(IntegrityError, match="ck_agent_invocation_shape"):  # a run as well
         w.val(DOC_INV, sc="document", r=rid, s=st, v=None, o="extractor", a=w.agent_setting("extractor"))
     run_inv = w.invocation(rid, w.stage(rid, "planner", "planner"), "planner")
-    w.rejected(DOC_ROW, "belongs to an extractor invocation in the document scope", i=run_inv, d=p)
+    w.rejected(DOC_ROW, "belongs to an extractor or reconciler invocation in the document scope", i=run_inv, d=p)
 
 
 def test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one(w):
@@ -457,9 +459,9 @@ def test_no_other_event_before_s0_and_no_extraction_event_or_candidate_after_it(
 def test_an_event_names_an_object_of_its_own_output_by_one_rule_or_one_person(w):
     out, obs, lk = extracted(w)
     other, _, _ = extracted_second(w)
-    w.rejected(EVENT_SQL, "existing observation or link of its extraction output", k="observation", o=obs, x=other,
+    w.rejected(EVENT_SQL, "existing observation, link or mapping of its extraction output", k="observation", o=obs, x=other,
                s="proposed", r="extraction", p=None)
-    w.rejected(EVENT_SQL, "existing observation or link", k="link", o=10 ** 9, x=out, s="proposed", r="extraction",
+    w.rejected(EVENT_SQL, "existing observation, link or mapping", k="link", o=10 ** 9, x=out, s="proposed", r="extraction",
                p=None)
     with pytest.raises(IntegrityError, match="ck_evidence_state_event_rule_or_person"):
         w.val(EVENT_SQL, k="observation", o=obs, x=out, s="proposed", r="extraction", p="Ada")
@@ -510,9 +512,51 @@ def test_an_annotation_files_hash_is_checked(w):
           f=fid, k=sha("x"))
 
 
+MAPPING_SQL = ("INSERT INTO reconciler_mapping (extraction_output_id, observation_id, kind, subject, proposed, quote, "
+               "compilation_key, mapping_version, invocation_id) VALUES (:x, :o, :k, :s, CAST(:p AS jsonb), :q, :c, "
+               "'reconcile-v1', :i) RETURNING id")
+
+
+def mapping(w, out, obs, inv, kind="alias_to_composition", key=None):
+    return w.val(MAPPING_SQL, x=out, o=obs, k=kind, s="CrMnFeCoNi", p='{"composition": "Co20Cr20Fe20Mn20Ni20"}',
+                 q="the equiatomic CrMnFeCoNi alloy", c=key, i=inv)
+
+
+def test_a_reconciler_mapping_comes_after_s0_from_a_reconciler_on_the_same_document_and_carries_states(w):
+    out, obs, lk = extracted(w)
+    parse_id = w.val("SELECT document_parse_id FROM extraction_output WHERE id = :x", x=out)
+    rec = doc_invocation(w, parse_id, role="reconciler")
+    w.rejected(MAPPING_SQL, "after its extraction output's S0", x=out, o=obs, k="alias_to_composition", s="x",
+               p="{}", q=None, c=None, i=rec)
+    s0(w, out)
+    m_id = mapping(w, out, obs, rec)
+    mapping(w, out, obs, rec, kind="same_observation", key="MPEA_dataset.csv:row:810")
+    with pytest.raises(IntegrityError, match="ck_reconciler_mapping_same_observation_names_record"):
+        mapping(w, out, obs, rec, kind="same_observation", key=None)
+    other_parse = parse(w, document(w, doi="10.1000/abc.5"), parsed='{"o": 5}')
+    elsewhere = doc_invocation(w, other_parse, role="reconciler")
+    w.rejected(MAPPING_SQL, "reconciler invocation on the same document", x=out, o=obs, k="alias_to_composition",
+               s="x", p="{}", q=None, c=None, i=elsewhere)
+    w.rejected(MAPPING_SQL, "reconciler invocation on the same document", x=out, o=obs, k="alias_to_composition",
+               s="x", p="{}", q=None, c=None, i=doc_invocation(w, parse_id))  # an extractor invocation
+    event(w, "mapping", m_id, out, state="accepted", rule=None, person="Khalid El-Awady")
+    assert w.val("SELECT state FROM evidence_state_event WHERE object_kind = 'mapping'") == "accepted"
+
+
+def test_a_reconciler_invocation_cannot_write_an_extraction_output(w):
+    p = parse(w, document(w))
+    rec = doc_invocation(w, p, role="reconciler")
+    w.rejected("INSERT INTO extraction_output (document_parse_id, parse_sha256, method, status, raw_output, raw_sha256, "
+               "invocation_id) VALUES (:p, :h, '{\"method\":\"a\",\"name\":\"b\",\"version\":\"1\","
+               "\"prompt_version\":\"v1\"}', 'returned', 'x', :rh, :i)", "extractor invocation on the same parsed document",
+               p=p, h=sha('{"pages": []}'), rh=sha("x"), i=rec)
+
+
 def test_every_new_table_is_append_only(w):
     out, obs, lk = extracted(w)
     s0(w, out)
+    mapping(w, out, obs, doc_invocation(w, w.val("SELECT document_parse_id FROM extraction_output WHERE id = :x", x=out),
+                                        role="reconciler"))
     doc_invocation(w, w.val("SELECT document_parse_id FROM extraction_output WHERE id = :x", x=out))
     w.fail(rid := w.running())
     w.run_sql("INSERT INTO run_stop_reason (run_id, reason) VALUES (:r, 'corpus_processed')", r=rid)
