@@ -51,6 +51,9 @@ UNITS = {"yield_strength": {"mpa": Decimal(1), "gpa": Decimal(1000), "n/mm2": De
                         "microns": Decimal(1), "nm": Decimal("0.001"), "mm": Decimal(1000)}}
 CANONICAL = {"yield_strength": "mpa", "grain_size": "µm"}
 FIGURE_ONLY = "figure only"
+FROM_METHODS = "from methods"  # the definition prompt v3 asks for a condition copied from the methods (owner, 2026-10-23)
+# Per paper, a label every scoring table for that paper carries (owner, 2026-10-23); register 'pilot_annotation_notes'.
+ANNOTATION_NOTES = {"doi:10.1080/21663831.2018.1553803": "annotator informed that grain sizes match the compilation"}
 _NUM = r"(\d+(?:\.\d+)?)"
 _RANGE = re.compile(rf"^[~∼≈]?\s*{_NUM}\s*(?:-|–|—|to)\s*[~∼≈]?\s*{_NUM}\s*([a-zA-Zµμ/^0-9]*)\s*$")
 _ONE = re.compile(rf"^[~∼≈<>]?\s*{_NUM}\s*([a-zA-Zµμ/^0-9]*)\s*$")
@@ -142,6 +145,8 @@ class Obs:
     def flagged(self) -> bool:
         return bool(self.gs.flag or self.ys.flag)
 
+    methods_context: bool = False  # a test condition copied from the methods (prompt v3's definition)
+
     @property
     def condition_not_stated(self) -> bool:
         return not self.test_type or not self.temperature
@@ -209,6 +214,7 @@ class PaperScore:
     note: str | None = None
     flagged_unmatched: int = 0
     conditions_not_stated: int = 0  # own predictions with no test type or temperature (a prompt-quality signal)
+    conditions_from_methods: int = 0  # own predictions carrying a condition copied from the methods
 
     def metrics(self) -> dict:
         own = self.predictions
@@ -233,6 +239,7 @@ class PaperScore:
                 "correct_but_flagged": sum(1 for p in self.pairs if p.flags and p.figure_error is None),
                 "wrong_and_flagged": self.flagged_unmatched,
                 "condition_not_stated": self.conditions_not_stated,
+                "condition_from_methods": self.conditions_from_methods,
                 "strict_errors": strict_wrong, "note": self.note}
 
 
@@ -248,6 +255,8 @@ def score_paper(predictions: list[Obs], references: list[Obs], against: str) -> 
     s.cited_marked = [p.ref for p in predictions if p.cited]
     s.predictions = len(own)
     s.conditions_not_stated = sum(1 for p in own if p.condition_not_stated)
+    s.conditions_from_methods = sum(1 for p in own if p.methods_context)
+    s.note = ANNOTATION_NOTES.get(paper)
     s.references = len(refs)
     s.deferred = sum(1 for r in refs if _deferred(r, against))
     # candidate pairs within each group, closest first
@@ -327,7 +336,7 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
                            dict(x=output_id)).one()
         document = ParsedDocument.load(conn, out.document_parse_id)
         rows = conn.execute(text(
-            "SELECT o.id, o.identity, v.field, v.value_text, v.unit, v.provenance, v.ambiguous, v.ambiguity_note "
+            "SELECT o.id, o.identity, v.field, v.value_text, v.unit, v.provenance, v.ambiguous, v.ambiguity_note, v.definition "
             "FROM candidate_observation o "
             "JOIN candidate_value v ON v.observation_id = o.id WHERE o.extraction_output_id = :x "
             "AND o.id IN (SELECT object_id FROM evidence_state_event e WHERE e.id = ANY(:ids) AND object_kind = 'observation') "
@@ -373,10 +382,14 @@ def predictions_s0(engine: Engine, output_id: int) -> tuple[list[Obs], dict]:
                                 ambiguous=_a(v, "yield_strength"), note=_n(v, "yield_strength")),
                        location=ident["specimen"], state=ident["processing_state"],
                        reported_from=ident.get("reported_from", "this paper"), link_asserted=bool(links.get(oid)),
-                       provenance_ok=(all(prov_ok) if prov_ok else None), units_as_written=units))
+                       provenance_ok=(all(prov_ok) if prov_ok else None), units_as_written=units,
+                       methods_context=any(FROM_METHODS in (v[f].definition or "").casefold()
+                                           for f in ("test_type", "test_temperature", "strain_rate") if f in v)))
     described = {"snapshot": "S0", "snapshot_id": snap.id, "taken_at": str(snap.taken_at),
                  "events_sha256": snap.events_sha256, "raw_sha256": snap.raw_sha256, "output": output_id,
-                 "method": {k: out.method.get(k) for k in ("name", "version", "model", "prompt_version", "step")}}
+                 "method": {k: out.method.get(k) for k in ("name", "version", "model", "prompt_version", "step")},
+                 "verification": out.method.get("verification"),
+                 "not_answered": (out.method.get("verification") or {}).get("not answered", 0)}
     return obs, described
 
 

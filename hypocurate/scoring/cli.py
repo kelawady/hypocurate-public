@@ -46,7 +46,7 @@ def _score(engine: Engine, args) -> int:
     if annotation:
         tables.append(("vs annotation", sc.score_paper(preds, annotation, "annotation")))
     s = sc.score_paper(preds, comp, "compilation")
-    s.note = note
+    s.note = "; ".join(x for x in (s.note, note) if x) or None
     tables.append(("vs compilation (MPEA)", s))
     out = sc.report(tables, described | {"compilation_version_fingerprint": version.fingerprint})
     print(json.dumps({"snapshot": out["snapshot"], "rows": out["rows"]}, indent=1, default=str))

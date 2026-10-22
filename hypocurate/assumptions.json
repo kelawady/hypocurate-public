@@ -11039,9 +11039,9 @@
     "key": "pilot_extractor_settings",
     "name": "The Extractor's operational settings",
     "state": "in_force",
-    "statement": "Claude Sonnet 5.5, effort 'medium', for both calls; the extraction call may use up to 32,000 tokens and 200,000 answer characters, the verification call up to 16,000 tokens and 100,000 characters; at most two attempts per call (Sprint 1's common interface: one corrected retry); instructions from the versioned prompt files, version v2, whose extraction instruction carries the output schema file; version v1 is kept as it was used. The document is shown as text blocks and table rows, each labelled with its page and indexes, so provenance can name exactly what it cites.",
+    "statement": "Claude Sonnet 5.5, effort 'medium', for both calls; the extraction call may use up to 32,000 tokens and 200,000 answer characters, the verification call up to 16,000 tokens and 100,000 characters; at most two attempts per call (Sprint 1's common interface: one corrected retry); instructions from the versioned prompt files, version v3 (the output schema in the extraction instruction since v2; from v3, context from the methods copied into every record and every item verified); versions v1 and v2 are kept as they were used. The document is shown as text blocks and table rows, each labelled with its page and indexes, so provenance can name exactly what it cites.",
     "value": {
-      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v2 (the output schema in the extraction instruction)",
+      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v3",
       "unit": null
     },
     "category": "operational",
@@ -11069,7 +11069,7 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_PROMPT_VERSION",
-          "equals": "v2"
+          "equals": "v3"
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_LIMITS.extract.max_tokens",
@@ -11084,7 +11084,8 @@
     },
     "tests": [
       "tests/test_extractor.py::test_the_extractor_settings_come_from_the_versioned_prompt_files",
-      "tests/test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests"
+      "tests/test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests",
+      "tests/test_scoring.py::test_prompt_v3_asks_for_methods_context_in_every_record_and_an_answer_for_every_item"
     ],
     "history": [
       {
@@ -11092,6 +11093,12 @@
         "from": "2026-10-23",
         "to": "2026-10-23",
         "note": "v1 was sent once (ijplas.2018.10.005): both attempts refused as malformed ($0.147); its instruction named an output schema the request did not contain."
+      },
+      {
+        "value": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v2 (the output schema in the extraction instruction)",
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "note": "v2 used for the nine open-access papers on 2026-10-23 (S0 snapshots 1-9)."
       }
     ],
     "notes": []
@@ -11100,7 +11107,7 @@
     "key": "pilot_verification_s0",
     "name": "Verification inside S0",
     "state": "in_force",
-    "statement": "Each document gets an extraction call and a ChatExtract-style verification call (yes / no / cannot tell, with a quote, for every value and link). Both raw outputs are stored unmodified with their hashes; S0 is the verified result, frozen on the verification output. A value or link answered 'no' or 'cannot tell', or not answered, keeps its value and gets a note quoting the verifier; nothing is dropped; what code cannot convert is listed in the stored method.",
+    "statement": "Each document gets an extraction call and a ChatExtract-style verification call (yes / no / cannot tell, with a quote, for every value and link). Both raw outputs are stored unmodified with their hashes; S0 is the verified result, frozen on the verification output. A value or link answered 'no' or 'cannot tell', or not answered, keeps its value and gets a note quoting the verifier; nothing is dropped; what code cannot convert is listed in the stored method. From prompt v3 (owner, 2026-10-23 evening) the verifier is asked to answer every item, context fields included; a skipped item is still recorded as 'not answered' by code and counted per paper.",
     "value": {
       "text": "S0 = verified result; both raw outputs kept",
       "unit": null
@@ -11109,7 +11116,8 @@
     "affects": "S0 (P2) and the extractor's scores (P6).",
     "reason": "Verification is part of the reference-blind Extractor (R4); keeping the draft lets 'before verification' be scored too.",
     "evidence": [
-      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Q-A 'After verification'."
+      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Q-A 'After verification'.",
+      "The owner's answers of 2026-10-23 (evening) on the Friday report's questions (docs/sprint2/daily/2026-10-24.md)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -11238,7 +11246,7 @@
     "key": "pilot_scoring_rules",
     "name": "How the scorer counts",
     "state": "in_force",
-    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot. Added 2026-10-23 (afternoon): without a specimen label, values decide (grain size and yield strength both within 2 per cent; location and processing state reported per pair and listed when they differ); a number carrying an ambiguity note is compared like any other, its flag and source (extractor, no provenance, verifier) reported, with 'correct but flagged' and 'wrong and flagged' counts; a test type or temperature the prediction leaves empty does not block pairing and is counted per paper as 'condition not stated' (a signal of whether the Extractor carries methods-section context into its records), a stated different one blocks it; the compilation side scores only the reach selection's FCC grain-size records with both values, the others counted in a note; the group keys are recomputed from the stored values with the current identity rules (S0 is never changed).",
+    "statement": "Matching one-to-one on the match key within a paper. Values are compared after converting known units (GPa to MPa; nm and mm to µm) within 2 per cent relative; the unit as written is scored separately. A yield strength returned as 'ambiguous: figure only' where the paper states no number is correct behaviour, counted as 'figure-only, deferred'. Compilation records whose value the paper states only in a figure or as a range (from the annotation's 'stated as' columns) leave the recovery denominator and are reported as 'figure-only or range, deferred'. Unmatched extracted records: precision reported strict (counted wrong) and pending adjudication (set aside), each listed with its provenance; the results note uses the strict figure. Every table names its snapshot. Added 2026-10-23 (afternoon): without a specimen label, values decide (grain size and yield strength both within 2 per cent; location and processing state reported per pair and listed when they differ); a number carrying an ambiguity note is compared like any other, its flag and source (extractor, no provenance, verifier) reported, with 'correct but flagged' and 'wrong and flagged' counts; a test type or temperature the prediction leaves empty does not block pairing and is counted per paper as 'condition not stated' (a signal of whether the Extractor carries methods-section context into its records), a stated different one blocks it; the compilation side scores only the reach selection's FCC grain-size records with both values, the others counted in a note; the group keys are recomputed from the stored values with the current identity rules (S0 is never changed). From prompt v3: per paper, the records carrying a condition copied from the methods ('condition from methods', the definition 'from methods, applies to all specimens') are counted beside 'condition not stated', and the verifier's 'not answered' count is reported with the snapshot.",
     "value": {
       "text": "match key; units converted; 2%; figure-only and ranges set apart; precision strict and pending",
       "unit": null
@@ -11248,7 +11256,8 @@
     "reason": "Scores must reflect extraction, not wording or deferred figure reading, and must not count human misses against the extractor.",
     "evidence": [
       "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): the figure-only rule, Q-B, Q-C (with the annotation's 'stated as' columns) and Q-D.",
-      "The owner's answers of 2026-10-23: the location question ('Values decide, location reported', with the figure-only rule) and the scorer questions 1 and 2, with the per-paper count of 'condition not stated'."
+      "The owner's answers of 2026-10-23: the location question ('Values decide, location reported', with the figure-only rule) and the scorer questions 1 and 2, with the per-paper count of 'condition not stated'.",
+      "The owner's answers of 2026-10-23 (evening) on the Friday report's questions (docs/sprint2/daily/2026-10-24.md)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -11280,6 +11289,10 @@
             "yield_strength": "mpa",
             "grain_size": "µm"
           }
+        },
+        {
+          "ref": "python:hypocurate.scoring.score:FROM_METHODS",
+          "equals": "from methods"
         }
       ],
       "note": null
@@ -11363,6 +11376,49 @@
       "note": "Built with the Reconciler (R5)."
     },
     "tests": [],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_annotation_notes",
+    "name": "Labels on a paper's scoring tables",
+    "state": "in_force",
+    "statement": "Every scoring table for 10.1080/21663831.2018.1553803 carries the label 'annotator informed that grain sizes match the compilation': while the scorer was being checked on 2026-10-23, the builder told the owner, before he annotated that paper, that the Extractor's grain sizes for it equal the compilation's. The paper stays an annotation paper.",
+    "value": {
+      "text": "21663831.2018.1553803: annotator informed that grain sizes match the compilation",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The P6 tables for that paper and the results note.",
+    "reason": "The annotation was meant to be blind to the Extractor's output; a disclosed exception is labelled, not hidden.",
+    "evidence": [
+      "The owner's answers of 2026-10-23 (evening) on the Friday report's questions (docs/sprint2/daily/2026-10-24.md). 'Keep the Taylor & Francis paper as an annotation paper, labelled ...'"
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.scoring.score:ANNOTATION_NOTES",
+          "equals": {
+            "doi:10.1080/21663831.2018.1553803": "annotator informed that grain sizes match the compilation"
+          }
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_scoring.py::test_every_table_for_the_taylor_and_francis_paper_carries_the_owners_label_and_methods_context_is_counted"
+    ],
     "history": [],
     "notes": []
   }

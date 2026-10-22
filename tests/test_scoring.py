@@ -248,3 +248,26 @@ def test_descriptive_words_are_stripped_from_alloy_names_before_the_formula_is_r
     assert idm.alloy_key("Cantor alloy") == "name:cantoralloy" and idm.IDENTITY_VERSION == "3"
     assert idm.DESCRIPTIVE_WORDS == ("equiatomic", "alloy", "alloys", "hea", "heas", "mea", "meas", "high-entropy",
                                      "medium-entropy", "single-phase", "fcc", "bcc")
+
+
+def test_every_table_for_the_taylor_and_francis_paper_carries_the_owners_label_and_methods_context_is_counted():
+    """Owner, 2026-10-23 (evening): the annotator was told its grain sizes match the compilation; prompt v3's 'from
+    methods' conditions are counted per paper beside 'condition not stated'."""
+    key = "doi:10.1080/21663831.2018.1553803"
+    assert sc.ANNOTATION_NOTES[key] == "annotator informed that grain sizes match the compilation"
+    p = obs("prediction", "p1", "14.9", "figure only")
+    p.paper, p.methods_context = key, True
+    a = obs("annotation", "a1", "14.9", "", ys_stated="figure only")
+    a.paper = key
+    r = sc.score_paper([p], [a], "annotation").metrics()
+    assert r["note"] == "annotator informed that grain sizes match the compilation"
+    assert r["condition_from_methods"] == 1 and r["matched"] == 1
+    assert m([pred("p1", "0.8", "1100")])["note"] is None
+
+
+def test_prompt_v3_asks_for_methods_context_in_every_record_and_an_answer_for_every_item():
+    from hypocurate.pipeline.agents.settings import EXTRACTOR_PROMPT_VERSION, extractor_variant
+    assert EXTRACTOR_PROMPT_VERSION == "v3"
+    assert 'the definition "from methods, applies to all specimens"' in extractor_variant("extract", "H1_v1")["instruction"]
+    assert "Do not skip any item" in extractor_variant("verify", "H1_v1")["instruction"]
+    assert "Do not skip any item" not in extractor_variant("verify", "H1_v1", "v2")["instruction"]
