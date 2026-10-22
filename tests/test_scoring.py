@@ -176,3 +176,33 @@ def test_s0_predictions_are_read_from_the_snapshot_with_provenance_checked(db):
     assert r["matched"] == 1 and r["predictions_own"] == 3 and r["unmatched_pending_adjudication"] == 2
     out = sc.report([("vs annotation", sc.score_paper(preds, refs, "annotation"))], described)
     assert out["snapshot"]["snapshot"] == "S0" and out["rows"][0]["table"] == "vs annotation"
+
+
+def test_the_extraction_workbook_shows_every_candidates_provenance_as_text(db):
+    """R12 (first part): one row per S0 candidate with the source document, each value's provenance and whether it
+    resolves, the link's provenance, the method and the snapshot, and the result against the compilation; every text
+    cell a string cell, never a formula."""
+    import io
+    from openpyxl import load_workbook
+    from model_builder import World
+    from hypocurate.pipeline.extraction import s0
+    from hypocurate.pipeline.extraction.fixture_extractor import FixtureExtractor
+    from hypocurate.pipeline.extraction.interface import EvidenceSpec, ParsedDocument
+    from hypocurate.scoring import extraction_workbook as xw
+    from test_extraction_interface import PARSED, stored_parse
+    parsed = PARSED | {"tables": [PARSED["tables"][0] | {"rows": PARSED["tables"][0]["rows"] + [["=1+1", "x", "2", "3"]]}]}
+    w = World(db)
+    with db.connect() as conn:
+        doc = ParsedDocument.load(conn, stored_parse(w, "10.1000/wb.1", parsed))
+    frozen = s0.store_and_freeze(db, doc, FixtureExtractor().extract(doc, EvidenceSpec.load("H1_v1")))
+    data = xw.build(db, frozen.output_id, {"obs:0": "x"})
+    ws = load_workbook(io.BytesIO(data))["Extracted (S0)"]
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows[0] == xw.COLUMNS and len(rows) == 1 + 4
+    first = dict(zip(xw.COLUMNS, rows[1]))
+    assert first["source_document"] == "10.1000/wb.1" and first["grain_size"] == "4.4"
+    assert first["grain_size_provenance"] == "p. 2, table 0, row 1; snippet: 4.4" and first["grain_size_resolves"] == "yes"
+    assert first["link_kind"] == "same_table_row" and first["extraction_method"].startswith("fixture_extractor 1")
+    assert first["snapshot"].startswith("S0 #") and first["against_compilation"] == "not scored"
+    formula = [r for r in ws.iter_rows() if r[5].value == "=1+1"]
+    assert formula and formula[0][5].data_type == "s"

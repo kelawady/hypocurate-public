@@ -16,6 +16,7 @@ def add_parser(sub) -> None:
     sc = scoring_sub.add_parser("score", help="score a paper's S0 against its annotation and its compilation records")
     sc.add_argument("--doi", required=True)
     sc.add_argument("--out", help="write the full tables (pairs and unmatched lists included) as JSON to this file")
+    sc.add_argument("--workbook", help="write the extraction workbook (S0 candidates with provenance) to this .xlsx")
     load = scoring_sub.add_parser("load-annotation", help="load an annotation file (refused whole on any problem)")
     load.add_argument("file")
     load.add_argument("--by", required=True, help="the name of the person loading it")
@@ -52,6 +53,10 @@ def _score(engine: Engine, args) -> int:
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(out, f, indent=1, default=str, ensure_ascii=False)
+    if args.workbook:
+        from hypocurate.scoring import extraction_workbook as xw
+        with open(args.workbook, "wb") as f:
+            f.write(xw.build(engine, output, xw.against_compilation(out)))
     return 0
 
 
