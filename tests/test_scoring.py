@@ -267,7 +267,16 @@ def test_every_table_for_the_taylor_and_francis_paper_carries_the_owners_label_a
 
 def test_prompt_v3_asks_for_methods_context_in_every_record_and_an_answer_for_every_item():
     from hypocurate.pipeline.agents.settings import EXTRACTOR_PROMPT_VERSION, extractor_variant
-    assert EXTRACTOR_PROMPT_VERSION == "v3"
+    assert EXTRACTOR_PROMPT_VERSION == "v4"
     assert 'the definition "from methods, applies to all specimens"' in extractor_variant("extract", "H1_v1")["instruction"]
     assert "Do not skip any item" in extractor_variant("verify", "H1_v1")["instruction"]
     assert "Do not skip any item" not in extractor_variant("verify", "H1_v1", "v2")["instruction"]
+
+
+def test_prompt_v4_makes_every_listed_condition_a_record_and_is_frozen_for_the_pilot():
+    """Owner, 2026-10-23: specification rule 'every listed condition is a record'; after v4 the prompt is frozen."""
+    from hypocurate.pipeline.agents.settings import EXTRACTOR_PROMPT_FROZEN, EXTRACTOR_PROMPT_VERSION, extractor_variant
+    assert EXTRACTOR_PROMPT_VERSION == EXTRACTOR_PROMPT_FROZEN == "v4"
+    v4 = extractor_variant("extract", "H1_v1")["instruction"]
+    assert "Return one record for every specimen or condition a table lists" in v4
+    assert "Return one record for every specimen" not in extractor_variant("extract", "H1_v1", "v3")["instruction"]

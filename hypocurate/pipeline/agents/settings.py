@@ -108,9 +108,11 @@ SETTINGS = MappingProxyType({
 
 # Sprint 2 pilot: the Extractor's settings (register 'pilot_extractor_settings'). Its instructions are the versioned
 # prompt files, never text in code (Design D17); each setting names its step, prompt version and evidence specification.
-EXTRACTOR_PROMPT_VERSION = "v3"  # v1 sent once, refused as malformed (no schema in the request); v2 used on 2026-10-23
+EXTRACTOR_PROMPT_VERSION = "v4"  # v1 sent once, refused as malformed (no schema in the request); v2 used on 2026-10-23
 # for the nine open-access papers; v3 (owner, 2026-10-23 evening): context from the methods in every record, every
-# item verified
+# item verified; v4 (owner, 2026-10-23): every listed condition is a record. FROZEN for the pilot (register
+# 'pilot_prompt_frozen'): further defects are findings, not re-extractions.
+EXTRACTOR_PROMPT_FROZEN = "v4"
 EXTRACTOR_STEPS = ("extract", "verify")
 EXTRACTOR_LIMITS = MappingProxyType({
     # max_tokens covers thinking and answer; max_output_chars bounds the answer text.

@@ -11041,7 +11041,7 @@
     "state": "in_force",
     "statement": "Claude Sonnet 5.5, effort 'medium', for both calls; the extraction call may use up to 32,000 tokens and 200,000 answer characters, the verification call up to 16,000 tokens and 100,000 characters; at most two attempts per call (Sprint 1's common interface: one corrected retry); instructions from the versioned prompt files, version v3 (the output schema in the extraction instruction since v2; from v3, context from the methods copied into every record and every item verified); versions v1 and v2 are kept as they were used. The document is shown as text blocks and table rows, each labelled with its page and indexes, so provenance can name exactly what it cites.",
     "value": {
-      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v3",
+      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v4 (frozen for the pilot)",
       "unit": null
     },
     "category": "operational",
@@ -11069,7 +11069,7 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_PROMPT_VERSION",
-          "equals": "v3"
+          "equals": "v4"
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_LIMITS.extract.max_tokens",
@@ -11099,6 +11099,12 @@
         "from": "2026-10-23",
         "to": "2026-10-23",
         "note": "v2 used for the nine open-access papers on 2026-10-23 (S0 snapshots 1-9)."
+      },
+      {
+        "value": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v3",
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "note": "v3 used for the nine papers (S0 #10-18; re-converted #20-27; ijplas on the split parse #19)."
       }
     ],
     "notes": []
@@ -11508,6 +11514,50 @@
     "tests": [
       "tests/test_extractor.py::test_a_page_and_snippet_provenance_is_accepted_as_a_passage_that_resolves_on_its_page",
       "tests/test_extractor.py::test_a_stored_output_is_converted_again_into_a_new_s0_and_the_old_one_is_kept"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_prompt_frozen",
+    "name": "The Extractor's prompt is frozen at v4",
+    "state": "in_force",
+    "statement": "Prompt version 4 adds the specification rule that every listed condition is a record: every specimen or condition a table lists is returned as a record, a value shown only in a figure given as 'figure only'. After v4 the Extractor's prompt is frozen for the pilot: further defects are recorded as findings, not fixed by re-extraction. The four annotated papers are re-extracted on v4; v2, v3 and v4 are scored side by side.",
+    "value": {
+      "text": "v4, frozen",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "Every Extractor call for the rest of the pilot.",
+    "reason": "Specification rule: every listed condition is a record (Appendix A1: separately reported specimens are separate observations).",
+    "evidence": [
+      "The owner's answer of 2026-10-23 (evening): 'v4, every table row is a record; ... After v4 the prompt is frozen for the pilot ... Register the reason for v4 as \"specification rule: every listed condition is a record\", not as a response to the annotation.'"
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_PROMPT_FROZEN",
+          "equals": "v4"
+        },
+        {
+          "ref": "file:hypocurate/pipeline/extraction/prompts/v4/extract.md:Return one record for every specimen or condition a table lists"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_scoring.py::test_prompt_v4_makes_every_listed_condition_a_record_and_is_frozen_for_the_pilot"
     ],
     "history": [],
     "notes": []

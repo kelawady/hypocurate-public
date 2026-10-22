@@ -199,7 +199,7 @@ def test_both_raw_outputs_are_stored_and_s0_is_the_verified_result(db, stub):
     assert draft_row.method["step"] == "extract" and verify_row.method["step"] == "verify"
     assert verify_row.method["draft_output_id"] == draft_row.id == result.draft_output_id
     assert verify_row.method["draft_raw_sha256"] == draft_row.raw_sha256
-    assert verify_row.method["model"] == "claude-sonnet-5-5" and verify_row.method["prompt_version"] == "v3"
+    assert verify_row.method["model"] == "claude-sonnet-5-5" and verify_row.method["prompt_version"] == "v4"
     assert verify_row.method["evidence_spec"] == "H1 v1"
     assert snap == [(verify_row.id, verify_row.raw_sha256)] and set(cands) == {verify_row.id}
     assert json.loads(draft_row.raw_output)["records"][0]["values"][1]["text"] == "0.8"
@@ -280,7 +280,7 @@ def test_a_document_invocation_is_reserved_under_the_per_document_cap(w, db):
 
 def test_the_extractor_settings_come_from_the_versioned_prompt_files():
     from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "hypocurate/pipeline/extraction/prompts/v3"
+    root = Path(__file__).resolve().parents[1] / "hypocurate/pipeline/extraction/prompts/v4"
     schema = (root / "output_schema.json").read_text(encoding="utf-8").strip()
     for step in ("extract", "verify"):
         v = extractor_variant(step, "H1_v1")
@@ -288,7 +288,7 @@ def test_the_extractor_settings_come_from_the_versioned_prompt_files():
         if step == "extract":  # from v2 the output schema is part of the extraction instruction
             expected += "\n\nOutput schema:\n" + schema
         assert v["instruction"] == expected
-        assert dict(v["settings"]) == {"reasoning_effort": "medium", "step": step, "prompt_version": "v3",
+        assert dict(v["settings"]) == {"reasoning_effort": "medium", "step": step, "prompt_version": "v4",
                                        "evidence_spec": "H1_v1"}
     v1 = extractor_variant("extract", "H1_v1", "v1")  # kept as it was used: no schema in its instruction
     assert "Output schema:" not in v1["instruction"]
