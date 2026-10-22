@@ -3,8 +3,9 @@ search log, documents and parses, never typed in (owner, 2026-10-22, register 'r
 
 1. Open-access flag: Unpaywall's flag where it answered, else OpenAlex's; 'lookup failed' when neither answered.
 2. Full text downloaded (by a program): a stored PDF fetched by code; otherwise the cause from the download attempts.
-   A PDF a person fetched in a browser is shown apart (`fetched_by_hand`), so the automated reach stays as measured;
-   its cause is "free to read in a browser, not fetchable by a program", distinct from "not open access".
+   A PDF a person fetched by hand is shown apart (`fetched_by_hand`), so the automated reach stays as measured. Every
+   row names the document's access method and the source configuration the reach ran under; no public/paywalled
+   distinction is made (owner, 2026-10-23, register 'pilot_access_method').
 3. Text and tables parsed: the newest parse of the newest document, with its parser and the tables found; a failure
    with its reason; 'not parsed yet' when none was tried.
 4. Supplements available: 'yes' when a landing page links a supplementary file; otherwise 'not found by automatic
@@ -21,11 +22,14 @@ from sqlalchemy.engine import Engine
 
 from hypocurate.documents.lookup import NOT_FOUND_BY_AUTOMATIC_CHECK
 from hypocurate.documents.select import Selection
-from hypocurate.documents.store import BROWSER_ONLY
+from hypocurate.documents.store import MANUAL_FETCH
 
-DOWNLOADED_BY_PROGRAM = "downloaded by a program"
-NOT_OPEN_ACCESS = "not open access in the lookup services (paywalled)"
-OPEN_NOT_FETCHED = "open access, not fetched"
+# The source configuration the pilot's reach ran under (owner, 2026-10-23): every figure is stated with it.
+CONFIGURATION = ("OpenAlex and Unpaywall copies fetched by program (access: none); manual fetch by the owner "
+                 "(access: institutional credential)")
+DOWNLOADED_BY_PROGRAM = "obtained by program (access: none)"
+NOT_OBTAINED = "not obtained under the configured sources"
+LISTED_NOT_FETCHED = "listed as an open copy by the lookup, not fetched by program"
 
 YES, NO = "yes", "no"
 
@@ -44,6 +48,7 @@ class ReachRow:
     download_cause: str | None
     fetched_by_hand: str
     access_cause: str
+    access_method: str | None
     document_id: int | None
     parsed: str
     parser: str | None
@@ -63,7 +68,7 @@ def rows(engine: Engine, selection: Selection) -> list[ReachRow]:
     with engine.connect() as conn:
         log = conn.execute(text("SELECT doi_key, action, outcome, http_status, detail FROM search_log "
                                 "WHERE doi_key = ANY(:k) ORDER BY id"), dict(k=keys)).mappings().all()
-        articles = conn.execute(text("SELECT id, doi_key, by_hand FROM document WHERE kind = 'article' "
+        articles = conn.execute(text("SELECT id, doi_key, by_hand, access_method FROM document WHERE kind = 'article' "
                                      "AND doi_key = ANY(:k) ORDER BY id"), dict(k=keys)).mappings().all()
         docs = _newest(articles, "doi_key")
         by_program = _newest([a for a in articles if not a["by_hand"]], "doi_key")
@@ -104,14 +109,15 @@ def rows(engine: Engine, selection: Selection) -> list[ReachRow]:
         else:
             parsed = f"failed: {parse['failure_reason']}"
         hand = YES if p.doi_key in by_hand else NO
-        access = (DOWNLOADED_BY_PROGRAM if downloaded == YES else BROWSER_ONLY if hand == YES
-                  else NOT_OPEN_ACCESS if oa == NO else OPEN_NOT_FETCHED if oa == YES else oa)
+        access = (DOWNLOADED_BY_PROGRAM if downloaded == YES else
+                  f"{MANUAL_FETCH} (access: {by_hand[p.doi_key]['access_method']})" if hand == YES
+                  else LISTED_NOT_FETCHED if oa == YES else NOT_OBTAINED)
         checks = [e for e in mine if e["action"] == "supplement_check"]
         supplements = (YES if any(e["outcome"] == "found" for e in checks)
                        else NOT_FOUND_BY_AUTOMATIC_CHECK if checks else "not checked")
         out.append(ReachRow(p.doi, p.doi_key, p.records, p.records_with_yield_strength, selection.phase_column, oa,
                             (summary or {}).get("oa_status"), (summary or {}).get("license"), downloaded, cause,
-                            hand, access, doc["id"] if doc else None, parsed, parse["parser"] if parse and parse["status"] == "parsed"
+                            hand, access, doc["access_method"] if doc else None, doc["id"] if doc else None, parsed, parse["parser"] if parse and parse["status"] == "parsed"
                             else None, parse["tables_found"] if parse and parse["status"] == "parsed" else None,
                             supplements))
     return out

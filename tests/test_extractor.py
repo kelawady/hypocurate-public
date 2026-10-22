@@ -61,8 +61,8 @@ def w(db):
 
 def stored_parse(w, doi="10.1000/ext.1", parsed=PARSED):
     body = canonical(parsed)
-    doc = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by) VALUES (:d, :k, "
-                "'unpaywall', :p, :h, 'code') RETURNING id", d=doi, k="doi:" + doi, p=PDF, h=hashlib.sha256(PDF).hexdigest())
+    doc = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, access_method, fetched_by) VALUES (:d, :k, "
+                "'unpaywall', :p, :h, 'none', 'code') RETURNING id", d=doi, k="doi:" + doi, p=PDF, h=hashlib.sha256(PDF).hexdigest())
     return w.val("INSERT INTO document_parse (document_id, parser, parser_version, fallback_used, status, parsed, "
                  "parsed_sha256, pages, tables_found) VALUES (:d, 'docling', '2.141.0', false, 'parsed', :b, :h, 3, 1) "
                  "RETURNING id", d=doc, b=body, h=hashlib.sha256(body.encode()).hexdigest())

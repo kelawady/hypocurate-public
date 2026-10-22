@@ -1118,6 +1118,9 @@ class AuditLog(Base):
 DOCUMENT_MAX_BYTES = 50 * 1024 * 1024  # register 'document_max_bytes'
 DOCUMENT_KINDS = ("article", "supplement", "methods")
 OA_SOURCES = ("unpaywall", "openalex", "by_hand")
+# How a document was accessed (owner, 2026-10-23, register 'pilot_access_method'): every source is a configured data
+# source with an access method; no public/paywalled distinction is made.
+ACCESS_METHODS = ("none", "registration", "api_key", "institutional_credential", "manual_fetch")
 PARSERS = ("docling", "pymupdf")
 PARSE_STATUSES = ("parsed", "failed")
 SEARCH_ACTIONS = ("select", "openalex_lookup", "unpaywall_lookup", "supplement_check", "download", "parse",
@@ -1166,12 +1169,16 @@ class Document(Base):
     fetched_by: Mapped[str] = mapped_column(Text)
     by_hand: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    access_method: Mapped[str] = mapped_column(Text)
+    access_note: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (
         CheckConstraint(one_of("kind", DOCUMENT_KINDS), name="kind"),
         CheckConstraint("(kind = 'article') = (parent_document_id IS NULL)", name="parent_unless_article"),
         CheckConstraint("doi_key ~ '^doi:10[.][0-9]{4,9}/\\S+$'", name="doi_key_format"),
         CheckConstraint(one_of("oa_source", OA_SOURCES), name="oa_source"),
         CheckConstraint("by_hand = (oa_source = 'by_hand')", name="by_hand_source"),
+        CheckConstraint(one_of("access_method", ACCESS_METHODS), name="access_method"),
+        CheckConstraint(f"length(coalesce(access_note, '')) <= {NAME_MAX}", name="access_note_bounded"),
         CheckConstraint(f"octet_length(pdf) BETWEEN 5 AND {DOCUMENT_MAX_BYTES}", name="max_size"),
         CheckConstraint("substring(pdf from 1 for 5) = '\\x255044462d'::bytea", name="is_pdf"),
         CheckConstraint("pdf_sha256 = encode(sha256(pdf), 'hex')", name="sha256_matches_pdf"),

@@ -33,6 +33,10 @@ def add_parser(sub) -> None:
             p.add_argument("--file", required=True, help="the PDF as downloaded")
             p.add_argument("--url", required=True, help="the address the PDF was downloaded from in the browser")
             p.add_argument("--by", required=True, help="the name of the person who fetched it")
+            p.add_argument("--access-method", default="institutional_credential",
+                           choices=("none", "registration", "api_key", "institutional_credential", "manual_fetch"),
+                           help="how the document was accessed (default: institutional_credential)")
+            p.add_argument("--access-note", default="fetched manually")
 
 
 def _selection(engine: Engine, source: str):
@@ -105,7 +109,8 @@ def command(args, engine: Engine) -> int:
         with open(args.file, "rb") as f:
             pdf = f.read()
         try:
-            doc = store.add_by_hand(engine, paper.doi, key, pdf, args.url, why_automation_failed(engine, key), args.by)
+            doc = store.add_by_hand(engine, paper.doi, key, pdf, args.url, why_automation_failed(engine, key), args.by,
+                                    args.access_method, args.access_note)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1

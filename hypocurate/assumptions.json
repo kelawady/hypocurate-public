@@ -10413,7 +10413,7 @@
     "key": "pilot_reach_milestones",
     "name": "The four reach milestones and the access causes",
     "state": "in_force",
-    "statement": "1 open-access flag (Unpaywall's where it answered, else OpenAlex's); 2 full text downloaded by a program; 3 text and tables parsed (with the parser and the tables found); 4 supplements available: 'yes' when a landing page links a supplementary file, otherwise 'not found by automatic check', and the column is never used to assert 'none'. A PDF a person fetched in a browser is shown apart ('fetched by hand', with the URL used and why automation failed); its cause is 'free to read in a browser, not fetchable by a program', distinct from 'not open access in the lookup services (paywalled)'.",
+    "statement": "1 open-access flag (Unpaywall's where it answered, else OpenAlex's; a lookup fact only); 2 full text obtained by program; 3 text and tables parsed (with the parser and the tables found); 4 supplements available: 'yes' when a landing page links a supplementary file, otherwise 'not found by automatic check', and the column is never used to assert 'none'. A document fetched by hand is shown apart ('fetched by hand', with the URL used and why automation failed). No public/paywalled distinction: each row names the document's access method, and causes are stated against the source configuration ('obtained by program (access: none)', 'obtained by manual fetch (access: <method>)', 'listed as an open copy by the lookup, not fetched by program', 'not obtained under the configured sources'); every reach figure is stated with the configuration it ran under (reach.CONFIGURATION).",
     "value": {
       "text": "four milestones; supplements 'yes' or 'not found by automatic check'",
       "unit": null
@@ -10422,11 +10422,12 @@
     "affects": "The reach number in the results note (P1, P10) and the H2 gap report's causes (R11).",
     "reason": "The milestones differ (Design 6.3); 'none' would claim an absence the check cannot see; the automated reach must stay as measured when a person fills a gap.",
     "evidence": [
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): milestone 4 approved with the wording change; by-hand fetches record the URL and the reason automation failed, as their own cause."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): milestone 4 approved with the wording change; by-hand fetches record the URL and the reason automation failed, as their own cause.",
+      "The owner's policy of 2026-10-23 (night): no public/paywalled distinction; every source a configured data source with an access method; reach reported per configuration; access_method on each document."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10442,12 +10443,12 @@
           "equals": "not found by automatic check"
         },
         {
-          "ref": "python:hypocurate.documents.store:BROWSER_ONLY",
-          "equals": "free to read in a browser, not fetchable by a program"
+          "ref": "python:hypocurate.documents.reach:NOT_OBTAINED",
+          "equals": "not obtained under the configured sources"
         },
         {
-          "ref": "python:hypocurate.documents.reach:NOT_OPEN_ACCESS",
-          "equals": "not open access in the lookup services (paywalled)"
+          "ref": "python:hypocurate.documents.store:MANUAL_FETCH",
+          "equals": "obtained by manual fetch"
         }
       ],
       "note": null
@@ -10457,7 +10458,14 @@
       "tests/test_documents_reach.py::test_gather_parse_and_the_reach_table_over_two_papers",
       "tests/test_documents_reach.py::test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_and_is_shown_apart"
     ],
-    "history": [],
+    "history": [
+      {
+        "value": "causes 'free to read in a browser, not fetchable by a program' (by hand) and 'not open access in the lookup services (paywalled)'",
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "note": "Replaced by configuration-based causes under the owner's access-method policy."
+      }
+    ],
     "notes": []
   },
   {
@@ -11599,6 +11607,58 @@
     },
     "tests": [
       "tests/test_scoring.py::test_s0_predictions_are_read_from_the_snapshot_with_provenance_checked"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_access_method",
+    "name": "Access method on every document; no public/paywalled distinction",
+    "state": "in_force",
+    "statement": "Every source is a configured data source with an access method (none, registration, api_key, institutional_credential, manual_fetch); the design makes no public/paywalled distinction; the Scout searches whatever is configured, and reach is reported per configuration. Each document records its access_method (and an optional access note). The pilot's configuration: OpenAlex and Unpaywall copies fetched by program (access: none); the owner's manual fetch with his institutional credential (the six by-hand papers: institutional_credential, 'fetched manually'). Recovery and reach figures in the results note are stated together with that configuration.",
+    "value": {
+      "text": "none / registration / api_key / institutional_credential / manual_fetch",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Documents (0010), the reach table, the bundle, the results note, and later the Scout.",
+    "reason": "Whether a paper is reachable depends on the configured access, not on a fixed property of the paper.",
+    "evidence": [
+      "The owner's policy of 2026-10-23 (night): no public/paywalled distinction; every source a configured data source with an access method; reach reported per configuration; access_method on each document.",
+      "Applied to the development database by an additive ALTER recorded in the daily report (0010 was already applied there with data)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:ACCESS_METHODS",
+          "equals": [
+            "none",
+            "registration",
+            "api_key",
+            "institutional_credential",
+            "manual_fetch"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.documents.reach:CONFIGURATION"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_migrations_step0010.py::test_every_document_records_its_access_method_from_the_fixed_list",
+      "tests/test_documents_reach.py::test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_and_is_shown_apart"
     ],
     "history": [],
     "notes": []

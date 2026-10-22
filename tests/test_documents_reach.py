@@ -207,7 +207,11 @@ def test_gather_parse_and_the_reach_table_over_two_papers(db):
     assert ("doi:10.1000/a", "parse", "ok") in actions and ("doi:10.1000/b", "unpaywall_lookup", "found") in actions
     assert json.loads(parsed)["parser"] == "docling"
     csv_text = reach.to_csv(table)
-    assert csv_text.splitlines()[0].startswith("doi,doi_key,compilation_records") and "none" not in csv_text.lower().split(",")
+    import csv as _csv
+    rows = list(_csv.DictReader(csv_text.splitlines()))
+    assert csv_text.splitlines()[0].startswith("doi,doi_key,compilation_records")
+    assert all(r["supplements"] != "none" for r in rows)  # the supplements column never asserts 'none'
+    assert [r["access_method"] for r in rows] == ["none", ""]  # access 'none' is a method, not an absence
 
 
 def test_a_failed_parse_is_stored_with_its_reason(db):
@@ -229,7 +233,8 @@ def test_the_real_parse_runner_reports_a_missing_parse_environment():
 
 def test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_and_is_shown_apart(db):
     """Owner, 2026-10-22: a by-hand fetch keeps the automated milestone as measured, is labelled, and its cause is
-    'free to read in a browser, not fetchable by a program', distinct from 'not open access'."""
+    'obtained by manual fetch (access: institutional_credential)'; no public/paywalled distinction (owner,
+    2026-10-23)."""
     engine = db
     blocked = {**UNPAYWALL_OA, "best_oa_location": {"url_for_landing_page": "https://pub.example/a"}, "oa_locations": []}
     get = stub({"openalex.org/works/doi:10.1000/a": (200, {"open_access": {"is_oa": True}}),
@@ -245,8 +250,10 @@ def test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_an
                             "Khalid El-Awady")
     a, b = reach.rows(engine, two_papers())
     assert (a.oa_flag, a.downloaded, a.fetched_by_hand, a.access_cause, a.document_id) == \
-        ("yes", "no", "yes", "free to read in a browser, not fetchable by a program", doc)
-    assert b.access_cause == "not open access in the lookup services (paywalled)"
+        ("yes", "no", "yes", "obtained by manual fetch (access: institutional_credential)", doc)
+    assert a.access_method == "institutional_credential"
+    assert b.access_cause == "not obtained under the configured sources" and b.access_method is None
+    assert "paywalled" not in reach.to_csv([a, b]) and "open access" not in a.access_cause
     assert reach.milestones([a, b])["full_text_downloaded"]["papers"] == 0
     assert reach.milestones([a, b])["fetched_by_hand"]["papers"] == 1
     with engine.connect() as conn:
@@ -255,7 +262,7 @@ def test_a_fetch_by_hand_records_the_url_the_person_and_why_automation_failed_an
         stored = conn.execute(text("SELECT oa_source, by_hand, fetched_by, oa_url FROM document WHERE id = :d"),
                               dict(d=doc)).one()
     assert entry.url == "https://pub.example/a/pdf" and entry.actor == "Khalid El-Awady" and entry.by_hand
-    assert entry.detail == ("free to read in a browser, not fetchable by a program; "
+    assert entry.detail == ("obtained by manual fetch (access: institutional_credential); "
                             "automation: not_found: no open-access PDF address") and entry.document_id == doc
     assert tuple(stored) == ("by_hand", True, "Khalid El-Awady", "https://pub.example/a/pdf")
 

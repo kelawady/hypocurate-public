@@ -53,11 +53,12 @@ def w(db):
 
 # --- builders --------------------------------------------------------------------------------------------------------
 
-def document(w, doi="10.1000/abc.1", pdf=PDF, kind="article", parent=None, source="unpaywall", by="code"):
+def document(w, doi="10.1000/abc.1", pdf=PDF, kind="article", parent=None, source="unpaywall", by="code",
+             access="none"):
     return w.val("INSERT INTO document (kind, parent_document_id, doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, "
-                 "by_hand) VALUES (:k, :p, :d, :key, :s, :pdf, :h, :by, :bh) RETURNING id",
+                 "by_hand, access_method) VALUES (:k, :p, :d, :key, :s, :pdf, :h, :by, :bh, :am) RETURNING id",
                  k=kind, p=parent, d=doi, key="doi:" + doi.lower(), s=source, pdf=pdf, h=sha(pdf), by=by,
-                 bh=source == "by_hand")
+                 bh=source == "by_hand", am="institutional_credential" if source == "by_hand" else access)
 
 
 def parse(w, doc, parsed='{"pages": []}'):
@@ -155,7 +156,7 @@ def test_the_lists_are_the_codes():
     assert m10.SPRINT1_ROLES == models.SPRINT1_ROLES == ("planner", "curator", "critic", "analyst", "commentator")
     assert m10.ROLES == models.ROLES and m10.PILOT_ROLES == models.PILOT_ROLES == ("extractor", "reconciler")
     assert m10.INVOCATION_SCOPES == models.INVOCATION_SCOPES and m10.SHAPE_0010 == models.INVOCATION_SHAPE
-    for name in ("DOCUMENT_KINDS", "OA_SOURCES", "PARSERS", "PARSE_STATUSES", "SEARCH_ACTIONS", "SEARCH_OUTCOMES",
+    for name in ("DOCUMENT_KINDS", "OA_SOURCES", "ACCESS_METHODS", "PARSERS", "PARSE_STATUSES", "SEARCH_ACTIONS", "SEARCH_OUTCOMES",
                  "EXTRACTION_STATUSES", "VALUE_FIELDS", "LINK_KINDS", "EVIDENCE_STATES", "STATE_OBJECTS",
                  "SNAPSHOT_NAMES", "STOP_REASONS", "DOCUMENT_MAX_BYTES", "EXTRACTION_RULE", "PROVENANCE_SHAPE"):
         assert getattr(m10, name) == getattr(models, name), name
@@ -309,11 +310,26 @@ def test_a_document_is_a_pdf_whose_hash_the_database_checks(w):
     with pytest.raises(IntegrityError, match="ck_document_is_pdf"):
         document(w, pdf=b"<html>not a pdf</html>")
     with pytest.raises(IntegrityError, match="ck_document_sha256_matches_pdf"):
-        w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by) VALUES "
-              "('10.1/x', 'doi:10.1000/x', 'unpaywall', :p, :h, 'code') RETURNING id", p=PDF, h="0" * 64)
+        w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, access_method) VALUES "
+              "('10.1/x', 'doi:10.1000/x', 'unpaywall', :p, :h, 'code', 'none') RETURNING id", p=PDF, h="0" * 64)
     with pytest.raises(IntegrityError, match="ck_document_doi_key_format"):
+        w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, access_method) VALUES "
+              "('x', 'x', 'unpaywall', :p, :h, 'code', 'none') RETURNING id", p=PDF, h=sha(PDF))
+
+
+def test_every_document_records_its_access_method_from_the_fixed_list(w):
+    """Owner, 2026-10-23: every source is a configured data source with an access method; no public/paywalled
+    distinction. The column is required and takes only the listed methods."""
+    from hypocurate.db.models import ACCESS_METHODS
+    assert ACCESS_METHODS == m("0010").ACCESS_METHODS == ("none", "registration", "api_key", "institutional_credential",
+                                                          "manual_fetch")
+    d = document(w, source="by_hand", by="K. El-Awady")
+    assert w.val("SELECT access_method FROM document WHERE id = :d", d=d) == "institutional_credential"
+    with pytest.raises(IntegrityError, match="ck_document_access_method"):
+        document(w, doi="10.1000/abc.7", access="paywalled")
+    with pytest.raises(IntegrityError, match="access_method"):
         w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by) VALUES "
-              "('x', 'x', 'unpaywall', :p, :h, 'code') RETURNING id", p=PDF, h=sha(PDF))
+              "('10.1000/z', 'doi:10.1000/z', 'unpaywall', :p, :h, 'code')", p=PDF, h=sha(PDF))
 
 
 def test_a_supplement_belongs_to_an_article_and_a_fetch_by_hand_says_so(w):
@@ -322,8 +338,8 @@ def test_a_supplement_belongs_to_an_article_and_a_fetch_by_hand_says_so(w):
     with pytest.raises(IntegrityError, match="ck_document_parent_unless_article"):
         document(w, kind="supplement")
     with pytest.raises(IntegrityError, match="ck_document_by_hand_source"):
-        w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, by_hand) VALUES "
-              "('10.1000/y', 'doi:10.1000/y', 'unpaywall', :p, :h, 'code', true)", p=PDF, h=sha(PDF))
+        w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, by_hand, access_method) VALUES "
+              "('10.1000/y', 'doi:10.1000/y', 'unpaywall', :p, :h, 'code', true, 'none')", p=PDF, h=sha(PDF))
 
 
 def test_a_parse_carries_its_hash_or_a_failure_with_its_reason(w):
@@ -515,8 +531,8 @@ def test_every_new_table_is_append_only(w):
 def test_the_database_sets_the_times(w):
     out, obs, lk = extracted(w)
     assert w.val("SELECT bool_and(at > '2001-01-01') FROM evidence_state_event")
-    doc = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, fetched_at) VALUES "
-                "('10.1000/t', 'doi:10.1000/t', 'openalex', :p, :h, 'code', '2000-01-01') RETURNING id",
+    doc = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, fetched_at, access_method) VALUES "
+                "('10.1000/t', 'doi:10.1000/t', 'openalex', :p, :h, 'code', '2000-01-01', 'none') RETURNING id",
                 p=PDF, h=sha(PDF))
     assert w.val("SELECT fetched_at > '2001-01-01' FROM document WHERE id = :d", d=doc)
 

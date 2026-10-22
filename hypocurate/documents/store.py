@@ -47,8 +47,8 @@ def store_document(engine: Engine, found: Lookup, got: Download, actor: str = CO
         doc = None
         if got.pdf is not None:
             doc = conn.execute(text(
-                "INSERT INTO document (doi, doi_key, oa_status, oa_source, oa_url, license, pdf, pdf_sha256, fetched_by) "
-                "VALUES (:doi, :k, :st, :src, :u, :lic, :pdf, :h, :by) RETURNING id"),
+                "INSERT INTO document (doi, doi_key, oa_status, oa_source, oa_url, license, pdf, pdf_sha256, fetched_by, "
+                "access_method) VALUES (:doi, :k, :st, :src, :u, :lic, :pdf, :h, :by, 'none') RETURNING id"),
                 dict(doi=found.doi, k=found.doi_key, st=found.oa_status, src=oa_source or got.source, u=got.url,
                      lic=found.license, pdf=got.pdf, h=hashlib.sha256(got.pdf).hexdigest(), by=actor)).scalar_one()
         log(conn, got.log, actor, doc)
@@ -56,13 +56,13 @@ def store_document(engine: Engine, found: Lookup, got: Download, actor: str = CO
     return run_transaction(engine, write)
 
 
-# Why a program could not fetch a paper a person then fetched in a browser (owner, 2026-10-22): kept as its own cause
-# in the gap report, distinct from "not open access" (paywalled).
-BROWSER_ONLY = "free to read in a browser, not fetchable by a program"
+# A paper a person fetched by hand (owner, 2026-10-22; reworded 2026-10-23, register 'pilot_access_method': no
+# public/paywalled distinction; the access method is recorded on the document).
+MANUAL_FETCH = "obtained by manual fetch"
 
 
 def add_by_hand(engine: Engine, doi: str, doi_key: str, pdf: bytes, url: str, why_automation_failed: str,
-                by: str) -> int:
+                by: str, access_method: str = "institutional_credential", access_note: str | None = "fetched manually") -> int:
     """A PDF a person fetched in a browser (done by hand in this pilot): the document, marked by hand, and a
     'fetch_by_hand' entry with the URL used, the person and the reason automation failed."""
     if not pdf.startswith(b"%PDF-"):
@@ -70,11 +70,13 @@ def add_by_hand(engine: Engine, doi: str, doi_key: str, pdf: bytes, url: str, wh
 
     def write(conn: Connection):
         doc = conn.execute(text(
-            "INSERT INTO document (doi, doi_key, oa_source, oa_url, pdf, pdf_sha256, fetched_by, by_hand) "
-            "VALUES (:doi, :k, 'by_hand', :u, :pdf, :h, :by, true) RETURNING id"),
-            dict(doi=doi, k=doi_key, u=url, pdf=pdf, h=hashlib.sha256(pdf).hexdigest(), by=by)).scalar_one()
+            "INSERT INTO document (doi, doi_key, oa_source, oa_url, pdf, pdf_sha256, fetched_by, by_hand, access_method, "
+            "access_note) VALUES (:doi, :k, 'by_hand', :u, :pdf, :h, :by, true, :am, :an) RETURNING id"),
+            dict(doi=doi, k=doi_key, u=url, pdf=pdf, h=hashlib.sha256(pdf).hexdigest(), by=by, am=access_method,
+                 an=access_note)).scalar_one()
         log(conn, [LogEntry("fetch_by_hand", doi_key, "ok", url[:2000], None,
-                            f"{BROWSER_ONLY}; automation: {why_automation_failed}"[:2000])], by, doc)
+                            f"{MANUAL_FETCH} (access: {access_method}); automation: {why_automation_failed}"[:2000])],
+            by, doc)
         return doc
     return run_transaction(engine, write)
 

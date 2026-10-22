@@ -54,6 +54,7 @@ DOCUMENT_MAX_BYTES = 50 * 1024 * 1024
 MAX_FILE_BYTES = 5 * 1024 * 1024
 DOCUMENT_KINDS = ("article", "supplement", "methods")
 OA_SOURCES = ("unpaywall", "openalex", "by_hand")
+ACCESS_METHODS = ("none", "registration", "api_key", "institutional_credential", "manual_fetch")
 PARSERS = ("docling", "pymupdf")
 PARSE_STATUSES = ("parsed", "failed")
 SEARCH_ACTIONS = ("select", "openalex_lookup", "unpaywall_lookup", "supplement_check", "download", "parse",
@@ -499,12 +500,17 @@ def _tables() -> None:
         sa.Column('fetched_by', sa.Text(), nullable=False),
         sa.Column('by_hand', sa.Boolean(), server_default=sa.text('false'), nullable=False),
         sa.Column('fetched_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('access_method', sa.Text(), nullable=False),
+        sa.Column('access_note', sa.Text(), nullable=True),
         sa.CheckConstraint(_in('kind', DOCUMENT_KINDS), name=ck('ck_document_kind')),
         sa.CheckConstraint("(kind = 'article') = (parent_document_id IS NULL)",
                            name=ck('ck_document_parent_unless_article')),
         sa.CheckConstraint(f"doi_key {DOI_KEY}", name=ck('ck_document_doi_key_format')),
         sa.CheckConstraint(_in('oa_source', OA_SOURCES), name=ck('ck_document_oa_source')),
         sa.CheckConstraint("by_hand = (oa_source = 'by_hand')", name=ck('ck_document_by_hand_source')),
+        sa.CheckConstraint(_in('access_method', ACCESS_METHODS), name=ck('ck_document_access_method')),
+        sa.CheckConstraint(f"length(coalesce(access_note, '')) <= {NAME_MAX}",
+                           name=ck('ck_document_access_note_bounded')),
         sa.CheckConstraint(f"octet_length(pdf) BETWEEN 5 AND {DOCUMENT_MAX_BYTES}", name=ck('ck_document_max_size')),
         sa.CheckConstraint("substring(pdf from 1 for 5) = '\\x255044462d'::bytea", name=ck('ck_document_is_pdf')),
         sa.CheckConstraint("pdf_sha256 = encode(sha256(pdf), 'hex')", name=ck('ck_document_sha256_matches_pdf')),

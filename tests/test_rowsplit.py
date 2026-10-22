@@ -64,8 +64,9 @@ def test_the_split_parse_is_stored_as_a_new_parse_and_logged(db):
     from model_builder import World
     w = World(db)
     pdf = b"%PDF-1.7\n% rowsplit\n"
-    doc_id = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, by_hand) VALUES "
-                   "('10.1000/rs.1', 'doi:10.1000/rs.1', 'by_hand', :p, :h, 'K. El-Awady', true) RETURNING id",
+    doc_id = w.val("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, by_hand, access_method) VALUES "
+                   "('10.1000/rs.1', 'doi:10.1000/rs.1', 'by_hand', :p, :h, 'K. El-Awady', true, "
+                   "'institutional_credential') RETURNING id",
                    p=pdf, h=hashlib.sha256(pdf).hexdigest())
     body = canonical(PARSED)
     old = w.val("INSERT INTO document_parse (document_id, parser, parser_version, fallback_used, status, parsed, "
