@@ -287,6 +287,12 @@ def _store_raw(engine: Engine, document: ParsedDocument, invocation: int, method
     return run_transaction(engine, write)
 
 
+def _why(result) -> dict:
+    """A failed call's attempts, code's own reasons and the answer-form facts (never the model's text, as Sprint 1)."""
+    return {"attempts": list(result.attempts), "reasons": [r for r in result.reasons],
+            "details": json.loads(json.dumps(result.details, default=str))}
+
+
 def _spent(engine: Engine, invocations: list[int]) -> tuple[Decimal, int]:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0), count(*) FROM model_call "
@@ -312,7 +318,7 @@ def extract_document(engine: Engine, parse_id: int, spec_name: str = "H1_v1",
             "evidence_spec_sha256": data["extraction_spec"]["sha256"]}
     if first.failure is not None:
         run.draft_output_id = _store_raw(engine, document, run.extract_invocation,
-                                         base | {"step": "extract", "failure": first.failure}, "", "failed")
+                                         base | {"step": "extract", "failure": first.failure} | _why(first), "", "failed")
         run.failure = f"extract: {first.failure}"
         run.cost, run.calls = _spent(engine, [run.extract_invocation])
         return run
@@ -330,8 +336,8 @@ def extract_document(engine: Engine, parse_id: int, spec_name: str = "H1_v1",
                     "draft": json.dumps(draft, sort_keys=True, ensure_ascii=False)}, client_options)
     if second.failure is not None:
         _store_raw(engine, document, run.verify_invocation,
-                   base | {"step": "verify", "draft_output_id": run.draft_output_id, "failure": second.failure},
-                   "", "failed")
+                   base | {"step": "verify", "draft_output_id": run.draft_output_id, "failure": second.failure}
+                   | _why(second), "", "failed")
         run.failure = f"verify: {second.failure}"
         run.cost, run.calls = _spent(engine, [run.extract_invocation, run.verify_invocation])
         return run

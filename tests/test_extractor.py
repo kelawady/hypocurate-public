@@ -180,7 +180,9 @@ def test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests(w, db
     content = first["messages"][0]["content"]
     user = content if isinstance(content, str) else "".join(part.get("text", "") for part in content)
     assert "[page 2, table 0, row 1] CoCrFeNiMo0.2 | 700 °C 1 h | 0.8 | 1100" in user
-    assert "Never present cited data as this paper's own" in json.dumps(first["system"])
+    system = json.dumps(first["system"], ensure_ascii=False)
+    assert "Never present cited data as this paper's own" in system
+    assert "Output schema:" in system and '\\"reported_from\\"' in system
     assert "0.8" in json.dumps(second) and second["max_tokens"] == 16000
 
 
@@ -197,7 +199,7 @@ def test_both_raw_outputs_are_stored_and_s0_is_the_verified_result(db, stub):
     assert draft_row.method["step"] == "extract" and verify_row.method["step"] == "verify"
     assert verify_row.method["draft_output_id"] == draft_row.id == result.draft_output_id
     assert verify_row.method["draft_raw_sha256"] == draft_row.raw_sha256
-    assert verify_row.method["model"] == "claude-sonnet-5-5" and verify_row.method["prompt_version"] == "v1"
+    assert verify_row.method["model"] == "claude-sonnet-5-5" and verify_row.method["prompt_version"] == "v2"
     assert verify_row.method["evidence_spec"] == "H1 v1"
     assert snap == [(verify_row.id, verify_row.raw_sha256)] and set(cands) == {verify_row.id}
     assert json.loads(draft_row.raw_output)["records"][0]["values"][1]["text"] == "0.8"
@@ -255,7 +257,11 @@ def test_a_malformed_answer_is_corrected_once_then_stored_as_a_failed_draft(db, 
     assert result.failure == "extract: malformed" and result.frozen is None and len(stub.requests) == 2
     with db.connect() as conn:
         assert conn.execute(text("SELECT status, method->>'failure' FROM extraction_output")).one() == ("failed", "malformed")
+        method = conn.execute(text("SELECT method FROM extraction_output")).scalar_one()
         assert conn.execute(text("SELECT count(*) FROM evidence_snapshot")).scalar() == 0
+    assert method["attempts"] == ["malformed", "malformed"]
+    assert method["reasons"] == ["the answer is not one JSON object with a 'records' list"] * 2
+    assert "not json" not in json.dumps(method)  # the model's text is never stored for a failed call
 
 
 # --- the per-document cap ------------------------------------------------------------------------------------------
@@ -274,12 +280,18 @@ def test_a_document_invocation_is_reserved_under_the_per_document_cap(w, db):
 
 def test_the_extractor_settings_come_from_the_versioned_prompt_files():
     from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "hypocurate/pipeline/extraction/prompts/v1"
+    root = Path(__file__).resolve().parents[1] / "hypocurate/pipeline/extraction/prompts/v2"
+    schema = (root / "output_schema.json").read_text(encoding="utf-8").strip()
     for step in ("extract", "verify"):
         v = extractor_variant(step, "H1_v1")
-        assert v["instruction"] == (root / f"{step}.md").read_text(encoding="utf-8").strip()
-        assert dict(v["settings"]) == {"reasoning_effort": "medium", "step": step, "prompt_version": "v1",
+        expected = (root / f"{step}.md").read_text(encoding="utf-8").strip()
+        if step == "extract":  # from v2 the output schema is part of the extraction instruction
+            expected += "\n\nOutput schema:\n" + schema
+        assert v["instruction"] == expected
+        assert dict(v["settings"]) == {"reasoning_effort": "medium", "step": step, "prompt_version": "v2",
                                        "evidence_spec": "H1_v1"}
+    v1 = extractor_variant("extract", "H1_v1", "v1")  # kept as it was used: no schema in its instruction
+    assert "Output schema:" not in v1["instruction"]
     assert "never a filter" in extractor_variant("extract", "H1_v1")["instruction"]
     assert 'text "figure only"' in extractor_variant("extract", "H1_v1")["instruction"]
 

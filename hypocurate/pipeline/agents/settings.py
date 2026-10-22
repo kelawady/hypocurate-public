@@ -108,7 +108,7 @@ SETTINGS = MappingProxyType({
 
 # Sprint 2 pilot: the Extractor's settings (register 'pilot_extractor_settings'). Its instructions are the versioned
 # prompt files, never text in code (Design D17); each setting names its step, prompt version and evidence specification.
-EXTRACTOR_PROMPT_VERSION = "v1"
+EXTRACTOR_PROMPT_VERSION = "v2"  # v1 (2026-10-22) sent once, refused as malformed: no schema in the request
 EXTRACTOR_STEPS = ("extract", "verify")
 EXTRACTOR_LIMITS = MappingProxyType({
     # max_tokens covers thinking and answer; max_output_chars bounds the answer text.
@@ -125,6 +125,8 @@ def extractor_variant(step: str, spec: str, prompt_version: str = EXTRACTOR_PROM
         raise ValueError(f"unknown extractor step {step!r}")
     prompts = Path(__file__).resolve().parents[1] / "extraction" / "prompts" / prompt_version
     instruction = (prompts / f"{step}.md").read_text(encoding="utf-8").strip()
+    if step == "extract" and prompt_version != "v1":  # from v2: the output schema is part of the instruction
+        instruction += "\n\nOutput schema:\n" + (prompts / "output_schema.json").read_text(encoding="utf-8").strip()
     return MappingProxyType({
         "instruction": instruction, "model": MODELS["extractor"], "limits": EXTRACTOR_LIMITS[step],
         "settings": MappingProxyType({"reasoning_effort": EXTRACTOR_EFFORT, "step": step,

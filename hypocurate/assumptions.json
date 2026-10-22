@@ -10989,7 +10989,7 @@
           "ref": "file:hypocurate/pipeline/extraction/specs/H1_v1.json:\"extractor_sections\""
         },
         {
-          "ref": "file:hypocurate/pipeline/extraction/prompts/v1/extract.md:They are never a filter"
+          "ref": "file:hypocurate/pipeline/extraction/prompts/v2/extract.md:They are never a filter"
         }
       ],
       "note": null
@@ -11007,9 +11007,9 @@
     "key": "pilot_extractor_settings",
     "name": "The Extractor's operational settings",
     "state": "in_force",
-    "statement": "Claude Sonnet 5.5, effort 'medium', for both calls; the extraction call may use up to 32,000 tokens and 200,000 answer characters, the verification call up to 16,000 tokens and 100,000 characters; at most two attempts per call (Sprint 1's common interface: one corrected retry); instructions from the versioned prompt files, version v1. The document is shown as text blocks and table rows, each labelled with its page and indexes, so provenance can name exactly what it cites.",
+    "statement": "Claude Sonnet 5.5, effort 'medium', for both calls; the extraction call may use up to 32,000 tokens and 200,000 answer characters, the verification call up to 16,000 tokens and 100,000 characters; at most two attempts per call (Sprint 1's common interface: one corrected retry); instructions from the versioned prompt files, version v2, whose extraction instruction carries the output schema file; version v1 is kept as it was used. The document is shown as text blocks and table rows, each labelled with its page and indexes, so provenance can name exactly what it cites.",
     "value": {
-      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v1",
+      "text": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v2 (the output schema in the extraction instruction)",
       "unit": null
     },
     "category": "operational",
@@ -11037,7 +11037,7 @@
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_PROMPT_VERSION",
-          "equals": "v1"
+          "equals": "v2"
         },
         {
           "ref": "python:hypocurate.pipeline.agents.settings:EXTRACTOR_LIMITS.extract.max_tokens",
@@ -11054,7 +11054,14 @@
       "tests/test_extractor.py::test_the_extractor_settings_come_from_the_versioned_prompt_files",
       "tests/test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests"
     ],
-    "history": [],
+    "history": [
+      {
+        "value": "Sonnet 5.5, effort medium, 32k / 16k tokens, prompts v1",
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "note": "v1 was sent once (ijplas.2018.10.005): both attempts refused as malformed ($0.147); its instruction named an output schema the request did not contain."
+      }
+    ],
     "notes": []
   },
   {
