@@ -282,3 +282,14 @@ def test_the_extractor_settings_come_from_the_versioned_prompt_files():
                                        "evidence_spec": "H1_v1"}
     assert "never a filter" in extractor_variant("extract", "H1_v1")["instruction"]
     assert 'text "figure only"' in extractor_variant("extract", "H1_v1")["instruction"]
+
+
+def test_the_owners_stop_rules():
+    """Owner, 2026-10-23: stop and ask if a document costs more than $1, or if verification answers 'cannot tell' for
+    more than half of the values (on the first paper, that would mean the prompt is the problem)."""
+    assert mx.DOCUMENT_STOP_USD == Decimal("1") and mx.CANNOT_TELL_STOP == Decimal("0.5")
+    ok = mx.DocumentRun(1, cost=Decimal("1.00"), verified=mx.Verified([], [], {}, values=10, cannot_tell=5))
+    assert mx.stop_reasons(ok) == []
+    dear = mx.DocumentRun(1, cost=Decimal("1.01"), verified=mx.Verified([], [], {}, values=10, cannot_tell=6))
+    assert mx.stop_reasons(dear) == ["the document cost $1.01 (more than $1)",
+                                     "verification answered 'cannot tell' for 6 of 10 values"]

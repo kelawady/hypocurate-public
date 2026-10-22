@@ -228,11 +228,31 @@ def test_a_composition_not_a_spelling_is_the_alloy():
     assert ident(alloy="Cantor alloy").alloy == "name:cantoralloy"
 
 
-def test_celsius_kelvin_and_room_temperature():
-    assert ident().test_temperature == "20 °c" == ident(test_temperature="20 °C", test_temperature_unit=None).test_temperature
-    assert ident(test_temperature="20", test_temperature_unit="°C").key == ident().key
-    assert ident(test_temperature="RT", test_temperature_unit=None).test_temperature == "room temperature"
-    assert ident(test_temperature="room temperature", test_temperature_unit=None).key != ident().key  # a band ≠ 20 °C
+def test_kelvin_is_converted_before_rounding_and_room_temperature_is_the_band():
+    """Owner, 2026-10-23: K to °C, then rounded; a stated 'room temperature' with no number keys to the band, so it
+    matches a record stated as 20 °C or 25 °C (Sprint 1's room-temperature range)."""
+    band = ident(test_temperature="room temperature", test_temperature_unit=None)
+    assert band.test_temperature == "room temperature"
+    assert ident().test_temperature == "room temperature"  # 293 K = 19.85 °C, rounded 20 °C
+    for t, u in (("20", "°C"), ("25 °C", None), ("RT", None), ("298", "K"), ("ambient", None)):
+        assert ident(test_temperature=t, test_temperature_unit=u).key == band.key, (t, u)
+    assert ident(test_temperature="26", test_temperature_unit="°C").test_temperature == "26 °c"
+    assert ident(test_temperature="19", test_temperature_unit="°C").test_temperature == "19 °c"
+    assert ident(test_temperature="1073", test_temperature_unit="K").test_temperature == "800 °c"
+    from hypocurate.pipeline import profile
+    assert profile.ROOM_TEMPERATURE_C == (20.0, 25.0)
+
+
+def test_the_match_key_leaves_out_the_processing_state_only():
+    """Owner, 2026-10-23: the scorer and the re-report rule match without the processing state; its text is reported
+    per pair and adjudicated."""
+    a = ident(processing_state="annealed 1 h at 800 °C")
+    b = ident(processing_state="annealed at 800 °C for 1 h")
+    assert a.key != b.key and a.match_key == b.match_key == idm.match_key(a.to_json())
+    for change in (dict(alloy="Al0.3CoCrFeNi"), dict(test_type="compression"), dict(specimen_label="A2"),
+                   dict(test_temperature="800", test_temperature_unit="°C"), dict(paper_doi="10.1000/other")):
+        assert ident(**change).match_key != a.match_key, change
+    assert idm.MATCH_FIELDS == ("paper", "alloy", "test_type", "test_temperature", "specimen", "version")
 
 
 def test_the_test_type_is_tension_or_compression_when_the_text_says_so():

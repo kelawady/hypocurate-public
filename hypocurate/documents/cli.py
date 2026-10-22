@@ -18,11 +18,15 @@ def add_parser(sub) -> None:
                        ("parse", "parse the stored articles that have no parse yet (parse environment)"),
                        ("retry-patterns", "try publishers' standard PDF addresses for open-access papers not fetched"),
                        ("add-by-hand", "load a PDF a person fetched in a browser (done by hand in this pilot)"),
+                       ("extract", "run the Extractor (extract, verify, freeze S0) on one parsed paper (costs money)"),
                        ("reach", "print the reach table and its milestones")):
         p = docs_sub.add_parser(name, help=text)
         p.add_argument("--source", default="mpea", choices=SOURCES)
         if name == "reach":
             p.add_argument("--csv", help="also write the table as CSV to this file")
+        if name == "extract":
+            p.add_argument("--doi", required=True, help="the paper's DOI (one of the selection's papers)")
+            p.add_argument("--spec", default="H1_v1", help="the evidence specification (default H1_v1)")
         if name == "add-by-hand":
             p.add_argument("--doi", required=True, help="the paper's DOI (one of the selection's papers)")
             p.add_argument("--file", required=True, help="the PDF as downloaded")
@@ -36,6 +40,34 @@ def _selection(engine: Engine, source: str):
     with engine.connect() as conn:
         version = load_sealed_version(conn, latest_sealed_version_id(conn, source))
     return fcc_grain_size(version)
+
+
+def _extract(engine: Engine, args) -> int:
+    from sqlalchemy import text
+    from hypocurate.pipeline.extraction import model_extractor as mx
+    from hypocurate.sources.normalize import doi_group_key
+    key = doi_group_key(args.doi)
+    with engine.connect() as conn:
+        parse_id = conn.execute(text(
+            "SELECT p.id FROM document_parse p JOIN document d ON d.id = p.document_id WHERE d.doi_key = :k "
+            "AND d.kind = 'article' AND p.status = 'parsed' ORDER BY p.id DESC LIMIT 1"), dict(k=key)).scalar()
+    if parse_id is None:
+        print(f"error: no parsed document for {args.doi}", file=sys.stderr)
+        return 1
+    run = mx.extract_document(engine, parse_id, args.spec)
+    report = {"doi_key": key, "parse": parse_id, "failure": run.failure, "calls": run.calls, "cost_usd": str(run.cost),
+              "draft_output": run.draft_output_id,
+              "s0": None if run.frozen is None else {"output": run.frozen.output_id, "snapshot": run.frozen.snapshot_id,
+                                                     "raw_sha256": run.frozen.raw_sha256,
+                                                     "events_sha256": run.frozen.events_sha256,
+                                                     "observations": run.frozen.observations},
+              "verification": None if run.verified is None else run.verified.answers,
+              "conversion_problems": None if run.verified is None else len(run.verified.conversion)}
+    print(json.dumps(report, indent=1))
+    stops = mx.stop_reasons(run)
+    for s in stops:
+        print(f"STOP (owner's rule): {s}", file=sys.stderr)
+    return 2 if stops else (1 if run.failure else 0)
 
 
 def command(args, engine: Engine) -> int:
@@ -78,6 +110,8 @@ def command(args, engine: Engine) -> int:
             return 1
         print(json.dumps({"document": doc, "doi_key": key, "bytes": len(pdf), "by": args.by}))
         return 0
+    if args.documents_command == "extract":
+        return _extract(engine, args)
     from hypocurate.documents import reach
     table = reach.rows(engine, selection)
     for r in table:

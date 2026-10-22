@@ -11,10 +11,13 @@ and the scorer all call `identity`; none builds its own. What each component nor
   'name:<name, case-folded, without spaces>', so it can still match itself but never a composition;
 - processing state, specimen label, location: case-folded, runs of whitespace collapsed, the degree sign unified;
 - test type: 'tension' or 'compression' when the text says so (tensile, compressive), else the text normalized;
-- test temperature: in °C, rounded to the nearest degree, from °C or K; 'room temperature' (or RT, ambient) kept as
-  the band 'room temperature'; anything else, the text normalized.
-Matching is on the whole key and one-to-one (the scorer's rule); a value within tolerance is the scorer's and the
-re-report rule's question, not the identity's."""
+- test temperature: converted to °C (from K) and then rounded to the nearest degree; a stated 'room temperature' (or
+  RT, ambient) and any rounded temperature within Sprint 1's room-temperature range (20 to 25 °C,
+  `pipeline.profile.ROOM_TEMPERATURE_C`) both key to the band 'room temperature' (owner, 2026-10-23), so a record
+  stated as 'room temperature' matches one stated as 20 °C or 25 °C; anything else, the text normalized.
+The scorer and the re-report rule match on `match_key` (owner, 2026-10-23): the identity without the processing state,
+whose text is reported per pair and adjudicated, never matched. Matching is one-to-one (the scorer's rule); a value
+within tolerance is the scorer's and the re-report rule's question, not the identity's."""
 from __future__ import annotations
 
 import hashlib
@@ -22,12 +25,14 @@ import json
 import re
 from dataclasses import asdict, dataclass
 
+from hypocurate.pipeline.profile import ROOM_TEMPERATURE_C
 from hypocurate.sources.normalize import doi_group_key, formula_to_atomic_percent, same_alloy_key
 
 ROOM_TEMPERATURE = "room temperature"
 _RT = re.compile(r"^(room[\s-]*temperature|rt|ambient(\s+temperature)?)$", re.I)
 _NUMBER = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*(°\s*c|℃|c|k)?\s*$", re.I)
-IDENTITY_VERSION = "1"
+IDENTITY_VERSION = "2"  # 2 (owner, 2026-10-23): the room-temperature band; the match key without processing state
+MATCH_FIELDS = ("paper", "alloy", "test_type", "test_temperature", "specimen", "version")
 
 
 def _text(s: str | None) -> str:
@@ -65,8 +70,9 @@ def temperature_key(value: str | None, unit: str | None = None) -> str:
     if not m:
         return t
     number, given = float(m.group(1)), (m.group(2) or _text(unit) or "°c").replace(" ", "")
-    celsius = number - 273.15 if given == "k" else number
-    return f"{round(celsius):d} °c"
+    celsius = round(number - 273.15 if given == "k" else number)
+    low, high = ROOM_TEMPERATURE_C
+    return ROOM_TEMPERATURE if low <= celsius <= high else f"{celsius:d} °c"
 
 
 @dataclass(frozen=True)
@@ -84,8 +90,20 @@ class Identity:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True, ensure_ascii=False,
                                          separators=(",", ":")).encode("utf-8")).hexdigest()
 
+    @property
+    def match_key(self) -> str:
+        return match_key(self.to_json())
+
     def to_json(self) -> dict:
         return asdict(self)
+
+
+def match_key(identity_json: dict) -> str:
+    """The key the scorer and the re-report rule match on (owner, 2026-10-23): every identity field but the
+    processing state, from a stored identity."""
+    picked = {f: identity_json[f] for f in MATCH_FIELDS}
+    return hashlib.sha256(json.dumps(picked, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 class IdentityError(ValueError):

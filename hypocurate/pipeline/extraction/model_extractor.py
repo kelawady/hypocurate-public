@@ -41,6 +41,18 @@ VERIFY_FIELDS = ("parsed_document", "extraction_spec", "extraction_draft")
 ANSWERS = ("yes", "no", "cannot tell")
 NOTE_MAX = 600
 CANNOT_TELL_STOP = Decimal("0.5")  # owner, 2026-10-23: stop and ask above half of the values on the first paper
+DOCUMENT_STOP_USD = Decimal("1")   # owner, 2026-10-23: stop and ask if any single document costs more
+
+
+def stop_reasons(run: "DocumentRun") -> list[str]:
+    """The owner's stop rules (2026-10-23), checked after every document; any reason means: stop and ask."""
+    out = []
+    if run.cost > DOCUMENT_STOP_USD:
+        out.append(f"the document cost ${run.cost} (more than ${DOCUMENT_STOP_USD})")
+    share = run.cannot_tell_share
+    if share is not None and share > CANNOT_TELL_STOP:
+        out.append(f"verification answered 'cannot tell' for {run.verified.cannot_tell} of {run.verified.values} values")
+    return out
 _FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.S)
 
 
