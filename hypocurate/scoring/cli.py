@@ -17,6 +17,7 @@ def add_parser(sub) -> None:
     sc.add_argument("--doi", required=True)
     sc.add_argument("--out", help="write the full tables (pairs and unmatched lists included) as JSON to this file")
     sc.add_argument("--workbook", help="write the extraction workbook (S0 candidates with provenance) to this .xlsx")
+    sc.add_argument("--all", action="store_true", help="score every S0 of the paper (one line each), not only the newest")
     load = scoring_sub.add_parser("load-annotation", help="load an annotation file (refused whole on any problem)")
     load.add_argument("file")
     load.add_argument("--by", required=True, help="the name of the person loading it")
@@ -31,14 +32,17 @@ def _score(engine: Engine, args) -> int:
     from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
     key = doi_group_key(args.doi)
     with engine.connect() as conn:
-        output = conn.execute(text(
+        outputs = conn.execute(text(
             "SELECT x.id FROM extraction_output x JOIN document_parse p ON p.id = x.document_parse_id JOIN document d "
             "ON d.id = p.document_id JOIN evidence_snapshot s ON s.extraction_output_id = x.id AND s.name = 'S0' "
-            "WHERE d.doi_key = :k ORDER BY x.id DESC LIMIT 1"), dict(k=key)).scalar()
+            "WHERE d.doi_key = :k ORDER BY x.id DESC"), dict(k=key)).scalars().all()
         version = load_sealed_version(conn, latest_sealed_version_id(conn, "mpea"))
-    if output is None:
+    if not outputs:
         print(f"error: no S0 for {args.doi}", file=sys.stderr)
         return 1
+    if args.all:
+        return _score_all(engine, key, list(reversed(outputs)), version)
+    output = outputs[0]
     preds, described = sc.predictions_s0(engine, output)
     annotation = sc.annotation_obs(engine, key) or None
     comp, note = sc.compilation_obs(adapters.read(version).records, key, annotation)
@@ -58,6 +62,45 @@ def _score(engine: Engine, args) -> int:
         with open(args.workbook, "wb") as f:
             f.write(xw.build(engine, output, xw.against_compilation(out)))
     return 0
+
+
+def _score_all(engine: Engine, key: str, outputs: list[int], version) -> int:
+    """One line per S0 of the paper, oldest first, each naming its prompt version, conversion rule and parse."""
+    from sqlalchemy import text
+    from hypocurate.scoring import score as sc
+    from hypocurate.sources import adapters
+    annotation = sc.annotation_obs(engine, key) or None
+    records = adapters.read(version).records
+    for output in outputs:
+        preds, described = sc.predictions_s0(engine, output)
+        with engine.connect() as conn:
+            m, parser_version = conn.execute(text(
+                "SELECT x.method, p.parser_version FROM extraction_output x JOIN document_parse p "
+                "ON p.id = x.document_parse_id WHERE x.id = :x"), dict(x=output)).one()
+        label = {"output": output, "snapshot": described["snapshot_id"], "prompt": m.get("prompt_version"),
+                 "rule": m.get("conversion_rule", "none"), "parse": parser_version,
+                 "reconverted_from": m.get("reconverted_from")}
+        tables = [("vs annotation", sc.score_paper(preds, annotation, "annotation"))] if annotation else []
+        comp, note = sc.compilation_obs(records, key, annotation)
+        tables.append(("vs compilation (MPEA)", sc.score_paper(preds, comp, "compilation")))
+        passages = _passages(engine, output)
+        for name, s in tables:
+            r = s.metrics()
+            print(json.dumps(label | {"table": name, "denominator": r["denominator"], "matched": r["matched"],
+                                      "own": r["predictions_own"], "pending": r["unmatched_pending_adjudication"],
+                                      "condition_not_stated": r["condition_not_stated"],
+                                      "condition_from_methods": r["condition_from_methods"],
+                                      "not_answered": described["not_answered"], "passage_provenances": passages,
+                                      "note": "; ".join(x for x in (r["note"], note) if x) or None}))
+    return 0
+
+
+def _passages(engine: Engine, output: int) -> int:
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT count(*) FROM candidate_value v JOIN candidate_observation o ON o.id = v.observation_id "
+            "WHERE o.extraction_output_id = :x AND (v.provenance->>'passage')::boolean"), dict(x=output)).scalar_one()
 
 
 def command(args, engine: Engine | None) -> int:

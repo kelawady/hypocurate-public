@@ -43,6 +43,18 @@ def problem(document: ParsedDocument, p: Provenance) -> str | None:
     return None
 
 
+def source_of(document: ParsedDocument, table_index: int, row_index: int) -> dict | None:
+    """For a row the row split made (owner, 2026-10-23): the merged source row it came from and its part; None for a
+    row that was not split."""
+    table = document.table(table_index)
+    origin = (table or {}).get("row_origin")
+    if not origin or not 0 <= row_index < len(origin) or origin[row_index]["of"] == 1:
+        return None
+    o = origin[row_index]
+    return {"source_row": o["source_row"], "part": o["part"], "of": o["of"],
+            "source_cells": table["source_rows"][o["source_row"]]}
+
+
 def problems(document: ParsedDocument, record: CandidateRecord) -> list[str]:
     """Every value's and link's provenance that does not resolve, by field."""
     out = []

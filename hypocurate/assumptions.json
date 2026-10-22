@@ -11421,5 +11421,95 @@
     ],
     "history": [],
     "notes": []
+  },
+  {
+    "key": "pilot_row_split",
+    "name": "Splitting table rows the parser merged",
+    "state": "in_force",
+    "statement": "'docling + row split v1': a stored parse's table row (never the header) is split into N rows when every non-empty cell holds one item or exactly N items (N >= 2), at least two cells hold N items, and those are numeric; items are separated by whitespace not preceded by a comma; one-item cells are copied to every new row; text is copied verbatim and no number is changed. Each split table records, for every new row, its source row and part, so a provenance of a split row also resolves to the merged source cell. A row with two or more numeric items in a cell that does not qualify stays merged and is counted per paper as 'rows merged by the parser'. The split parse is a new parse (the old kept); only papers whose tables change are re-extracted, on the current prompt.",
+    "value": {
+      "text": "docling + row split v1",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "Parsed documents, provenance, and the papers re-extracted after a split (2026-10-23: ijplas.2018.10.005 only).",
+    "reason": "Docling (both table modes) merged ijplas Table 1's six conditions into one row; pymupdf keeps rows but mangles decimals.",
+    "evidence": [
+      "The owner's answers of 2026-10-23 (evening) to the parse and provenance questions: 'Both recommended', with his additions."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.rowsplit:RULE",
+          "equals": "docling + row split v1"
+        },
+        {
+          "ref": "python:hypocurate.documents.rowsplit:PARSER_VERSION_SUFFIX",
+          "equals": "+rowsplit-1"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_rowsplit.py::test_the_ijplas_row_splits_into_six_and_the_inconsistent_row_stays_merged",
+      "tests/test_rowsplit.py::test_text_cells_and_single_numbers_are_never_split",
+      "tests/test_rowsplit.py::test_a_split_rows_provenance_resolves_and_names_its_merged_source_cell",
+      "tests/test_rowsplit.py::test_the_split_parse_is_stored_as_a_new_parse_and_logged"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_passage_provenance",
+    "name": "Page-plus-snippet citations accepted as passages",
+    "state": "in_force",
+    "statement": "Conversion rule 'passage-1': a provenance that gives a page and a snippet but neither a table row nor a sentence is accepted by code as a passage citation (stored with the snippet as its sentence and marked 'passage'); it resolves ('supported') only when the snippet occurs verbatim on the cited page. It is weaker than a sentence or a row and is reported as its own line by the scorer. Stored outputs converted under the earlier rule are converted again into a new extraction output with its own S0 (no model call; the same raw answer and hash; the rule and the source output recorded); the earlier S0s are kept. On 2026-10-23, 86 items of eight papers' v3 outputs were reclassified from 'no provenance' to 'passage' by this code rule, not by the model.",
+    "value": {
+      "text": "passage-1",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "S0 (new snapshots 20-27), provenance, the scorer and the results note.",
+    "reason": "The output schema allows a citation without a sentence; the interface required one; 29 of 29 methods-context snippets were verbatim on their cited page.",
+    "evidence": [
+      "The owner's answers of 2026-10-23 (evening) to the parse and provenance questions: 'Both recommended', with his additions."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.extraction.model_extractor:CONVERSION_RULE",
+          "equals": "passage-1"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_extractor.py::test_a_page_and_snippet_provenance_is_accepted_as_a_passage_that_resolves_on_its_page",
+      "tests/test_extractor.py::test_a_stored_output_is_converted_again_into_a_new_s0_and_the_old_one_is_kept"
+    ],
+    "history": [],
+    "notes": []
   }
 ]

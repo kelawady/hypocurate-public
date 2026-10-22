@@ -19,6 +19,7 @@ def add_parser(sub) -> None:
                        ("retry-patterns", "try publishers' standard PDF addresses for open-access papers not fetched"),
                        ("add-by-hand", "load a PDF a person fetched in a browser (done by hand in this pilot)"),
                        ("extract", "run the Extractor (extract, verify, freeze S0) on one parsed paper (costs money)"),
+                       ("rowsplit", "apply 'docling + row split v1' to the newest parse of every article in the selection"),
                        ("reach", "print the reach table and its milestones")):
         p = docs_sub.add_parser(name, help=text)
         p.add_argument("--source", default="mpea", choices=SOURCES)
@@ -112,6 +113,18 @@ def command(args, engine: Engine) -> int:
         return 0
     if args.documents_command == "extract":
         return _extract(engine, args)
+    if args.documents_command == "rowsplit":
+        from sqlalchemy import text
+        from hypocurate.documents.rowsplit import store_split
+        with engine.connect() as conn:
+            newest = conn.execute(text(
+                "SELECT DISTINCT ON (d.doi_key) d.doi_key, p.id FROM document_parse p JOIN document d ON d.id = p.document_id "
+                "WHERE d.kind = 'article' AND p.status = 'parsed' AND d.doi_key = ANY(:k) ORDER BY d.doi_key, p.id DESC"),
+                dict(k=[p.doi_key for p in selection.papers])).all()
+        for key, parse_id in newest:
+            new, summary = store_split(engine, parse_id)
+            print(json.dumps({"doi_key": key, "parse": parse_id, "new_parse": new} | summary))
+        return 0
     from hypocurate.documents import reach
     table = reach.rows(engine, selection)
     for r in table:
