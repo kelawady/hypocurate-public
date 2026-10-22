@@ -77,7 +77,7 @@ LOG = logging.getLogger("hypocurate.access")
 
 # Fixed codes and their fixed reasons: nothing a caller passes is copied into a reason.
 DENIALS = {
-    "unknown_role": "the role is not one of the five agent roles or the code roles",
+    "unknown_role": "the role is not one of the agent roles or the code roles",
     "not_a_code_role": "only the code roles (Inclusion, Checks, Statistics, gap facts, narrowing) are bound without "
                        "an agent setting",
     "unknown_stage": "the stage is not one of the access stages",
@@ -92,6 +92,9 @@ DENIALS = {
     "checks_not_current": "the completed Checks result does not cover exactly the run's records and flags",
     "not_frozen": "no dataset is frozen for this run",
     "facts_missing": "the stored facts the Analyst's stage needs are not there (step 8b)",
+    "no_document": "the Extractor reads one named parsed document; none was bound",
+    "no_draft": "there is no extraction draft for this parsed document",
+    "spec_not_named": "the Extractor's setting names no evidence specification",
 }
 FAILURES = ("unknown_run", "unknown_invocation", "lock_timeout", "reader_error", "database_error", "file_guard")
 FUNCTIONS = frozenset(FIELDS) | {"role_input", "bind", "guarded_run"}
@@ -125,6 +128,8 @@ def _detail(ctx: AccessContext, result: str, code: str | None, actual: str | Non
         d["source_version"] = int(ctx.source_version_id)
     if ctx.invocation_id is not None:
         d["invocation"] = int(ctx.invocation_id)
+    if ctx.document_parse_id is not None:
+        d["document_parse"] = int(ctx.document_parse_id)
     for name, raw, valid in (("role", ctx.role, ALL_ROLES), ("stage", ctx.stage, STAGES)):
         if bounded(raw, valid) == "invalid" and raw != "invalid":
             d[f"given_{name}_length"] = len(raw) if isinstance(raw, str) else -1
@@ -177,10 +182,11 @@ class Access:
         if _trusted is not _TRUSTED:
             raise TypeError("an access object is created only by hypocurate.access.dispatch.bind")
         if not isinstance(context, AccessContext) or not (
-                isinstance(context.run_id, int) or context.run_id is None
-                and isinstance(context.source_version_id, int) and isinstance(context.invocation_id, int)):
+                isinstance(context.run_id, int) or context.run_id is None and isinstance(context.invocation_id, int)
+                and (isinstance(context.source_version_id, int) or isinstance(context.document_parse_id, int))):
             raise TypeError("an access object needs an AccessContext with an integer run id, or (registration) "
-                            "an integer source version and invocation")
+                            "an integer source version and invocation, or (document) an integer parsed document and "
+                            "invocation")
         object.__setattr__(self, "_engine", engine)
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_lock_timeout_ms", int(lock_timeout_ms))
@@ -238,8 +244,8 @@ class Access:
 
     def _transaction(self, conn: Connection, ctx: AccessContext, function: str, fields: tuple) -> tuple:
         conn.execute(text(f"SET LOCAL lock_timeout = {self._lock_timeout_ms}"))
-        if ctx.run_id is None:  # a registration read (step 8a): no run, no lock; the invocation decides
-            actual = registration_stage(conn, ctx)
+        if ctx.run_id is None:  # a registration or document read: no run, no lock; the invocation decides
+            actual = document_stage(conn, ctx) if ctx.document_parse_id is not None else registration_stage(conn, ctx)
             if actual is None:
                 return ("unknown_invocation",)
         else:
@@ -289,6 +295,20 @@ def registration_stage(conn: Connection, ctx: AccessContext) -> str | None:
     ok = (row.scope == "registration" and row.role == ctx.role and row.source_version_id == ctx.source_version_id
           and row.sealed)
     return "registration" if ok else "none"
+
+
+def document_stage(conn: Connection, ctx: AccessContext) -> str | None:
+    """'document' when the context's invocation is a document invocation of its role on its parsed document and that
+    document is parsed (Sprint 2 pilot); 'none' otherwise; None when there is no such invocation."""
+    row = conn.execute(text("SELECT i.scope, i.role, di.document_parse_id, p.status FROM agent_invocation i "
+                            "LEFT JOIN document_invocation di ON di.invocation_id = i.id "
+                            "LEFT JOIN document_parse p ON p.id = di.document_parse_id WHERE i.id = :i"),
+                       dict(i=ctx.invocation_id)).one_or_none()
+    if row is None:
+        return None
+    ok = (row.scope == "document" and row.role == ctx.role and row.document_parse_id == ctx.document_parse_id
+          and row.status == "parsed")
+    return "document" if ok else "none"
 
 
 def _policy(ctx: AccessContext, field: str, actual: str) -> str | None:

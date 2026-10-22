@@ -21,8 +21,8 @@ from sqlalchemy.engine import Connection, Engine
 
 from hypocurate.db.models import EXTRACTION_RULE
 from hypocurate.db.retry import run_transaction
-from hypocurate.pipeline.extraction.identity import identity
-from hypocurate.pipeline.extraction.interface import CandidateRecord, ExtractionResult, ParsedDocument
+from hypocurate.pipeline.extraction.identity import cited_identity, identity
+from hypocurate.pipeline.extraction.interface import THIS_PAPER, CandidateRecord, ExtractionResult, ParsedDocument
 
 NO_PROVENANCE = "the extractor gave no provenance and no ambiguity note"
 TAKEN_BY = "code"
@@ -46,9 +46,10 @@ def record_identity(document: ParsedDocument, record: CandidateRecord, index: in
                     if record.value(f) and record.value(f).provenance), None)
     location = located.location if located else f"unlocated item {index}"
     temp = record.value("test_temperature")
-    return identity(document.doi_key, get("alloy"), get("processing_state"), get("test_type"), get("test_temperature"),
-                    get("specimen_label"), location, composition=get("composition"),
-                    test_temperature_unit=temp.unit if temp else None)
+    own = identity(document.doi_key, get("alloy"), get("processing_state"), get("test_type"), get("test_temperature"),
+                   get("specimen_label"), location, composition=get("composition"),
+                   test_temperature_unit=temp.unit if temp else None)
+    return own if record.reported_from.strip().casefold() == THIS_PAPER else cited_identity(record.reported_from, own)
 
 
 def _jsonb(value) -> str | None:
@@ -67,7 +68,8 @@ def _store(conn: Connection, document: ParsedDocument, result: ExtractionResult)
         obs = conn.execute(text(
             "INSERT INTO candidate_observation (extraction_output_id, item_index, identity, identity_key) "
             "VALUES (:x, :i, CAST(:d AS jsonb), :k) RETURNING id"),
-            dict(x=out, i=index, d=_jsonb(ident.to_json()), k=ident.key)).scalar_one()
+            dict(x=out, i=index, d=_jsonb(ident.to_json() | {"reported_from": record.reported_from}),
+                 k=ident.key)).scalar_one()
         value_ids = {}
         for v in record.values:
             note = v.ambiguity_note or (NO_PROVENANCE if v.provenance is None else None)

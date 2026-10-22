@@ -92,6 +92,16 @@ class IdentityError(ValueError):
     pass
 
 
+CITED = "cited:"
+
+
+def cited_identity(citation: str, base: Identity) -> Identity:
+    """A record the paper reports from another paper (owner, 2026-10-23, Q-E): its paper is 'cited:<citation>', so it
+    never matches an observation of the paper read, nor a compilation record of it."""
+    from dataclasses import replace
+    return replace(base, paper=CITED + _text(citation))
+
+
 def identity(paper_doi: str, alloy: str | None, processing_state: str | None, test_type: str | None,
              test_temperature: str | None, specimen_label: str | None, observation_location: str | None, *,
              composition: str | None = None, test_temperature_unit: str | None = None) -> Identity:

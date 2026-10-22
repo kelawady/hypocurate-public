@@ -96,10 +96,15 @@ class Link:
         return self.ambiguity_note is not None
 
 
+THIS_PAPER = "this paper"
+
+
 @dataclass(frozen=True)
 class CandidateRecord:
     values: tuple[Value, ...]
     links: tuple[Link, ...] = ()
+    # 'this paper', or the citation as written when the row reports another paper's data (owner, 2026-10-23, Q-E)
+    reported_from: str = THIS_PAPER
 
     def value(self, name: str) -> Value | None:
         return next((v for v in self.values if v.field == name), None)

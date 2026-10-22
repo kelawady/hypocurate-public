@@ -41,7 +41,9 @@ from hypocurate.access.vocabulary import (CALIBRATION_METHODS, CATEGORY_FIELDS, 
                                           SENSITIVITY_KEYS, SINGLE_PHASE, SOURCE_KEYS, TEMPERATURE_BANDS, TEST_TYPES,
                                           VALUE_STATUSES)
 
-ROLES = ("planner", "curator", "critic", "analyst", "commentator")
+# Sprint 2 pilot (owner, 2026-10-22, an approved safeguard change): the Extractor reads one parsed document in no
+# run; the Reconciler reads nothing until its lists are built and reviewed with R5.
+ROLES = ("planner", "curator", "critic", "analyst", "commentator", "extractor", "reconciler")
 # The code roles of PRD 4 (step 6, owner 2026-10-05): Inclusion and Checks are code, not
 # agents. They read through access objects too, bound by `dispatch.bind_code`, so their reads
 # are logged. No agent setting can bind as one of them. Step 7 (owner, 2026-10-05; a safeguard
@@ -58,8 +60,10 @@ ALL_ROLES = ROLES + CODE_ROLES
 # version, bound by a registration invocation (`dispatch.bind_invocation`), with no run.
 # narrowed (step 8b, owner 2026-10-07, A4): running, no plan, and code's narrowing decision of partly
 # sufficient stored; no plan can be locked from here (lock_rules needs before_lock; migration 0006).
+# document (Sprint 2 pilot, owner 2026-10-22): not a run stage; the Extractor reads one parsed document, bound by a
+# document invocation (`dispatch.bind_invocation`), with no run.
 STAGES = ("none", "before_lock", "curation", "analysis", "closed_without_freeze", "final", "final_without_freeze",
-          "registration", "narrowed")
+          "registration", "narrowed", "document")
 
 FIELDS = MappingProxyType({
     "claim": "The claim in words: query number, version number, text, and whether it is a narrower question.",
@@ -76,6 +80,15 @@ FIELDS = MappingProxyType({
                             "No data file, no claim, no plan, no other version.",
     "curation_targets": "For the Curator at registration (step 8a): the fields it may propose a value for, "
                         "with each field's vocabulary or unit (vocabulary.CURATION_TARGETS).",
+    "parsed_document": "For the Extractor (Sprint 2 pilot): the one parsed document its invocation names, as stored "
+                       "(pages, text blocks and tables with their page, table and row indexes), checked against its "
+                       "hash. No DOI, no compilation record, no other document, no claim.",
+    "extraction_spec": "For the Extractor (Sprint 2 pilot; owner, 2026-10-22): the reading sections of the evidence "
+                       "specification its setting names (unit of observation, required measurements, required "
+                       "context, linkage evidence, ambiguity handling), with the specification's key, version and "
+                       "hash. Never the claim, the analysis, the exclusion rules or the re-report rule.",
+    "extraction_draft": "For the Extractor's verification call (Sprint 2 pilot; owner, 2026-10-23): the raw output "
+                        "of its own extraction call on the same parsed document, as stored with its hash.",
     "record_metadata": "Per stored record: id, source, item index, kind, alloy label and composition, DOI "
                        "(DOI syntax only), each field's status, and the non-outcome category values from "
                        "their vocabularies. No measured number of any field, no paper title, no origin key.",
@@ -160,6 +173,13 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
     # built and its lists are decided and reviewed. Its step 5 lists are kept in the register entry
     # 'access_allow_lists' as the starting point.
     "commentator": MappingProxyType({}),
+    # Sprint 2 pilot (owner, 2026-10-22): the Extractor reads one parsed document and the reading sections of its
+    # evidence specification; its verification call also reads its own draft. Nothing that holds the compilation.
+    "extractor": MappingProxyType({
+        "document": frozenset({"parsed_document", "extraction_spec", "extraction_draft"}),
+    }),
+    # Until R5: the Reconciler's lists (which may include compilation records; its outputs are S1, never S0).
+    "reconciler": MappingProxyType({}),
 })
 
 

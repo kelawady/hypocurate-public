@@ -12,7 +12,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class AccessContext:
     """A run context (run_id set), or, from step 8a, a registration context: no run, the Curator,
-    stage 'registration', the sealed source version its invocation names."""
+    stage 'registration', the sealed source version its invocation names; or, from the Sprint 2 pilot, a document
+    context: no run, the Extractor, stage 'document', the parsed document its invocation names."""
     run_id: int | None
     role: str
     stage: str
@@ -20,3 +21,4 @@ class AccessContext:
     agent_setting_id: int | None = None
     source_version_id: int | None = None
     invocation_id: int | None = None
+    document_parse_id: int | None = None

@@ -250,6 +250,53 @@ def curation_targets(conn: Connection, ctx: Context) -> dict:
     return {field: dict(spec) for field, spec in vocab.CURATION_TARGETS.items()}
 
 
+# --- the Extractor (Sprint 2 pilot; owner, 2026-10-22) ---------------------------------------------------------------
+# Each reads the one parsed document its invocation names, or the specification its setting names. None of them reads
+# a source version, a record, a run or a claim: S0's reference-blindness is enforced here and only here.
+PARSED_KEYS = ("pages", "texts", "tables")
+
+
+def parsed_document(conn: Connection, ctx: Context) -> dict:
+    """The parsed document as stored, checked against its hash: pages, text blocks and tables (no DOI)."""
+    if ctx.document_parse_id is None:
+        raise Refused("no_document")
+    row = conn.execute(text("SELECT document_id, parsed, parsed_sha256 FROM document_parse WHERE id = :p "
+                            "AND status = 'parsed'"), dict(p=ctx.document_parse_id)).one_or_none()
+    if row is None or hashlib.sha256(row.parsed.encode("utf-8")).hexdigest() != row.parsed_sha256:
+        raise Refused("no_document")
+    content = json.loads(row.parsed)
+    return {"document_id": row.document_id, "parse_sha256": row.parsed_sha256,
+            **{k: content.get(k) for k in PARSED_KEYS}}
+
+
+def extraction_spec(conn: Connection, ctx: Context) -> dict:
+    """The reading sections of the evidence specification the Extractor's setting names (owner, 2026-10-22): never
+    the claim, the analysis, the exclusion rules or the re-report rule."""
+    from hypocurate.pipeline.extraction.interface import EvidenceSpec
+    name = conn.execute(text("SELECT settings->>'evidence_spec' FROM agent_setting WHERE id = :a"),
+                        dict(a=ctx.agent_setting_id)).scalar()
+    if not name:
+        raise Refused("spec_not_named")
+    spec = EvidenceSpec.load(name)
+    return {"key": spec.key, "version": spec.version, "sha256": spec.sha256,
+            "sections": {s: spec.content[s] for s in spec.content["extractor_sections"]}}
+
+
+def extraction_draft(conn: Connection, ctx: Context) -> dict:
+    """The raw output of the Extractor's own extraction call on the same parsed document (the newest), checked
+    against its hash, for the verification call (owner, 2026-10-23)."""
+    if ctx.document_parse_id is None:
+        raise Refused("no_document")
+    row = conn.execute(text(
+        "SELECT x.id, x.raw_output, x.raw_sha256 FROM extraction_output x "
+        "JOIN document_invocation di ON di.invocation_id = x.invocation_id "
+        "WHERE x.document_parse_id = :p AND di.document_parse_id = :p AND x.status = 'returned' "
+        "AND x.method->>'step' = 'extract' ORDER BY x.id DESC LIMIT 1"), dict(p=ctx.document_parse_id)).one_or_none()
+    if row is None or hashlib.sha256(row.raw_output.encode("utf-8")).hexdigest() != row.raw_sha256:
+        raise Refused("no_draft")
+    return {"output_id": row.id, "raw_sha256": row.raw_sha256, "raw_output": row.raw_output}
+
+
 def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
     """No measured number of any field (owner, 2026-10-05): statuses, categories from their
     vocabularies, identity. No paper title and no origin key (step 5 review, finding 3)."""
@@ -629,4 +676,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "gap_report": gap_report, "outcome": outcome, "record_conditions": record_conditions, "set_flags": set_flags,
     "frozen_analysis_data": frozen_analysis_data, "candidate_counts": candidate_counts,
     "analyst_facts": analyst_facts,
+    "parsed_document": parsed_document, "extraction_spec": extraction_spec, "extraction_draft": extraction_draft,
 }

@@ -1,18 +1,15 @@
-<!-- Extractor prompt, version 1 (draft, 2026-10-22; first sent on Friday after the access allow-list exists). -->
-You read one materials-science paper, given as parsed text blocks and tables with page numbers and table and row
-indexes. List every observation the paper reports that matches the evidence specification below.
+You read one materials-science paper, given as parsed text blocks and tables, each with its page number and its table and row indexes. Find every observation the paper reports in which a material's grain size and its yield strength are given for the same specimen or state, as the evidence specification describes, and return them all.
 
-For each observation give its values exactly as written, each with its provenance: the page, and either the table
-index and row index, or the sentence it was read from, and a short snippet copied from that place. Give the links
-between the grain size and the yield strength (and any other values) that show they belong to one specimen, with the
-evidence for the link: the same table row, the same specimen label, an explicit sentence, or a methods statement.
+The specification's context fields (phase, processing state, test type, test temperature, strain rate and the others) are things to record for every observation, exactly as the paper states them. They are never a filter: return an observation even if its test type, temperature or phase differs from the specification's examples. Code decides later what is used.
 
-If you cannot tell which specimen a value belongs to, keep the value and write an ambiguity note; never guess. If a
-value comes only from a figure with no stated number, leave it out. Report every specimen the paper gives separately.
-Answer with JSON that matches the output schema, and nothing else.
+For every observation, give each value exactly as written, with its unit as written, and its provenance: the page, and either the table index and row index, or the sentence it was read from, with a short snippet copied from that place. Give the links that make the values one observation (most importantly between the grain size and the yield strength), each with its kind and its provenance: the same table row, the same specimen label, an explicit sentence, or a methods statement.
 
-Evidence specification (the parts that say what to read):
-{spec_sections}
+Rules:
+- If you cannot tell which specimen or state a value belongs to, keep the value and write an ambiguity note. Never guess.
+- If the paper shows a value only in a figure, with no number stated in the text or a table, return that value with text "figure only", no provenance, and the ambiguity note "figure only; no number stated", and give the figure in the note. Do not read numbers off figures.
+- If the paper gives a range (for example "0.95-1.1 GPa"), write the range as the value's text.
+- Report every specimen the paper gives separately as its own observation.
+- If a row or sentence reports another paper's data (for example a comparison table citing other work), return it with "reported_from" set to that citation as written, not to "this paper". Never present cited data as this paper's own.
+- Use only the paper. Do not use anything you know from elsewhere.
 
-The paper:
-{document}
+Answer with one JSON object that matches the output schema, and nothing else.
