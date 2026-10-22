@@ -1,0 +1,26 @@
+{
+  "key": "H2",
+  "version": "1",
+  "source": "PRD v1.2 Appendix A, Table A2; qualifying grain size approved by Prof. El-Awady 2026-10-22 (D27)",
+  "claim": "Grain refinement still strengthens BCC high-entropy alloys at elevated temperature (800 °C and above).",
+  "unit_of_observation": "As H1, with the test temperature ≥ 800 °C and test type tension or compression (recorded).",
+  "required_measurements": {
+    "yield_strength": "Yield strength (0.2 per cent offset or as reported) at the test temperature.",
+    "grain_size": "Either (a) the as-processed grain size reported for the tested specimen or (b) the grain size measured at or after exposure to the test temperature, with the type recorded on every record, so that a later analysis can be run on (a), (b) or both without re-extraction."
+  },
+  "required_context": {
+    "composition": "As H1.",
+    "phase": "BCC (single-phase or BCC-matrix, recorded which).",
+    "processing_state": "As H1.",
+    "test_type": "Tension or compression (recorded).",
+    "test_temperature": "Numeric.",
+    "exposure_time": "Exposure time at temperature if reported.",
+    "strain_rate": "If reported."
+  },
+  "permissible_comparisons": "None are made in the pilot. For a later analysis, tension and compression are separate sets and each temperature band is separate; pooling them with only an alloy baseline is not permitted.",
+  "linkage_evidence": "As H1, with test type and test temperature part of the observation identity.",
+  "ambiguity_handling": "As H1.",
+  "exclusion_rules": "Grain size below 0.1 µm excluded; model-recalled values never. Compression is not excluded (it differs from H1's rule and is recorded as such); it is kept as its own set.",
+  "analysis": "None in the pilot. The inventory reports what was recovered, by state and grain-size type, and for what was not, the cause: read with no grain size; inaccessible; not parsed; compilation records lacking the field.",
+  "extractor_sections": ["unit_of_observation", "required_measurements", "required_context", "linkage_evidence", "ambiguity_handling"]
+}

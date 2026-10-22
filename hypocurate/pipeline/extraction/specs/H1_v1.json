@@ -1,0 +1,31 @@
+{
+  "key": "H1",
+  "version": "1",
+  "source": "PRD v1.2 Appendix A, Table A1; approved by the owner 2026-10-22",
+  "claim": "In single-phase FCC high-entropy alloys tested in tension at room temperature, yield strength increases with decreasing grain size.",
+  "unit_of_observation": "One alloy (one composition within 0.1 at.% per element), in one processing state (one recrystallisation or annealing condition), tested under one condition (tension, one temperature), with one grain size and one yield strength. Several specimens of the same state reported as one mean are one observation; separately reported specimens are separate observations.",
+  "required_measurements": {
+    "yield_strength": "Yield strength, MPa, 0.2 per cent offset (or as reported, with the definition recorded).",
+    "grain_size": "Grain size, µm, mean linear intercept or equivalent diameter (the method recorded; twin boundaries counted or not, recorded if stated)."
+  },
+  "required_context": {
+    "composition": "Composition in at.% (from the alloy name if the paper gives nominal composition; measured if given).",
+    "phase": "Single-phase FCC as stated by the paper or as assigned by decision (recorded which).",
+    "processing_state": "Processing route and final heat treatment.",
+    "test_type": "Tension.",
+    "test_temperature": "20 to 25 °C or 'room temperature'.",
+    "strain_rate": "If reported."
+  },
+  "permissible_comparisons": "Tension only; one temperature band; different alloys pooled with a baseline per alloy; different processing states of one alloy are separate observations within the same alloy.",
+  "linkage_evidence": {
+    "accepted_by_rule": "The same row of one table, where the row names the specimen or state.",
+    "accepted_by_a_person": "The same specimen label used in text or a figure legend; an explicit sentence linking them; a methods statement that all tensile specimens came from one microstructural state.",
+    "not_acceptable": "A grain size from one paper and a strength from another; a grain size for an as-cast state paired with a strength for an annealed one; a value read from a figure without a stated number (figure digitisation is deferred)."
+  },
+  "identity_and_rereports": "A record whose paper, alloy, processing state, grain size and yield strength match a compilation record within 2 per cent relative is a re-report of that observation, counted once with the compilation record as survivor. A record from a paper the compilation used but for a specimen or state it lacks is new. Two records from different papers for the same alloy and state are separate observations (different specimens) unless one paper states it reports the other's data.",
+  "ambiguity_handling": "A value whose specimen cannot be identified is kept as 'unresolved' and never pooled. A paper reporting a range is recorded as a range and excluded from the primary set. Conflicting values for one specimen in one paper (text versus table) are 'disputed' until the owner resolves them.",
+  "exclusion_rules": "Grain size below 0.1 µm excluded; compression excluded from the primary set (sensitivity set keeps it); model-recalled values never.",
+  "analysis": "Yield strength = baseline(alloy) + k × d^-½; one-sided k > 0 at 0.05; uncertainty grouped by paper with the small-sample correction; fixed minimums 30 / 5 / 10 / 10. Conditions: MPEA only; extracted only under 'use what is available'; the augmented pool (MPEA plus extracted, re-reports counted once; Texas A&M excluded, D24).",
+  "owners_choices": "Include compression tests in a sensitivity set only: yes. Include Al-containing alloys the paper calls single-phase FCC: yes, as the paper states, with the phase status 'stated by source'. Twin boundaries: record the paper's convention; do not convert.",
+  "extractor_sections": ["unit_of_observation", "required_measurements", "required_context", "linkage_evidence", "ambiguity_handling"]
+}

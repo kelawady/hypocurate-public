@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HypoCurate extractor output, version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["records"],
+  "properties": {
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["values", "links"],
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "text"],
+              "properties": {
+                "field": {"enum": ["alloy", "composition", "processing_state", "specimen_label", "grain_size",
+                                   "grain_size_type", "yield_strength", "test_type", "test_temperature",
+                                   "strain_rate", "phase"]},
+                "text": {"type": "string", "minLength": 1},
+                "unit": {"type": ["string", "null"]},
+                "definition": {"type": ["string", "null"]},
+                "provenance": {"$ref": "#/$defs/provenance"},
+                "ambiguity_note": {"type": ["string", "null"]}
+              }
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from_field", "to_field"],
+              "properties": {
+                "from_field": {"type": "string"},
+                "to_field": {"type": "string"},
+                "kind": {"enum": ["same_table_row", "specimen_label", "explicit_sentence", "methods_statement", null]},
+                "provenance": {"$ref": "#/$defs/provenance"},
+                "ambiguity_note": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["page", "snippet"],
+      "properties": {
+        "page": {"type": "integer", "minimum": 1},
+        "snippet": {"type": "string", "minLength": 1},
+        "table_index": {"type": ["integer", "null"], "minimum": 0},
+        "row_index": {"type": ["integer", "null"], "minimum": 0},
+        "sentence": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
