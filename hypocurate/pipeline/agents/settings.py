@@ -27,6 +27,7 @@ MODELS = MappingProxyType({
     # Sprint 2 pilot (owner, 2026-10-22, register 'pilot_extractor_models'): Sonnet for the first pass; Opus as a
     # second method on the annotated papers is a later setting, added only after S0 scoring works.
     "extractor": "claude-sonnet-5-5",
+    "reconciler": "claude-sonnet-5-5",  # R5 (2026-10-23), register 'pilot_reconciler_placement'
 })
 
 RUN_ROLES = ("planner", "critic", "analyst")
@@ -135,6 +136,21 @@ def extractor_variant(step: str, spec: str, prompt_version: str = EXTRACTOR_PROM
         "instruction": instruction, "model": MODELS["extractor"], "limits": EXTRACTOR_LIMITS[step],
         "settings": MappingProxyType({"reasoning_effort": EXTRACTOR_EFFORT, "step": step,
                                       "prompt_version": prompt_version, "evidence_spec": spec}),
+    })
+
+
+RECONCILER_PROMPT_VERSION = "v1"
+RECONCILER_LIMITS = MappingProxyType({"max_tokens": 16000, "max_output_chars": 100000})
+
+
+def reconciler_variant(prompt_version: str = RECONCILER_PROMPT_VERSION) -> Mapping[str, Any]:
+    """The Reconciler's settings: its instruction is the versioned prompt file (Design D17)."""
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "extraction" / "prompts" / "reconcile" / prompt_version / "reconcile.md"
+    return MappingProxyType({
+        "instruction": path.read_text(encoding="utf-8").strip(), "model": MODELS["reconciler"],
+        "limits": RECONCILER_LIMITS,
+        "settings": MappingProxyType({"reasoning_effort": EXTRACTOR_EFFORT, "prompt_version": prompt_version}),
     })
 
 

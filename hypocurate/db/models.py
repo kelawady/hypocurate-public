@@ -1134,6 +1134,11 @@ EVIDENCE_STATES = ("proposed", "supported", "accepted", "disputed", "unresolved"
 STATE_OBJECTS = ("observation", "link", "mapping")
 # The Reconciler's proposals (owner, 2026-10-23: per document, before the runs; register 'pilot_reconciler_placement').
 MAPPING_KINDS = ("alias_to_composition", "column_to_field", "condition_to_category", "same_observation")
+# The owner's review sheet, his time log, Auditor findings and value corrections (R5, R10; owner, 2026-10-23).
+FINDING_KINDS = ("duplicate", "not_comparable", "implausible_value", "missing_link", "missing_context",
+                 "mapping_doubtful", "value_without_evidence")
+CONSEQUENCES = ("re_extract", "correction", "expert_review", "qualified_unresolved", "search_target")
+TIME_ACTIVITIES = ("annotation", "review_sheet", "auditor_findings", "repair_fetch")
 SNAPSHOT_NAMES = ("S0", "S1", "S2")
 EXTRACTION_RULE = "extraction"  # the rule that records every new candidate as 'proposed'
 STOP_REASONS = ("corpus_processed", "full_text_inaccessible", "fetched_not_parsed", "specimen_metadata_missing",
@@ -1463,6 +1468,86 @@ class AnnotationFile(Base):
         CheckConstraint("filename ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.](xlsx|csv)$'", name="filename"),
         CheckConstraint("length(template_version) BETWEEN 1 AND 40", name="template_version"),
         CheckConstraint(_named("loaded_by"), name="loaded_by_named"),
+    )
+
+
+class ReviewFile(Base):
+    """A review sheet as the owner returned it (R5, R10), with its SHA-256 (checked by the database). Append-only."""
+    __tablename__ = "review_file"
+    id: Mapped[int] = pk()
+    filename: Mapped[str] = mapped_column(Text)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(Text)
+    loaded_by: Mapped[str] = mapped_column(Text)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        UniqueConstraint("sha256"),
+        CheckConstraint(f"octet_length(content) BETWEEN 1 AND {MAX_FILE_BYTES}", name="max_size"),
+        CheckConstraint("sha256 = encode(sha256(content), 'hex')", name="sha256_matches_content"),
+        CheckConstraint("filename ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.]xlsx$'", name="filename"),
+        CheckConstraint(_named("loaded_by"), name="loaded_by_named"),
+    )
+
+
+class OwnerTimeLog(Base):
+    """The owner's minutes per paper and activity (P9), from his sheets. Append-only."""
+    __tablename__ = "owner_time_log"
+    id: Mapped[int] = pk()
+    doi_key: Mapped[str] = mapped_column(Text)
+    activity: Mapped[str] = mapped_column(Text)
+    minutes: Mapped[int] = mapped_column(Integer)
+    review_file_id: Mapped[int | None] = mapped_column(ForeignKey("review_file.id"))
+    logged_by: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint("doi_key ~ '^doi:10[.][0-9]{4,9}/\\S+$'", name="doi_key_format"),
+        CheckConstraint(one_of("activity", TIME_ACTIVITIES), name="activity"),
+        CheckConstraint("minutes BETWEEN 0 AND 1440", name="minutes"),
+        CheckConstraint(_named("logged_by"), name="logged_by_named"),
+    )
+
+
+class AuditorFinding(Base):
+    """A finding of the (human-operated) Auditor on an observation, link or mapping, with its consequence from the
+    design's Table 2 (R10). Append-only."""
+    __tablename__ = "auditor_finding"
+    id: Mapped[int] = pk()
+    object_kind: Mapped[str] = mapped_column(Text)
+    object_id: Mapped[int] = mapped_column(BigInteger)
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"))
+    finding_kind: Mapped[str] = mapped_column(Text)
+    consequence: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str] = mapped_column(Text)
+    by_person: Mapped[str] = mapped_column(Text)
+    review_file_id: Mapped[int | None] = mapped_column(ForeignKey("review_file.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint(one_of("object_kind", STATE_OBJECTS), name="object_kind"),
+        CheckConstraint(one_of("finding_kind", FINDING_KINDS), name="finding_kind"),
+        CheckConstraint(one_of("consequence", CONSEQUENCES), name="consequence"),
+        CheckConstraint(f"length(detail) BETWEEN 1 AND {DETAIL_MAX}", name="detail"),
+        CheckConstraint(_named("by_person"), name="by_person_named"),
+    )
+
+
+class ValueCorrection(Base):
+    """A correction of one candidate value by a named person, with its reason, the finding it answers and, for a
+    repair, the provenance in the fetched document; the original value is never changed (R10). Append-only."""
+    __tablename__ = "value_correction"
+    id: Mapped[int] = pk()
+    value_id: Mapped[int] = mapped_column(ForeignKey("candidate_value.id"))
+    corrected_text: Mapped[str] = mapped_column(Text)
+    unit: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict | None] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(Text)
+    finding_id: Mapped[int | None] = mapped_column(ForeignKey("auditor_finding.id"))
+    by_person: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint(f"length(corrected_text) BETWEEN 1 AND {DETAIL_MAX} AND length(reason) BETWEEN 1 AND "
+                        f"{DETAIL_MAX}", name="bounded"),
+        CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name="provenance_shape"),
+        CheckConstraint(_named("by_person"), name="by_person_named"),
     )
 
 

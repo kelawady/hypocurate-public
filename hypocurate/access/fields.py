@@ -297,6 +297,52 @@ def extraction_draft(conn: Connection, ctx: Context) -> dict:
     return {"output_id": row.id, "raw_sha256": row.raw_sha256, "raw_output": row.raw_output}
 
 
+def _document_of(conn: Connection, ctx: Context):
+    if ctx.document_parse_id is None:
+        raise Refused("no_document")
+    return conn.execute(text("SELECT d.id, d.doi_key FROM document_parse p JOIN document d ON d.id = p.document_id "
+                             "WHERE p.id = :p"), dict(p=ctx.document_parse_id)).one()
+
+
+def s0_records(conn: Connection, ctx: Context) -> dict:
+    """The newest S0 on the bound parsed document: its candidate observations with values and provenance."""
+    _document_of(conn, ctx)
+    out = conn.execute(text(
+        "SELECT x.id FROM extraction_output x JOIN evidence_snapshot s ON s.extraction_output_id = x.id "
+        "AND s.name = 'S0' WHERE x.document_parse_id = :p ORDER BY x.id DESC LIMIT 1"),
+        dict(p=ctx.document_parse_id)).scalar()
+    if out is None:
+        raise Refused("no_draft")
+    observations = []
+    for o in conn.execute(text("SELECT id, item_index, identity FROM candidate_observation WHERE extraction_output_id = :x "
+                               "ORDER BY item_index"), dict(x=out)).all():
+        values = [dict(field=v.field, text=v.value_text, unit=v.unit, definition=v.definition,
+                       provenance=v.provenance, ambiguity_note=v.ambiguity_note)
+                  for v in conn.execute(text("SELECT field, value_text, unit, definition, provenance, ambiguity_note "
+                                             "FROM candidate_value WHERE observation_id = :o ORDER BY id"),
+                                        dict(o=o.id)).all()]
+        observations.append({"item_index": o.item_index, "reported_from": o.identity.get("reported_from"),
+                             "values": values})
+    return {"extraction_output_id": out, "observations": observations}
+
+
+def compilation_records(conn: Connection, ctx: Context) -> list[dict]:
+    """MPEA's records for the bound document's paper (by Sprint 1's DOI key), from its newest sealed version."""
+    from hypocurate.sources.versions import latest_sealed_version_id
+    doc = _document_of(conn, ctx)
+    version = load_sealed_version(conn, latest_sealed_version_id(conn, "mpea"))
+    out = []
+    for r in adapters.read(version).records:
+        if not r.paper_doi or doi_group_key(r.paper_doi) != doc.doi_key:
+            continue
+        h = r.harmonized
+        out.append({"key": r.source_item_key, "alloy": r.alloy, "composition": h["composition"].value,
+                    "grain_size_um": h["grain_size"].value, "yield_strength_mpa": h["yield_strength"].value,
+                    "test_type": h["test_type"].value, "test_temperature_c": h["test_temperature"].value,
+                    "processing": h["processing_method"].value, "microstructure": h["microstructure"].value})
+    return out
+
+
 def record_metadata(conn: Connection, ctx: Context) -> list[dict]:
     """No measured number of any field (owner, 2026-10-05): statuses, categories from their
     vocabularies, identity. No paper title and no origin key (step 5 review, finding 3)."""
@@ -677,4 +723,5 @@ READERS: Mapping[str, Callable[[Connection, Context], Any]] = {
     "frozen_analysis_data": frozen_analysis_data, "candidate_counts": candidate_counts,
     "analyst_facts": analyst_facts,
     "parsed_document": parsed_document, "extraction_spec": extraction_spec, "extraction_draft": extraction_draft,
+    "s0_records": s0_records, "compilation_records": compilation_records,
 }

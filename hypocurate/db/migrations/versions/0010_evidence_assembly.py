@@ -68,6 +68,11 @@ EVIDENCE_STATES = ("proposed", "supported", "accepted", "disputed", "unresolved"
 STATE_OBJECTS = ("observation", "link", "mapping")
 # The Reconciler's proposals (owner, 2026-10-23: per document, before the runs; register 'pilot_reconciler_placement').
 MAPPING_KINDS = ("alias_to_composition", "column_to_field", "condition_to_category", "same_observation")
+# The owner's review sheet, his time log, Auditor findings and value corrections (R5, R10; owner, 2026-10-23).
+FINDING_KINDS = ("duplicate", "not_comparable", "implausible_value", "missing_link", "missing_context",
+                 "mapping_doubtful", "value_without_evidence")
+CONSEQUENCES = ("re_extract", "correction", "expert_review", "qualified_unresolved", "search_target")
+TIME_ACTIVITIES = ("annotation", "review_sheet", "auditor_findings", "repair_fetch")
 SNAPSHOT_NAMES = ("S0", "S1", "S2")
 EXTRACTION_RULE = "extraction"
 STOP_REASONS = ("corpus_processed", "full_text_inaccessible", "fetched_not_parsed", "specimen_metadata_missing",
@@ -485,22 +490,77 @@ FUNCTIONS = [
         RETURN NEW;
     END $$
     """,
+    """
+    CREATE FUNCTION hc_review_file_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        NEW.loaded_at := now();
+        RETURN NEW;
+    END $$
+    """,
+    """
+    CREATE FUNCTION hc_owner_time_log_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        NEW.at := now();
+        RETURN NEW;
+    END $$
+    """,
+    # A finding names an existing observation, link or mapping of its extraction output (after its S0).
+    """
+    CREATE FUNCTION hc_auditor_finding_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE output_id bigint;
+    BEGIN
+        IF NEW.object_kind = 'observation' THEN
+            SELECT extraction_output_id INTO output_id FROM candidate_observation WHERE id = NEW.object_id;
+        ELSIF NEW.object_kind = 'mapping' THEN
+            SELECT extraction_output_id INTO output_id FROM reconciler_mapping WHERE id = NEW.object_id;
+        ELSE
+            SELECT o.extraction_output_id INTO output_id FROM extraction_link l
+              JOIN candidate_observation o ON o.id = l.observation_id WHERE l.id = NEW.object_id;
+        END IF;
+        IF output_id IS NULL OR output_id <> NEW.extraction_output_id
+           OR NOT EXISTS (SELECT 1 FROM evidence_snapshot WHERE name = 'S0' AND extraction_output_id = output_id) THEN
+            PERFORM hc_reject('a finding names an observation, link or mapping of an extraction output with its S0');
+        END IF;
+        NEW.at := now();
+        RETURN NEW;
+    END $$
+    """,
+    # A correction names a value of an output with its S0; a provenance it gives names a stored document and parse.
+    """
+    CREATE FUNCTION hc_value_correction_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM candidate_value v JOIN candidate_observation o ON o.id = v.observation_id
+                       JOIN evidence_snapshot s ON s.extraction_output_id = o.extraction_output_id AND s.name = 'S0'
+                       WHERE v.id = NEW.value_id) THEN
+            PERFORM hc_reject('a correction names a value of an extraction output with its S0');
+        END IF;
+        IF NEW.provenance IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM document_parse p WHERE p.document_id = (NEW.provenance->>'document_id')::bigint
+                  AND p.parsed_sha256 = NEW.provenance->>'parse_sha256') THEN
+            PERFORM hc_reject('a correction''s provenance names a stored document and parse');
+        END IF;
+        NEW.at := now();
+        RETURN NEW;
+    END $$
+    """,
 ]
 FUNCTION_NAMES = ["hc_document_insert()", "hc_document_parse_insert()", "hc_search_log_insert()",
                   "hc_document_invocation_insert()", "hc_document_invocation_required()", "hc_extraction_output_insert()", "hc_candidate_observation_insert()",
                   "hc_provenance_matches(bigint, jsonb)", "hc_candidate_value_insert()", "hc_extraction_link_insert()",
                   "hc_evidence_state_event_insert()", "hc_reconciler_mapping_insert()", "hc_evidence_snapshot_insert()",
-                  "hc_run_stop_reason_insert()",
+                  "hc_run_stop_reason_insert()", "hc_review_file_insert()", "hc_owner_time_log_insert()",
+                  "hc_auditor_finding_insert()", "hc_value_correction_insert()",
                   "hc_annotation_file_insert()"]
 
 NEW_TABLES = ["document", "document_parse", "search_log", "document_invocation", "extraction_output", "candidate_observation",
               "candidate_value", "extraction_link", "reconciler_mapping", "evidence_state_event", "evidence_snapshot",
-              "run_stop_reason", "annotation_file", "annotation_row"]
+              "run_stop_reason", "annotation_file", "annotation_row", "review_file", "owner_time_log",
+              "auditor_finding", "value_correction"]
 APPEND_ONLY = NEW_TABLES
 CHECKED = [(t, "INSERT", f"hc_{t}_insert", f"hc_{t}_insert") for t in
            ["document", "document_parse", "search_log", "document_invocation", "extraction_output", "candidate_observation",
             "candidate_value", "extraction_link", "reconciler_mapping", "evidence_state_event", "evidence_snapshot",
-            "run_stop_reason", "annotation_file"]]
+            "run_stop_reason", "annotation_file", "review_file", "owner_time_log", "auditor_finding", "value_correction"]]
 TRIGGERS = (
     [f"CREATE TRIGGER hc_{t}_append_only BEFORE UPDATE OR DELETE ON {t} "
      f"FOR EACH ROW EXECUTE FUNCTION hc_append_only()" for t in APPEND_ONLY]
@@ -830,6 +890,79 @@ def _tables() -> None:
         sa.CheckConstraint(_named('loaded_by'), name=ck('ck_annotation_file_loaded_by_named')),
         sa.PrimaryKeyConstraint('id', name=ck('pk_annotation_file')),
         sa.UniqueConstraint('sha256', name=ck('uq_annotation_file_sha256')),
+    )
+
+    op.create_table(
+        'review_file',
+        sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column('filename', sa.Text(), nullable=False),
+        sa.Column('content', sa.LargeBinary(), nullable=False),
+        sa.Column('sha256', sa.Text(), nullable=False),
+        sa.Column('loaded_by', sa.Text(), nullable=False),
+        sa.Column('loaded_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.CheckConstraint(f"octet_length(content) BETWEEN 1 AND {MAX_FILE_BYTES}", name=ck('ck_review_file_max_size')),
+        sa.CheckConstraint("sha256 = encode(sha256(content), 'hex')", name=ck('ck_review_file_sha256_matches_content')),
+        sa.CheckConstraint("filename ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.]xlsx$'", name=ck('ck_review_file_filename')),
+        sa.CheckConstraint(_named('loaded_by'), name=ck('ck_review_file_loaded_by_named')),
+        sa.PrimaryKeyConstraint('id', name=ck('pk_review_file')),
+        sa.UniqueConstraint('sha256', name=ck('uq_review_file_sha256')),
+    )
+    op.create_table(
+        'owner_time_log',
+        sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column('doi_key', sa.Text(), nullable=False),
+        sa.Column('activity', sa.Text(), nullable=False),
+        sa.Column('minutes', sa.Integer(), nullable=False),
+        sa.Column('review_file_id', sa.BigInteger(), nullable=True),
+        sa.Column('logged_by', sa.Text(), nullable=False),
+        sa.Column('at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.CheckConstraint(f"doi_key {DOI_KEY}", name=ck('ck_owner_time_log_doi_key_format')),
+        sa.CheckConstraint(_in('activity', TIME_ACTIVITIES), name=ck('ck_owner_time_log_activity')),
+        sa.CheckConstraint("minutes BETWEEN 0 AND 1440", name=ck('ck_owner_time_log_minutes')),
+        sa.CheckConstraint(_named('logged_by'), name=ck('ck_owner_time_log_logged_by_named')),
+        sa.ForeignKeyConstraint(['review_file_id'], ['review_file.id'], name=ck('fk_owner_time_log_review_file_id')),
+        sa.PrimaryKeyConstraint('id', name=ck('pk_owner_time_log')),
+    )
+    op.create_table(
+        'auditor_finding',
+        sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column('object_kind', sa.Text(), nullable=False),
+        sa.Column('object_id', sa.BigInteger(), nullable=False),
+        sa.Column('extraction_output_id', sa.BigInteger(), nullable=False),
+        sa.Column('finding_kind', sa.Text(), nullable=False),
+        sa.Column('consequence', sa.Text(), nullable=False),
+        sa.Column('detail', sa.Text(), nullable=False),
+        sa.Column('by_person', sa.Text(), nullable=False),
+        sa.Column('review_file_id', sa.BigInteger(), nullable=True),
+        sa.Column('at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.CheckConstraint(_in('object_kind', STATE_OBJECTS), name=ck('ck_auditor_finding_object_kind')),
+        sa.CheckConstraint(_in('finding_kind', FINDING_KINDS), name=ck('ck_auditor_finding_finding_kind')),
+        sa.CheckConstraint(_in('consequence', CONSEQUENCES), name=ck('ck_auditor_finding_consequence')),
+        sa.CheckConstraint(f"length(detail) BETWEEN 1 AND {DETAIL_MAX}", name=ck('ck_auditor_finding_detail')),
+        sa.CheckConstraint(_named('by_person'), name=ck('ck_auditor_finding_by_person_named')),
+        sa.ForeignKeyConstraint(['extraction_output_id'], ['extraction_output.id'],
+                                name=ck('fk_auditor_finding_extraction_output_id')),
+        sa.ForeignKeyConstraint(['review_file_id'], ['review_file.id'], name=ck('fk_auditor_finding_review_file_id')),
+        sa.PrimaryKeyConstraint('id', name=ck('pk_auditor_finding')),
+    )
+    op.create_table(
+        'value_correction',
+        sa.Column('id', sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column('value_id', sa.BigInteger(), nullable=False),
+        sa.Column('corrected_text', sa.Text(), nullable=False),
+        sa.Column('unit', sa.Text(), nullable=True),
+        sa.Column('provenance', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('reason', sa.Text(), nullable=False),
+        sa.Column('finding_id', sa.BigInteger(), nullable=True),
+        sa.Column('by_person', sa.Text(), nullable=False),
+        sa.Column('at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.CheckConstraint(f"length(corrected_text) BETWEEN 1 AND {DETAIL_MAX} AND length(reason) BETWEEN 1 AND "
+                           f"{DETAIL_MAX}", name=ck('ck_value_correction_bounded')),
+        sa.CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name=ck('ck_value_correction_provenance_shape')),
+        sa.CheckConstraint(_named('by_person'), name=ck('ck_value_correction_by_person_named')),
+        sa.ForeignKeyConstraint(['value_id'], ['candidate_value.id'], name=ck('fk_value_correction_value_id')),
+        sa.ForeignKeyConstraint(['finding_id'], ['auditor_finding.id'], name=ck('fk_value_correction_finding_id')),
+        sa.PrimaryKeyConstraint('id', name=ck('pk_value_correction')),
     )
 
     op.create_table(

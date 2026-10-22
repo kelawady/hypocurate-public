@@ -89,6 +89,11 @@ FIELDS = MappingProxyType({
                        "hash. Never the claim, the analysis, the exclusion rules or the re-report rule.",
     "extraction_draft": "For the Extractor's verification call (Sprint 2 pilot; owner, 2026-10-23): the raw output "
                         "of its own extraction call on the same parsed document, as stored with its hash.",
+    "s0_records": "For the Reconciler (Sprint 2 pilot; owner, 2026-10-23): the candidate observations of the newest S0 "
+                  "on the parsed document its invocation names, each with its values as written and their provenance.",
+    "compilation_records": "For the Reconciler (Sprint 2 pilot; owner, 2026-10-22: its list may include compilation "
+                           "records, so its outputs are S1, never S0): the compilation's (MPEA's) records for the same "
+                           "paper, each with its key, alloy, composition, grain size, yield strength and conditions.",
     "record_metadata": "Per stored record: id, source, item index, kind, alloy label and composition, DOI "
                        "(DOI syntax only), each field's status, and the non-outcome category values from "
                        "their vocabularies. No measured number of any field, no paper title, no origin key.",
@@ -178,8 +183,11 @@ ALLOWED: Mapping[str, Mapping[str, frozenset[str]]] = MappingProxyType({
     "extractor": MappingProxyType({
         "document": frozenset({"parsed_document", "extraction_spec", "extraction_draft"}),
     }),
-    # Until R5: the Reconciler's lists (which may include compilation records; its outputs are S1, never S0).
-    "reconciler": MappingProxyType({}),
+    # R5 (owner, 2026-10-23: per document, before the runs): the Reconciler reads one parsed document, its newest S0
+    # and the compilation's records for that paper; its outputs are S1 events, never S0.
+    "reconciler": MappingProxyType({
+        "document": frozenset({"parsed_document", "s0_records", "compilation_records"}),
+    }),
 })
 
 

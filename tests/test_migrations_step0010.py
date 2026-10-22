@@ -552,9 +552,41 @@ def test_a_reconciler_invocation_cannot_write_an_extraction_output(w):
                p=p, h=sha('{"pages": []}'), rh=sha("x"), i=rec)
 
 
+def finding_and_correction(w, out, obs):
+    rf = w.val("INSERT INTO review_file (filename, content, sha256, loaded_by) VALUES ('review.xlsx', 'x', :h, "
+               "'Khalid El-Awady') RETURNING id", h=sha("x"))
+    w.val("INSERT INTO owner_time_log (doi_key, activity, minutes, review_file_id, logged_by) VALUES "
+          "('doi:10.1000/abc.1', 'review_sheet', 25, :r, 'Khalid El-Awady') RETURNING id", r=rf)
+    f = w.val("INSERT INTO auditor_finding (object_kind, object_id, extraction_output_id, finding_kind, consequence, "
+              "detail, by_person, review_file_id) VALUES ('observation', :o, :x, 'missing_context', 'search_target', "
+              "'test temperature not stated', 'Khalid El-Awady', :r) RETURNING id", o=obs, x=out, r=rf)
+    value = w.val("SELECT id FROM candidate_value WHERE observation_id = :o AND field = 'grain_size'", o=obs)
+    return w.val("INSERT INTO value_correction (value_id, corrected_text, reason, finding_id, by_person) VALUES "
+                 "(:v, '0.9', 'the row says 0.9', :f, 'Khalid El-Awady') RETURNING id", v=value, f=f), f
+
+
+def test_findings_and_corrections_name_objects_of_an_output_with_its_s0_and_keep_the_original(w):
+    out, obs, lk = extracted(w)
+    w.rejected("INSERT INTO auditor_finding (object_kind, object_id, extraction_output_id, finding_kind, consequence, "
+               "detail, by_person) VALUES ('observation', :o, :x, 'missing_context', 'search_target', 'x', 'K')",
+               "extraction output with its S0", o=obs, x=out)
+    s0(w, out)
+    corr, f = finding_and_correction(w, out, obs)
+    assert w.val("SELECT value_text FROM candidate_value v JOIN value_correction c ON c.value_id = v.id "
+                 "WHERE c.id = :c", c=corr) == "4.4"  # the original value is kept
+    w.rejected("INSERT INTO value_correction (value_id, corrected_text, reason, by_person, provenance) VALUES "
+               "((SELECT id FROM candidate_value LIMIT 1), '1', 'r', 'K', CAST(:p AS jsonb))",
+               "names a stored document and parse",
+               p=json.dumps({"document_id": 999, "parse_sha256": "a" * 64, "page": 1, "snippet": "x", "sentence": "x"}))
+    with pytest.raises(IntegrityError, match="ck_auditor_finding_consequence"):
+        w.val("INSERT INTO auditor_finding (object_kind, object_id, extraction_output_id, finding_kind, consequence, "
+              "detail, by_person) VALUES ('observation', :o, :x, 'missing_context', 'ignore', 'x', 'K')", o=obs, x=out)
+
+
 def test_every_new_table_is_append_only(w):
     out, obs, lk = extracted(w)
     s0(w, out)
+    finding_and_correction(w, out, obs)
     mapping(w, out, obs, doc_invocation(w, w.val("SELECT document_parse_id FROM extraction_output WHERE id = :x", x=out),
                                         role="reconciler"))
     doc_invocation(w, w.val("SELECT document_parse_id FROM extraction_output WHERE id = :x", x=out))
