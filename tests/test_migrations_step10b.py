@@ -46,8 +46,9 @@ def insert(w, action="create", channel="website", actor="Ada", v=None, r=None, s
 
 # --- the migration ------------------------------------------------------------------------------------------
 
-def test_0009_is_the_head_and_follows_0008():
-    assert migrate.head_revision() == "0009" and m0009().down_revision == "0008"
+def test_0009_follows_0008():
+    # Sprint 2 (2026-10-22): 0010 follows 0009, so 0009 is no longer the head (tests/test_migrations_step0010.py).
+    assert m0009().down_revision == "0008" and SCRIPTS.get_revision("0010").down_revision == "0009"
 
 
 def test_0009_replaces_no_earlier_function():
@@ -86,7 +87,7 @@ def test_the_downgrade_refuses_while_an_action_is_recorded(db):
     before = snapshot(db)
     with pytest.raises(Exception, match="0009 is in use"):
         migrate.downgrade(db, "0008")
-    assert snapshot(db) == before and migrate.current_revision(db) == "0009"
+    assert snapshot(db) == before and migrate.current_revision(db) == migrate.head_revision()
 
 
 def test_the_lists_are_the_codes():
@@ -183,5 +184,5 @@ def test_the_downgrade_waits_for_an_uncommitted_action_and_then_refuses(db):
         t.join(120)
     assert not t.is_alive()
     assert "0009 is in use" in outcome["result"], outcome
-    assert migrate.current_revision(db) == "0009"
+    assert migrate.current_revision(db) == migrate.head_revision()
     assert w.val("SELECT actor FROM action_record") == "Ada"
