@@ -76,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("run", type=int)
     export.add_argument("--out", required=True, help="the file to write")
     export.add_argument("--csv", action="store_true", help="the records as CSV instead of the workbook")
+    from hypocurate.documents.cli import add_parser as add_documents  # Sprint 2 pilot (R2)
+    add_documents(sub)
+    from hypocurate.scoring.cli import add_parser as add_scoring  # Sprint 2 pilot (R7)
+    add_scoring(sub)
     args = parser.parse_args(argv)
 
     settings = load_settings(web=False)
@@ -101,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
             f.write(content)
         print(json.dumps({"run": args.run, "written": args.out, "bytes": len(content)}))
         return 0
+    if args.command == "scoring":
+        from hypocurate.scoring.cli import command as scoring_command
+        return scoring_command(args, engine)
+    if args.command == "documents":
+        from hypocurate.documents.cli import command as documents_command
+        return documents_command(args, engine)
     if args.command in ("run", "dispatch", "show", "confirm", "cancel", "queue"):
         from hypocurate.cli_runs import command
         return command(args, engine)
