@@ -305,3 +305,54 @@ def test_the_owners_stop_rules():
     dear = mx.DocumentRun(1, cost=Decimal("1.01"), verified=mx.Verified([], [], {}, values=10, cannot_tell=6))
     assert mx.stop_reasons(dear) == ["the document cost $1.01 (more than $1)",
                                      "verification answered 'cannot tell' for 6 of 10 values"]
+
+
+# --- passage provenance and re-conversion (owner, 2026-10-23 evening) ------------------------------------------
+
+PASSAGE = {"page": 2, "snippet": "the yield strength 210 MPa"}
+
+
+def passage_record():
+    r = gs_ys_record()
+    r["values"].append({"field": "test_type", "text": "tension", "provenance": PASSAGE,
+                        "definition": "from methods, applies to all specimens"})
+    return r
+
+
+def test_a_page_and_snippet_provenance_is_accepted_as_a_passage_that_resolves_on_its_page(db, stub):
+    result, parse_id = run(db, stub, [passage_record()], ALL_YES + [(0, "test_type", "yes", "tension")])
+    with db.connect() as conn:
+        prov, amb = conn.execute(text("SELECT provenance, ambiguous FROM candidate_value WHERE field = 'test_type'")).one()
+        method = conn.execute(text("SELECT method FROM extraction_output WHERE method->>'step' = 'verify'")).scalar()
+    assert prov["passage"] is True and prov["sentence"] == PASSAGE["snippet"] and amb is False
+    assert method["conversion_rule"] == "passage-1" and method["passages"] == 1 and method["conversion"] == []
+    from hypocurate.pipeline.extraction import provenance as pv
+    from hypocurate.pipeline.extraction.interface import ParsedDocument, Provenance
+    with db.connect() as conn:
+        doc = ParsedDocument.load(conn, parse_id)
+    assert pv.problem(doc, Provenance.passage_of(2, PASSAGE["snippet"])) is None
+    assert "not on page 3" in pv.problem(doc, Provenance.passage_of(3, PASSAGE["snippet"]))
+    assert Provenance.passage_of(2, "x").location == "p. 2, passage: x"
+
+
+def test_a_stored_output_is_converted_again_into_a_new_s0_and_the_old_one_is_kept(db, stub, monkeypatch):
+    monkeypatch.setattr(mx, "CONVERSION_RULE", "none")  # as before 2026-10-23: a passage was not usable
+    result, _ = run(db, stub, [passage_record()], ALL_YES + [(0, "test_type", "yes", "tension")])
+    old = result.frozen
+    with db.connect() as conn:
+        note = conn.execute(text("SELECT ambiguity_note FROM candidate_value WHERE field = 'test_type'")).scalar()
+    assert note.startswith("the extractor gave no provenance")
+    monkeypatch.setattr(mx, "CONVERSION_RULE", "passage-1")
+    new = mx.reconvert(db, old.output_id)
+    assert new.output_id != old.output_id and new.raw_sha256 == old.raw_sha256 and new.snapshot_id != old.snapshot_id
+    with db.connect() as conn:
+        m = conn.execute(text("SELECT method FROM extraction_output WHERE id = :x"), dict(x=new.output_id)).scalar()
+        rows = conn.execute(text("SELECT o.extraction_output_id, v.ambiguous FROM candidate_value v JOIN "
+                                 "candidate_observation o ON o.id = v.observation_id WHERE v.field = 'test_type' "
+                                 "ORDER BY o.extraction_output_id")).all()
+        snaps = conn.execute(text("SELECT extraction_output_id FROM evidence_snapshot ORDER BY id")).scalars().all()
+    assert m["reconverted_from"] == old.output_id and m["conversion_rule"] == "passage-1" and m["passages"] == 1
+    assert rows == [(old.output_id, True), (new.output_id, False)] and snaps == [old.output_id, new.output_id]
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="only a verification output"):
+        mx.reconvert(db, result.draft_output_id)

@@ -154,13 +154,24 @@ def _number(text_: str) -> Decimal | None:
         return None
 
 
-def _provenance(raw: Any, where: str, conversion: list[str]) -> Provenance | None:
+# How a page-plus-snippet provenance is converted (owner, 2026-10-23; register 'pilot_passage_provenance'):
+# 'passage-1' accepts it as a passage; before that rule ('none') it was not usable and the value was marked ambiguous.
+CONVERSION_RULE = "passage-1"
+
+
+def _provenance(raw: Any, where: str, conversion: list[str], rule: str | None = None,
+                passages: list[str] | None = None) -> Provenance | None:
+    rule = rule or CONVERSION_RULE
     if not isinstance(raw, dict):
         return None
     try:
+        table, row, sentence = raw.get("table_index"), raw.get("row_index"), raw.get("sentence") or None
+        if rule == "passage-1" and table is None and row is None and not sentence:
+            if passages is not None:
+                passages.append(where)
+            return Provenance.passage_of(int(raw["page"]), str(raw.get("snippet") or ""))
         return Provenance(page=int(raw["page"]), snippet=str(raw.get("snippet") or ""),
-                          table_index=raw.get("table_index"), row_index=raw.get("row_index"),
-                          sentence=raw.get("sentence") or None)
+                          table_index=table, row_index=row, sentence=sentence)
     except (KeyError, TypeError, ValueError) as e:
         conversion.append(f"{where}: provenance not usable ({type(e).__name__}: {str(e)[:120]})")
         return None
@@ -178,10 +189,14 @@ class Verified:
     answers: dict = field(default_factory=dict)  # counts of yes / no / cannot tell / not answered, values and links
     values: int = 0
     cannot_tell: int = 0
+    passages: list = field(default_factory=list)  # where a page-plus-snippet provenance was accepted as a passage
 
 
-def verified_records(draft: Mapping[str, Any], checks: list[dict]) -> Verified:
-    """The draft's records with the verifier's answers applied as ambiguity notes; nothing dropped."""
+def verified_records(draft: Mapping[str, Any], checks: list[dict], rule: str | None = None) -> Verified:
+    """The draft's records with the verifier's answers applied as ambiguity notes; nothing dropped. `rule`: how a
+    page-plus-snippet provenance is converted ('passage-1', or 'none' as before 2026-10-23)."""
+    passages: list[str] = []
+    rule = rule or CONVERSION_RULE
     by_item = {}
     for c in checks:
         by_item[(c["record"], c["item"].strip())] = (str(c["answer"]).strip().casefold(), str(c.get("quote") or "")[:300])
@@ -200,7 +215,7 @@ def verified_records(draft: Mapping[str, Any], checks: list[dict]) -> Verified:
         values, seen = [], {}
         for j, v in enumerate(r["values"]):
             name = v["field"]
-            prov = _provenance(v.get("provenance"), f"record {i}, value {j} ({name})", conversion)
+            prov = _provenance(v.get("provenance"), f"record {i}, value {j} ({name})", conversion, rule, passages)
             answer, vnote = verdict(i, name)
             n_values += 1
             n_cannot += answer == "cannot tell"
@@ -226,13 +241,13 @@ def verified_records(draft: Mapping[str, Any], checks: list[dict]) -> Verified:
                 conversion.append(f"record {i}, link {j}: names a value the record lacks ({a} - {b}); not stored")
                 continue
             kind = l.get("kind") if l.get("kind") in LINK_KINDS else None
-            prov = _provenance(l.get("provenance"), f"record {i}, link {j}", conversion)
+            prov = _provenance(l.get("provenance"), f"record {i}, link {j}", conversion, rule, passages)
             _, lnote = verdict(i, f"link:{a}-{b}")
             links.append(Link(a, b, kind, prov if kind else None,
                               _note(l.get("ambiguity_note"), None if kind else "the link's kind is not one of the "
                                     "listed kinds", lnote)))
         out.append(CandidateRecord(tuple(values), tuple(links), str(r.get("reported_from") or THIS_PAPER).strip()))
-    return Verified(out, conversion, counts, n_values, n_cannot)
+    return Verified(out, conversion, counts, n_values, n_cannot, passages)
 
 
 # --- one document --------------------------------------------------------------------------------------------------
@@ -345,12 +360,35 @@ def extract_document(engine: Engine, parse_id: int, spec_name: str = "H1_v1",
     run.verified = verified_records(draft, checks)
     m = base | {"step": "verify", "draft_output_id": run.draft_output_id, "draft_raw_sha256":
                 vdata["extraction_draft"]["raw_sha256"], "conversion": run.verified.conversion,
-                "verification": run.verified.answers}
+                "verification": run.verified.answers, "conversion_rule": CONVERSION_RULE,  # the rule used above
+                "passages": len(run.verified.passages)}
     result = ExtractionResult(MethodJson(m), second.outputs["checks"], tuple(run.verified.records),
                               invocation_id=run.verify_invocation)
     run.frozen = s0.store_and_freeze(engine, document, result)
     run.cost, run.calls = _spent(engine, [run.extract_invocation, run.verify_invocation])
     return run
+
+
+def reconvert(engine: Engine, verify_output_id: int, rule: str | None = None) -> s0.Frozen:
+    """A new S0 from a stored verification output's raw answers and its draft, converted again under `rule`, with no
+    model call (owner, 2026-10-23): a new extraction output that carries the same raw answer and hash, names the output
+    it was converted from and the rule, and gets its own S0. The earlier output and its S0 are never changed."""
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT document_parse_id, method, raw_output, invocation_id FROM extraction_output "
+                                "WHERE id = :x AND status = 'returned'"), dict(x=verify_output_id)).one()
+        if row.method.get("step") != "verify":
+            raise ValueError("only a verification output is converted again")
+        draft_raw = conn.execute(text("SELECT raw_output FROM extraction_output WHERE id = :d"),
+                                 dict(d=row.method["draft_output_id"])).scalar_one()
+        document = ParsedDocument.load(conn, row.document_parse_id)
+    rule = rule or CONVERSION_RULE
+    verified = verified_records(parse_json(draft_raw), parse_json(row.raw_output)["checks"], rule)
+    m = dict(row.method) | {"conversion": verified.conversion, "verification": verified.answers,
+                            "conversion_rule": rule, "passages": len(verified.passages),
+                            "reconverted_from": verify_output_id}
+    return s0.store_and_freeze(engine, document, ExtractionResult(MethodJson(m), row.raw_output,
+                                                                  tuple(verified.records),
+                                                                  invocation_id=row.invocation_id))
 
 
 @dataclass(frozen=True)

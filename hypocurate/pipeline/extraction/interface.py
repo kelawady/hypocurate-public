@@ -27,12 +27,19 @@ PROMPTS = Path(__file__).parent / "prompts"
 
 @dataclass(frozen=True)
 class Provenance:
-    """Where a value or link was read: a page and either a table row or a sentence, with the snippet as parsed."""
+    """Where a value or link was read: a page and either a table row or a sentence, with the snippet as parsed. A
+    passage (owner, 2026-10-23; register 'pilot_passage_provenance') is a page and a snippet only, which code accepts as
+    a text citation: stored with the snippet as its sentence and marked `passage`; weaker than a sentence or a row."""
     page: int
     snippet: str
     table_index: int | None = None
     row_index: int | None = None
     sentence: str | None = None
+    passage: bool = False
+
+    @classmethod
+    def passage_of(cls, page: int, snippet: str) -> "Provenance":
+        return cls(page, snippet, sentence=snippet, passage=True)
 
     def __post_init__(self):
         if (self.table_index is None) != (self.row_index is None):
@@ -48,6 +55,8 @@ class Provenance:
             out |= {"table_index": self.table_index, "row_index": self.row_index}
         if self.sentence:
             out["sentence"] = self.sentence
+        if self.passage:
+            out["passage"] = True
         return out
 
     @property
@@ -55,7 +64,8 @@ class Provenance:
         """The location as text: 'p. 5, table 2, row 1' or 'p. 5, sentence: …' (used by the identity)."""
         if self.table_index is not None:
             return f"p. {self.page}, table {self.table_index}, row {self.row_index}"
-        return f"p. {self.page}, sentence: {' '.join(self.sentence.split())}"
+        kind = "passage" if self.passage else "sentence"
+        return f"p. {self.page}, {kind}: {' '.join(self.sentence.split())}"
 
 
 @dataclass(frozen=True)
