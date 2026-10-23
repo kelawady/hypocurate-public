@@ -13,6 +13,8 @@ the owner's review before the merge.
 
 **Everything else on the branch is inert until a pilot run is started** (section 6 lists it).
 
+**Round 2 (after ChatGPT's review of 2026-10-23, `docs/reviews/sprint2_pilot_merge_review_2026-10-23.md`):** the scope is extended to every safeguard file the 23 October report names (section 9). Added: the plan-schema refusal (10), a rehearsed rollback (7), the cost caps per call site (11), recovery and release checks (7a), answers to the C items (12) and the defects the round found (13). The B items are on the post-pilot list (`docs/sprint2/post_pilot_list.md`).
+
 **Condition (d):** the full second-model review of the whole branch still happens in the review week. This packet does
 not replace it.
 
@@ -201,21 +203,137 @@ unless a person starts it:
    database address he sets himself.
 7. **The three H1 runs** go through the site.
 
-**Revert:**
-- **Before the bundle is loaded:**
-  1. `git revert -m 1 <merge commit>` on main, then push (Render redeploys the old code).
-  2. Then `python -m hypocurate.db.migrate downgrade 0009` against the live database. It succeeds because 0010 holds
-     no data and no row uses a pilot role.
-  - Either order works: old code never reads 0010's tables, and the two replaced functions keep Sprint 1's behaviour.
-    The downgrade is the step that returns the schema to 0009.
-- **After the bundle is loaded:**
-  - The downgrade refuses by design: 0010 never drops data.
-  - The way back is the second backup, taken just before the load. Restoring it returns the database to 0010 with no
-    pilot data, and then the steps above apply.
-  - Restoring the first backup returns to 0009 directly. On Render, a restore goes into a new database and may be paid;
-    the owner decides.
+**Revert (merge review A3; rehearsed 2026-10-23 on a scratch database):** the rehearsal used `hc_rollback`, restored from the 0009-era dump of the development database (40 tables, 46,772 rows).
 
-## 8. Questions for the reviewer
+1. **Pause writers.** Suspend `hypocurate-worker` in the Render dashboard, and do not use the site until the revert is done.
+2. **Downgrade 0010 from an environment that still has migration 0010** (this branch's checkout, or the merge commit), against the live database:
+   `DATABASE_URL=<live> python -m hypocurate.db.migrate downgrade 0009` → `schema at 0009`.
+   - It succeeds only while 0010 holds no data and no row uses the document scope or a pilot role.
+3. **Revert the code:** `git revert -m 1 <merge commit>` on main, run the whole suite, push. Render's pre-deploy (`python -m hypocurate.db.migrate upgrade`, `render.yaml` lines 23 and 49) then finds the database at 0009, main's head, and does nothing.
+4. **Resume the worker.**
+
+**What the rehearsal showed:**
+- **The wrong order fails.** With the database still at 0010, main's pre-deploy stops with `Can't locate revision identified by '0010'` (exit 1). On Render a failed pre-deploy aborts that deploy, so the reverted code would never go live until step 2 is done.
+- **The right order restores the state exactly.** After step 2 and main's pre-deploy (main checked out at `eb78ec0` in a separate worktree), the catalog matched the state before the upgrade in every part: tables, columns, constraints, indexes, triggers, functions with their source, views, sequences. The revision and the row counts of all 40 tables were identical too.
+
+**After the bundle is loaded:**
+- Step 2 refuses by design. Restore the second backup (0010, no pilot data), then follow steps 1 to 4.
+- Or restore the first backup (0009).
+- **Cutoff:** any write after the backup that is restored is lost. So between each backup and the end of its checks the worker stays suspended and the site is not used. The cutoff is the backup's time.
+
+## 7a. Recovery and release checks (merge review A5)
+
+**Restore rehearsal of the live backup.** It needs the owner's backup file:
+1. The owner runs `pg_dump -Fc "$LIVE_URL" > ~/hc-work/live_backup_<date>.dump` in his own terminal. The address is never shown to Claude Code.
+2. Claude Code restores the file into a scratch database (`hc_live_restore`) and checks that its revision is 0009, its row counts match `/health` and the owner's expectations, and its catalog is intact.
+3. On that copy: the MPEA reference run; upgrade to 0010 with this branch; the reference run again; load the bundle; the reference run again.
+
+**On the 0009-era stand-in, already rehearsed** (2026-10-23, `hc_rollback`, every model call to the stub):
+
+| Step | Result |
+|---|---|
+| Upgraded to 0010; MPEA reference run | 76 / 13 / 19, k = 424.05 ± 62.22, p ≈ 1.1e-6 |
+| Bundle loaded | 551 events, 40 snapshots with every hash re-checked, the freeze invariant re-checked, pilot version sealed |
+| MPEA reference run again | identical: 76 / 13 / 19, 424.05 ± 62.22 |
+| Extracted only | insufficient: 4 records scope not confirmed, 1 single grain size |
+| Augmented pool | 77 / 13 / 20, k = 419.73 ± 62.31 |
+
+- **That rehearsal found a defect, fixed before the merge** (`fa07602`). The fixed plan's chosen sources were read from `run_source` without the "chosen" filter. `run_source` also lists registered but unchosen sources, so after the bundle every MPEA-only fixed run named the pilot source, and the new lock rule (A2) refused it.
+  - Test: `tests/test_pilot_source.py::test_a_sprint1_run_on_a_database_holding_the_pilot_source_locks_a_plan_without_it` (it fails without the fix).
+
+**The production image** (built exactly as Render builds it: `docker build --file ./Dockerfile`, last stage):
+- It runs as `app`, its command is uvicorn, and it holds no `tests/` or `docs/`.
+- Run against `hc_rollback` (0010 with the bundle):
+  - Pre-deploy: `schema at 0010`.
+  - Web with `HYPOCURATE_ENV=production`: `/health` gives `{"web":"ok","database":"ok","schema":{"revision":"0010","at_head":true}}`.
+  - Signed out: `/health` and `/login` give 200; `/`, `/runs`, `/assumptions`, `/help`, `/pilot/h2`, a run page and a workbook all give 303 to `/login`.
+  - Worker: started, "nothing to claim; database reachable".
+- Signed in, same image in development mode (the production cookie is HTTPS-only), with the local test password: 200 for `/`, `/runs`, `/queries`, `/sources`, `/assumptions`, `/help`.
+  - The Sprint 1 run page shows 424.1.
+  - The pilot run page shows 419.7.
+  - The Sprint 1 run's workbook keeps its four sheets.
+  - The pilot run's workbook adds "Extracted evidence by state".
+  - The records CSV, `/pilot/h2` and its workbook all work.
+
+**The live sequence:**
+1. First backup, worker suspended.
+2. Merge and push.
+3. `/health` shows the merge commit at 0010.
+4. Signed-in pages checked.
+5. The MPEA reference run on live (424.05 ± 62.2).
+6. Second backup.
+7. Load the bundle.
+8. The MPEA reference run on live again: it must be identical.
+9. The three H1 runs.
+
+## 9. The other safeguard files (merge review A1)
+
+All of these changes were approved as safeguard changes on 2026-10-22 and 2026-10-23. Each adds the pilot's scope and roles without changing a Sprint 1 role's input.
+
+| File | Change | Covering tests |
+|---|---|---|
+| `access/allowlist.py` | `ROLES` gains `extractor`, `reconciler`; `STAGES` gains `document`; five field descriptions; the two roles' lists at `document` only | `test_access_layer.py::test_the_allow_list_matches_the_owners_table` (complete table: no Sprint 1 role reads at `document`; pilot roles read nothing elsewhere; `compilation_records` never on the Extractor's list) |
+| `access/context.py` | `AccessContext.document_parse_id` (optional); its validation accepts either a source version or a parsed document for a run-less context | `test_extractor.py::test_an_extractor_reads_only_its_own_document_and_a_reconciler_reads_nothing_there`; Sprint 1 context tests unchanged |
+| `access/dispatch.py` | `bind_invocation` binds a document invocation to stage `document` with its parsed document; registration unchanged | `test_reconcile.py::test_the_reconcilers_input_is_the_document_its_s0_and_the_compilations_records_for_that_paper`; `test_extractor.py::test_the_extractors_complete_input_is_its_document_and_the_specs_reading_sections` |
+| `access/layer.py` | `document_stage()`; three refusal codes (`no_document`, `no_draft`, `spec_not_named`); the audit row records the parsed document | `test_extractor.py::test_a_setting_without_a_specification_reads_none`; the access suite (`test_access_*`) unchanged |
+| `access/fields.py` | five readers (`parsed_document`, `extraction_spec`, `extraction_draft`, `s0_records`, `compilation_records`) | `test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests`; `test_pilot_blindness.py::test_a_re_extraction_after_review_sees_no_review_reconciler_or_compilation_text` |
+| `access/vocabulary.py` | `SOURCE_KEYS` + `extracted_pilot` | section 2; `test_pilot_plan_lock.py` |
+| `pipeline/agents/spend.py` | `DOCUMENT_CAP_USD` = $2 per document invocation; stage `document` in its audit rows | section 11 |
+| `pipeline/agents/lm.py` | `FAILURES` + `spending_cap_document` (a defect found by A4's tests) | `test_pilot_spending.py::test_every_refusal_code_of_the_spending_module_is_a_known_failure_that_stops` |
+| `pipeline/agents/settings.py` | `MODELS` + extractor, reconciler (Sonnet 5.5); `extractor_variant`, `reconciler_variant` read versioned prompt files | `test_extractor.py::test_the_extractor_settings_come_from_the_versioned_prompt_files`; `test_assumptions.py` settings checks |
+| `pipeline/checkpoints.py` | the lock refuses a plan naming a pilot source the run did not choose (A2) | section 10 |
+| `pipeline/confirmation.py` | `reference_plan(row, chosen)`; `_chosen` reads only chosen sources | section 3; `test_pilot_source.py::test_a_sprint1_run_on_a_database_holding_the_pilot_source_locks_a_plan_without_it` |
+
+**Start-up:**
+- The web service validates the register at start (`assumptions.load_register`). The pilot entries pass, and they use the step value `pilot-2` while `BUILD_STEPS` stays 5 to 12 (`test_assumptions.py::test_the_pilot_step_is_accepted_beside_build_steps_5_to_12`).
+- The worker's start is unchanged.
+- The release image starts web and worker (section 7a).
+
+## 10. The plan schema (merge review A2)
+
+`SOURCE_KEYS` now admits `extracted_pilot`, so `PLAN_SCHEMA` accepts a plan that names it. The rules lock (`checkpoints.lock_rules`) therefore refuses a plan that names a pilot source the run did not choose, in either the survivor order or the grouping.
+
+Tests (`tests/test_pilot_plan_lock.py`):
+- `test_an_ordinary_sprint1_plan_validates_unchanged_and_names_no_pilot_source`: the fixed plan and the Planner's template plan validate unchanged and lock.
+- `test_a_plan_naming_the_pilot_source_on_a_run_without_it_is_refused` (survivor order, grouping, both).
+- `test_a_pilot_plan_built_first_does_not_change_a_later_sprint1_plan` (C2).
+- A mutation that removes the refusal fails 3 of these tests.
+
+## 11. Cost caps per call site (merge review A4)
+
+Every request is reserved before it is sent (`lm.complete` → `spend.reserve`), each attempt separately. A refusal sends nothing.
+
+| Call site | Cap | Test |
+|---|---|---|
+| Extractor, extraction call | per document invocation ($2) | `test_pilot_spending.py::test_the_extraction_call_is_refused_before_any_request_under_the_document_cap`; `test_extractor.py::test_a_document_invocation_is_reserved_under_the_per_document_cap` |
+| Extractor, verification call | monthly ($50) | `test_pilot_spending.py::test_the_verification_call_is_refused_before_any_request_under_the_monthly_cap` |
+| A retry (after a malformed answer) | reserved again | `test_pilot_spending.py::test_a_retry_is_reserved_again_and_refused_when_the_cap_is_reached_between_attempts` |
+| Reconciler | per document invocation and monthly | `test_pilot_spending.py::test_the_reconciler_call_is_refused_before_any_request_under_either_cap` |
+| A repair's extraction | the extraction call above (same code path, new invocation) | as above |
+| The monthly cap, shared by every call in the database | $50 | `test_agent_core.py::test_the_month_cap_counts_every_call_including_unconfirmed_ones`; `test_agent_core.py::test_two_reservations_cannot_both_pass_the_month_cap` |
+| Every refusal code stops cleanly | — | `test_pilot_spending.py::test_every_refusal_code_of_the_spending_module_is_a_known_failure_that_stops` (found the missing entry) |
+
+**Stated plainly:**
+- The "per-document" cap is per document invocation. A paper extracted again (a repair, a prompt version) starts a new $2 budget. The monthly cap bounds the total across invocations and papers.
+- The owner's $1-per-document stop rule is applied by the extraction command after each document (`mx.DOCUMENT_STOP_USD`), not by the database.
+
+## 12. Answers to the C items
+
+| C item | Claim | Test or record |
+|---|---|---|
+| C1 freeze invariant, exclusive entry | The pilot source is built only from a freeze (`documents freeze` → `evidence.freeze`, which runs the invariant → `pilot.register_frozen`); the bundle re-checks the invariant on the loaded events before it seals the version on live | `test_evidence.py::test_the_freeze_takes_s1_and_s2_and_refuses_when_the_invariant_fails`; `test_evidence.py::test_the_freeze_invariant_refuses_any_non_accepted_part_even_when_status_says_accepted` (link proposed, mapping disputed, observation disputed); `test_bundle.py::test_a_bundle_whose_freeze_names_a_non_accepted_record_is_refused_even_with_consistent_hashes` |
+| C2 the plan helper mutates its argument | `plan.reference_plan` builds a new dict each call; a pilot plan built first leaves a later Sprint 1 plan unchanged; a Sprint 1 run on a database holding the pilot source locks the ordinary plan | `test_pilot_plan_lock.py::test_a_pilot_plan_built_first_does_not_change_a_later_sprint1_plan`; `test_pilot_source.py::test_a_sprint1_run_on_a_database_holding_the_pilot_source_locks_a_plan_without_it` |
+| C3 0009 → 0010 → 0009 catalog | The catalog snapshot compared covers tables, columns, constraints (`pg_get_constraintdef`), indexes, triggers (`pg_get_triggerdef`), functions (`prosrc`), views, sequences, types | `test_migrations_step0010.py::test_up_down_up_restores_0009`; on real data, section 7 (catalog and row counts identical) |
+| C4 blindness at the final boundary | The Extractor's complete input is its document, the specification's reading sections and its own new draft; planted compilation values, a record id, the claim, a Reconciler mapping, a person's decision, a finding and a correction never reach a re-extraction's requests | `test_access_layer.py::test_the_allow_list_matches_the_owners_table`; `test_extractor.py::test_the_extractors_complete_input_is_its_document_and_the_specs_reading_sections`; `test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests`; `test_pilot_blindness.py::test_a_re_extraction_after_review_sees_no_review_reconciler_or_compilation_text` |
+| C5 artifacts bound to the release commit | Supplied at the merge: the merge SHA, the whole suite there (local and GitHub), the six dumps there against main (raw files in `~/hc-work/sprint2/refdump/`), the MPEA run's source version fingerprint and plan fingerprint | recorded in the daily report at the merge |
+
+## 13. Defects found by this round's rehearsals and tests (all fixed before the merge)
+
+1. **`spending_cap_document` missing from the agent core's failure table** (A4). A document-cap refusal raised a KeyError after nothing was sent.
+2. **The fixed plan's chosen sources included registered but unchosen sources** (A5 rehearsal). After the bundle, every Sprint 1 fixed run would have been refused by the A2 lock rule.
+3. **The bundle sealed the pilot source without re-checking the freeze invariant** (C1). It now re-checks on the loaded events.
+
+## 14. Questions for the reviewer (first round)
 
 1. Is enforcing the acceptance matrix at the freeze (rather than inside Sprint 1's inclusion) acceptable for the pilot,
    given that inclusion only ever sees accepted records through the sealed source?
