@@ -127,3 +127,19 @@ def test_the_augmented_pool_counts_a_re_report_once_with_the_mpea_record_survivi
     assert n == 77  # MPEA's 76 and the one new record; the re-report counted once
     assert decisions == {"extracted_pilot.csv:observation:1": "duplicate_counted_once",
                          "extracted_pilot.csv:observation:2": "in_scope"}
+
+
+def test_numbers_are_written_in_plain_notation():
+    from decimal import Decimal
+    assert [pilot.plain(Decimal(x).normalize()) for x in ("20", "2.50", "0.80", "289.7", "-196.0")] == [
+        "20", "2.5", "0.8", "289.7", "-196"]
+
+
+def test_the_augmented_pool_agrees_with_the_independent_test_side_calculation(engine, stub):
+    """PRD v1.2 R9: the augmented pool's estimate equals an independent calculation on its frozen records."""
+    from pilot_independent import compare
+    stub.respond(responder())
+    rid, report = _run(engine, stub, ("mpea", "extracted_pilot"))
+    with engine.connect() as conn:
+        result = compare(conn, rid)
+    assert result["agree"] and result["package"][0] == 77

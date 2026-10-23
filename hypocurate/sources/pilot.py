@@ -52,6 +52,12 @@ def temperature_c(written: str | None) -> Decimal | None:
     return v - Decimal("273.15") if m.group(2) == "K" else v
 
 
+def plain(d: Decimal) -> str:
+    """A number in plain notation without trailing zeros ('20', not '2E+1')."""
+    t = format(d, "f")
+    return t.rstrip("0").rstrip(".") if "." in t else t
+
+
 def _where(p: dict | None) -> str:
     if not p:
         return ""
@@ -93,7 +99,7 @@ def _rows(conn: Connection, accepted: list) -> list[dict]:
         for f in ("grain_size", "yield_strength"):
             t, u = written(f)
             q = quantity(f, t, u)
-            num[f] = (str(q.low.normalize()) if q.kind == "number" else "", f"{t} {u or ''}".strip())
+            num[f] = (plain(q.low) if q.kind == "number" else "", f"{t} {u or ''}".strip())
         alias, tt, band, phase = (mapped("alias_to_composition"), mapped("condition_to_category", "test_type"),
                                   mapped("condition_to_category", "test_temperature_band"),
                                   mapped("condition_to_category", "phase"))
@@ -111,7 +117,7 @@ def _rows(conn: Connection, accepted: list) -> list[dict]:
             "test_type": (tt.proposed or {}).get("category", "") if tt else (
                 test_type_key(ty_text) if test_type_key(ty_text) in ("tension", "compression") else ""),
             "test_type_quote": (tt.quote or "") if tt else "",
-            "test_temperature_c": "" if t_c is None else str(t_c.normalize()),
+            "test_temperature_c": "" if t_c is None else plain(t_c),
             "test_temperature_as_written": f"{t_text} {t_unit or ''}".strip(),
             "test_temperature_band": (band.proposed or {}).get("category", "") if band else "",
             "test_temperature_band_quote": (band.quote or "") if band else "",
