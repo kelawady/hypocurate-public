@@ -196,3 +196,17 @@ def test_the_re_report_survivor_setting_is_the_compilation_and_no_other_value_is
     with pytest.raises(plans.PlanError, match="not supported in the pilot"):
         plans.with_pilot_sources(plans.reference_plan(7), ("mpea", "extracted_pilot"))
     assert plans.with_pilot_sources(plans.reference_plan(7), ("mpea",)) == plans.reference_plan(7)  # Sprint 1: untouched
+
+
+def test_a_sprint1_run_on_a_database_holding_the_pilot_source_locks_a_plan_without_it(engine, stub):
+    """Merge rehearsal, 2026-10-23: after the bundle registers the pilot source, an MPEA-only fixed-plan run must lock
+    the ordinary plan (run_source lists unchosen registered sources too) and reproduce its result."""
+    stub.respond(responder())
+    rid, report = _run(engine, stub, ("mpea",))
+    assert (report.status, report.failure) == ("completed", None)
+    with engine.connect() as conn:
+        rules = conn.execute(text("SELECT content->'rules' FROM plan WHERE run_id = :r"), dict(r=rid)).scalar()
+        n = conn.execute(text("SELECT n_records FROM analysis_result WHERE run_id = :r AND scope = 'pooled'"),
+                         dict(r=rid)).scalar()
+    assert "extracted_pilot" not in rules["survivor_source_order"] and n == 76
+    assert rules == plans.reference_plan(0)["rules"]

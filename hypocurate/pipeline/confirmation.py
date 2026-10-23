@@ -113,8 +113,10 @@ def reference_plan(row, chosen=()) -> dict:
 
 
 def _chosen(conn: Connection, run_id: int) -> list[str]:
+    """The sources the run chose: run_source also lists the registered sources it did not choose (no version), as the
+    lock reads them (merge rehearsal, 2026-10-23: without this filter a registered pilot source entered every plan)."""
     return list(conn.execute(text("SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id "
-                                  "WHERE rs.run_id = :r"), dict(r=run_id)).scalars())
+                                  "WHERE rs.run_id = :r AND rs.source_version_id IS NOT NULL"), dict(r=run_id)).scalars())
 
 
 def plan_to_lock(conn: Connection, run_id: int) -> dict:
