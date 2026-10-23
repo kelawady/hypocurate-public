@@ -195,3 +195,4 @@ def test_the_re_report_survivor_setting_is_the_compilation_and_no_other_value_is
     monkeypatch.setattr(profile, "PILOT_REREPORT_SURVIVOR", "stated_value")
     with pytest.raises(plans.PlanError, match="not supported in the pilot"):
         plans.with_pilot_sources(plans.reference_plan(7), ("mpea", "extracted_pilot"))
+    assert plans.with_pilot_sources(plans.reference_plan(7), ("mpea",)) == plans.reference_plan(7)  # Sprint 1: untouched
