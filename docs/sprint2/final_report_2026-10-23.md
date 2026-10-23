@@ -1,6 +1,6 @@
 # Sprint 2 evidence-assembly pilot: final report
 
-Prepared 23 October 2026 for the owner and the review-week reviewer. The specification is PRD v1.2 (`docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf`). The day-by-day record is `docs/sprint2/daily/2026-10-22.md` and `docs/sprint2/daily/2026-10-23.md` (sections 1 to 20). The merge packet, after two ChatGPT review rounds, is `docs/reviews/sprint2_pilot_merge_packet.md`. The H2 section is added last, after the owner's manual fetch.
+Prepared 23 October 2026 for the owner and the review-week reviewer. The specification is PRD v1.2 (`docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf`). The day-by-day record is `docs/sprint2/daily/2026-10-22.md` and `docs/sprint2/daily/2026-10-23.md` (sections 1 to 20). The merge packet, after two ChatGPT review rounds, is `docs/reviews/sprint2_pilot_merge_packet.md`. The H2 section (section 7) was added last, after the owner's manual fetch of 19 papers.
 
 ## 1. Outcome in one paragraph
 
@@ -29,7 +29,7 @@ The pilot is **merged** (`ded0e2f`, tag `pilot-merge-1`) and **live** on migrati
 | R8 | The owner's first-pass annotation | **Met, with a recorded deviation** | `annotation_KE_v1`, 25 rows on 4 papers. It was **AI-assisted (Codex, for KE)**: not a blind human key, and its minutes are not owner time (`pilot_annotation_ke_v1`). Discrepancies are listed in the scorer's pairs |
 | R9 | The three H1 conditions on the live site | **Met** | live runs 9, 10, 11; `tests/pilot_independent.py` agrees on runs 9 and 11 (to better than 1e-12) |
 | R10 | Auditor findings and the repair trace | **Met** | 40 findings, each with a consequence (`auditor_finding`). Repair 1 (Wu et al. 2014, published version): attempted, gap not closed. Repair 2 (Otto et al. 2013, the primary source for cited observation 124): its grain sizes (4.4 and 155 µm) carry page provenance naming document 12. Both fetches are in `search_log` with author and time |
-| R11 | H2 evidence inventory | **Partly met** | Page `/pilot/h2` and workbook, live, status "inventory; analysis deferred to a versioned protocol". Selection reproduces the PRD's anchor (131 records, 20 papers, none with a grain size). **H2 extraction is pending the owner's fetch of the 7 open-copy papers** and is reported locally (section 7) |
+| R11 | H2 evidence inventory | **Met, with the scope the owner set** | Page `/pilot/h2` and workbook. Status "inventory; analysis deferred to a versioned protocol". Selection reproduces the PRD's anchor (131 records, 20 papers). **The extraction and reconciliation of the 19 fetched papers are reported locally** (section 7): 22 records recovered with provenance, grain-size type and state, and the causes counted. The live page shows no paper read (post-pilot item 9) |
 | R12 | Workbook provenance columns | **Met** | five columns and the "Extracted evidence by state" sheet on pilot runs; Sprint 1 workbooks unchanged |
 | R13 | Pipeline view | **Cut** by the owner (post-pilot list item 8) | — |
 | R14 | The results-note generator | **Replaced** by the owner's cut | The note's tables come from the scorer and saved queries (`documents costs`, `documents reach`, `documents h2-inventory`); the owner writes the prose |
@@ -45,7 +45,7 @@ The pilot is **merged** (`ded0e2f`, tag `pilot-merge-1`) and **live** on migrati
 | 4 | The acceptance matrix holds | **Met.** The freeze invariant, its negative tests, its re-check on bundle load, and a mutation test. |
 | 5 | The repair trace exists | **Met, with one limit.** It is in `search_log` and in the database (provenance names document 12). The workbook shows the repaired observations by state on its "Extracted evidence by state" sheet; they are not in a run's records because their yield strengths are figure-only. |
 | 6 | Validity preserved | **Met.** The extracted-only run under "use what is available" ended insufficient with no coefficient, no uncertainty and no verdict. The validity checks were not waived. |
-| 7 | H2 inventoried honestly | **Met so far.** The causes are separated and stated against the source configuration; no "absent" for "not obtained"; no analysis. The grain-size type of recovered records awaits extraction. |
+| 7 | H2 inventoried honestly | **Met.** The causes are separated (not obtained, not parsed, read with no observation, no grain size stated) and stated against the source configuration; the grain-size type of every recovered record is recorded (D27's two types, with the wording as written); no "absent"; no analysis. |
 | 8 | Sprint 1 intact | **Met.** The whole suite is green (2,600 locally; GitHub suite step 43 min 25 s at the merge). The dumps are byte-identical at the release code. Every safeguard touch has a test (packet sections 9–13). |
 | 9 | The package is complete | **Not fully.** See section 8 for what is open. |
 
@@ -104,6 +104,8 @@ The per-paper rows are in the generated file.
   - Reconciler: 10 calls, $0.78.
   - Total **$5.68** over 77 calls, 3 failed (no cost).
   - Per paper: daily report 2026-10-23 section 13.
+- **H2 document model calls** (19 papers, v4, H2 v1): extractor $2.52, Reconciler $1.23, total **$3.75** of the declared $8. Per paper: section 7.
+- **All document model calls in the pilot: $9.44.**
 - **Live runs:** run 8 $0.048; run 10 $0.055; run 11 $0.051; run 9 about $0.05 (unconfirmed when read). About **$0.20**.
 - **Owner time:**
   - The time log: review sheet v2, 1 min; the repair fetches, 1 + 1 min.
@@ -112,27 +114,81 @@ The per-paper rows are in the generated file.
 - **Wall time:** stage times come from `stage_result`. Document call times come from the development database: on live, loaded calls carry the load's time (post-pilot item 2).
 - **CI time:** the GitHub suite step was 43 min 25 s at the merge, against the 60-minute job limit.
 
-## 7. P7 / R11, the H2 inventory
+## 7. P7 / R11, the H2 inventory (local, for the note)
 
-*To be added after the owner's manual fetch of the 7 open-copy papers (`docs/sprint2/review/h2_fetch_list_v1.csv`). They will be extracted locally (v4, specification H2 v1) and reconciled, and the inventory regenerated. For the pilot the inventory is local, for the note (owner, 2026-10-23); an additive H2 bundle for live is post-pilot item 9.*
+**H2:** grain refinement in BCC high-entropy alloys at 800 °C and above; tension and compression both recorded. The qualifying grain size is either type, recorded per record (D27).
+- **Status:** inventory; analysis deferred to a versioned protocol. No analysis ran.
+- **Scope:** for the pilot the inventory is local, for the note (owner, 2026-10-23). The live `/pilot/h2` page shows the counts by cause with no paper read; an additive H2 bundle is post-pilot item 9.
+- **Generated by:** `hypocurate documents h2-inventory --out docs/sprint2/h2_inventory_2026-10-23.xlsx`.
 
-**Today, from stored rows:**
+**The corpus** (`pilot_h2_budget`; owner, 2026-10-23): the 20 papers behind the compilation's 131 BCC records at ≥ 800 °C (none has a grain size).
+- The owner fetched **19** by hand: 7 had an open copy listed but refused to the program (access method `none`), and 12 came through institutional access (`institutional_credential`).
+- The paper not obtained under the configured sources is `10.1007/s40195-019-00921-3` (3 records).
+- **Processing:** all 19 were parsed (Docling; two have no tables) and the row-split rule applied (one paper changed). Each was extracted on prompt v4 with the specification H2 v1 (Claude Sonnet 5.5), and reconciled against MPEA.
 
-| | |
+**Counts by cause:**
+
+| Cause | Count |
 |---|---|
-| Papers | 20 |
-| Compilation records | 131, none with a grain size |
-| Open copy listed but not fetched by program | 7 papers |
-| Not obtained under the configured sources, no open copy listed | 13 papers |
-| Read | 0 |
-| Recovered | 0 |
+| Compilation records lacking a grain size | 131 of 131 |
+| Papers not obtained under the configured sources (no open copy listed) | 1 |
+| Papers not parsed | 0 |
+| **Papers read, no observation returned (no grain size with a yield strength found)** | **10** |
+| Observations read with no grain size stated as a number | 26 |
+| Observations read with no yield strength stated as a number | 0 |
+
+**Records recovered** (grain size and yield strength both stated as numbers, with provenance):
+- **22, all from two papers:** 10.1007/s11837-014-1066-0 (12) and 10.1016/j.intermet.2011.01.004 (10).
+- **All are as-processed grain sizes in compression tests;** none is a grain size at or after the test temperature.
+- **All 22 are in state `proposed`.** The owner has not reviewed them, and none is accepted.
+- **The compilation lacks their grain sizes:** the Reconciler proposes 22 same-observation mappings, matching them to compilation records whose yield strengths at ≥ 800 °C carry no grain size. These papers state as-processed grain sizes for those records.
+
+**Observations by state and grain-size type:**
+
+| State | As-processed | At or after the test temperature |
+|---|---|---|
+| Proposed | 43 | 5 |
+
+Every observation keeps the Extractor's own wording of its type beside the type code read.
+
+**Per paper, with cost:**
+
+| Paper | Access | Compilation records | Observations | Recovered (as-processed / at or after) | Same-observation proposals | Extractor $ | Reconciler $ |
+|---|---|---|---|---|---|---|---|
+| 10.1016/j.actamat.2019.06.032 | none | 30 | 0 | 0 (0 / 0) | 0 | 0.145 | 0.101 |
+| 10.3390/e21010015 | none | 17 | 0 | 0 (0 / 0) | 0 | 0.120 | 0.067 |
+| 10.1007/s11837-014-1066-0 | institutional_credential | 10 | 12 | 12 (12 / 0) | 12 | 0.260 | 0.106 |
+| 10.1016/j.intermet.2011.01.004 | institutional_credential | 10 | 13 | 10 (10 / 0) | 10 | 0.204 | 0.080 |
+| 10.1007/s11661-017-4386-1 | none | 9 | 0 | 0 (0 / 0) | 0 | 0.104 | 0.055 |
+| 10.1016/j.actamat.2019.06.006 | none | 7 | 1 | 0 (0 / 0) | 0 | 0.193 | 0.108 |
+| 10.1016/j.intermet.2015.03.013 | institutional_credential | 6 | 0 | 0 (0 / 0) | 0 | 0.084 | 0.044 |
+| 10.1016/j.intermet.2017.01.007 | institutional_credential | 6 | 0 | 0 (0 / 0) | 0 | 0.061 | 0.033 |
+| 10.1007/s11661-005-0218-9 | institutional_credential | 4 | 0 | 0 (0 / 0) | 0 | 0.079 | 0.047 |
+| 10.1007/s12598-019-01310-6 | institutional_credential | 4 | 2 | 0 (0 / 0) | 2 | 0.093 | 0.048 |
+| 10.1016/j.jallcom.2015.08.224 | institutional_credential | 4 | 8 | 0 (0 / 0) | 8 | 0.271 | 0.128 |
+| 10.1016/j.msea.2012.12.018 | institutional_credential | 4 | 2 | 0 (0 / 0) | 2 | 0.220 | 0.078 |
+| 10.1007/s10853-012-6260-2 | institutional_credential | 3 | 5 | 0 (0 / 0) | 3 | 0.152 | 0.067 |
+| 10.1007/s40195-019-00921-3 | not obtained | 3 | 0 | 0 (0 / 0) | 0 | 0.000 | 0.000 |
+| 10.1016/j.jallcom.2015.11.050 | none | 3 | 3 | 0 (0 / 0) | 3 | 0.134 | 0.073 |
+| 10.1016/j.jallcom.2019.05.322 | none | 3 | 0 | 0 (0 / 0) | 0 | 0.157 | 0.066 |
+| 10.1016/j.matdes.2015.05.019 | institutional_credential | 3 | 0 | 0 (0 / 0) | 0 | 0.071 | 0.036 |
+| 10.1016/j.jallcom.2016.10.014 | institutional_credential | 2 | 0 | 0 (0 / 0) | 0 | 0.090 | 0.049 |
+| 10.1016/j.matlet.2014.11.162 | institutional_credential | 2 | 2 | 0 (0 / 0) | 2 | 0.071 | 0.037 |
+| 10.1007/s10853-019-03567-9 | none | 1 | 0 | 0 (0 / 0) | 0 | 0.011 | 0.012 |
+| **Total** | 7 none, 12 institutional, 1 not obtained | **131** | **48** | **22 (22 / 0)** | 42 | **2.522** | **1.232** |
+
+**Cost:** all H2 model calls cost **$3.75**, within the declared $8 budget (extractor $2.52, Reconciler $1.23). No stop rule fired.
+
+**Read honestly:**
+- In the sources searched, 10 of the 19 papers read report yield strengths at ≥ 800 °C with no grain size we could pair with them. 26 further observations have no grain size stated as a number.
+- Where the papers do state one (2 papers, 22 records), it is the as-processed grain size.
+- This is not a statement that grain sizes "do not exist": it is what these sources, as fetched and parsed, state.
 
 ## 8. Open items
 
-1. **The H2 extraction and the H2 section** (section 7), after the owner's fetch.
-2. **The results note prose** (P10), the owner's.
-3. **The full second-model review of the whole branch** (review week; the owner's merge condition (d)).
-4. **The post-pilot list** (`docs/sprint2/post_pilot_list.md`):
+1. **The results note prose** (P10), the owner's.
+2. **The full second-model review of the whole branch** (review week; the owner's merge condition (d)).
+3. **The post-pilot list** (`docs/sprint2/post_pilot_list.md`):
    - S1 lineage test;
    - import time against execution time;
    - an end-to-end disagreeing re-report;

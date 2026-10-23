@@ -96,3 +96,37 @@ def test_the_inventory_page_and_workbook_are_served_to_a_signed_in_person(mpea, 
     assert book.status_code == 200 and book.content[:2] == b"PK"
     from test_web_runs import make_client
     assert make_client(mpea, migrated_database).get("/pilot/h2").status_code in (302, 303, 401)  # signed in only
+
+
+def test_the_grain_size_type_is_one_of_d27s_two_or_not_recorded():
+    for written, t in (("as-processed (as-solidified)", inventory.AS_PROCESSED),
+                       ("as-processed grain size (before compression testing)", inventory.AS_PROCESSED),
+                       ("after exposure to test temperature (deformed at 800 C)", inventory.AT_TEMPERATURE),
+                       ("after deformation at test temperature (dynamically recrystallized grains)", inventory.AT_TEMPERATURE),
+                       ("", inventory.NOT_RECORDED), ("average grain size", inventory.NOT_RECORDED)):
+        assert inventory.grain_size_type(written) == t, written
+
+
+def test_a_paper_read_with_no_observation_is_counted_as_its_own_cause(mpea, monkeypatch):
+    from hypocurate.pipeline import evidence
+    monkeypatch.setattr(evidence, "PROMPT_VERSION", "none")
+    parsed = {"format": "hypocurate-parse-1", "parser": "docling", "parser_version": "2.141.0", "fallback_used": False,
+              "pages": 2, "attempts": [], "texts": [{"index": 0, "page": 1, "text": "Compression at 1000 °C."}],
+              "tables": [{"index": 0, "page": 1, "caption": "Table 1", "rows": [["Alloy", "Yield strength (MPa)"],
+                                                                                 ["NbMoTaW", "550"]]}]}
+    body, pdf = canonical(parsed), b"%PDF-1.7\n% no grain size\n"
+    with mpea.begin() as conn:
+        doc = conn.execute(text("INSERT INTO document (doi, doi_key, oa_source, pdf, pdf_sha256, fetched_by, by_hand, "
+                                "access_method) VALUES (:d, :k, 'by_hand', :p, :h, 'K. El-Awady', true, 'none') RETURNING id"),
+                           dict(d=H2_DOI, k="doi:" + H2_DOI, p=pdf, h=hashlib.sha256(pdf).hexdigest())).scalar_one()
+        pid = conn.execute(text("INSERT INTO document_parse (document_id, parser, parser_version, fallback_used, status, "
+                                "parsed, parsed_sha256, pages, tables_found) VALUES (:d, 'docling', '2.141.0', false, "
+                                "'parsed', :b, :h, 2, 1) RETURNING id"),
+                           dict(d=doc, b=body, h=hashlib.sha256(body.encode()).hexdigest())).scalar_one()
+    with mpea.connect() as conn:
+        document = ParsedDocument.load(conn, pid)
+    s0.store_and_freeze(mpea, document, FixtureExtractor().extract(document, EvidenceSpec.load("H2_v1")))
+    with mpea.connect() as conn:
+        inv = inventory.build(conn)
+    assert inv.totals["papers_read"] == 1 and inv.totals["observations"] == 0
+    assert inv.causes["papers read, no observation returned (no grain size with a yield strength found)"] == 1

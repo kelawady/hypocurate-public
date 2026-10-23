@@ -157,7 +157,8 @@ def command(args, engine: Engine) -> int:
         from hypocurate.pipeline.evidence import PROMPT_VERSION, standing_outputs
         from hypocurate.sources.normalize import doi_group_key
         with engine.connect() as conn:
-            output = dict(standing_outputs(conn)).get(doi_group_key(args.doi))
+            spec = "H2 v1" if getattr(args, "hypothesis", "H1") == "H2" else "H1 v1"
+            output = dict(standing_outputs(conn, spec=spec)).get(doi_group_key(args.doi))
         if output is None:
             print(f"error: no {PROMPT_VERSION} S0 for {args.doi}", file=sys.stderr)
             return 1

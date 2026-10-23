@@ -14,6 +14,7 @@ is STATUS. Built on request from stored rows only, for the page and the workbook
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
@@ -23,6 +24,18 @@ from hypocurate.documents.reach import CONFIGURATION, LISTED_NOT_FETCHED, NOT_OB
 from hypocurate.pipeline import evidence as ev
 
 STATUS = "inventory; analysis deferred to a versioned protocol"
+# D27's two grain-size types (Prof. El-Awady, 2026-10-22; register 'pilot_h2_inventory'), read by code from the type the
+# Extractor wrote; the wording as written is kept beside it.
+AS_PROCESSED, AT_TEMPERATURE, NOT_RECORDED = "as-processed", "at or after the test temperature", "not recorded"
+
+
+def grain_size_type(written: str | None) -> str:
+    t = (written or "").casefold()
+    if re.search(r"after (deformation|exposure|testing)|at (the )?test temperature|during (the )?test|dynamic", t):
+        return AT_TEMPERATURE
+    if "as-processed" in t or "as processed" in t or "before test" in t:
+        return AS_PROCESSED
+    return NOT_RECORDED
 H2_SPEC = "H2 v1"
 
 
@@ -52,6 +65,7 @@ def build(conn: Connection) -> Inventory:
     causes = {"compilation records lacking a grain size": 0, f"papers {LISTED_NOT_FETCHED}": 0,
               f"papers {NOT_OBTAINED}, no open copy listed": 0, "papers not parsed": 0,
               "papers obtained and parsed, not read (no H2 extraction)": 0,
+              "papers read, no observation returned (no grain size with a yield strength found)": 0,
               "observations read with no grain size stated as a number": 0,
               "observations read with no yield strength stated as a number": 0}
     for p in selection.papers:
@@ -87,7 +101,8 @@ def build(conn: Connection) -> Inventory:
                     causes["observations read with no grain size stated as a number"] += 1
                 elif not ys_ok:
                     causes["observations read with no yield strength stated as a number"] += 1
-                gtype = (vals["grain_size_type"].value_text if "grain_size_type" in vals else "not recorded")
+                gwritten = vals["grain_size_type"].value_text if "grain_size_type" in vals else ""
+                gtype = grain_size_type(gwritten)
                 state = st.category if st else "proposed"
                 inv.by_state[(state, gtype)] = inv.by_state.get((state, gtype), 0) + 1
                 if gs_ok and ys_ok:
@@ -95,10 +110,12 @@ def build(conn: Connection) -> Inventory:
                     show = lambda f: (f"{vals[f].value_text} {vals[f].unit or ''}".strip() if f in vals else "")  # noqa
                     inv.recovered.append({
                         "observation": o, "doi": p.doi, "alloy": show("alloy"), "grain_size": show("grain_size"),
-                        "grain_size_type": gtype, "yield_strength": show("yield_strength"),
+                        "grain_size_type": gtype, "grain_size_type_as_written": gwritten, "yield_strength": show("yield_strength"),
                         "test_type": show("test_type"), "test_temperature": show("test_temperature"), "state": state,
                         "reason": st.reason if st else "", "grain_size_provenance": _where(vals["grain_size"].provenance),
                         "yield_strength_provenance": _where(vals["yield_strength"].provenance)})
+        if out is not None and row["observations"] == 0:
+            causes["papers read, no observation returned (no grain size with a yield strength found)"] += 1
         inv.papers.append(row)
     inv.causes = causes
     inv.totals = {"configuration": CONFIGURATION, "papers": len(selection.papers), "compilation_records": selection.records,
@@ -129,7 +146,7 @@ def workbook(inv: Inventory) -> bytes:
         _append(ws, [s, t, n])
     sheets = (("Papers", ("doi", "compilation_records", "with_yield_strength", "with_grain_size", "open_access_flag",
                           "obtained", "parsed", "read", "observations", "recovered"), inv.papers),
-              ("Recovered records", ("observation", "doi", "alloy", "grain_size", "grain_size_type", "yield_strength",
+              ("Recovered records", ("observation", "doi", "alloy", "grain_size", "grain_size_type", "grain_size_type_as_written", "yield_strength",
                                      "test_type", "test_temperature", "state", "reason", "grain_size_provenance",
                                      "yield_strength_provenance"), inv.recovered))
     for title, cols, rows in sheets:

@@ -11092,14 +11092,24 @@
         {
           "ref": "python:hypocurate.pipeline.inventory:H2_SPEC",
           "equals": "H2 v1"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.inventory:AS_PROCESSED",
+          "equals": "as-processed"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.inventory:AT_TEMPERATURE",
+          "equals": "at or after the test temperature"
         }
       ],
       "note": null
     },
     "tests": [
-      "tests/test_h2_inventory.py::test_with_nothing_obtained_every_cause_is_counted_and_nothing_is_recovered",
+      "tests/test_h2_inventory.py::test_a_paper_read_with_no_observation_is_counted_as_its_own_cause",
       "tests/test_h2_inventory.py::test_a_read_paper_gives_recovered_records_with_type_state_and_provenance",
-      "tests/test_h2_inventory.py::test_the_inventory_page_and_workbook_are_served_to_a_signed_in_person"
+      "tests/test_h2_inventory.py::test_the_grain_size_type_is_one_of_d27s_two_or_not_recorded",
+      "tests/test_h2_inventory.py::test_the_inventory_page_and_workbook_are_served_to_a_signed_in_person",
+      "tests/test_h2_inventory.py::test_with_nothing_obtained_every_cause_is_counted_and_nothing_is_recovered"
     ],
     "history": [],
     "notes": [
@@ -11149,6 +11159,47 @@
     },
     "tests": [
       "tests/test_h2_inventory.py::test_the_h2_selection_reproduces_the_prd_anchor"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_h2_budget",
+    "name": "The H2 corpus and its budget",
+    "state": "in_force",
+    "statement": "The H2 corpus is the 19 papers the owner fetched by hand on 2026-10-23, of the 20 behind the compilation's BCC records at 800 °C and above: 7 with an open copy listed by the lookup but refused to the program (access method none, fetched manually) and 12 through the owner's institutional access (institutional_credential). Each is parsed, extracted on prompt v4 with the specification H2 v1, and reconciled, within a declared budget of $8 for all model calls on the H2 corpus; the run stops and asks if the next paper would exceed it. The per-document cap ($2 per invocation) and the monthly cap ($50) apply as for H1. The H2 section of the final report gives the cost per paper.",
+    "value": {
+      "text": "19 papers; $8 for all H2 model calls",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "R11 and the final report's H2 section.",
+    "reason": "PRD v1.2 R11: extraction and reconciliation over the H2 corpus, bounded by a declared list and budget.",
+    "evidence": [
+      "The owner's decision of 2026-10-23: 'All 19, budget $8. Record each document's access_method (7 open access, 12 institutional) and report cost per paper in the H2 section.'"
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.inventory:H2_SPEC",
+          "equals": "H2 v1"
+        }
+      ],
+      "note": "Spent $3.753812 of the $8 (extractor $2.521742, Reconciler $1.232070), 19 papers; no stop rule fired."
+    },
+    "tests": [
+      "tests/test_h2_inventory.py::test_a_read_paper_gives_recovered_records_with_type_state_and_provenance"
     ],
     "history": [],
     "notes": []
