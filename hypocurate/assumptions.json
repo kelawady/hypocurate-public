@@ -3542,7 +3542,8 @@
     "evidence": [
       "PRD 4; step 5 plan approved by the owner, 2026-10-05, with additions A (single-run scope) and B (named source fields).",
       "Owner's change before the step 5 review, 2026-10-05: the Commentator on a run with no dataset frozen.",
-      "Sprint 2 pilot, the owner's answer of 2026-10-22: 'New scope + roles, approved as a safeguard change' (register 'pilot_invocation_scope_document', 'pilot_extractor_access'): the Extractor at the new stage 'document'; the Reconciler reads nothing until R5."
+      "Sprint 2 pilot, the owner's answer of 2026-10-22: 'New scope + roles, approved as a safeguard change' (register 'pilot_invocation_scope_document', 'pilot_extractor_access'): the Extractor at the new stage 'document'; the Reconciler reads nothing until R5.",
+      "R5 (owner, 2026-10-23): the Reconciler at the stage 'document' reads one parsed document, its newest S0 and the compilation's records for that paper (register 'pilot_reconciler_access')."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -6646,7 +6647,7 @@
     "state": "in_force",
     "statement": "Planner Claude Opus 5.5, Curator Claude Sonnet 5.5, Critic Claude Haiku 4.5, Analyst Claude Opus 5.5, each with its effort and limits set explicitly in its settings version (agent_setting, append-only). The Curator: at most 8000 output tokens (thinking included), at most 20000 characters of answer, effort medium. The Planner and the Analyst: at most 8000 output tokens, 6000 characters, effort medium. The Critic: at most 8000 output tokens, 30000 characters, at most 100 flags per call, effort low. Each role builds its request from the settings version recorded for its invocation (instruction, model, limits and options), never from the settings current when the request is made.",
     "value": {
-      "text": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5; Extractor Sonnet 5.5 (pilot)",
+      "text": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5; Extractor and Reconciler Sonnet 5.5 (pilot)",
       "unit": null
     },
     "category": "operational",
@@ -6654,11 +6655,12 @@
     "reason": "PRD 17, decision 2: a capable model for the Planner and the Analyst, a cheaper one for the Curator and the Critic.",
     "evidence": [
       "Owner, step 8a plan, Q7 (2026-10-06).",
-      "Sprint 2 pilot, the owner's answer of 2026-10-22 (register 'pilot_extractor_models')."
+      "Sprint 2 pilot, the owner's answer of 2026-10-22 (register 'pilot_extractor_models').",
+      "Sprint 2 pilot: the owner's answer of 2026-10-22, 'Sonnet for all' (register 'pilot_extractor_models'), applied to the Reconciler at R5 (2026-10-23)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -6676,7 +6678,8 @@
             "curator": "claude-sonnet-5-5",
             "critic": "claude-haiku-4-5",
             "analyst": "claude-opus-5-5",
-            "extractor": "claude-sonnet-5-5"
+            "extractor": "claude-sonnet-5-5",
+            "reconciler": "claude-sonnet-5-5"
           }
         },
         {
@@ -6732,6 +6735,12 @@
         "from": "2026-10-07",
         "to": "2026-10-22",
         "note": "Before the Sprint 2 pilot's Extractor."
+      },
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Opus 5.5; Extractor Sonnet 5.5 (pilot)",
+        "note": "Before the pilot's Reconciler (R5)."
       }
     ],
     "notes": [
@@ -9977,7 +9986,7 @@
     "key": "pilot_evidence_state_storage",
     "name": "Evidence states and stop reasons in side tables",
     "state": "in_force",
-    "statement": "States of observations and links (proposed, supported, accepted, disputed, unresolved) are append-only events in evidence_state_event, each by one named rule or one named person, at the database's time; the current state is the newest event. A run's stop reason is a row of run_stop_reason written when the run ends. Nothing is added to record or run; migration 0010 adds no column to any existing table.",
+    "statement": "States of observations, links and the Reconciler's mappings (proposed, supported, accepted, disputed, unresolved) are append-only events in evidence_state_event, each by one named rule or one named person, at the database's time; the current state is the newest event. A run's stop reason is a row of run_stop_reason written when the run ends. Nothing is added to record or run; migration 0010 adds no column to any existing table.",
     "value": {
       "text": "append-only side tables (evidence_state_event, run_stop_reason)",
       "unit": null
@@ -9987,11 +9996,12 @@
     "reason": "record is append-only and a final run is never updated under Sprint 1's triggers, and the Sprint 1 reference dumps read every column of record, run and agent_invocation: columns would change a rule or the dumps. Clarifies R1's wording 'evidence_state on record ... stop_reason on run'.",
     "evidence": [
       "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R1.",
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Side tables, append-only\"; the freeze invariant reads the newest event per object and stores the event ids it relied on."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"Side tables, append-only\"; the freeze invariant reads the newest event per object and stores the event ids it relied on.",
+      "The owner's go on R5 of 2026-10-23 (night): the Reconciler per document, before the runs (register 'pilot_reconciler_placement')."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10016,7 +10026,8 @@
           "ref": "python:hypocurate.db.models:STATE_OBJECTS",
           "equals": [
             "observation",
-            "link"
+            "link",
+            "mapping"
           ]
         },
         {
@@ -10033,7 +10044,14 @@
       "tests/test_migrations_step0010.py::test_every_new_table_is_append_only",
       "tests/test_migrations_step0010.py::test_a_stop_reason_is_written_once_when_the_run_has_ended"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "append-only side tables (evidence_state_event, run_stop_reason) (objects: observation, link)",
+        "note": "The Reconciler's mappings became a third kind of object at R5."
+      }
+    ],
     "notes": [
       "The R6 freeze invariant (newest event per object; event ids stored with the freeze) is built on Saturday; 'mapping' joins the object kinds with the Reconciler (R5)."
     ]
@@ -10100,7 +10118,7 @@
     "key": "pilot_invocation_scope_document",
     "name": "Document scope and the pilot roles (safeguard change)",
     "state": "in_force",
-    "statement": "agent_invocation gains a third scope, 'document' (the Extractor, in no run; the parsed document it reads is its document_invocation row, required when the transaction ends), and two roles: 'extractor' (document scope only) and 'reconciler' (run scope only). Every Sprint 1 combination is accepted or refused as before. The Extractor's access allow-list is the only place S0's reference-blindness is enforced; its planted-value test plants a compilation value and a compilation record id; the Reconciler's list may include compilation records, so its outputs are S1, never S0, and an extractor call cannot be bound with the Reconciler's list.",
+    "statement": "agent_invocation gains a third scope, 'document' (the Extractor, in no run; the parsed document it reads is its document_invocation row, required when the transaction ends), and two roles: 'extractor' (document scope only) and 'reconciler' (document scope only, since 2026-10-23: per document, before the runs). Every Sprint 1 combination is accepted or refused as before. The Extractor's access allow-list is the only place S0's reference-blindness is enforced; its planted-value test plants a compilation value and a compilation record id; the Reconciler's list may include compilation records, so its outputs are S1, never S0, and an extractor call cannot be bound with the Reconciler's list.",
     "value": {
       "text": "scopes run, registration, document; roles + extractor, reconciler",
       "unit": null
@@ -10109,11 +10127,12 @@
     "affects": "Migration 0010 (agent_invocation, model_call, stage_result, agent_setting role lists; two 0005 functions replaced with one added branch each); the access layer (Friday).",
     "reason": "The Extractor's calls must be reserved and recorded like every model call (CLAUDE.md rule 12), and S0 belongs to the document, not a run (Design D11).",
     "evidence": [
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"New scope + roles, approved as a safeguard change\", with the two conditions stated here."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"New scope + roles, approved as a safeguard change\", with the two conditions stated here.",
+      "The owner's go on R5 of 2026-10-23 (night): 'the Reconciler runs per document, before the runs', recorded as a deviation; docs/sprint2/daily/2026-10-23.md."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10149,12 +10168,18 @@
       "tests/test_migrations_step0010.py::test_a_document_invocation_is_the_extractors_on_a_parsed_document_in_no_run",
       "tests/test_migrations_step0010.py::test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one",
       "tests/test_migrations_step0010.py::test_sprint1_combinations_are_unchanged",
-      "tests/test_migrations_step0010.py::test_a_document_call_belongs_to_no_run_and_has_its_invocations_role"
+      "tests/test_migrations_step0010.py::test_a_document_call_belongs_to_no_run_and_has_its_invocations_role",
+      "tests/test_migrations_step0010.py::test_a_reconciler_invocation_cannot_write_an_extraction_output"
     ],
-    "history": [],
-    "notes": [
-      "The access allow-lists and their planted-value tests come with the Extractor's model call (Friday); no Extractor model call is made before they exist."
-    ]
+    "history": [
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "scopes run, registration, document; roles + extractor, reconciler ('reconciler' in run scope only)",
+        "note": "Changed when the owner placed the Reconciler per document, before the runs (register 'pilot_reconciler_placement')."
+      }
+    ],
+    "notes": []
   },
   {
     "key": "pilot_document_cap",
@@ -10993,7 +11018,7 @@
     "key": "pilot_extractor_access",
     "name": "What the Extractor may read",
     "state": "in_force",
-    "statement": "The Extractor reads, through the access layer at the stage 'document', only: the one parsed document its invocation names (pages, text blocks, tables; no DOI), the reading sections of the evidence specification its setting names (unit of observation, required measurements, required context, linkage evidence, ambiguity handling; never the claim, the analysis, the exclusion rules or the re-report rule), and, for its verification call, its own draft on that document. Scope values reach it only as context to record for every candidate, never as a filter; it returns out-of-scope records too, and inclusion decides. The Reconciler reads nothing until R5. This allow-list is the only place S0's reference-blindness is enforced; its planted-value tests plant a compilation value, a compilation record id and the claim text, and check the complete outbound request bytes.",
+    "statement": "The Extractor reads, through the access layer at the stage 'document', only: the one parsed document its invocation names (pages, text blocks, tables; no DOI), the reading sections of the evidence specification its setting names (unit of observation, required measurements, required context, linkage evidence, ambiguity handling; never the claim, the analysis, the exclusion rules or the re-report rule), and, for its verification call, its own draft on that document. Scope values reach it only as context to record for every candidate, never as a filter; it returns out-of-scope records too, and inclusion decides. The Reconciler's list is its own entry ('pilot_reconciler_access'); an extractor call cannot read it. This allow-list is the only place S0's reference-blindness is enforced; its planted-value tests plant a compilation value, a compilation record id and the claim text, and check the complete outbound request bytes.",
     "value": {
       "text": "parsed document + specification reading sections (+ own draft for verification)",
       "unit": null
@@ -11002,11 +11027,12 @@
     "affects": "The access layer (a safeguard module); every Extractor call; S0.",
     "reason": "S0 must be reference-blind (D26) and the Extractor must not be told the claim's direction, as the Curator was not.",
     "evidence": [
-      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Friday question 1 (2026-10-22 evening): 'Reading sections only', with the clarification on scope values."
+      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Friday question 1 (2026-10-22 evening): 'Reading sections only', with the clarification on scope values.",
+      "The owner's go on R5 of 2026-10-23 (night): the Reconciler per document, with its own list."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -11038,9 +11064,17 @@
       "tests/test_extractor.py::test_the_extractors_complete_input_is_its_document_and_the_specs_reading_sections",
       "tests/test_extractor.py::test_no_planted_value_record_id_or_claim_reaches_the_outbound_requests",
       "tests/test_extractor.py::test_an_extractor_reads_only_its_own_document_and_a_reconciler_reads_nothing_there",
-      "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table"
+      "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table",
+      "tests/test_reconcile.py::test_the_reconcilers_input_is_the_document_its_s0_and_the_compilations_records_for_that_paper"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "(same list) ... The Reconciler reads nothing until R5.",
+        "note": "Only the sentence on the Reconciler changed, at R5."
+      }
+    ],
     "notes": []
   },
   {
@@ -11364,7 +11398,7 @@
     "key": "pilot_review_sheet",
     "name": "How the owner accepts mappings and links",
     "state": "in_force",
-    "statement": "Open proposals are exported to one .xlsx sorted by paper, then table or page, each with its quote, provenance and page; the owner fills accept / reject / correct with a reason, and a minutes cell (or start and end time) per paper for P9; the sheet is loaded with his name, each decision a state event by him, corrections keeping the original, the file and its hash kept.",
+    "statement": "Open items are exported to one .xlsx over the newest v4 S0 of every paper ('Proposals': the Reconciler's mappings in state proposed or unresolved, and every link that is not a same-table-row link), sorted by paper, then page, table and row, each with the observation it belongs to, the item as written, what is proposed, its quote or provenance and code's check; the owner fills accept / reject / correct, a corrected value and a reason (required for reject and correct). Value corrections go on their own sheet ('Corrections': observation, field, corrected value, unit, reason) and become value_correction rows, the value as read never changed; Auditor findings go on 'Findings' (FINDING_KINDS, CONSEQUENCES, a sentence); 'Repair candidates' lists observations whose test type or temperature is not stated; 'Minutes' has a minutes cell per paper (P9). The sheet is loaded with his name: the file and its hash kept (review_file); accept -> accepted, reject -> disputed, correct -> accepted with the correction in the reason (a mapping holds no value of its own), each a state event by him; each finding an auditor_finding; each minutes row an owner_time_log. A file with any unreadable row is refused whole, listing every problem, and nothing is written. Decided items are not exported again.",
     "value": {
       "text": "review sheet with per-paper minutes",
       "unit": null
@@ -11386,11 +11420,221 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": "pilot-2",
-      "note": "Built with the Reconciler (R5)."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.review_sheet:DECISIONS",
+          "equals": [
+            "accept",
+            "reject",
+            "correct"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.review_sheet:PROMPT_VERSION",
+          "equals": "v4"
+        },
+        {
+          "ref": "python:hypocurate.db.models:TIME_ACTIVITIES",
+          "equals": [
+            "annotation",
+            "review_sheet",
+            "auditor_findings",
+            "repair_fetch"
+          ]
+        }
+      ],
+      "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_review_sheet.py::test_the_export_lists_open_items_by_paper_then_page_table_row_with_minutes_and_repair_candidates",
+      "tests/test_review_sheet.py::test_the_loader_turns_decisions_corrections_findings_and_minutes_into_rows_by_the_owner",
+      "tests/test_review_sheet.py::test_a_file_with_any_unreadable_row_is_refused_whole_and_nothing_is_written",
+      "tests/test_review_sheet.py::test_a_sheet_whose_columns_differ_from_the_exports_is_refused",
+      "tests/test_review_sheet.py::test_the_cli_reconciles_the_newest_s0_of_the_prompt_version_and_round_trips_the_sheet"
+    ],
+    "history": [
+      {
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "value": "review sheet with per-paper minutes (before it was built: corrections 'keeping the original', no separate sheets named)",
+        "note": "Built with R5; the Corrections, Findings and Repair candidates sheets proposed by the builder from the owner's R10 wording."
+      }
+    ],
+    "notes": []
+  },
+  {
+    "key": "pilot_reconciler_placement",
+    "name": "Where the Reconciler runs (a deviation from the PRD's wording)",
+    "state": "in_force",
+    "statement": "The Reconciler runs once per document, on the newest v4 S0 of that document, before any run, as a document invocation (role 'reconciler', scope 'document'); its proposals are mappings (MAPPING_KINDS) stored with code's check in state 'proposed' (rule 'reconciler') or 'unresolved' (rule 'reconciler-check', with code's reason; a same-observation proposal without a compilation key is stored with the key '(none given)' and unresolved). PRD v1.2 R5 says 'in the run'; this placement matches Design v1.6 §3.9 and is recorded as a deviation. Code applies each proposal with Sprint 1's normalizers and vocabularies, unchanged; the original as written is kept. Nothing it does writes to S0; its events are S1's. The H1 runs read the sealed 'extracted (pilot)' version built from the accepted records (R9), never the Reconciler's output directly.",
+    "value": {
+      "text": "per document, before the runs",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "R5, R6, R9 and the S1 snapshot.",
+    "reason": "A run reads a sealed source version; reconciling per document lets the owner decide each mapping once, before the version is sealed.",
+    "evidence": [
+      "The owner's go on R5 of 2026-10-23 (night): 'the Reconciler runs per document, before the runs', recorded as a deviation; docs/sprint2/daily/2026-10-23.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.reconcile:RULE",
+          "equals": "reconciler"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reconcile:CHECK_RULE",
+          "equals": "reconciler-check"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reconcile:NO_KEY",
+          "equals": "(none given)"
+        },
+        {
+          "ref": "python:hypocurate.db.models:MAPPING_KINDS",
+          "equals": [
+            "alias_to_composition",
+            "column_to_field",
+            "condition_to_category",
+            "same_observation"
+          ]
+        },
+        {
+          "ref": "sql:hc_reconciler_mapping_insert"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_reconcile.py::test_proposals_are_applied_by_code_stored_with_their_states_and_s0_is_untouched",
+      "tests/test_migrations_step0010.py::test_a_reconciler_mapping_comes_after_s0_from_a_reconciler_on_the_same_document_and_carries_states",
+      "tests/test_migrations_step0010.py::test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_reconciler_access",
+    "name": "What the Reconciler may read (safeguard)",
+    "state": "in_force",
+    "statement": "The Reconciler reads, through the access layer at the stage 'document', only: the one parsed document its invocation names, that parse's newest S0 (its observations and values), and the compilation's (MPEA's sealed version's) records for the same paper (the same DOI key). It never reads the evidence specification, the claim or another paper. Because it reads the compilation, its outputs are S1 events, never S0; an extractor call cannot read the compilation's records.",
+    "value": {
+      "text": "parsed document + its newest S0 + the compilation's records for that paper",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The access layer (a safeguard module); every Reconciler call; S1.",
+    "reason": "Its job is to map the paper's wording to the compilation's fields and records, so it must see both; S0 stays reference-blind.",
+    "evidence": [
+      "The owner's go on R5 of 2026-10-23 (night): 'the Reconciler runs per document, before the runs', recorded as a deviation; docs/sprint2/daily/2026-10-23.md.",
+      "The owner's condition of 2026-10-22: an Extractor call can never be bound with the Reconciler's list."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.access.allowlist:ALLOWED.reconciler.document",
+          "equals": [
+            "compilation_records",
+            "parsed_document",
+            "s0_records"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reconcile:FIELDS",
+          "equals": [
+            "parsed_document",
+            "s0_records",
+            "compilation_records"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_reconcile.py::test_the_reconcilers_input_is_the_document_its_s0_and_the_compilations_records_for_that_paper",
+      "tests/test_access_layer.py::test_the_allow_list_matches_the_owners_table"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_review_tables",
+    "name": "Where the owner's review is stored",
+    "state": "in_force",
+    "statement": "Four append-only tables in 0010: review_file (the returned sheet with its SHA-256, checked by the database), owner_time_log (minutes per paper and activity: annotation, review_sheet, auditor_findings, repair_fetch; 0 to 1440), auditor_finding (a finding on an observation, link or mapping of an output with its S0, with its consequence from the design's Table 2) and value_correction (a corrected value of one candidate value by a named person, with its reason, the finding it answers and, for a repair, a provenance naming a stored document and parse; the value as read is never changed). Minutes from the AI-assisted annotation annotation_KE_v1 are not owner time and are not logged here.",
+    "value": {
+      "text": "review_file, owner_time_log, auditor_finding, value_correction",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R5, R10, P9 and the repair trace.",
+    "reason": "The owner's decisions, corrections and time must be kept with the file they came from, and never overwrite what the Extractor read.",
+    "evidence": [
+      "The owner's go on R5 of 2026-10-23 (night): 'the Reconciler runs per document, before the runs', recorded as a deviation; docs/sprint2/daily/2026-10-23.md."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.db.models:FINDING_KINDS"
+        },
+        {
+          "ref": "python:hypocurate.db.models:CONSEQUENCES",
+          "equals": [
+            "re_extract",
+            "correction",
+            "expert_review",
+            "qualified_unresolved",
+            "search_target"
+          ]
+        },
+        {
+          "ref": "sql:hc_auditor_finding_insert"
+        },
+        {
+          "ref": "sql:hc_value_correction_insert"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_migrations_step0010.py::test_findings_and_corrections_name_objects_of_an_output_with_its_s0_and_keep_the_original",
+      "tests/test_review_sheet.py::test_the_loader_turns_decisions_corrections_findings_and_minutes_into_rows_by_the_owner"
+    ],
     "history": [],
     "notes": []
   },
