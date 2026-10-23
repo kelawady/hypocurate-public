@@ -11980,6 +11980,62 @@
     ]
   },
   {
+    "key": "pilot_workbook_columns",
+    "name": "The workbook's provenance columns and states sheet (R12)",
+    "state": "in_force",
+    "statement": "For a run that reads the 'extracted (pilot)' source, the run workbook and records CSV gain five columns after the base columns: source document (DOI and the PDF's SHA-256), value provenance (grain size and yield strength: page and table row, or sentence/passage), link provenance (the accepted grain size - yield strength link: kind, location, and who accepted it: a person or rule r-link-1), extraction method (name, version, prompt version) and compilation match ('re-report (matched compilation record <key>)' or 'new'); and a sheet 'Extracted evidence by state' with counts by state and reason and every extracted observation of the standing S0s (accepted, proposed, unresolved, disputed) with its reason, read from the sealed version's documentation/states.txt. A disputed or proposed observation is not in the run (only accepted records are sealed) and appears only on that sheet. Any other run's workbook is unchanged.",
+    "value": {
+      "text": "five provenance columns + 'Extracted evidence by state' sheet, pilot runs only",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "R12, P7 and the results note.",
+    "reason": "PRD v1.2 R12: four provenance columns and one for 'matched compilation record / new / re-report / disputed'; the owner (2026-10-23): count observations by state with the reason, not only accepted ones.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R12.",
+      "The owner's answers of 2026-10-23 before stepping away (question 2)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.workbook:PILOT_COLUMNS",
+          "equals": [
+            "source document",
+            "value provenance",
+            "link provenance",
+            "extraction method",
+            "compilation match"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.workbook:PILOT_SHEET",
+          "equals": "Extracted evidence by state"
+        },
+        {
+          "ref": "python:hypocurate.sources.pilot:STATES_FILE",
+          "equals": "documentation/states.txt"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_pilot_source.py::test_the_workbook_has_the_provenance_columns_and_the_states_sheet_only_for_a_pilot_run"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
     "key": "pilot_annotation_notes",
     "name": "Labels on a paper's scoring tables",
     "state": "in_force",

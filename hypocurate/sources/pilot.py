@@ -29,17 +29,18 @@ from hypocurate.sources.versions import Registered, SourceDefinition, _register_
 KEY = "extracted_pilot"
 DATA_FILE = "extracted_pilot.csv"
 FREEZE_FILE = "documentation/freeze.txt"
+STATES_FILE = "documentation/states.txt"  # every extracted observation of the standing S0s with its state and reason
 DEFINITION = SourceDefinition(
     key=KEY, name="Extracted records (Sprint 2 pilot)", source_type="paper_search", data_kind="measured",
     grouping_unit="paper", licence="extracted from the cited papers; the papers are not redistributed", address=None,
     properties_covered=("yield_strength", "grain_size"), enabled=True, directory="", data_files=(DATA_FILE,),
-    version_label="pilot freeze", manifest_section=(), documentation_files=(FREEZE_FILE,))
+    version_label="pilot freeze", manifest_section=(), documentation_files=(FREEZE_FILE, STATES_FILE))
 COLUMNS = ("record_key", "paper_doi", "alloy_as_written", "composition_formula", "composition_quote",
            "grain_size_um", "grain_size_as_written", "grain_size_provenance",
            "yield_strength_mpa", "yield_strength_as_written", "yield_strength_provenance",
            "test_type", "test_type_quote", "test_temperature_c", "test_temperature_as_written",
            "test_temperature_band", "test_temperature_band_quote", "phase", "phase_quote", "processing_state",
-           "document_sha256", "rereport_of", "values_agree", "qualifiers")
+           "document_sha256", "link_provenance", "extraction_method", "rereport_of", "values_agree", "qualifiers")
 _TEMPERATURE = re.compile(r"^\s*[~∼≈]?\s*(-?\d+(?:\.\d+)?)\s*(K|°C|ºC|C)\s*$")
 
 
@@ -72,7 +73,7 @@ def _rows(conn: Connection, accepted: list) -> list[dict]:
     rows = []
     for st in accepted:
         o = st.observation_id
-        doc = conn.execute(text("SELECT d.doi, d.pdf_sha256 FROM candidate_observation c JOIN extraction_output x ON "
+        doc = conn.execute(text("SELECT d.doi, d.pdf_sha256, x.method FROM candidate_observation c JOIN extraction_output x ON "
                                 "x.id = c.extraction_output_id JOIN document_parse p ON p.id = x.document_parse_id "
                                 "JOIN document d ON d.id = p.document_id WHERE c.id = :o"), dict(o=o)).one()
         vals = {}
@@ -103,6 +104,13 @@ def _rows(conn: Connection, accepted: list) -> list[dict]:
         alias, tt, band, phase = (mapped("alias_to_composition"), mapped("condition_to_category", "test_type"),
                                   mapped("condition_to_category", "test_temperature_band"),
                                   mapped("condition_to_category", "phase"))
+        link = conn.execute(text(
+            "SELECT l.kind, l.provenance, e.by_rule, e.by_person FROM extraction_link l JOIN candidate_value a ON "
+            "a.id = l.from_value_id JOIN candidate_value b ON b.id = l.to_value_id JOIN LATERAL (SELECT by_rule, "
+            "by_person, state FROM evidence_state_event WHERE object_kind = 'link' AND object_id = l.id ORDER BY id DESC "
+            "LIMIT 1) e ON e.state = 'accepted' WHERE l.observation_id = :o AND ARRAY[a.field, b.field] <@ "
+            "ARRAY['grain_size', 'yield_strength'] ORDER BY l.id LIMIT 1"), dict(o=o)).one_or_none()
+        m = doc.method or {}
         t_text, t_unit = written("test_temperature")
         t_c = temperature_c(f"{t_text} {t_unit or ''}".strip()) if t_text else None
         ty_text, _ = written("test_type")
@@ -124,6 +132,9 @@ def _rows(conn: Connection, accepted: list) -> list[dict]:
             "phase": (phase.proposed or {}).get("category", "") if phase else "",
             "phase_quote": (phase.quote or "") if phase else "",
             "processing_state": written("processing_state")[0], "document_sha256": doc.pdf_sha256,
+            "link_provenance": "" if link is None else (f"{link.kind}: {_where(link.provenance)}; accepted by "
+                                                        + (link.by_person or f"rule {link.by_rule}")),
+            "extraction_method": f"{m.get('name', '')} {m.get('version', '')}, prompt {m.get('prompt_version', '')}".strip(),
             "rereport_of": st.rereport_of or "", "values_agree": "" if st.values_agree is None else str(st.values_agree),
             "qualifiers": "; ".join(st.qualifiers)})
     return rows
@@ -140,8 +151,12 @@ def build_files(conn: Connection, frozen) -> dict[str, bytes]:
               "accepted_records": [s.observation_id for s in sorted(frozen.accepted, key=lambda s: s.observation_id)],
               "rereport_of": {str(s.observation_id): s.rereport_of for s in frozen.accepted if s.rereport_of},
               "primary_set_new_records": sorted(s.observation_id for s in frozen.primary)}
+    states = [{"observation": s.observation_id, "paper": s.doi_key, "state": s.category, "reason": s.reason,
+               "rereport_of": s.rereport_of, "qualifiers": list(s.qualifiers)}
+              for s in sorted(frozen.statuses, key=lambda s: s.observation_id)]
     return {DATA_FILE: buf.getvalue().encode("utf-8"),
-            FREEZE_FILE: (json.dumps(record, indent=1, sort_keys=True) + "\n").encode("utf-8")}
+            FREEZE_FILE: (json.dumps(record, indent=1, sort_keys=True) + "\n").encode("utf-8"),
+            STATES_FILE: (json.dumps(states, indent=1, sort_keys=True) + "\n").encode("utf-8")}
 
 
 @dataclass(frozen=True)

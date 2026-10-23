@@ -72,3 +72,32 @@ def fcc_grain_size(version: SealedVersion) -> Selection:
     papers.sort(key=lambda p: (-p.records, p.doi_key))
     return Selection(version.source_key, version.fingerprint, field, PHASE_COLUMNS[(version.source_key, field)],
                      tuple(profile.PHASE_CLASSES), tuple(papers), without)
+
+
+# H2 (owner, 2026-10-22, D25/D27; register 'pilot_h2_selection'): BCC records tested at or above 800 °C, tension and
+# compression both, with or without a grain size (the compilation has none at these temperatures).
+H2_PHASE_CLASSES = ("BCC",)
+H2_MIN_TEMPERATURE_C = 800
+
+
+def bcc_high_temperature(version: SealedVersion) -> Selection:
+    """The papers behind the compilation's BCC records at >= 800 °C (any test type; the phase field by Sprint 1's
+    single-phase rule). `records_with_yield_strength` counts those with a yield strength; none has a grain size."""
+    field = phase_field()
+    by_key: dict[str, list] = defaultdict(list)
+    without = 0
+    for r in adapters.read(version).records:
+        t = r.harmonized["test_temperature"]
+        if r.harmonized[field].value not in H2_PHASE_CLASSES or t.status != "converted" or t.value < H2_MIN_TEMPERATURE_C:
+            continue
+        key = doi_group_key(r.paper_doi) if r.paper_doi else None
+        if key is None:
+            without += 1
+            continue
+        by_key[key].append(r)
+    papers = [Paper(doi=recs[0].paper_doi.strip(), doi_key=key, records=len(recs),
+                    records_with_yield_strength=sum(r.harmonized["yield_strength"].status == "converted" for r in recs),
+                    item_keys=tuple(r.source_item_key for r in recs)) for key, recs in by_key.items()]
+    papers.sort(key=lambda p: (-p.records, p.doi_key))
+    return Selection(version.source_key, version.fingerprint, field, PHASE_COLUMNS[(version.source_key, field)],
+                     H2_PHASE_CLASSES, tuple(papers), without)

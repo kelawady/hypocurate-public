@@ -78,7 +78,9 @@ def _row(key, gs, ys, rereport=""):
             "yield_strength_provenance": "p. 3, table 1, row 1", "test_type": "tension", "test_type_quote": QUOTE,
             "test_temperature_c": "25", "test_temperature_as_written": "25 °C", "test_temperature_band": "",
             "test_temperature_band_quote": "", "phase": "FCC", "phase_quote": "single-phase FCC",
-            "processing_state": "annealed", "document_sha256": "ab" * 32, "rereport_of": rereport,
+            "processing_state": "annealed", "document_sha256": "ab" * 32,
+            "link_provenance": "same_table_row: p. 3, table 1, row 1; accepted by rule r-link-1",
+            "extraction_method": "model_extractor 1, prompt v4", "rereport_of": rereport,
             "values_agree": "True" if rereport else "", "qualifiers": ""}
 
 
@@ -91,7 +93,14 @@ def engine(migrated_database):
     w.writeheader()
     w.writerows([_row("observation:1", "7", "356", "MPEA_dataset.csv:row:755"),  # a re-report of an MPEA record
                  _row("observation:2", "50", "300")])                            # new, same alloy and paper
-    files = {pilot.DATA_FILE: buf.getvalue().encode(), pilot.FREEZE_FILE: b"{}\n"}
+    states = [{"observation": 1, "paper": "doi:" + DOI, "state": "accepted", "reason": "", "rereport_of":
+               "MPEA_dataset.csv:row:755", "qualifiers": []},
+              {"observation": 2, "paper": "doi:" + DOI, "state": "accepted", "reason": "", "rereport_of": None,
+               "qualifiers": []},
+              {"observation": 3, "paper": "doi:" + DOI, "state": "proposed", "reason": "figure-only yield strength",
+               "rereport_of": None, "qualifiers": []}]
+    files = {pilot.DATA_FILE: buf.getvalue().encode(), pilot.FREEZE_FILE: b"{}\n",
+             pilot.STATES_FILE: json.dumps(states).encode()}
     with e.begin() as conn:
         _register_in(conn, pilot.DEFINITION, files, date(2026, 10, 23), "test freeze")
     yield e
@@ -143,3 +152,32 @@ def test_the_augmented_pool_agrees_with_the_independent_test_side_calculation(en
     with engine.connect() as conn:
         result = compare(conn, rid)
     assert result["agree"] and result["package"][0] == 77
+
+
+def test_the_workbook_has_the_provenance_columns_and_the_states_sheet_only_for_a_pilot_run(engine, stub):
+    """PRD v1.2 R12, and the owner's rule of 2026-10-23: observations counted by state with the reason."""
+    from openpyxl import load_workbook
+    from hypocurate.pipeline import workbook
+    stub.respond(responder())
+    rid, _ = _run(engine, stub, ("mpea", "extracted_pilot"))
+    wb = load_workbook(io.BytesIO(workbook.build(engine, rid)))
+    assert wb.sheetnames == [*workbook.SHEETS, workbook.PILOT_SHEET]
+    used = list(wb["Records used"].iter_rows(values_only=True))
+    header = list(used[1])
+    assert header[len(workbook.BASE_COLUMNS):len(workbook.BASE_COLUMNS) + 5] == list(workbook.PILOT_COLUMNS)
+    pilot_rows = [dict(zip(header, r)) for r in used[2:] if r[1] == "extracted_pilot"]
+    assert [r["compilation match"] for r in pilot_rows] == ["new"]
+    assert pilot_rows[0]["value provenance"] == "grain size: p. 3, table 1, row 1 | yield strength: p. 3, table 1, row 1"
+    assert pilot_rows[0]["link provenance"].startswith("same_table_row: p. 3, table 1, row 1")
+    assert pilot_rows[0]["extraction method"] == "model_extractor 1, prompt v4"
+    other = [dict(zip(list(wb["Records not used"].iter_rows(values_only=True))[1], r))
+             for r in list(wb["Records not used"].iter_rows(values_only=True))[2:]]
+    rerep = [r for r in other if r["source"] == "extracted_pilot"]
+    assert [(r["compilation match"], r["rule"]) for r in rerep] == [
+        ("re-report (matched compilation record MPEA_dataset.csv:row:755)", "duplicate counted once")]
+    states = [r[:3] for r in wb[workbook.PILOT_SHEET].iter_rows(values_only=True)]
+    assert ("proposed", "figure-only yield strength", 1) in states and ("accepted", "new", 1) in states
+    mpea_only, _ = _run(engine, stub, ("mpea",))
+    plain = load_workbook(io.BytesIO(workbook.build(engine, mpea_only)))
+    assert plain.sheetnames == list(workbook.SHEETS)
+    assert not set(workbook.PILOT_COLUMNS) & set(list(plain["Records used"].iter_rows(values_only=True))[1])

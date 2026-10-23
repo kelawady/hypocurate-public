@@ -40,6 +40,7 @@ from hypocurate.db.retry import run_transaction
 from hypocurate.scoring.score import TOLERANCE, quantity
 
 PROMPT_VERSION = "v4"  # the owner's decision of 2026-10-23: the Reconciler, R6 and the H1 runs use v4 S0s only
+EVIDENCE_SPEC = "H1 v1"  # the specification whose S0s stand by default (H2's S0s are the inventory's, R11)
 # The S0 that stands for a paper with more than one document (owner, 2026-10-23): actamat.2014.08.026's reviewed
 # manuscript (document fetched by program); the published version fetched as repair 1 gave identical evidence.
 STANDING_DOCUMENTS = {
@@ -52,12 +53,14 @@ MACHINE_RULES = ("extraction", "reconciler", "reconciler-check", R_AMBIGUOUS)  #
 CATEGORIES = ("accepted", "proposed", "unresolved", "disputed")
 
 
-def standing_outputs(conn: Connection, prompt_version: str | None = None) -> list[tuple[str, int]]:
+def standing_outputs(conn: Connection, prompt_version: str | None = None, spec: str = EVIDENCE_SPEC
+                     ) -> list[tuple[str, int]]:
     rows = conn.execute(text(
         "SELECT d.doi_key, x.id, d.pdf_sha256 FROM extraction_output x "
         "JOIN document_parse p ON p.id = x.document_parse_id JOIN document d ON d.id = p.document_id "
         "JOIN evidence_snapshot s ON s.extraction_output_id = x.id AND s.name = 'S0' "
-        "WHERE x.method->>'prompt_version' = :v ORDER BY d.doi_key, x.id DESC"), dict(v=prompt_version or PROMPT_VERSION)).all()
+        "WHERE x.method->>'prompt_version' = :v AND coalesce(x.method->>'evidence_spec', :s) = :s "
+        "ORDER BY d.doi_key, x.id DESC"), dict(v=prompt_version or PROMPT_VERSION, s=spec)).all()
     out: dict[str, int] = {}
     for key, xid, sha in rows:
         if key not in out and STANDING_DOCUMENTS.get(key, sha) == sha:

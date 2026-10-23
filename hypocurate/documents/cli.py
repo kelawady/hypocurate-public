@@ -27,6 +27,8 @@ def add_parser(sub) -> None:
                        ("reach", "print the reach table and its milestones")):
         p = docs_sub.add_parser(name, help=text)
         p.add_argument("--source", default="mpea", choices=SOURCES)
+        p.add_argument("--hypothesis", default="H1", choices=("H1", "H2"),
+                       help="the selection: H1, FCC grain-size records (default); H2, BCC records at >= 800 °C")
         if name == "reach":
             p.add_argument("--csv", help="also write the table as CSV to this file")
         if name == "reconcile":
@@ -54,12 +56,12 @@ def add_parser(sub) -> None:
             p.add_argument("--access-note", default="fetched manually")
 
 
-def _selection(engine: Engine, source: str):
-    from hypocurate.documents.select import fcc_grain_size
+def _selection(engine: Engine, source: str, hypothesis: str = "H1"):
+    from hypocurate.documents.select import bcc_high_temperature, fcc_grain_size
     from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
     with engine.connect() as conn:
         version = load_sealed_version(conn, latest_sealed_version_id(conn, source))
-    return fcc_grain_size(version)
+    return (bcc_high_temperature if hypothesis == "H2" else fcc_grain_size)(version)
 
 
 def _extract(engine: Engine, args) -> int:
@@ -91,7 +93,7 @@ def _extract(engine: Engine, args) -> int:
 
 
 def command(args, engine: Engine) -> int:
-    selection = _selection(engine, args.source)
+    selection = _selection(engine, args.source, getattr(args, 'hypothesis', 'H1'))
     if args.documents_command == "select":
         print(json.dumps({"source": selection.source_key, "version_fingerprint": selection.version_fingerprint,
                           "phase_field": selection.phase_field, "phase_column": selection.phase_column,
