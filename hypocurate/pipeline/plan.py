@@ -90,6 +90,8 @@ def default_plan(hypothesis_version_id: int) -> dict:
 def with_pilot_sources(plan: dict, chosen) -> dict:
     """The plan with each pilot source the run uses appended last to the survivor order and to the grouping
     (Sprint 2 pilot, R9); a plan for a run without one is returned unchanged."""
+    if p.PILOT_REREPORT_SURVIVOR != "compilation":  # the only survivor rule the pilot supports (register)
+        raise PlanError(f"re-report survivor {p.PILOT_REREPORT_SURVIVOR!r} is not supported in the pilot")
     extra = [s for s in p.PILOT_SOURCES if s in set(chosen or ())]
     for s in extra:
         plan["rules"]["survivor_source_order"].append(s)

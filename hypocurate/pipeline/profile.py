@@ -60,6 +60,10 @@ GROUPING = MappingProxyType({"mpea": "paper", "tamu_fcc": "dataset", "controlled
 # the survivor order (a re-report is counted once as the compilation's record). It enters a plan only when the run
 # uses it (`plan.with_pilot_sources`), so every plan without it is unchanged.
 PILOT_SOURCES = MappingProxyType({"extracted_pilot": "paper"})
+# Which value survives when an accepted re-report is counted once (owner, 2026-10-23; register
+# 'pilot_rereport_survivor'): the compilation's record. Read by `plan.with_pilot_sources`, which puts the pilot sources
+# after the compilation in the survivor order. The only value the pilot supports.
+PILOT_REREPORT_SURVIVOR = "compilation"
 
 # --- Data sufficiency (PRD 5.8; register 'fixed_minimums', 'sufficiency_options') ---------
 SUFFICIENCY_OPTION = "fixed_minimum"

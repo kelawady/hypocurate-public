@@ -187,3 +187,11 @@ def test_the_workbook_has_the_provenance_columns_and_the_states_sheet_only_for_a
     plain = load_workbook(io.BytesIO(workbook.build(engine, mpea_only)))
     assert plain.sheetnames == list(workbook.SHEETS)
     assert not set(workbook.PILOT_COLUMNS) & set(list(plain["Records used"].iter_rows(values_only=True))[1])
+
+
+def test_the_re_report_survivor_setting_is_the_compilation_and_no_other_value_is_accepted(monkeypatch):
+    from hypocurate.pipeline import profile
+    assert profile.PILOT_REREPORT_SURVIVOR == "compilation"
+    monkeypatch.setattr(profile, "PILOT_REREPORT_SURVIVOR", "stated_value")
+    with pytest.raises(plans.PlanError, match="not supported in the pilot"):
+        plans.with_pilot_sources(plans.reference_plan(7), ("mpea", "extracted_pilot"))

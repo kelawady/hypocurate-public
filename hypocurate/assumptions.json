@@ -11956,7 +11956,7 @@
     "key": "pilot_rereport_rules",
     "name": "R-ambiguous, R-link-1, R-rereport and the survivor rule",
     "state": "in_force",
-    "statement": "R-ambiguous: a link the Extractor marked ambiguous, still 'proposed' by the extraction, becomes 'unresolved' (rule 'r-ambiguous'), never silently resolved. R-link-1: a same-table-row link, not ambiguous and still 'proposed', whose observation has a same-observation mapping accepted by a person to a compilation record of the same paper, is accepted (rule 'r-link-1') and marked as a re-report of that record; any other link is accepted only by a person. R-rereport and the survivor rule: an accepted observation with an accepted same-observation mapping is a re-report of that record, counted once with the compilation record as survivor; whether its grain size and yield strength agree within 2 % (converted to µm and MPa) is reported with it. Builder's reading, for the owner to confirm: the person's acceptance of the same-observation mapping resolves the identity, so a re-report whose values disagree is still counted once with the compilation record surviving and the disagreement carried as a qualifier (PRD: 'disputed until the owner resolves it'). An accepted observation with no such mapping is new; the primary set's extracted records are the new ones.",
+    "statement": "R-ambiguous: a link the Extractor marked ambiguous, still 'proposed' by the extraction, becomes 'unresolved' (rule 'r-ambiguous'), never silently resolved. R-link-1: a same-table-row link, not ambiguous and still 'proposed', whose observation has a same-observation mapping accepted by a person to a compilation record of the same paper, is accepted (rule 'r-link-1') and marked as a re-report of that record; any other link is accepted only by a person. R-rereport and the survivor rule: an accepted observation with an accepted same-observation mapping is a re-report of that record, counted once with the compilation record as survivor; whether its grain size and yield strength agree within 2 % (converted to µm and MPa) is reported with it. The owner's decision (2026-10-23): the person's acceptance of the same-observation mapping resolves the identity, so a re-report whose values disagree is still counted once with the compilation record surviving and the disagreement carried as a qualifier; which value survives is its own setting ('pilot_rereport_survivor'). An accepted observation with no such mapping is new; the primary set's extracted records are the new ones.",
     "value": {
       "text": "re-reports counted once; the compilation record survives",
       "unit": null
@@ -11965,7 +11965,8 @@
     "affects": "R6, R9 (the R-rereport flags) and the pooled H1 run.",
     "reason": "A re-extracted copy of a compilation record must not be counted twice in the pooled set (PRD R6 acceptance condition).",
     "evidence": [
-      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6."
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6.",
+      "The owner's decision of 2026-10-23: 'accepted identity resolves it; counted once with the discrepancy as a qualifier.'"
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -11999,8 +12000,59 @@
       "tests/test_evidence.py::test_r_link_1_needs_a_same_observation_mapping_accepted_by_a_person",
       "tests/test_evidence.py::test_one_disputed_link_removes_exactly_that_record_from_the_primary_set_and_keeps_it_in_the_gap_count"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "value": "as now, with the builder's reading of a disagreeing re-report awaiting the owner",
+        "note": "The owner confirmed the reading (2026-10-23)."
+      }
+    ],
     "notes": []
+  },
+  {
+    "key": "pilot_rereport_survivor",
+    "name": "Which value survives a re-report",
+    "state": "in_force",
+    "statement": "When an accepted re-report is counted once, the compilation's record (MPEA) survives: the pilot sources come after the compilation in the survivor order of any plan that uses them, and the extracted value is carried with the record as a qualifier when it disagrees. The code supports only this value in the pilot.",
+    "value": {
+      "text": "compilation (MPEA)",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "The augmented pool (R9) and the workbook.",
+    "reason": "A pilot default; the owner's decision of 2026-10-23.",
+    "evidence": [
+      "The owner's decision of 2026-10-23 (after returning)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.profile:PILOT_REREPORT_SURVIVOR",
+          "equals": "compilation"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_pilot_source.py::test_the_re_report_survivor_setting_is_the_compilation_and_no_other_value_is_accepted",
+      "tests/test_pilot_source.py::test_the_augmented_pool_counts_a_re_report_once_with_the_mpea_record_surviving"
+    ],
+    "history": [],
+    "notes": [
+      "Open point for the design (owner, 2026-10-23), not a code change: the default should flip when the paper states the number and the compilation's value is a digitization, since the stated value has the better provenance. No such case in the pilot."
+    ]
   },
   {
     "key": "pilot_freeze_invariant",
