@@ -144,7 +144,7 @@ events, no event before S0, and so on).
 
 - **The six reference dumps** (the reference run, the fixed plan, the Planner FCC and BCC runs, a partly-sufficient
   original and its narrower question): run on main and on this branch; every file is **byte-identical**.
-  - They were run after each 0010 edit and again on 2026-10-23 at `6d86b19` + the `with_pilot_sources` guard fix.
+  - They were run after each 0010 edit and again on 2026-10-23 at `235c0a1`, the packet's commit.
 - **`tests/test_reference_numbers.py`** passes on the branch (pooled 97 / 22 / 20 / 74, 424.9 ± 64.4; MPEA alone
   424.1 ± 62.2).
 - **A rehearsal on a copy of the development database:** the MPEA-only fixed-plan run gives 76 records, 13 alloys,
