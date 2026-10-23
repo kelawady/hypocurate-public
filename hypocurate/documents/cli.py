@@ -23,6 +23,7 @@ def add_parser(sub) -> None:
                        ("reconcile", "run the Reconciler on a paper's newest S0 (costs money)"),
                        ("evidence", "apply the R6 rules to the standing v4 S0s and print observations by state and reason"),
                        ("h2-inventory", "write the H2 evidence inventory workbook (R11) and print its counts"),
+                       ("costs", "print model calls, tokens and dollars per document and run, stage times, owner time"),
                        ("review-export", "write the owner's review sheet (.xlsx) over the newest v4 S0s"),
                        ("review-load", "load a returned review sheet: decisions, corrections, findings, minutes"),
                        ("reach", "print the reach table and its milestones")):
@@ -38,6 +39,8 @@ def add_parser(sub) -> None:
             p.add_argument("--status-only", action="store_true", help="print the states without applying the rules")
         if name == "h2-inventory":
             p.add_argument("--out", help="the .xlsx file to write")
+        if name == "costs":
+            p.add_argument("--runs", default="", help="comma-separated run ids to include")
         if name == "review-export":
             p.add_argument("--out", required=True, help="the .xlsx file to write")
         if name == "review-load":
@@ -182,6 +185,12 @@ def command(args, engine: Engine) -> int:
             Path(args.out).write_bytes(inventory.workbook(inv))
         print(json.dumps({"status": inv.status, "totals": inv.totals, "causes": inv.causes,
                           "by_state": {f"{s} / {t}": n for (s, t), n in sorted(inv.by_state.items())}}, indent=1))
+        return 0
+    if args.documents_command == "costs":
+        from hypocurate.pipeline import costs
+        with engine.connect() as conn:
+            r = costs.report(conn, [int(x) for x in args.runs.split(",") if x.strip()])
+        print(json.dumps(r, indent=1, default=str))
         return 0
     if args.documents_command == "review-export":
         from pathlib import Path

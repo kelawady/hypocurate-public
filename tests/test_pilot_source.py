@@ -149,9 +149,15 @@ def test_the_augmented_pool_agrees_with_the_independent_test_side_calculation(en
     from pilot_independent import compare
     stub.respond(responder())
     rid, report = _run(engine, stub, ("mpea", "extracted_pilot"))
+    from hypocurate.pipeline import costs
     with engine.connect() as conn:
         result = compare(conn, rid)
+        (spent,) = costs.per_run(conn, [rid])  # R15: the run's calls and stage times from stored rows
+        calls = conn.execute(text("SELECT count(*) FROM model_call WHERE run_id = :r"), dict(r=rid)).scalar()
     assert result["agree"] and result["package"][0] == 77
+    assert spent["calls"] == calls > 0 and spent["cost_usd"] > 0
+    assert {s["stage"] for s in spent["stages"]} >= {"inclusion", "statistics"} and all(s["seconds"] >= 0
+                                                                                       for s in spent["stages"])
 
 
 def test_the_workbook_has_the_provenance_columns_and_the_states_sheet_only_for_a_pilot_run(engine, stub):

@@ -12098,6 +12098,52 @@
     "notes": []
   },
   {
+    "key": "pilot_costs",
+    "name": "Costs and times for P9 (R15)",
+    "state": "in_force",
+    "statement": "P9's numbers come from stored rows only: per document, the model calls of its document invocations by role (extractor, reconciler): calls, failed calls, input and output tokens, dollars (the price of each succeeded call; a failed or interrupted call carries no cost) and the wall time of its calls (first start to last finish of each invocation, summed); per run, its model calls and dollars and the wall time of each stage (stage_result); the owner's time from owner_time_log by activity and paper. AI-assisted work (annotation_KE_v1; the ChatGPT review of sheet v1, 10.7 min) is reported separately and labelled, never as owner time; the owner's 3 minutes for that review are his stated total (2026-10-23), not a time-log row. Command: hypocurate documents costs [--runs ...].",
+    "value": {
+      "text": "from model_call, stage_result and owner_time_log",
+      "unit": null
+    },
+    "category": "operational",
+    "affects": "P9 and the results note.",
+    "reason": "PRD v1.2 R15 and P9: 'numbers come from the model_call rows and a time log, not from memory'.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R15 and P9.",
+      "The owner's answer of 2026-10-23 on the review sheet's minutes."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.costs:per_document"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.costs:per_run"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_costs.py::test_a_documents_calls_tokens_and_dollars_come_from_its_model_call_rows",
+      "tests/test_costs.py::test_the_owners_time_is_read_from_the_time_log",
+      "tests/test_pilot_source.py::test_the_augmented_pool_agrees_with_the_independent_test_side_calculation"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
     "key": "pilot_annotation_notes",
     "name": "Labels on a paper's scoring tables",
     "state": "in_force",
