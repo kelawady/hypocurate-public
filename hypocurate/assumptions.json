@@ -4472,11 +4472,12 @@
     "affects": "Flags (step 6), eligibility decisions (step 6), sensitivity analyses (step 7) as roles see them.",
     "reason": "Review finding 3: stored codes are text and could carry anything.",
     "evidence": [
-      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md."
+      "Step 5 second-model review (ChatGPT, 2026-10-05), accepted by the owner: docs/reviews/step05_review_chatgpt.md.",
+      "Sprint 2 pilot, R9 (2026-10-23): the 'extracted (pilot)' source key (register 'pilot_extracted_source')."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-06"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -4548,6 +4549,7 @@
           "ref": "python:hypocurate.access.vocabulary:SOURCE_KEYS",
           "equals": [
             "controlled_duplicates",
+            "extracted_pilot",
             "mpea",
             "tamu_fcc"
           ]
@@ -4615,6 +4617,12 @@
         "from": "2026-10-05",
         "to": "2026-10-06",
         "note": "Step 7b additions approved by the owner on 2026-10-06."
+      },
+      {
+        "from": "2026-10-06",
+        "to": "2026-10-23",
+        "value": "flag kinds, flag categories, eligibility rules, sensitivity keys, plan rule codes (source keys: mpea, tamu_fcc, controlled_duplicates)",
+        "note": "Sprint 2 pilot, R9: the source key 'extracted_pilot' added (register 'pilot_extracted_source')."
       }
     ],
     "notes": [
@@ -11901,6 +11909,72 @@
     "history": [],
     "notes": [
       "The PRD says the matrix is 'enforced at inclusion'. In the pilot it is enforced where extracted records enter: the freeze, from which R9 builds the sealed 'extracted (pilot)' version; Sprint 1's inclusion module is not changed."
+    ]
+  },
+  {
+    "key": "pilot_extracted_source",
+    "name": "The 'extracted (pilot)' source and the three H1 conditions (safeguard)",
+    "state": "in_force",
+    "statement": "The R6 freeze is sealed as a version of a new source, 'extracted_pilot' (source type paper_search, measured, grouped by paper), with Sprint 1's registration (digest, identity and seal checks). Its files: extracted_pilot.csv, one row per accepted extracted record (the primary set's new records and the re-reports, flagged), every value built by code from the stored candidate values after loaded corrections and the mappings a person accepted, with provenance and the document's SHA-256; and documentation/freeze.txt with the S1 and S2 snapshots, the S2 events hash, the accepted record ids, the R-rereport flags and the new records. Its adapter converts grain size and yield strength to µm and MPa and a single stated temperature to °C; test type, temperature band and phase from an accepted mapping are 'assigned_from_source' with the paper's quote. The definition is kept apart from Sprint 1's SOURCES. The source key is added to the plan vocabulary (SOURCE_KEYS) and, only for a run that uses it, appended last to the plan's survivor order and grouping (paper); every other plan is unchanged. The three H1 conditions are fixed-plan runs: MPEA only; the pilot source only under 'use what is available'; MPEA plus the pilot source (re-reports counted once by Sprint 1's own checks and inclusion: an exact or possible duplicate is 'duplicate counted once', the MPEA record surviving). Texas A&M is not used (D24).",
+    "value": {
+      "text": "extracted_pilot: sealed from the freeze; last in the survivor order; grouped by paper",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R9's three runs, the plan vocabulary (access layer) and the fixed plan of a run that uses the pilot source.",
+    "reason": "PRD v1.2 R9: the three H1 conditions through the existing inclusion, freeze and statistics; the owner's go on R5 (2026-10-23): the sealed source carries the S2 hash, the accepted record ids and the R-rereport flags.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R9.",
+      "The owner's go on R5 of 2026-10-23 (night), with the cuts."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.sources.pilot:KEY",
+          "equals": "extracted_pilot"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.profile:PILOT_SOURCES",
+          "equals": {
+            "extracted_pilot": "paper"
+          }
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:SOURCE_KEYS",
+          "equals": [
+            "controlled_duplicates",
+            "extracted_pilot",
+            "mpea",
+            "tamu_fcc"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.sources.adapters.extracted_pilot:ADAPTER_VERSION",
+          "equals": "1"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_pilot_source.py::test_a_plan_without_the_pilot_source_is_unchanged_and_with_it_the_source_comes_last",
+      "tests/test_pilot_source.py::test_the_source_is_built_from_the_freeze_and_read_by_its_adapter",
+      "tests/test_pilot_source.py::test_temperatures_are_converted_only_when_one_is_stated",
+      "tests/test_pilot_source.py::test_the_augmented_pool_counts_a_re_report_once_with_the_mpea_record_surviving"
+    ],
+    "history": [],
+    "notes": [
+      "Safeguard touch: the plan vocabulary SOURCE_KEYS (access layer) gains one key; the fixed plan of a run that uses the pilot source gains one survivor entry and one grouping entry. Needs the owner's review and a second-model review before any merge to main."
     ]
   },
   {

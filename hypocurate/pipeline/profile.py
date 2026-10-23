@@ -56,6 +56,10 @@ ACCEPTED_VALUE_STATUSES = ("converted", "assigned_from_source", "assigned_by_dec
 # The grouping unit of each source for the grouped standard errors (register 'tamu_grouping_unit',
 # 'paper_grouping_by_doi').
 GROUPING = MappingProxyType({"mpea": "paper", "tamu_fcc": "dataset", "controlled_duplicates": "paper"})
+# Sprint 2 pilot (R9; register 'pilot_extracted_source'): the 'extracted (pilot)' source, grouped by paper and last in
+# the survivor order (a re-report is counted once as the compilation's record). It enters a plan only when the run
+# uses it (`plan.with_pilot_sources`), so every plan without it is unchanged.
+PILOT_SOURCES = MappingProxyType({"extracted_pilot": "paper"})
 
 # --- Data sufficiency (PRD 5.8; register 'fixed_minimums', 'sufficiency_options') ---------
 SUFFICIENCY_OPTION = "fixed_minimum"

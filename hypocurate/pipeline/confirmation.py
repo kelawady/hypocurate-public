@@ -105,10 +105,16 @@ def _planner_plan(conn: Connection, run_id: int, row) -> dict:
                               row.sufficiency_option)
 
 
-def reference_plan(row) -> dict:
-    plan = plans.reference_plan(row.hypothesis_version_id)
+def reference_plan(row, chosen=()) -> dict:
+    """The fixed plan; `chosen`, the run's source keys: a pilot source among them is added (Sprint 2, R9)."""
+    plan = plans.with_pilot_sources(plans.reference_plan(row.hypothesis_version_id), chosen)
     plan["sufficiency"]["option"] = row.sufficiency_option
     return plan
+
+
+def _chosen(conn: Connection, run_id: int) -> list[str]:
+    return list(conn.execute(text("SELECT s.key FROM run_source rs JOIN source s ON s.id = rs.source_id "
+                                  "WHERE rs.run_id = :r"), dict(r=run_id)).scalars())
 
 
 def plan_to_lock(conn: Connection, run_id: int) -> dict:
@@ -117,7 +123,7 @@ def plan_to_lock(conn: Connection, run_id: int) -> dict:
     if row.narrower_of_run_id is not None:
         return _narrower_plan(conn, run_id, row.narrower_of_run_id, row.hypothesis_version_id)
     if row.fixed_plan:
-        return reference_plan(row)
+        return reference_plan(row, _chosen(conn, run_id))
     return _planner_plan(conn, run_id, row)
 
 

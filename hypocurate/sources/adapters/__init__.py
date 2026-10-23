@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Callable, Mapping
 from types import MappingProxyType
 
-from hypocurate.sources.adapters import mpea_layout, tamu_fcc
+from hypocurate.sources.adapters import extracted_pilot, mpea_layout, tamu_fcc
 from hypocurate.sources.record import AdapterError, AdapterResult
 from hypocurate.sources.versions import SealedVersion
 
@@ -15,6 +15,7 @@ ADAPTERS: Mapping[str, Callable[[SealedVersion], AdapterResult]] = MappingProxyT
     "mpea": mpea_layout.read,
     "controlled_duplicates": mpea_layout.read,
     "tamu_fcc": tamu_fcc.read,
+    "extracted_pilot": extracted_pilot.read,  # Sprint 2 pilot (R9): built from the R6 freeze
 })
 
 
@@ -25,6 +26,7 @@ ADAPTER_IDENTITY: Mapping[str, tuple[str, str]] = MappingProxyType({
     "mpea": ("mpea_layout", mpea_layout.ADAPTER_VERSION),
     "controlled_duplicates": ("mpea_layout", mpea_layout.ADAPTER_VERSION),
     "tamu_fcc": ("tamu_fcc", tamu_fcc.ADAPTER_VERSION),
+    "extracted_pilot": ("extracted_pilot", extracted_pilot.ADAPTER_VERSION),
 })
 
 
