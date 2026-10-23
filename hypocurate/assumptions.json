@@ -10248,7 +10248,7 @@
     "key": "pilot_document_cap",
     "name": "Spending cap per document",
     "state": "in_force",
-    "statement": "Each Extractor call is reserved before it is sent, against a cap of $2 per document invocation and the $50 monthly cap; the per-run cap becomes a run parameter with its default unchanged ($2).",
+    "statement": "Each Extractor and Reconciler call is reserved before it is sent, each attempt separately, against a cap of $2 per document invocation (each extraction step, verification step and Reconciler run is one invocation) and the $50 monthly cap shared by every call in the database; a refusal sends nothing. The budget is per invocation, not cumulative per document: a paper extracted again (a repair fetch, another prompt version) starts a new $2, and only the monthly cap bounds the total. The owner approved this per-invocation guarantee for the pilot (2026-10-23); cumulative per-document enforcement is on the post-pilot list. The per-run cap is unchanged ($2).",
     "value": {
       "text": "2",
       "unit": "USD per document invocation"
@@ -10257,11 +10257,12 @@
     "affects": "The Extractor's model calls (R4) and the H2 corpus (R11).",
     "reason": "The H2 corpus and parallel Extractor calls are the first workloads that could approach the caps.",
     "evidence": [
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md); the owner's session brief of 2026-10-22."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md); the owner's session brief of 2026-10-22.",
+      "The owner's decision of 2026-10-23 after ChatGPT's merge review round 2: 'the per-invocation $2 cap is approved by me for the pilot; record it in the register as an owner decision with cumulative per-document enforcement on the post-pilot list.'"
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10280,9 +10281,22 @@
       "note": "Per document invocation (the extraction call and the verification call are one invocation each)."
     },
     "tests": [
-      "tests/test_extractor.py::test_a_document_invocation_is_reserved_under_the_per_document_cap"
+      "tests/test_extractor.py::test_a_document_invocation_is_reserved_under_the_per_document_cap",
+      "tests/test_pilot_spending.py::test_a_retry_is_reserved_again_and_refused_when_the_cap_is_reached_between_attempts",
+      "tests/test_pilot_spending.py::test_every_refusal_code_of_the_spending_module_is_a_known_failure_that_stops",
+      "tests/test_pilot_spending.py::test_the_extraction_call_is_refused_before_any_request_under_the_document_cap",
+      "tests/test_pilot_spending.py::test_the_reconciler_call_is_refused_before_any_request_under_either_cap",
+      "tests/test_pilot_spending.py::test_the_verification_call_is_refused_before_any_request_under_the_document_cap",
+      "tests/test_pilot_spending.py::test_the_verification_call_is_refused_before_any_request_under_the_monthly_cap"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "Each Extractor call is reserved before it is sent, against a cap of $2 per document invocation and the $50 monthly cap; the per-run cap becomes a run parameter with its default unchanged ($2).",
+        "note": "Clarified after ChatGPT's merge review round 2 (A4): the budget is per document invocation, not cumulative per document."
+      }
+    ],
     "notes": []
   },
   {

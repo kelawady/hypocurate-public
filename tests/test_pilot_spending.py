@@ -50,6 +50,25 @@ def test_the_verification_call_is_refused_before_any_request_under_the_monthly_c
     assert _refusals(db) == [("document", "spending_cap_month")]
 
 
+def test_the_verification_call_is_refused_before_any_request_under_the_document_cap(db, stub, monkeypatch):
+    """Merge review round 2 (A4): the verification call's own document invocation, its cap exhausted."""
+    stub.queue(sp.reply(sp.fields(records=draft([gs_ys_record()])), input_tokens=4000, output_tokens=900))
+    real = spend.reserve
+    calls = []
+
+    def cap_spent_after_first(*a, **k):  # the verification invocation's budget is gone when it is reserved
+        calls.append(1)
+        if len(calls) > 1:
+            monkeypatch.setattr(spend, "DOCUMENT_CAP_USD", Decimal("0"))
+        return real(*a, **k)
+    monkeypatch.setattr(spend, "reserve", cap_spent_after_first)
+    run = mx.extract_document(db, stored_parse(World(db)), "H1_v1", client_options=sp.client_options(stub))
+    assert len(stub.requests) == 1 and run.frozen is None and "spending_cap_document" in (run.failure or "")
+    assert _refusals(db) == [("document", "spending_cap_document")]
+    with db.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM candidate_observation")).scalar() == 0
+
+
 def test_a_retry_is_reserved_again_and_refused_when_the_cap_is_reached_between_attempts(db, stub, monkeypatch):
     stub.queue(sp.reply(sp.fields(records="not json"), input_tokens=4000, output_tokens=900))  # malformed: a retry
     real = spend.reserve

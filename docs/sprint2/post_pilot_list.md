@@ -14,5 +14,5 @@ Items deferred from the pilot, each with its source. None of them blocks the mer
    - It needs a column on `model_call`. 0010 adds no column to an existing table, because the six reference dumps read every column. So it is a later migration.
 5. **The survivor default should flip when the paper states the number and the compilation's value is a digitization** (owner, 2026-10-23; design open point in `pilot_rereport_survivor`).
 6. **The full second-model review of the whole branch** (owner's condition (d) for the merge).
-7. **The "per-document" cap is per document invocation.** Decide whether a cap per paper across invocations is wanted.
+7. **Cumulative per-document cost enforcement.** For the pilot the owner approved the cap per document invocation ($2; register `pilot_document_cap`, 2026-10-23), so a re-extracted paper starts a new $2. After the pilot: enforce a cap per paper across all its invocations.
 8. **Pipeline view (R13)**, cut from the pilot by the owner.
