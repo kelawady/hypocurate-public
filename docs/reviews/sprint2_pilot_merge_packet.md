@@ -223,7 +223,19 @@ unless a person starts it:
 
 ## 7a. Recovery and release checks (merge review A5)
 
-**Restore rehearsal of the live backup.** It needs the owner's backup file:
+**Restore rehearsal of the live backup: done, 2026-10-23** (daily report section 17).
+- The owner's backup (1,064,714 bytes) restored into `hc_live_restore` with no errors: schema 0009, 13,147 rows, the three live reference runs at 424.88 ± 64.38.
+- Its catalog matches main's fresh 0009 except two CHECKs printed with different parentheses.
+- On the copy:
+  - 0010 upgrade;
+  - MPEA reference 424.05 ± 62.22;
+  - bundle loaded, pilot fingerprint abe38724…, identical to the development freeze;
+  - MPEA reference identical again;
+  - extracted only: insufficient;
+  - augmented: 419.73 ± 62.31;
+  - the independent calculation agrees.
+
+The procedure was:
 1. The owner runs `pg_dump -Fc "$LIVE_URL" > ~/hc-work/live_backup_<date>.dump` in his own terminal. The address is never shown to Claude Code.
 2. Claude Code restores the file into a scratch database (`hc_live_restore`) and checks that its revision is 0009, its row counts match `/health` and the owner's expectations, and its catalog is intact.
 3. On that copy: the MPEA reference run; upgrade to 0010 with this branch; the reference run again; load the bundle; the reference run again.
