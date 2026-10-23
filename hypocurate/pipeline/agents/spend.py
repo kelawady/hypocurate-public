@@ -9,6 +9,7 @@ on a stale total. (Before the step 8a review fix a registration call read its to
 while no cost is known (`coalesce(cost, max_cost)`, as the totals views do):
 - a run: at most `RUN_CAP_USD` over all its calls;
 - a registration invocation (the Curator): at most `CURATION_CAP_USD` over its calls;
+- a document invocation (the Extractor, Sprint 2 pilot): at most `DOCUMENT_CAP_USD` over its calls;
 - the calendar month (UTC, by the database's start time): at most `MONTH_CAP_USD` over every call
   recorded in this database;
 - optionally a lower ceiling the caller names (the live curation call: $0.50, owner 2026-10-06),
@@ -45,10 +46,12 @@ LOG = logging.getLogger("hypocurate.pipeline")
 RUN_CAP_USD = Decimal("2")         # CLAUDE.md rule 12; register 'spending_caps'
 MONTH_CAP_USD = Decimal("50")      # CLAUDE.md rule 12; register 'spending_caps'
 CURATION_CAP_USD = Decimal("2")    # step 8a (owner, 2026-10-06): one curation, like one run
+DOCUMENT_CAP_USD = Decimal("2")    # Sprint 2 pilot (owner, 2026-10-22): one Extractor invocation on one document
 MONTH_LOCK_KEY = 0x68636D6F6E7468  # pg_advisory_xact_lock key of the monthly cap ("hcmonth")
 CODES = {
     "spending_cap_run": "the run's model calls would exceed the per-run cap",
     "spending_cap_curation": "the curation's model calls would exceed the per-curation cap",
+    "spending_cap_document": "the document invocation's model calls would exceed the per-document cap",
     "spending_cap_month": "the month's model calls would exceed the monthly cap",
     "ceiling_reached": "the calls would exceed the ceiling set for this call",
     "invocation_unknown": "no such invocation",
@@ -101,7 +104,7 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
                 raise ClaimLost("the run's claim was closed or its work lock is gone")
             stage = actual_stage(conn, inv.run_id, status)
         else:
-            stage = "registration"
+            stage = "document" if inv.scope == "document" else "registration"
         conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), dict(k=MONTH_LOCK_KEY))
         limit = ceiling
         if inv.scope == "run":
@@ -113,7 +116,8 @@ def reserve(engine: Engine, invocation_id: int, model: str, max_cost: Decimal, c
         else:
             spent = conn.execute(text("SELECT coalesce(sum(coalesce(cost, max_cost)), 0) FROM model_call "
                                       "WHERE invocation_id = :i"), dict(i=invocation_id)).scalar_one()
-            cap, cap_code = CURATION_CAP_USD, "spending_cap_curation"
+            cap, cap_code = ((DOCUMENT_CAP_USD, "spending_cap_document") if inv.scope == "document"
+                             else (CURATION_CAP_USD, "spending_cap_curation"))
         month = conn.execute(text(_MONTH_TOTAL)).scalar_one()
         code = (cap_code if spent + max_cost > cap else
                 "ceiling_reached" if limit is not None and spent + max_cost > limit else

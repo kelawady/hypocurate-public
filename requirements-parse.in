@@ -1,0 +1,17 @@
+# The parse environment (Sprint 2 pilot; owner, 2026-10-22, register 'parser_choice'): Docling first, pymupdf as the
+# fallback. Installed only where parsing runs (a venv outside the repository, e.g. /tmp/hc-parse/venv), never in a
+# Docker image and never in requirements.lock or requirements-dev.lock (tests/test_skeleton.py checks this).
+# PyTorch is the CPU build. Regenerate the lock with:
+# (caches on /tmp: the wheels are several GB)
+#   PIP_CACHE_DIR=/tmp/hc-parse/cache/pip .venv/bin/pip-compile --cache-dir /tmp/hc-parse/cache/pip-tools \
+#       --strip-extras --generate-hashes --allow-unsafe --no-emit-index-url \
+#       --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple \
+#       -o requirements-parse.lock requirements-parse.in
+# Install with:
+#   python3 -m venv /tmp/hc-parse/venv && PIP_CACHE_DIR=/tmp/hc-parse/cache/pip /tmp/hc-parse/venv/bin/pip install \
+#       --require-hashes --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple \
+#       -r requirements-parse.lock
+docling==2.141.0
+pymupdf==2.0
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu

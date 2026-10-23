@@ -73,6 +73,9 @@ def expected_triggers() -> set[tuple[str, str]]:
     m9 = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0009").module  # step 10b, fix round 1
     names |= {(t, f"hc_{t}_append_only") for t in m9.APPEND_ONLY} | {(t, f"hc_{t}_no_truncate") for t in m9.APPEND_ONLY}
     names |= {(t, trigger) for t, _, trigger, _ in m9.CHECKED}
+    m10 = ScriptDirectory(str(migrate.MIGRATIONS)).get_revision("0010").module  # Sprint 2 pilot (R1)
+    names |= {(t, f"hc_{t}_append_only") for t in m10.APPEND_ONLY} | {(t, f"hc_{t}_no_truncate") for t in m10.APPEND_ONLY}
+    names |= {(t, trigger) for t, _, trigger, _ in m10.CHECKED} | set(m10.CONSTRAINT_TRIGGERS)
     return names
 
 

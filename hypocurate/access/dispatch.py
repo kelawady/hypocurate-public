@@ -39,7 +39,8 @@ from hypocurate.access.allowlist import CODE_ROLES, allowed
 from hypocurate.access.context import AccessContext
 from hypocurate.access.errors import AccessDenied, AccessFailed
 from hypocurate.access.layer import (_AUDIT, _TRUSTED, ACCESS_LOCK_TIMEOUT_MS, DENIALS, Access, _detail, _row,
-                                     bounded_source, keep_in_process_log, log_failure, registration_stage)
+                                     bounded_source, document_stage, keep_in_process_log, log_failure,
+                                     registration_stage)
 from hypocurate.access.stage import actual_stage
 from hypocurate.db.retry import run_transaction, sqlstate
 
@@ -97,9 +98,10 @@ def bind_invocation(engine: Engine, invocation_id: int, lock_timeout_ms: int = A
         raise TypeError("bind_invocation takes an integer invocation id")
     try:
         row = run_transaction(engine, lambda conn: conn.execute(text(
-            "SELECT i.scope, i.run_id, i.role, i.agent_setting_id, i.source_version_id, s.key AS source_key "
-            "FROM agent_invocation i LEFT JOIN source_version sv ON sv.id = i.source_version_id "
-            "LEFT JOIN source s ON s.id = sv.source_id WHERE i.id = :i"), dict(i=invocation_id)).one_or_none())
+            "SELECT i.scope, i.run_id, i.role, i.agent_setting_id, i.source_version_id, s.key AS source_key, "
+            "di.document_parse_id FROM agent_invocation i LEFT JOIN source_version sv ON sv.id = i.source_version_id "
+            "LEFT JOIN source s ON s.id = sv.source_id LEFT JOIN document_invocation di ON di.invocation_id = i.id "
+            "WHERE i.id = :i"), dict(i=invocation_id)).one_or_none())
     except DBAPIError as error:
         probe = AccessContext(None, UNBOUND, UNBOUND, invocation_id=invocation_id)
         keep_in_process_log(probe, "bind", "database_error", error)
@@ -116,12 +118,16 @@ def bind_invocation(engine: Engine, invocation_id: int, lock_timeout_ms: int = A
     if row.scope == "run":
         return bind(engine, row.run_id, row.agent_setting_id, lock_timeout_ms=lock_timeout_ms,
                     _invocation_id=invocation_id)
-    ctx = AccessContext(None, row.role, "registration", row.source_key, row.agent_setting_id,
-                        source_version_id=row.source_version_id, invocation_id=invocation_id)
+    if row.scope == "document":  # Sprint 2 pilot: the Extractor on one parsed document, no run
+        ctx = AccessContext(None, row.role, "document", None, row.agent_setting_id, invocation_id=invocation_id,
+                            document_parse_id=row.document_parse_id)
+    else:
+        ctx = AccessContext(None, row.role, "registration", row.source_key, row.agent_setting_id,
+                            source_version_id=row.source_version_id, invocation_id=invocation_id)
 
     def transaction(conn: Connection):
-        stage = registration_stage(conn, ctx)
-        code = None if stage == "registration" else "stage_mismatch"
+        stage = document_stage(conn, ctx) if row.scope == "document" else registration_stage(conn, ctx)
+        code = None if stage == ctx.stage else "stage_mismatch"
         conn.execute(_AUDIT, _row(ctx, None, "bind", code is None,
                                   _detail(ctx, "denied" if code else "allowed", code, stage,
                                           agent_setting=row.agent_setting_id)))

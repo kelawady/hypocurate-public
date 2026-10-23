@@ -219,3 +219,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Sprint 2 pilot: publisher PDFs fetched by hand are never committed (owner, 2026-10-23); the database holds them.
+docs/sprint2/byhand/
+docs/sprint2/review/*.pdf

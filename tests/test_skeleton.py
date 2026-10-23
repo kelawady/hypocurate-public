@@ -131,6 +131,25 @@ def test_direct_dependencies_are_locked():
     assert direct_dependencies("dev") <= set(locked("requirements-dev.lock"))
 
 
+# Sprint 2 pilot (owner, 2026-10-22, register 'parser_choice'): the parsers live only in the parse environment.
+PARSE_PACKAGES = {"docling", "pymupdf", "torch", "torchvision"}
+
+
+def test_the_parse_lock_is_pinned_with_hashes_and_matches_its_input():
+    names = re.findall(r"^([A-Za-z0-9_.-]+)", read("requirements-parse.lock"), re.M)
+    pins = locked("requirements-parse.lock")
+    assert names and set(n.lower().replace("_", "-") for n in names) == set(pins)
+    wanted = dict(re.findall(r"^([A-Za-z0-9_.-]+)==(\S+)$", read("requirements-parse.in"), re.M))
+    assert set(wanted) == PARSE_PACKAGES and all(pins[k] == v for k, v in wanted.items())
+
+
+def test_the_parsers_are_in_no_project_lock_and_no_image():
+    for path in ["requirements.lock", "requirements-dev.lock"]:
+        assert not PARSE_PACKAGES & set(locked(path)), path
+    for path in ["Dockerfile", "docker-compose.yml", "render.yaml", ".github/workflows/tests.yml"]:
+        assert "requirements-parse" not in read(path) and "docling" not in read(path).lower(), path
+
+
 def test_runtime_and_dev_locks_agree():
     runtime, dev = locked("requirements.lock"), locked("requirements-dev.lock")
     assert {n: dev[n] for n in runtime} == runtime

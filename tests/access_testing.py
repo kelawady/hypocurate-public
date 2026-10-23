@@ -21,3 +21,11 @@ def registration_access_for(engine, invocation_id, source_version_id, role="cura
     return Access(engine, AccessContext(None, role, stage, source_key, None, source_version_id=source_version_id,
                                         invocation_id=invocation_id), lock_timeout_ms=lock_timeout_ms,
                   _trusted=_TRUSTED)
+
+
+def document_access_for(engine, invocation_id, document_parse_id, role="extractor", stage="document",
+                        lock_timeout_ms=ACCESS_LOCK_TIMEOUT_MS):
+    """A document context (Sprint 2 pilot) the dispatcher would or would not produce."""
+    return Access(engine, AccessContext(None, role, stage, None, None, invocation_id=invocation_id,
+                                        document_parse_id=document_parse_id), lock_timeout_ms=lock_timeout_ms,
+                  _trusted=_TRUSTED)

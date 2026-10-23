@@ -231,6 +231,25 @@ def create_app(
                         headers={"Content-Disposition": f'attachment; filename="hypocurate-run-{run_id}-records.csv"',
                                  "Cache-Control": "no-store"})
 
+    @app.get("/pilot/h2", response_class=HTMLResponse)
+    def h2_inventory(request: Request):
+        """Sprint 2 pilot, R11: the H2 evidence inventory, built on request from stored rows (no analysis)."""
+        from hypocurate.pipeline import inventory
+        from hypocurate.pipeline.run_view import snapshot
+        with snapshot(engine) as conn:
+            inv = inventory.build(conn)
+        return page(request, "h2.html", {"inv": inv, "active": "h2"}, spending=False)
+
+    @app.get("/pilot/h2/workbook")
+    def h2_workbook(request: Request):
+        from hypocurate.pipeline import inventory
+        from hypocurate.pipeline.run_view import snapshot
+        with snapshot(engine) as conn:
+            data = inventory.workbook(inventory.build(conn))
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": 'attachment; filename="hypocurate-h2-inventory.xlsx"',
+                                 "Cache-Control": "no-store"})
+
     @app.get("/runs/{run_id}/confirm", response_class=HTMLResponse)
     def confirm_form(request: Request, run_id: int):
         from hypocurate.pipeline import run_view

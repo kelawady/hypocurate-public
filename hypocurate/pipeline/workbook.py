@@ -36,10 +36,17 @@ from sqlalchemy import Connection, Engine, text
 from hypocurate.pipeline import plot, run_view
 from hypocurate.pipeline.eligibility import PRIMARY
 from hypocurate.pipeline.run_view import snapshot
+from hypocurate.sources.pilot import KEY as PILOT_KEY, STATES_FILE as PILOT_STATES_FILE
 
 WORKBOOK_FORMAT = 1
 SHEETS = ("Records used", "Records not used", "Significance and commentary", "Run summary")
 BASE_COLUMNS = ("record", "source", "item", "alloy", "kind of data", "paper reference", "paper DOI")
+# Sprint 2 pilot (R12; register 'pilot_workbook_columns'): for a run that uses the 'extracted (pilot)' source, five more
+# columns after the base columns and a sheet of every extracted observation by state; any other run's workbook is
+# unchanged.
+PILOT_COLUMNS = ("source document", "value provenance", "link provenance", "extraction method", "compilation match")
+PILOT_SHEET = "Extracted evidence by state"
+PILOT_SHEET_COLUMNS = ("observation", "paper", "state", "reason", "compilation match", "qualifiers")
 COMMENTARY_NONE = "No commentary: the Commentator is not built in sprint 1 (PRD 15, step 12)."
 # Fix round 1: what a spreadsheet may read as the start of a formula in a CSV cell, and what a genuine number is.
 FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
@@ -119,6 +126,15 @@ def _records(conn: Connection, run_id: int) -> tuple[list[dict], list[str]]:
             row[f"{f} status"] = (e.get("status") or "").replace("_", " ") if isinstance(e, Mapping) else "missing"
             row[f"{f} citation"] = _citation(e)
         row["values as reported"] = _reported(r.reported)
+        if r.source == PILOT_KEY:
+            rep = {k: (v.get("text") or "") for k, v in (r.reported or {}).items() if isinstance(v, Mapping)}
+            row["source document"] = f"{r.paper_doi}; PDF sha256 {rep.get('document_sha256', '')}"
+            row["value provenance"] = (f"grain size: {rep.get('grain_size_provenance', '')} | yield strength: "
+                                       f"{rep.get('yield_strength_provenance', '')}")
+            row["link provenance"] = rep.get("link_provenance") or None
+            row["extraction method"] = rep.get("extraction_method") or None
+            row["compilation match"] = (f"re-report (matched compilation record {rep['rereport_of']})"
+                                        if rep.get("rereport_of") else "new")
         in_sets = sets.get(r.id, [])
         row["_used"] = PRIMARY in in_sets
         row["eligible"] = {True: "yes", False: "no", None: "not decided"}[r.eligible]
@@ -127,7 +143,7 @@ def _records(conn: Connection, run_id: int) -> tuple[list[dict], list[str]]:
         row["sensitivity sets"] = "; ".join(run_view._set_display_name(k) for k in in_sets
                                             if k != PRIMARY) or None
         out.append(row)
-    columns = list(BASE_COLUMNS)
+    columns = list(BASE_COLUMNS) + (list(PILOT_COLUMNS) if any(r.source == PILOT_KEY for r in rows) else [])
     for f in fields:
         columns += [f, f"{f} unit", f"{f} status", f"{f} citation"]
     columns.append("values as reported")
@@ -231,6 +247,16 @@ def _dispatched(conn: Connection, run_id: int) -> datetime:
     return t.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _pilot_states(conn: Connection, run_id: int) -> list[dict] | None:
+    """Every extracted observation with its state and reason, from the sealed pilot version the run read (R12); None
+    for a run that did not read it."""
+    content = conn.execute(text(
+        "SELECT f.content FROM run_source rs JOIN source s ON s.id = rs.source_id JOIN source_file f ON "
+        "f.source_version_id = rs.source_version_id AND f.path = :p WHERE rs.run_id = :r AND s.key = :k"),
+        dict(r=run_id, p=PILOT_STATES_FILE, k=PILOT_KEY)).scalar()
+    return None if content is None else json.loads(bytes(content).decode("utf-8"))
+
+
 def build(engine: Engine, run_id: int) -> bytes | None:
     """The workbook (.xlsx) of a run, or None for an unknown run."""
     from openpyxl import Workbook
@@ -239,6 +265,7 @@ def build(engine: Engine, run_id: int) -> bytes | None:
             return None
         records, columns = _records(conn, run_id)
         significance, summary, when = _significance(conn, run_id), _summary(conn, run_id), _dispatched(conn, run_id)
+        states = _pilot_states(conn, run_id)
     wb = Workbook()
     wb.remove(wb.active)
     used = [r for r in records if r["_used"]]
@@ -256,6 +283,22 @@ def build(engine: Engine, run_id: int) -> bytes | None:
         _append(ws, ["Item", "Value"])
         for item, value in rows:
             _append(ws, [item, value])
+    if states is not None:
+        ws = wb.create_sheet(PILOT_SHEET)
+        _append(ws, [version_line()])
+        counts: dict = {}
+        for s in states:
+            counts[(s["state"], s["reason"] or ("re-report" if s.get("rereport_of") else "new"))] = counts.get(
+                (s["state"], s["reason"] or ("re-report" if s.get("rereport_of") else "new")), 0) + 1
+        _append(ws, ["State", "Reason", "Observations"])
+        for (state, reason), n in sorted(counts.items()):
+            _append(ws, [state, reason, n])
+        _append(ws, [])
+        _append(ws, list(PILOT_SHEET_COLUMNS))
+        for s in states:
+            _append(ws, [s["observation"], s["paper"], s["state"], s["reason"] or None,
+                         (f"re-report (matched compilation record {s['rereport_of']})" if s.get("rereport_of") else
+                          "new" if s["state"] == "accepted" else None), "; ".join(s.get("qualifiers") or []) or None])
     wb.properties.created = wb.properties.modified = when
     wb.properties.creator = "HypoCurate"
     out = io.BytesIO()

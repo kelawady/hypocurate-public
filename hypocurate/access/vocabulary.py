@@ -101,7 +101,10 @@ CRITIC_REASON_MAX = 300  # characters; shown to people only (A7)
 
 # Codes in the locked plan's rules (step 6): the registered sources, grouping units, value
 # statuses, domain profiles, and whether single phase is required.
-SOURCE_KEYS = frozenset({"mpea", "tamu_fcc", "controlled_duplicates"})
+SOURCE_KEYS = frozenset({"mpea", "tamu_fcc", "controlled_duplicates",
+                         "extracted_pilot"})  # Sprint 2 pilot (R9; register 'pilot_extracted_source')
+# The pilot's sources among them (merge review A2): the rules lock reads this code list, never the profile.
+PILOT_SOURCE_KEYS = frozenset({"extracted_pilot"})
 GROUPING_UNITS = frozenset({"paper", "dataset", "batch"})
 VALUE_STATUSES = frozenset({"converted", "assigned_from_source", "assigned_by_decision"})
 PROFILE_NAMES = frozenset({"grain_size_strengthening"})

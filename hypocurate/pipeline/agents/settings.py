@@ -24,6 +24,10 @@ MODELS = MappingProxyType({
     "curator": "claude-sonnet-5-5",
     "critic": "claude-haiku-4-5",
     "analyst": "claude-opus-5-5",
+    # Sprint 2 pilot (owner, 2026-10-22, register 'pilot_extractor_models'): Sonnet for the first pass; Opus as a
+    # second method on the annotated papers is a later setting, added only after S0 scoring works.
+    "extractor": "claude-sonnet-5-5",
+    "reconciler": "claude-sonnet-5-5",  # R5 (2026-10-23), register 'pilot_reconciler_placement'
 })
 
 RUN_ROLES = ("planner", "critic", "analyst")
@@ -103,13 +107,61 @@ SETTINGS = MappingProxyType({
 })
 
 
+# Sprint 2 pilot: the Extractor's settings (register 'pilot_extractor_settings'). Its instructions are the versioned
+# prompt files, never text in code (Design D17); each setting names its step, prompt version and evidence specification.
+EXTRACTOR_PROMPT_VERSION = "v4"  # v1 sent once, refused as malformed (no schema in the request); v2 used on 2026-10-23
+# for the nine open-access papers; v3 (owner, 2026-10-23 evening): context from the methods in every record, every
+# item verified; v4 (owner, 2026-10-23): every listed condition is a record. FROZEN for the pilot (register
+# 'pilot_prompt_frozen'): further defects are findings, not re-extractions.
+EXTRACTOR_PROMPT_FROZEN = "v4"
+EXTRACTOR_STEPS = ("extract", "verify")
+EXTRACTOR_LIMITS = MappingProxyType({
+    # max_tokens covers thinking and answer; max_output_chars bounds the answer text.
+    "extract": MappingProxyType({"max_tokens": 32000, "max_output_chars": 200000}),
+    "verify": MappingProxyType({"max_tokens": 16000, "max_output_chars": 100000}),
+})
+EXTRACTOR_EFFORT = "medium"
+
+
+def extractor_variant(step: str, spec: str, prompt_version: str = EXTRACTOR_PROMPT_VERSION) -> Mapping[str, Any]:
+    """The Extractor's settings for one step and one evidence specification."""
+    from pathlib import Path
+    if step not in EXTRACTOR_STEPS:
+        raise ValueError(f"unknown extractor step {step!r}")
+    prompts = Path(__file__).resolve().parents[1] / "extraction" / "prompts" / prompt_version
+    instruction = (prompts / f"{step}.md").read_text(encoding="utf-8").strip()
+    if step == "extract" and prompt_version != "v1":  # from v2: the output schema is part of the instruction
+        instruction += "\n\nOutput schema:\n" + (prompts / "output_schema.json").read_text(encoding="utf-8").strip()
+    return MappingProxyType({
+        "instruction": instruction, "model": MODELS["extractor"], "limits": EXTRACTOR_LIMITS[step],
+        "settings": MappingProxyType({"reasoning_effort": EXTRACTOR_EFFORT, "step": step,
+                                      "prompt_version": prompt_version, "evidence_spec": spec}),
+    })
+
+
+RECONCILER_PROMPT_VERSION = "v1"
+RECONCILER_LIMITS = MappingProxyType({"max_tokens": 16000, "max_output_chars": 100000})
+
+
+def reconciler_variant(prompt_version: str = RECONCILER_PROMPT_VERSION) -> Mapping[str, Any]:
+    """The Reconciler's settings: its instruction is the versioned prompt file (Design D17)."""
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "extraction" / "prompts" / "reconcile" / prompt_version / "reconcile.md"
+    return MappingProxyType({
+        "instruction": path.read_text(encoding="utf-8").strip(), "model": MODELS["reconciler"],
+        "limits": RECONCILER_LIMITS,
+        "settings": MappingProxyType({"reasoning_effort": EXTRACTOR_EFFORT, "prompt_version": prompt_version}),
+    })
+
+
 def _plain(value):
     return json.loads(json.dumps(value, default=dict))
 
 
-def ensure_setting(engine: Engine, role: str) -> int:
-    """The id of the stored settings version equal to `SETTINGS[role]`, adding the next version if none is."""
-    s = SETTINGS[role]
+def ensure_setting(engine: Engine, role: str, variant: Mapping[str, Any] | None = None) -> int:
+    """The id of the stored settings version equal to `SETTINGS[role]` (or to `variant`, the Extractor's settings
+    for one step and specification), adding the next version if none is."""
+    s = SETTINGS[role] if variant is None else variant
     limits, extra = _plain(dict(s["limits"])), _plain(dict(s["settings"]))
 
     def transaction(conn):

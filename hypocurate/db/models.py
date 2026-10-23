@@ -71,7 +71,11 @@ NAMING = {
 }
 
 MAX_FILE_BYTES = 5 * 1024 * 1024  # owner decision, 2026-10-04: 5 MiB per stored file
-ROLES = ("planner", "curator", "critic", "analyst", "commentator")
+SPRINT1_ROLES = ("planner", "curator", "critic", "analyst", "commentator")
+# Sprint 2 pilot (migration 0010; owner, 2026-10-22, approved as a safeguard change): the Extractor (document scope)
+# and the Reconciler (run scope). Register entry 'invocation_scope_document'.
+PILOT_ROLES = ("extractor", "reconciler")
+ROLES = SPRINT1_ROLES + PILOT_ROLES
 SHA256 = "~ '^[0-9a-f]{64}$'"
 
 
@@ -671,6 +675,19 @@ QUOTE_MIN, QUOTE_MAX = 30, 600  # a proposal's quote, whitespace collapsed (regi
 STORED_TEXT_MAX = 4000
 
 
+INVOCATION_SCOPES = ("run", "registration", "document")
+# Sprint 1's two shapes, unchanged except that the run scope excludes the new 'extractor', and the pilot's third
+# (0010). The parsed document a document invocation reads is named in `document_invocation`, not on this table, so no
+# column is added here (the Sprint 1 reference dumps read every column of agent_invocation).
+INVOCATION_SHAPE = (
+    "(scope = 'run' AND run_id IS NOT NULL AND stage_result_id IS NOT NULL AND source_version_id IS NULL "
+    "AND role <> 'curator' AND role <> 'extractor') "
+    "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
+    "AND source_version_id IS NOT NULL AND role = 'curator') "
+    "OR (scope = 'document' AND run_id IS NULL AND stage_result_id IS NULL "
+    "AND source_version_id IS NULL AND role IN ('extractor', 'reconciler'))")
+
+
 class AgentInvocation(Base):
     """One record per agent call (step 5 re-check): the dispatcher reads run or version, role,
     setting and source from it alone. A run invocation's (run, role, setting) is one recorded at
@@ -686,13 +703,9 @@ class AgentInvocation(Base):
     created_at: Mapped[datetime] = created()
     __table_args__ = (
         Index("ix_agent_invocation_run_id", "run_id"),
-        CheckConstraint("scope IN ('run', 'registration')", name="scope"),
+        CheckConstraint(one_of("scope", INVOCATION_SCOPES), name="scope"),
         CheckConstraint(one_of("role", ROLES), name="role"),
-        CheckConstraint(
-            "(scope = 'run' AND run_id IS NOT NULL AND stage_result_id IS NOT NULL AND source_version_id IS NULL "
-            "AND role <> 'curator') "
-            "OR (scope = 'registration' AND run_id IS NULL AND stage_result_id IS NULL "
-            "AND source_version_id IS NOT NULL AND role = 'curator')", name="shape"),
+        CheckConstraint(INVOCATION_SHAPE, name="shape"),
         ForeignKeyConstraint(["agent_setting_id", "role"], ["agent_setting.id", "agent_setting.role"],
                              name="fk_agent_invocation_agent_setting"),
         ForeignKeyConstraint(["stage_result_id", "run_id"], ["stage_result.id", "stage_result.run_id"],
@@ -1095,3 +1108,468 @@ class AuditLog(Base):
     allowed: Mapped[bool] = mapped_column(Boolean)
     detail: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = (Index("ix_audit_log_run_id", "run_id"),)
+
+
+# --- Sprint 2 pilot: evidence assembly (migration 0010; PRD v1.2 R1) ---------------------------------------------
+# Additive only: no column is added to an existing table except agent_invocation.document_parse_id (the approved
+# document scope), and no Sprint 1 rule changes. States and stop reasons live in append-only side tables (owner,
+# 2026-10-22, register 'evidence_state_storage'), so `record` stays append-only and a final run is never updated.
+
+DOCUMENT_MAX_BYTES = 50 * 1024 * 1024  # register 'document_max_bytes'
+DOCUMENT_KINDS = ("article", "supplement", "methods")
+OA_SOURCES = ("unpaywall", "openalex", "by_hand")
+# How a document was accessed (owner, 2026-10-23, register 'pilot_access_method'): every source is a configured data
+# source with an access method; no public/paywalled distinction is made.
+ACCESS_METHODS = ("none", "registration", "api_key", "institutional_credential", "manual_fetch")
+PARSERS = ("docling", "pymupdf")
+PARSE_STATUSES = ("parsed", "failed")
+SEARCH_ACTIONS = ("select", "openalex_lookup", "unpaywall_lookup", "supplement_check", "download", "parse",
+                  "fetch_by_hand")
+SEARCH_OUTCOMES = ("ok", "found", "not_found", "refused", "error", "failed")
+EXTRACTION_STATUSES = ("returned", "failed")
+VALUE_FIELDS = ("alloy", "composition", "processing_state", "specimen_label", "grain_size", "grain_size_type",
+                "yield_strength", "test_type", "test_temperature", "strain_rate", "phase")
+LINK_KINDS = ("same_table_row", "specimen_label", "explicit_sentence", "methods_statement")
+EVIDENCE_STATES = ("proposed", "supported", "accepted", "disputed", "unresolved")
+STATE_OBJECTS = ("observation", "link", "mapping")
+# The Reconciler's proposals (owner, 2026-10-23: per document, before the runs; register 'pilot_reconciler_placement').
+MAPPING_KINDS = ("alias_to_composition", "column_to_field", "condition_to_category", "same_observation")
+# The owner's review sheet, his time log, Auditor findings and value corrections (R5, R10; owner, 2026-10-23).
+FINDING_KINDS = ("duplicate", "not_comparable", "implausible_value", "missing_link", "missing_context",
+                 "mapping_doubtful", "value_without_evidence")
+CONSEQUENCES = ("re_extract", "correction", "expert_review", "qualified_unresolved", "search_target")
+TIME_ACTIVITIES = ("annotation", "review_sheet", "auditor_findings", "repair_fetch")
+SNAPSHOT_NAMES = ("S0", "S1", "S2")
+EXTRACTION_RULE = "extraction"  # the rule that records every new candidate as 'proposed'
+STOP_REASONS = ("corpus_processed", "full_text_inaccessible", "fetched_not_parsed", "specimen_metadata_missing",
+                "no_eligible_evidence", "budget_exhausted", "inventory_analysis_deferred")
+NAME_MAX = 200
+DETAIL_MAX = 2000
+SNIPPET_MAX = 2000
+# A provenance names the document, the parse it was read from, the page, a snippet, and either a table row or a
+# sentence. Whether it resolves in the stored parse is checked by code (pipeline/extraction/provenance.py).
+PROVENANCE_SHAPE = ("jsonb_typeof(provenance) = 'object' "
+                    "AND provenance ?& array['document_id', 'parse_sha256', 'page', 'snippet'] "
+                    "AND (provenance ?& array['table_index', 'row_index'] OR provenance ? 'sentence')")
+
+
+def _named(column: str, nullable: bool = False) -> str:
+    rule = f"({column} = btrim({column}) AND length({column}) BETWEEN 1 AND {NAME_MAX})"
+    return f"{column} IS NULL OR {rule}" if nullable else rule
+
+
+class Document(Base):
+    """A fetched paper, supplement or methods file: the DOI, its open-access status and where that came from, and the
+    PDF bytes with their SHA-256 (checked by the database). Append-only; a re-fetch is a new row."""
+    __tablename__ = "document"
+    id: Mapped[int] = pk()
+    kind: Mapped[str] = mapped_column(Text, server_default=sql("'article'"))
+    parent_document_id: Mapped[int | None] = mapped_column(ForeignKey("document.id"))
+    doi: Mapped[str] = mapped_column(Text)
+    doi_key: Mapped[str] = mapped_column(Text, index=True)
+    oa_status: Mapped[str | None] = mapped_column(Text)
+    oa_source: Mapped[str] = mapped_column(Text)
+    oa_url: Mapped[str | None] = mapped_column(Text)
+    license: Mapped[str | None] = mapped_column(Text)
+    pdf: Mapped[bytes] = mapped_column(LargeBinary)
+    pdf_sha256: Mapped[str] = mapped_column(Text)
+    fetched_by: Mapped[str] = mapped_column(Text)
+    by_hand: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    access_method: Mapped[str] = mapped_column(Text)
+    access_note: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        CheckConstraint(one_of("kind", DOCUMENT_KINDS), name="kind"),
+        CheckConstraint("(kind = 'article') = (parent_document_id IS NULL)", name="parent_unless_article"),
+        CheckConstraint("doi_key ~ '^doi:10[.][0-9]{4,9}/\\S+$'", name="doi_key_format"),
+        CheckConstraint(one_of("oa_source", OA_SOURCES), name="oa_source"),
+        CheckConstraint("by_hand = (oa_source = 'by_hand')", name="by_hand_source"),
+        CheckConstraint(one_of("access_method", ACCESS_METHODS), name="access_method"),
+        CheckConstraint(f"length(coalesce(access_note, '')) <= {NAME_MAX}", name="access_note_bounded"),
+        CheckConstraint(f"octet_length(pdf) BETWEEN 5 AND {DOCUMENT_MAX_BYTES}", name="max_size"),
+        CheckConstraint("substring(pdf from 1 for 5) = '\\x255044462d'::bytea", name="is_pdf"),
+        CheckConstraint("pdf_sha256 = encode(sha256(pdf), 'hex')", name="sha256_matches_pdf"),
+        CheckConstraint(_named("fetched_by"), name="fetched_by_named"),
+    )
+
+
+class DocumentParse(Base):
+    """One parse of a document: the parser and its version, whether the fallback was used, and the canonical JSON as
+    text with its SHA-256 (checked by the database), or a failure with its reason. Append-only; a re-parse is a new
+    row (register 'parsed_storage')."""
+    __tablename__ = "document_parse"
+    id: Mapped[int] = pk()
+    document_id: Mapped[int] = mapped_column(ForeignKey("document.id"), index=True)
+    parser: Mapped[str] = mapped_column(Text)
+    parser_version: Mapped[str] = mapped_column(Text)
+    fallback_used: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(Text)
+    parsed: Mapped[str | None] = mapped_column(Text)
+    parsed_sha256: Mapped[str | None] = mapped_column(Text)
+    pages: Mapped[int | None] = mapped_column(Integer)
+    tables_found: Mapped[int | None] = mapped_column(Integer)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        UniqueConstraint("id", "parsed_sha256"),
+        CheckConstraint(one_of("parser", PARSERS), name="parser"),
+        CheckConstraint("length(parser_version) BETWEEN 1 AND 100", name="parser_version"),
+        CheckConstraint(one_of("status", PARSE_STATUSES), name="status"),
+        CheckConstraint("status <> 'parsed' OR (parsed IS NOT NULL AND pages >= 1 AND tables_found >= 0 "
+                        "AND failure_reason IS NULL)", name="parsed_complete"),
+        CheckConstraint("status <> 'failed' OR (parsed IS NULL AND parsed_sha256 IS NULL AND failure_reason IS NOT NULL "
+                        f"AND length(failure_reason) BETWEEN 1 AND {DETAIL_MAX})", name="failed_has_reason"),
+        CheckConstraint("parsed_sha256 IS NOT DISTINCT FROM encode(sha256(convert_to(parsed, 'UTF8')), 'hex')",
+                        name="sha256_matches_parsed"),
+    )
+
+
+class SearchLog(Base):
+    """What was tried, by whom, when: every lookup, supplement check, download and parse, and every step done by
+    hand (the repair trace, R10). A record, not a gate. Append-only."""
+    __tablename__ = "search_log"
+    id: Mapped[int] = pk()
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    action: Mapped[str] = mapped_column(Text)
+    doi_key: Mapped[str | None] = mapped_column(Text, index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("document.id"))
+    url: Mapped[str | None] = mapped_column(Text)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(Text)
+    by_hand: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
+    __table_args__ = (
+        CheckConstraint(one_of("action", SEARCH_ACTIONS), name="action"),
+        CheckConstraint(one_of("outcome", SEARCH_OUTCOMES), name="outcome"),
+        CheckConstraint("by_hand = (action = 'fetch_by_hand')", name="by_hand_action"),
+        CheckConstraint(_named("actor"), name="actor_named"),
+        CheckConstraint(f"length(coalesce(detail, '')) <= {DETAIL_MAX} AND length(coalesce(url, '')) <= {DETAIL_MAX}",
+                        name="bounded"),
+        CheckConstraint("http_status IS NULL OR http_status BETWEEN 100 AND 599", name="http_status"),
+    )
+
+
+class DocumentInvocation(Base):
+    """The parsed document a 'document' invocation (the Extractor's) reads: one row per such invocation, written in its
+    transaction (a deferred check refuses a document invocation without it at commit). Append-only."""
+    __tablename__ = "document_invocation"
+    invocation_id: Mapped[int] = mapped_column(ForeignKey("agent_invocation.id"), primary_key=True)
+    document_parse_id: Mapped[int] = mapped_column(ForeignKey("document_parse.id"), index=True)
+    created_at: Mapped[datetime] = created()
+
+
+class ExtractionOutput(Base):
+    """The Extractor's raw output for one parsed document, as returned, with its SHA-256 (checked by the database) and
+    its method (name, version, model, prompt version). The raw half of S0. Append-only."""
+    __tablename__ = "extraction_output"
+    id: Mapped[int] = pk()
+    document_parse_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    parse_sha256: Mapped[str] = mapped_column(Text)
+    method: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text)
+    raw_output: Mapped[str] = mapped_column(Text)
+    raw_sha256: Mapped[str] = mapped_column(Text)
+    invocation_id: Mapped[int | None] = mapped_column(ForeignKey("agent_invocation.id"))
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        ForeignKeyConstraint(["document_parse_id", "parse_sha256"],
+                             ["document_parse.id", "document_parse.parsed_sha256"],
+                             name="fk_extraction_output_document_parse"),
+        CheckConstraint("jsonb_typeof(method) = 'object' "
+                        "AND method ?& array['method', 'name', 'version', 'prompt_version']", name="method_shape"),
+        CheckConstraint(one_of("status", EXTRACTION_STATUSES), name="status"),
+        CheckConstraint("raw_sha256 = encode(sha256(convert_to(raw_output, 'UTF8')), 'hex')",
+                        name="sha256_matches_raw"),
+    )
+
+
+class CandidateObservation(Base):
+    """One observation the Extractor proposed: its identity fields (R-identity) and the identity key code computed.
+    Append-only; its state is in evidence_state_event."""
+    __tablename__ = "candidate_observation"
+    id: Mapped[int] = pk()
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"))
+    item_index: Mapped[int] = mapped_column(Integer)
+    identity: Mapped[dict] = mapped_column(JSONB)
+    identity_key: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        UniqueConstraint("extraction_output_id", "item_index"),
+        CheckConstraint("item_index >= 0", name="item_index"),
+        CheckConstraint("jsonb_typeof(identity) = 'object'", name="identity_object"),
+        CheckConstraint(f"identity_key {SHA256}", name="identity_key_format"),
+    )
+
+
+class CandidateValue(Base):
+    """One value of a candidate observation, as written, with its provenance or an explicit 'ambiguous' marker.
+    Append-only."""
+    __tablename__ = "candidate_value"
+    id: Mapped[int] = pk()
+    observation_id: Mapped[int] = mapped_column(ForeignKey("candidate_observation.id"), index=True)
+    field: Mapped[str] = mapped_column(Text)
+    value_text: Mapped[str] = mapped_column(Text)
+    value_number: Mapped[Decimal | None] = mapped_column(Numeric())
+    unit: Mapped[str | None] = mapped_column(Text)
+    definition: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict | None] = mapped_column(JSONB)
+    ambiguous: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
+    ambiguity_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        UniqueConstraint("observation_id", "field"),
+        UniqueConstraint("id", "observation_id"),
+        CheckConstraint(one_of("field", VALUE_FIELDS), name="field"),
+        CheckConstraint(f"length(value_text) BETWEEN 1 AND {DETAIL_MAX}", name="value_text"),
+        CheckConstraint("value_number IS NULL OR (value_number < 'Infinity' AND value_number > '-Infinity')",
+                        name="number_finite"),
+        CheckConstraint(f"provenance IS NOT NULL OR ambiguous", name="provenance_or_ambiguous"),
+        CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name="provenance_shape"),
+        CheckConstraint(f"ambiguous = (ambiguity_note IS NOT NULL) AND length(coalesce(ambiguity_note, '')) <= "
+                        f"{DETAIL_MAX}", name="ambiguity_noted"),
+    )
+
+
+class ExtractionLink(Base):
+    """A link between two values of one observation (what makes them one observation), with its provenance or an
+    explicit 'ambiguous' marker. Append-only; its state is in evidence_state_event."""
+    __tablename__ = "extraction_link"
+    id: Mapped[int] = pk()
+    observation_id: Mapped[int] = mapped_column(ForeignKey("candidate_observation.id"), index=True)
+    from_value_id: Mapped[int] = mapped_column(BigInteger)
+    to_value_id: Mapped[int] = mapped_column(BigInteger)
+    kind: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict | None] = mapped_column(JSONB)
+    ambiguous: Mapped[bool] = mapped_column(Boolean, server_default=sql("false"))
+    ambiguity_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        ForeignKeyConstraint(["from_value_id", "observation_id"], ["candidate_value.id", "candidate_value.observation_id"],
+                             name="fk_extraction_link_from_value"),
+        ForeignKeyConstraint(["to_value_id", "observation_id"], ["candidate_value.id", "candidate_value.observation_id"],
+                             name="fk_extraction_link_to_value"),
+        UniqueConstraint("from_value_id", "to_value_id"),
+        CheckConstraint("from_value_id <> to_value_id", name="two_values"),
+        CheckConstraint(f"kind IS NULL OR {one_of('kind', LINK_KINDS)}", name="kind"),
+        CheckConstraint("(provenance IS NOT NULL AND kind IS NOT NULL) OR ambiguous", name="provenance_or_ambiguous"),
+        CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name="provenance_shape"),
+        CheckConstraint(f"ambiguous = (ambiguity_note IS NOT NULL) AND length(coalesce(ambiguity_note, '')) <= "
+                        f"{DETAIL_MAX}", name="ambiguity_noted"),
+    )
+
+
+class ReconcilerMapping(Base):
+    """One proposal of the Reconciler on one extraction output's S0 (owner, 2026-10-23: per document, before the runs):
+    an alias to a composition, a column to a field, condition text to a category, or 'same observation' as a
+    compilation record, with its quote; `applied` is what code made of it with Sprint 1's normalizers (the original
+    stays in `subject`). Made after the output's S0. Its state is in evidence_state_event. Append-only."""
+    __tablename__ = "reconciler_mapping"
+    id: Mapped[int] = pk()
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"), index=True)
+    observation_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_observation.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    proposed: Mapped[dict] = mapped_column(JSONB)
+    applied: Mapped[dict | None] = mapped_column(JSONB)
+    quote: Mapped[str | None] = mapped_column(Text)
+    compilation_key: Mapped[str | None] = mapped_column(Text)
+    mapping_version: Mapped[str] = mapped_column(Text)
+    invocation_id: Mapped[int | None] = mapped_column(ForeignKey("agent_invocation.id"))
+    created_at: Mapped[datetime] = created()
+    __table_args__ = (
+        CheckConstraint(one_of("kind", MAPPING_KINDS), name="kind"),
+        CheckConstraint(f"length(subject) BETWEEN 1 AND {DETAIL_MAX} AND length(coalesce(quote, '')) <= {DETAIL_MAX}",
+                        name="bounded"),
+        CheckConstraint("(kind = 'same_observation') = (compilation_key IS NOT NULL)",
+                        name="same_observation_names_record"),
+        CheckConstraint("jsonb_typeof(proposed) = 'object'", name="proposed_object"),
+        CheckConstraint("length(mapping_version) BETWEEN 1 AND 100", name="version"),
+    )
+
+
+class EvidenceStateEvent(Base):
+    """One change of state of an observation or link, by a named rule or a named person, at the database's time. The
+    current state is the newest event. Append-only (owner, 2026-10-22, register 'evidence_state_storage')."""
+    __tablename__ = "evidence_state_event"
+    id: Mapped[int] = pk()
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    object_kind: Mapped[str] = mapped_column(Text)
+    object_id: Mapped[int] = mapped_column(BigInteger)
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"))
+    state: Mapped[str] = mapped_column(Text)
+    by_rule: Mapped[str | None] = mapped_column(Text)
+    by_person: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        Index("ix_evidence_state_event_object", "object_kind", "object_id"),
+        CheckConstraint(one_of("object_kind", STATE_OBJECTS), name="object_kind"),
+        CheckConstraint(one_of("state", EVIDENCE_STATES), name="state"),
+        CheckConstraint("(by_rule IS NULL) <> (by_person IS NULL)", name="rule_or_person"),
+        CheckConstraint("by_rule IS NULL OR by_rule ~ '^[A-Za-z0-9_-]{1,40}$'", name="rule_format"),
+        CheckConstraint(_named("by_person", nullable=True), name="person_named"),
+        CheckConstraint(f"length(coalesce(reason, '')) <= {DETAIL_MAX}", name="bounded"),
+    )
+
+
+class EvidenceSnapshot(Base):
+    """A snapshot is the state events up to a time T, with T and the event ids stored (owner, 2026-10-22, register
+    'snapshot_definitions'): S0 per extraction output (only the extraction's own 'proposed' events, before any other
+    event on its objects), S1 and S2 over a set of outputs. Append-only."""
+    __tablename__ = "evidence_snapshot"
+    id: Mapped[int] = pk()
+    name: Mapped[str] = mapped_column(Text)
+    extraction_output_id: Mapped[int | None] = mapped_column(ForeignKey("extraction_output.id"))
+    raw_sha256: Mapped[str | None] = mapped_column(Text)
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    event_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger))
+    events_sha256: Mapped[str] = mapped_column(Text)
+    taken_by: Mapped[str] = mapped_column(Text)
+    __table_args__ = (
+        Index("uq_evidence_snapshot_s0", "extraction_output_id", unique=True, postgresql_where=sql("name = 'S0'")),
+        CheckConstraint(one_of("name", SNAPSHOT_NAMES), name="name"),
+        CheckConstraint("(name = 'S0') = (extraction_output_id IS NOT NULL AND raw_sha256 IS NOT NULL)",
+                        name="s0_per_output"),
+        CheckConstraint(f"raw_sha256 IS NULL OR raw_sha256 {SHA256}", name="raw_sha256_format"),
+        CheckConstraint(f"events_sha256 {SHA256}", name="events_sha256_format"),
+        CheckConstraint(_named("taken_by"), name="taken_by_named"),
+    )
+
+
+class RunStopReason(Base):
+    """Why a run ended, under the three kinds of 'nothing found' (Design 3.6): written in the transaction that ends the
+    run, once. Append-only (owner, 2026-10-22: a side table, so a final run is never updated)."""
+    __tablename__ = "run_stop_reason"
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id"), primary_key=True)
+    reason: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint(one_of("reason", STOP_REASONS), name="reason"),
+        CheckConstraint(f"length(coalesce(detail, '')) <= {DETAIL_MAX}", name="bounded"),
+    )
+
+
+class AnnotationFile(Base):
+    """An annotation file as loaded (Appendix B plus the identity columns), with its SHA-256 (checked by the
+    database), the annotator and who loaded it. Append-only."""
+    __tablename__ = "annotation_file"
+    id: Mapped[int] = pk()
+    filename: Mapped[str] = mapped_column(Text)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(Text)
+    template_version: Mapped[str] = mapped_column(Text)
+    loaded_by: Mapped[str] = mapped_column(Text)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        UniqueConstraint("sha256"),
+        CheckConstraint(f"octet_length(content) BETWEEN 1 AND {MAX_FILE_BYTES}", name="max_size"),
+        CheckConstraint("sha256 = encode(sha256(content), 'hex')", name="sha256_matches_content"),
+        CheckConstraint("filename ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.](xlsx|csv)$'", name="filename"),
+        CheckConstraint("length(template_version) BETWEEN 1 AND 40", name="template_version"),
+        CheckConstraint(_named("loaded_by"), name="loaded_by_named"),
+    )
+
+
+class ReviewFile(Base):
+    """A review sheet as the owner returned it (R5, R10), with its SHA-256 (checked by the database). Append-only."""
+    __tablename__ = "review_file"
+    id: Mapped[int] = pk()
+    filename: Mapped[str] = mapped_column(Text)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(Text)
+    loaded_by: Mapped[str] = mapped_column(Text)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        UniqueConstraint("sha256"),
+        CheckConstraint(f"octet_length(content) BETWEEN 1 AND {MAX_FILE_BYTES}", name="max_size"),
+        CheckConstraint("sha256 = encode(sha256(content), 'hex')", name="sha256_matches_content"),
+        CheckConstraint("filename ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}[.]xlsx$'", name="filename"),
+        CheckConstraint(_named("loaded_by"), name="loaded_by_named"),
+    )
+
+
+class OwnerTimeLog(Base):
+    """The owner's minutes per paper and activity (P9), from his sheets. Append-only."""
+    __tablename__ = "owner_time_log"
+    id: Mapped[int] = pk()
+    doi_key: Mapped[str] = mapped_column(Text)
+    activity: Mapped[str] = mapped_column(Text)
+    minutes: Mapped[int] = mapped_column(Integer)
+    review_file_id: Mapped[int | None] = mapped_column(ForeignKey("review_file.id"))
+    logged_by: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint("doi_key ~ '^doi:10[.][0-9]{4,9}/\\S+$'", name="doi_key_format"),
+        CheckConstraint(one_of("activity", TIME_ACTIVITIES), name="activity"),
+        CheckConstraint("minutes BETWEEN 0 AND 1440", name="minutes"),
+        CheckConstraint(_named("logged_by"), name="logged_by_named"),
+    )
+
+
+class AuditorFinding(Base):
+    """A finding of the (human-operated) Auditor on an observation, link or mapping, with its consequence from the
+    design's Table 2 (R10). Append-only."""
+    __tablename__ = "auditor_finding"
+    id: Mapped[int] = pk()
+    object_kind: Mapped[str] = mapped_column(Text)
+    object_id: Mapped[int] = mapped_column(BigInteger)
+    extraction_output_id: Mapped[int] = mapped_column(ForeignKey("extraction_output.id"))
+    finding_kind: Mapped[str] = mapped_column(Text)
+    consequence: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str] = mapped_column(Text)
+    by_person: Mapped[str] = mapped_column(Text)
+    review_file_id: Mapped[int | None] = mapped_column(ForeignKey("review_file.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint(one_of("object_kind", STATE_OBJECTS), name="object_kind"),
+        CheckConstraint(one_of("finding_kind", FINDING_KINDS), name="finding_kind"),
+        CheckConstraint(one_of("consequence", CONSEQUENCES), name="consequence"),
+        CheckConstraint(f"length(detail) BETWEEN 1 AND {DETAIL_MAX}", name="detail"),
+        CheckConstraint(_named("by_person"), name="by_person_named"),
+    )
+
+
+class ValueCorrection(Base):
+    """A correction of one candidate value by a named person, with its reason, the finding it answers and, for a
+    repair, the provenance in the fetched document; the original value is never changed (R10). Append-only."""
+    __tablename__ = "value_correction"
+    id: Mapped[int] = pk()
+    value_id: Mapped[int] = mapped_column(ForeignKey("candidate_value.id"))
+    corrected_text: Mapped[str] = mapped_column(Text)
+    unit: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict | None] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(Text)
+    finding_id: Mapped[int | None] = mapped_column(ForeignKey("auditor_finding.id"))
+    by_person: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=now())
+    __table_args__ = (
+        CheckConstraint(f"length(corrected_text) BETWEEN 1 AND {DETAIL_MAX} AND length(reason) BETWEEN 1 AND "
+                        f"{DETAIL_MAX}", name="bounded"),
+        CheckConstraint(f"provenance IS NULL OR ({PROVENANCE_SHAPE})", name="provenance_shape"),
+        CheckConstraint(_named("by_person"), name="by_person_named"),
+    )
+
+
+class AnnotationRow(Base):
+    """One annotated observation: its identity fields and key (R-identity, the same function as the Extractor's and
+    the scorer's), the values as written, the annotator and minutes. Append-only."""
+    __tablename__ = "annotation_row"
+    id: Mapped[int] = pk()
+    annotation_file_id: Mapped[int] = mapped_column(ForeignKey("annotation_file.id"))
+    row_number: Mapped[int] = mapped_column(Integer)
+    doi_key: Mapped[str] = mapped_column(Text)
+    identity: Mapped[dict] = mapped_column(JSONB)
+    identity_key: Mapped[str] = mapped_column(Text)
+    cells: Mapped[dict] = mapped_column(JSONB)
+    annotator: Mapped[str] = mapped_column(Text)
+    minutes: Mapped[int | None] = mapped_column(Integer)
+    __table_args__ = (
+        UniqueConstraint("annotation_file_id", "row_number"),
+        CheckConstraint("row_number >= 1", name="row_number"),
+        CheckConstraint("doi_key ~ '^doi:10[.][0-9]{4,9}/\\S+$'", name="doi_key_format"),
+        CheckConstraint("jsonb_typeof(identity) = 'object' AND jsonb_typeof(cells) = 'object'", name="objects"),
+        CheckConstraint(f"identity_key {SHA256}", name="identity_key_format"),
+        CheckConstraint(_named("annotator"), name="annotator_named"),
+        CheckConstraint("minutes IS NULL OR minutes >= 0", name="minutes"),
+    )

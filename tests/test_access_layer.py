@@ -55,12 +55,14 @@ def audit(engine, run=None):
 
 def test_the_allow_list_matches_the_owners_table():
     """The table approved by the owner on 2026-10-05 (step 5 plan), field for field."""
-    assert ROLES == ("planner", "curator", "critic", "analyst", "commentator")
+    # Sprint 2 pilot (owner, 2026-10-22, an approved safeguard change): the Extractor and the Reconciler.
+    assert ROLES == ("planner", "curator", "critic", "analyst", "commentator", "extractor", "reconciler")
     assert set(ALLOWED) == set(ROLES)
     # Step 8b (owner, 2026-10-07): the Analyst also at 'narrowed' (A4); the Commentator reads nothing (A6).
     assert {r: set(s) for r, s in ALLOWED.items()} == {
         "planner": {"before_lock"}, "curator": {"registration"}, "critic": {"curation"},
-        "analyst": {"analysis", "closed_without_freeze", "narrowed"}, "commentator": set()}
+        "analyst": {"analysis", "closed_without_freeze", "narrowed"}, "commentator": set(),
+        "extractor": {"document"}, "reconciler": {"document"}}
     assert allowed("planner", "before_lock") == {"claim", "domain", "sources_meta", "tag_values", "record_counts"}
     # Owner, 2026-10-06 (step 8a, Q2): the Curator reads a source version's documentation at
     # registration, never in a run.
@@ -79,6 +81,15 @@ def test_the_allow_list_matches_the_owners_table():
         if stage != "before_lock":
             assert allowed("planner", stage) == frozenset()
     assert all(allowed(role, "none") == frozenset() for role in ROLES)
+    # Sprint 2 pilot: the Extractor reads one parsed document, its specification's reading sections and its own
+    # draft, at 'document' only; no other role reads anything there; the Reconciler reads nothing until R5.
+    assert allowed("extractor", "document") == {"parsed_document", "extraction_spec", "extraction_draft"}
+    assert all(allowed("extractor", stage) == frozenset() for stage in STAGES if stage != "document")
+    assert all(allowed(role, "document") == frozenset() for role in ROLES if role not in ("extractor", "reconciler"))
+    # R5 (owner, 2026-10-23): the Reconciler at 'document' only, with the compilation's records for that paper.
+    assert allowed("reconciler", "document") == {"parsed_document", "s0_records", "compilation_records"}
+    assert all(allowed("reconciler", stage) == frozenset() for stage in STAGES if stage != "document")
+    assert "compilation_records" not in allowed("extractor", "document")
 
 
 def test_every_listed_field_has_a_reader_and_a_description():

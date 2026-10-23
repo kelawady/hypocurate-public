@@ -57,6 +57,14 @@ STATES = {"in_force": "In force", "open": "Open decision",
           "direction_approved": "Direction approved, pending technical review"}
 APPLIED = {"yes": "Yes", "partly": "Partly", "not_yet": "Not yet"}
 BUILD_STEPS = range(5, 13)  # PRD 15, steps still to come
+# Sprint 2's pilot (owner, 2026-10-22): its entries name the pilot as their step; BUILD_STEPS is unchanged, so no
+# Sprint 1 entry is read differently.
+PILOT_STEPS = ("pilot-2",)
+STEP_RULE = "a build step from 5 to 12, or the pilot step 'pilot-2'"
+
+
+def step_ok(step: Any) -> bool:
+    return (isinstance(step, int) and not isinstance(step, bool) and step in BUILD_STEPS) or step in PILOT_STEPS
 
 FIELDS = {"key", "name", "state", "statement", "value", "category", "affects", "reason", "evidence",
           "decided", "expert_review", "sensitivity", "applied", "tests", "history", "notes"}
@@ -138,8 +146,8 @@ def _validate_entry(where: str, e: Any) -> None:
     if state in PENDING_STATES:
         _keys(f"{where}.pending", e["pending"], {"by", "before_step"})
         _text(f"{where}.pending.by", e["pending"]["by"])
-        if e["pending"]["before_step"] not in BUILD_STEPS:
-            raise RegisterError(f"{where}.pending.before_step: a build step from 5 to 12")
+        if not step_ok(e["pending"]["before_step"]):
+            raise RegisterError(f"{where}.pending.before_step: {STEP_RULE}")
     if e["category"] not in CATEGORIES:
         raise RegisterError(f"{where}.category: one of {list(CATEGORIES)}")
     if not isinstance(e["evidence"], list) or not e["evidence"]:
@@ -215,8 +223,8 @@ def _validate_applied(where: str, applied: Any) -> None:
             _keys(where, applied, {"status", "settings", "done", "pending", "step", "note"})
             _text(f"{where}.done", applied["done"])
             _text(f"{where}.pending", applied["pending"])
-            if applied["step"] not in BUILD_STEPS:
-                raise RegisterError(f"{where}.step: a build step from 5 to 12")
+            if not step_ok(applied["step"]):
+                raise RegisterError(f"{where}.step: {STEP_RULE}")
         if not isinstance(applied["settings"], list) or not applied["settings"]:
             raise RegisterError(f"{where}.settings: applied in code needs at least one named setting")
         for j, s in enumerate(applied["settings"]):
@@ -224,8 +232,8 @@ def _validate_applied(where: str, applied: Any) -> None:
             _text(f"{where}.settings[{j}].ref", s["ref"])
     else:
         _keys(where, applied, {"status", "step", "note"})
-        if applied["step"] not in BUILD_STEPS:
-            raise RegisterError(f"{where}.step: a build step from 5 to 12")
+        if not step_ok(applied["step"]):
+            raise RegisterError(f"{where}.step: {STEP_RULE}")
     _text(f"{where}.note", applied["note"], optional=True)
 
 
