@@ -11435,7 +11435,7 @@
     "key": "pilot_bundle_load",
     "name": "How pilot data reaches the live site",
     "state": "in_force",
-    "statement": "Extraction, the Reconciler and the owner's acceptances run locally against the development database (the local key, never shown). On Saturday evening one bundle is built (documents, parses, outputs, candidates, events, snapshots, findings, each with its hash); the owner loads it into the live database from his own terminal with the live database address he sets himself (hypocurate documents load-bundle). The three H1 runs then run on Render as ordinary runs.",
+    "statement": "Extraction, the Reconciler, the owner's review and the R6 rules run locally against the development database (the local key, never shown). The freeze is taken locally (hypocurate documents freeze), then one bundle is built (hypocurate documents export-bundle): a zip with a manifest (format, schema revision, per table the row count and SHA-256, every snapshot's events hash) and the pilot tables, the document invocations with their settings and model calls, and the sealed pilot source's files; it holds the fetched PDFs and is never committed. The owner loads it into the live database from his own terminal with the live database address he sets himself (hypocurate documents load-bundle). The load is refused unless the pilot tables are empty, the schema matches and every file matches its hash; in one transaction it replays the rows in their original order so every database rule is checked again; the pilot tables keep their ids (every snapshot's events hash is re-checked), the shared tables get the live database's ids, a model call is replayed as started then finished (its times are the load's; the original times are in the bundle), and the pilot source is sealed again from its files with the same fingerprint. The three H1 runs then run on Render as ordinary runs.",
     "value": {
       "text": "local extraction; one hashed bundle loaded by the owner",
       "unit": null
@@ -11444,7 +11444,8 @@
     "affects": "P7 (runs on the live site) and Sunday's deploy.",
     "reason": "Render cannot run Docling and the parsed documents live locally; the live database address and the key are never seen by the builder.",
     "evidence": [
-      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Q-F."
+      "The owner's answers of 2026-10-23 before Friday's build (docs/sprint2/daily/2026-10-23.md): Q-F.",
+      "Built and rehearsed on 2026-10-23: the development database's full pilot history loaded into a copy of the pre-0010 database upgraded to 0010 (states and costs identical)."
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
@@ -11457,12 +11458,28 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": "pilot-2",
-      "note": "Built on Saturday."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.bundle:FORMAT",
+          "equals": "hypocurate-pilot-bundle-1"
+        }
+      ],
+      "note": null
     },
-    "tests": [],
-    "history": [],
+    "tests": [
+      "tests/test_bundle.py::test_a_bundle_loads_with_the_same_snapshots_states_and_pilot_version",
+      "tests/test_bundle.py::test_a_tampered_bundle_or_another_schema_is_refused_and_writes_nothing",
+      "tests/test_bundle.py::test_the_freeze_command_seals_the_pilot_source"
+    ],
+    "history": [
+      {
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "value": "Extraction, the Reconciler and the owner's acceptances run locally against the development database (the local key, never shown). On Saturday evening one bundle is built (documents, parses, outputs, candidates, events, snapshots, findings, each with its hash); the owner loads it into the live database from his own terminal with the live database address he sets himself (hypocurate documents load-bundle). The three H1 runs then run on Render as ordinary runs.",
+        "note": "Built (2026-10-23): the details of how the bundle is loaded."
+      }
+    ],
     "notes": []
   },
   {

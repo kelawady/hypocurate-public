@@ -24,6 +24,9 @@ def add_parser(sub) -> None:
                        ("evidence", "apply the R6 rules to the standing v4 S0s and print observations by state and reason"),
                        ("h2-inventory", "write the H2 evidence inventory workbook (R11) and print its counts"),
                        ("costs", "print model calls, tokens and dollars per document and run, stage times, owner time"),
+                       ("freeze", "take S1 and S2 over the standing v4 S0s and seal the 'extracted (pilot)' source"),
+                       ("export-bundle", "write the pilot's evidence bundle (.zip) from this database"),
+                       ("load-bundle", "load a pilot evidence bundle into this database (empty pilot tables only)"),
                        ("review-export", "write the owner's review sheet (.xlsx) over the newest v4 S0s"),
                        ("review-load", "load a returned review sheet: decisions, corrections, findings, minutes"),
                        ("reach", "print the reach table and its milestones")):
@@ -41,6 +44,13 @@ def add_parser(sub) -> None:
             p.add_argument("--out", help="the .xlsx file to write")
         if name == "costs":
             p.add_argument("--runs", default="", help="comma-separated run ids to include")
+        if name == "freeze":
+            p.add_argument("--by", required=True, help="the person taking the freeze")
+        if name == "export-bundle":
+            p.add_argument("--out", required=True, help="the .zip file to write (never commit it: it holds the PDFs)")
+        if name == "load-bundle":
+            p.add_argument("--file", required=True, help="the bundle (.zip)")
+            p.add_argument("--by", required=True, help="the person loading it")
         if name == "review-export":
             p.add_argument("--out", required=True, help="the .xlsx file to write")
         if name == "review-load":
@@ -191,6 +201,42 @@ def command(args, engine: Engine) -> int:
         with engine.connect() as conn:
             r = costs.report(conn, [int(x) for x in args.runs.split(",") if x.strip()])
         print(json.dumps(r, indent=1, default=str))
+        return 0
+    if args.documents_command == "freeze":
+        from hypocurate.pipeline import evidence
+        from hypocurate.sources import adapters, pilot
+        from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
+        with engine.connect() as conn:
+            outputs = evidence.standing_outputs(conn)
+            version = load_sealed_version(conn, latest_sealed_version_id(conn, "mpea"))
+        compilation = {r.source_item_key: r for r in adapters.read(version).records}
+        try:
+            frozen = evidence.freeze(engine, outputs, args.by, compilation)
+        except evidence.FreezeRefused as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        sealed = pilot.register_frozen(engine, frozen, args.by)
+        print(json.dumps({"s1": frozen.s1, "s2": frozen.s2, "s2_events_sha256": frozen.events_sha256,
+                          "accepted": [s.observation_id for s in frozen.accepted],
+                          "primary_new": [s.observation_id for s in frozen.primary],
+                          "pilot_version": sealed.registered.version_id,
+                          "fingerprint": sealed.registered.fingerprint}))
+        return 0
+    if args.documents_command == "export-bundle":
+        from pathlib import Path
+        from hypocurate.documents import bundle
+        data = bundle.export(engine)
+        Path(args.out).write_bytes(data)
+        print(json.dumps({"out": args.out, "bytes": len(data), "sha256": __import__("hashlib").sha256(data).hexdigest()}))
+        return 0
+    if args.documents_command == "load-bundle":
+        from pathlib import Path
+        from hypocurate.documents import bundle
+        try:
+            print(json.dumps(bundle.load(engine, Path(args.file).read_bytes(), args.by), default=str))
+        except bundle.BundleRefused as e:
+            print(f"the bundle is refused; nothing was written: {e}", file=sys.stderr)
+            return 1
         return 0
     if args.documents_command == "review-export":
         from pathlib import Path
