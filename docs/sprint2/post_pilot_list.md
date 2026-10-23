@@ -16,3 +16,4 @@ Items deferred from the pilot, each with its source. None of them blocks the mer
 6. **The full second-model review of the whole branch** (owner's condition (d) for the merge).
 7. **Cumulative per-document cost enforcement.** For the pilot the owner approved the cap per document invocation ($2; register `pilot_document_cap`, 2026-10-23), so a re-extracted paper starts a new $2. After the pilot: enforce a cap per paper across all its invocations.
 8. **Pipeline view (R13)**, cut from the pilot by the owner.
+9. **An additive H2 bundle for the live database** (owner, 2026-10-23). The first bundle was loaded into empty pilot tables, and the loader refuses non-empty ones by design. For the pilot, the H2 inventory is reported locally, for the note. The live `/pilot/h2` page shows the counts by cause with no paper read.
