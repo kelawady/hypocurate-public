@@ -14,7 +14,9 @@ the live database address he sets himself; Claude Code never sees it):
   the first time (S0 holds exactly its output's events; no event before S0; a mapping from a reconciler on the same
   document; a correction on a value of an output with its S0). The pilot tables keep their ids (so every snapshot's
   event ids and hash are unchanged); the shared tables (agent_setting, agent_invocation, model_call) get the live
-  database's ids, and the pilot rows that name them are rewritten. A model call is replayed as Sprint 1 records one:
+  database's ids, and the pilot rows that name them are rewritten. Before a pilot version is sealed again, the freeze
+  invariant is re-checked on the loaded S2 events for every accepted record its freeze file names (merge review C1).
+  A model call is replayed as Sprint 1 records one:
   inserted as started, then finished, so its times are the load's; the original times are in the bundle. The pilot
   source's versions are registered again from their files (the same digest and fingerprint). After the load, every
   snapshot's events hash is recomputed and compared with the manifest; any difference rolls the load back.
@@ -205,7 +207,16 @@ def load(engine: Engine, content: bytes, by: str) -> dict:
         for f in tables["pilot_source_file"]:
             versions.setdefault((f["version_id"], f["label"], f["obtained_on"]), {})[f["path"]] = f["content"]
         sealed = []
+        from hypocurate.pipeline.evidence import check_invariant
+        from hypocurate.sources.pilot import FREEZE_FILE
         for (vid, label, obtained), files in sorted(versions.items()):
+            # Merge review C1: the freeze invariant again, on the loaded events, before the version is sealed here.
+            record = json.loads(files[FREEZE_FILE])
+            s2 = conn.execute(text("SELECT event_ids FROM evidence_snapshot WHERE id = :s AND name = 'S2'"),
+                              dict(s=record["s2_snapshot"])).scalar()
+            problems = ["no S2 snapshot"] if s2 is None else check_invariant(conn, list(s2), record["accepted_records"])
+            if problems:
+                raise BundleRefused("the freeze invariant fails on the loaded events: " + "; ".join(problems[:10]))
             done = _register_in(conn, DEFINITION, files, date.fromisoformat(str(obtained)[:10]), label)
             sealed.append(done.fingerprint)
         for sid, sha in manifest["snapshots"].items():

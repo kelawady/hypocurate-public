@@ -58,6 +58,7 @@ FAILURES: Mapping[str, tuple[str, str]] = {
     "malformed": ("the answer could not be read in the requested form", "correct"),
     "spending_cap_run": ("the run's spending cap would be exceeded", "stop"),
     "spending_cap_curation": ("the curation's spending cap would be exceeded", "stop"),
+    "spending_cap_document": ("the document invocation's spending cap would be exceeded", "stop"),  # Sprint 2 pilot
     "spending_cap_month": ("the monthly spending cap would be exceeded", "stop"),
     "ceiling_reached": ("the ceiling set for this call would be exceeded", "stop"),
     "invocation_unknown": ("no such invocation", "stop"),

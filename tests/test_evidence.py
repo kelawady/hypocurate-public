@@ -305,3 +305,27 @@ def test_a_value_flagged_ambiguous_keeps_its_observation_proposed_with_that_reas
     with db.connect() as conn:
         st = ev.status(conn, [(KEY, out)], COMPILATION)[0]
     assert (st.category, st.reason) == ("proposed", "grain size flagged ambiguous")
+
+
+@pytest.mark.parametrize("fault", ["link_proposed", "mapping_disputed", "observation_disputed"])
+def test_the_freeze_invariant_refuses_any_non_accepted_part_even_when_status_says_accepted(db, paper, fault):
+    """Merge review C1: negative cases for each part the invariant reads (a link still proposed; a mapping a person
+    disputed after the rules ran; the observation itself disputed), with a faulty status computation that claims the
+    record is accepted."""
+    p = paper
+    ev.apply_rules(db, p.outputs)  # obs 0 is accepted (a re-report); obs 2's link is still proposed
+    target = p.obs[2] if fault == "link_proposed" else p.obs[0]
+    with db.begin() as conn:
+        if fault == "mapping_disputed":
+            _person(conn, "mapping", p.maps[p.obs[0]][0], p.out, "disputed", "the alias is wrong")
+        if fault == "observation_disputed":
+            _person(conn, "observation", p.obs[0], p.out, "disputed", "not this specimen")
+    real = ev.status
+
+    def lying(conn, outputs, compilation=None, event_ids=None):
+        return [dataclasses.replace(s, category="accepted", reason="") if s.observation_id == target else s
+                for s in real(conn, outputs, compilation, event_ids)]
+    with pytest.raises(ev.FreezeRefused, match=f"observation {target}: "):
+        ev.freeze(db, p.outputs, OWNER, COMPILATION, _status=lying)
+    with db.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM evidence_snapshot WHERE name IN ('S1', 'S2')")).scalar() == 0

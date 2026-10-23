@@ -135,3 +135,32 @@ def test_the_freeze_command_seals_the_pilot_source(db, paper, monkeypatch, capsy
     with db.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM source_version v JOIN source s ON s.id = v.source_id "
                                  "WHERE s.key = 'extracted_pilot'")).scalar() == 1
+
+
+def test_a_bundle_whose_freeze_names_a_non_accepted_record_is_refused_even_with_consistent_hashes(db, paper, stub,  # noqa: F811
+                                                                                                   target):
+    """Merge review C1: the sealed pilot source cannot enter the live database around the freeze invariant, even if
+    someone rewrites its freeze file and the manifest's hashes to match."""
+    import hashlib
+    _source(db, paper, stub)
+    src = zipfile.ZipFile(io.BytesIO(bundle.export(db)))
+    files = {n: src.read(n) for n in src.namelist()}
+    rows = json.loads(files["pilot_source_file.json"])
+    for r in rows:
+        if r["path"] == pilot.FREEZE_FILE:
+            record = json.loads(__import__("base64").b64decode(r["content"]["$bytes"]))
+            record["accepted_records"].append(paper.obs[3])  # a figure-only observation, never accepted
+            r["content"]["$bytes"] = __import__("base64").b64encode(json.dumps(record).encode()).decode()
+    files["pilot_source_file.json"] = json.dumps(rows, sort_keys=True).encode()
+    manifest = json.loads(files["manifest.json"])
+    manifest["tables"]["pilot_source_file"]["sha256"] = hashlib.sha256(files["pilot_source_file.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(manifest).encode()
+    forged = io.BytesIO()
+    with zipfile.ZipFile(forged, "w") as z:
+        for n, b in files.items():
+            z.writestr(n, b)
+    versions.register(target, "mpea")
+    with pytest.raises(bundle.BundleRefused, match=f"freeze invariant fails.*observation {paper.obs[3]}"):
+        bundle.load(target, forged.getvalue(), OWNER)
+    with target.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM document")).scalar() == 0  # nothing written
