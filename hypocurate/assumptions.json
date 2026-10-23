@@ -10068,9 +10068,9 @@
     "key": "pilot_snapshot_definitions",
     "name": "Snapshots S0, S1, S2",
     "state": "in_force",
-    "statement": "Each snapshot is the state events up to a time T, stored with T, the ascending list of event ids and their SHA-256; no copies of records. S0, per extraction output, is the Extractor's output as returned: stored and frozen in one transaction with its raw hash, holding exactly the extraction's own 'proposed' events; the database refuses any other event on the output's objects before S0 and any new candidate after it. S1: after the Reconciler's mappings and the acceptance rules, before any human correction. S2: after the owner's acceptance decisions and corrections. Every metric names its snapshot.",
+    "statement": "Each snapshot is the state events up to a time T, stored with T, the ascending list of event ids and their SHA-256; no copies of records. S0, per extraction output, is the Extractor's output as returned: stored and frozen in one transaction with its raw hash, holding exactly the extraction's own 'proposed' events; the database refuses any other event on the output's objects before S0 and any new candidate after it. S1 and S2 are defined by who wrote each event, not by a clock (owner, 2026-10-23; register 'pilot_s1_definition'): S1 is the state events written by the rules that read no person's decision (the extraction, the Reconciler and its code check, R-ambiguous); S2 is all events on the standing outputs at the freeze. Both are stored with their event ids and hash when the freeze is taken. Every metric names its snapshot.",
     "value": {
-      "text": "S0, S1, S2 = state events up to T (T and event ids stored)",
+      "text": "S0 = the output's own events at its freeze (T and event ids stored); S1 = events written by rules that read no person's decision; S2 = all events at the freeze",
       "unit": null
     },
     "category": "data_handling",
@@ -10078,11 +10078,12 @@
     "reason": "The extractor's recall and precision must be computed before anything uses the compilation (D26); events up to T make each snapshot reproducible without copies.",
     "evidence": [
       "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4.",
-      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"S0, S1 and S2 are each defined as 'state events up to time T' with T stored\"."
+      "The owner's answers of 2026-10-22 to the pre-plan questions (docs/sprint2/daily/2026-10-22.md): \"S0, S1 and S2 are each defined as 'state events up to time T' with T stored\".",
+      "The owner's decision of 2026-10-23: 'Define it by who wrote the event, not by a clock, and register it that way.'"
     ],
     "decided": {
       "by": "owner (Khalid El-Awady)",
-      "date": "2026-10-22"
+      "date": "2026-10-23"
     },
     "expert_review": {
       "status": "not_reviewed",
@@ -10117,11 +10118,64 @@
       "tests/test_extraction_interface.py::test_s0_is_frozen_with_its_hash_in_the_same_transaction_and_never_changes",
       "tests/test_extraction_interface.py::test_nothing_that_uses_the_compilation_imports_s0"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-22",
+        "to": "2026-10-23",
+        "value": "S0, S1, S2 = state events up to T (T and event ids stored)",
+        "note": "S1 and S2 redefined by event authorship (owner, 2026-10-23); S0 unchanged."
+      }
+    ],
     "notes": [
-      "S1 and S2 are taken from Friday (R5) and Saturday (R6, R10).",
-      "Awaiting the owner (proposed by the builder on 2026-10-23, R6): S1 as the events of the rules that read no person's event (extraction, reconciler, reconciler-check, r-ambiguous; hypocurate.pipeline.evidence.MACHINE_RULES), because the owner's review was loaded before the R6 rules ran and no single time T separates them. No freeze (S1, S2) is taken before the owner decides."
+      "S1 and S2 are taken from Friday (R5) and Saturday (R6, R10)."
     ]
+  },
+  {
+    "key": "pilot_s1_definition",
+    "name": "S1 and S2 by event authorship",
+    "state": "in_force",
+    "statement": "S1 is the set of state events, on the standing outputs, written by rules that read no person's decision: the extraction, the Reconciler, the Reconciler's code check and R-ambiguous. S2 is all events on the standing outputs at the freeze. Both are defined by who wrote the event, not by a clock, because the owner's review was loaded before the R6 rules ran, so no single time separates the rules from the person's decisions. The results note states this.",
+    "value": {
+      "text": "S1 = events by extraction, reconciler, reconciler-check, r-ambiguous; S2 = all events",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "S1 and S2 metrics (the effect of the rules, S1 minus S0; corrected performance, S2) and the freeze.",
+    "reason": "PRD Section 4: S1 is 'after the Reconciler's mappings and the acceptance rules, before any human correction'; the review loaded before the rules ran.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4.",
+      "The owner's decision of 2026-10-23 (after returning)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:MACHINE_RULES",
+          "equals": [
+            "extraction",
+            "reconciler",
+            "reconciler-check",
+            "r-ambiguous"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_the_freeze_takes_s1_and_s2_and_refuses_when_the_invariant_fails"
+    ],
+    "history": [],
+    "notes": []
   },
   {
     "key": "pilot_invocation_scope_document",
