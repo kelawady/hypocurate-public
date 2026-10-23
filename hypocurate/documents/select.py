@@ -33,6 +33,7 @@ class Paper:
     records: int  # selected records (FCC, grain size converted)
     records_with_yield_strength: int
     item_keys: tuple[str, ...]
+    records_with_grain_size: int | None = None  # counted for H2 (the FCC selection requires one)
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,9 @@ def bcc_high_temperature(version: SealedVersion) -> Selection:
         by_key[key].append(r)
     papers = [Paper(doi=recs[0].paper_doi.strip(), doi_key=key, records=len(recs),
                     records_with_yield_strength=sum(r.harmonized["yield_strength"].status == "converted" for r in recs),
-                    item_keys=tuple(r.source_item_key for r in recs)) for key, recs in by_key.items()]
+                    item_keys=tuple(r.source_item_key for r in recs),
+                    records_with_grain_size=sum(r.harmonized["grain_size"].status == "converted" for r in recs))
+              for key, recs in by_key.items()]
     papers.sort(key=lambda p: (-p.records, p.doi_key))
     return Selection(version.source_key, version.fingerprint, field, PHASE_COLUMNS[(version.source_key, field)],
                      H2_PHASE_CLASSES, tuple(papers), without)

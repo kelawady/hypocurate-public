@@ -22,6 +22,7 @@ def add_parser(sub) -> None:
                        ("rowsplit", "apply 'docling + row split v1' to the newest parse of every article in the selection"),
                        ("reconcile", "run the Reconciler on a paper's newest S0 (costs money)"),
                        ("evidence", "apply the R6 rules to the standing v4 S0s and print observations by state and reason"),
+                       ("h2-inventory", "write the H2 evidence inventory workbook (R11) and print its counts"),
                        ("review-export", "write the owner's review sheet (.xlsx) over the newest v4 S0s"),
                        ("review-load", "load a returned review sheet: decisions, corrections, findings, minutes"),
                        ("reach", "print the reach table and its milestones")):
@@ -35,6 +36,8 @@ def add_parser(sub) -> None:
             p.add_argument("--doi", required=True)
         if name == "evidence":
             p.add_argument("--status-only", action="store_true", help="print the states without applying the rules")
+        if name == "h2-inventory":
+            p.add_argument("--out", help="the .xlsx file to write")
         if name == "review-export":
             p.add_argument("--out", required=True, help="the .xlsx file to write")
         if name == "review-load":
@@ -169,6 +172,16 @@ def command(args, engine: Engine) -> int:
                           "re_reports": sum(1 for st in statuses if st.rereport_of),
                           "re_reports_values_disagree": sum(1 for st in statuses if st.rereport_of and st.values_agree is False),
                           "per_paper": {k: evidence.counts(v) for k, v in sorted(per_paper.items())}}, indent=1))
+        return 0
+    if args.documents_command == "h2-inventory":
+        from pathlib import Path
+        from hypocurate.pipeline import inventory
+        with engine.connect() as conn:
+            inv = inventory.build(conn)
+        if args.out:
+            Path(args.out).write_bytes(inventory.workbook(inv))
+        print(json.dumps({"status": inv.status, "totals": inv.totals, "causes": inv.causes,
+                          "by_state": {f"{s} / {t}": n for (s, t), n in sorted(inv.by_state.items())}}, indent=1))
         return 0
     if args.documents_command == "review-export":
         from pathlib import Path

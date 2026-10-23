@@ -11015,11 +11015,73 @@
     },
     "sensitivity": null,
     "applied": {
-      "status": "not_yet",
-      "step": "pilot-2",
-      "note": "Built on Sunday (R11)."
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.inventory:STATUS",
+          "equals": "inventory; analysis deferred to a versioned protocol"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.inventory:H2_SPEC",
+          "equals": "H2 v1"
+        }
+      ],
+      "note": null
     },
-    "tests": [],
+    "tests": [
+      "tests/test_h2_inventory.py::test_with_nothing_obtained_every_cause_is_counted_and_nothing_is_recovered",
+      "tests/test_h2_inventory.py::test_a_read_paper_gives_recovered_records_with_type_state_and_provenance",
+      "tests/test_h2_inventory.py::test_the_inventory_page_and_workbook_are_served_to_a_signed_in_person"
+    ],
+    "history": [],
+    "notes": [
+      "Built 2026-10-23 (R11): the page /pilot/h2 and its workbook, built on request from stored rows; causes stated against the source configuration (no public/paywalled distinction); records counted by state and grain-size type."
+    ]
+  },
+  {
+    "key": "pilot_h2_selection",
+    "name": "Which papers lie behind H2",
+    "state": "in_force",
+    "statement": "H2's papers are those behind the compilation's records whose phase field (Sprint 1's single-phase rule: the microstructure) is BCC and whose test temperature is at least 800 °C, any test type (tension and compression both recorded), with or without a grain size; papers told apart by the normalized DOI. On the sealed MPEA version: 131 records, 20 papers, 127 with a yield strength (all compression), none with a grain size (the PRD's anchor).",
+    "value": {
+      "text": "BCC, >= 800 °C, any test type: 131 records, 20 papers",
+      "unit": null
+    },
+    "category": "scientific",
+    "affects": "R11 (the H2 inventory) and the H2 reach.",
+    "reason": "PRD v1.2 R11 and H2's definition (D25/D27).",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), R11 and H2's anchor (131 compilation records at these temperatures, none with grain size)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-22"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.documents.select:H2_PHASE_CLASSES",
+          "equals": [
+            "BCC"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.documents.select:H2_MIN_TEMPERATURE_C",
+          "equals": 800
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_h2_inventory.py::test_the_h2_selection_reproduces_the_prd_anchor"
+    ],
     "history": [],
     "notes": []
   },

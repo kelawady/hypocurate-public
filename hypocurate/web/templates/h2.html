@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}H2 evidence inventory · HypoCurate{% endblock %}
+{% block content %}
+<h1>H2 evidence inventory</h1>
+<p>Grain refinement still strengthens BCC high-entropy alloys at elevated temperature (800 °C and above). Status:
+<strong>{{ inv.status }}</strong>. The qualifying grain size is either type, recorded per record (as-processed, or at
+or after the test temperature). Counts are in the sources searched, under this configuration:
+{{ inv.totals.configuration }}.</p>
+<p><a href="/pilot/h2/workbook">Download the inventory workbook</a></p>
+<h2>Totals</h2>
+<table>
+  <tr><th>Papers behind the compilation's BCC records at ≥ 800 °C</th><td>{{ inv.totals.papers }}</td></tr>
+  <tr><th>Compilation records</th><td>{{ inv.totals.compilation_records }}</td></tr>
+  <tr><th>Papers obtained</th><td>{{ inv.totals.papers_obtained }}</td></tr>
+  <tr><th>Papers parsed</th><td>{{ inv.totals.papers_parsed }}</td></tr>
+  <tr><th>Papers read (H2 extraction)</th><td>{{ inv.totals.papers_read }}</td></tr>
+  <tr><th>Observations read</th><td>{{ inv.totals.observations }}</td></tr>
+  <tr><th>Records recovered (grain size and yield strength stated)</th><td>{{ inv.totals.recovered }}</td></tr>
+</table>
+<h2>Counts by cause</h2>
+<table>
+  <tr><th>Cause</th><th>Count</th></tr>
+  {% for cause, n in inv.causes.items() %}<tr><td>{{ cause }}</td><td>{{ n }}</td></tr>{% endfor %}
+</table>
+<h2>Observations by state and grain-size type</h2>
+{% if inv.by_state %}
+<table>
+  <tr><th>State</th><th>Grain-size type</th><th>Observations</th></tr>
+  {% for key, n in inv.by_state|dictsort %}<tr><td>{{ key[0] }}</td><td>{{ key[1] }}</td><td>{{ n }}</td></tr>{% endfor %}
+</table>
+{% else %}<p>No observation has been read in the sources searched.</p>{% endif %}
+<h2>Recovered records</h2>
+{% if inv.recovered %}
+<table>
+  <tr><th>Observation</th><th>Paper</th><th>Alloy</th><th>Grain size</th><th>Type</th><th>Yield strength</th>
+      <th>Test</th><th>Temperature</th><th>State</th><th>Provenance (grain size; yield strength)</th></tr>
+  {% for r in inv.recovered %}<tr><td>{{ r.observation }}</td><td>{{ r.doi }}</td><td>{{ r.alloy }}</td>
+    <td>{{ r.grain_size }}</td><td>{{ r.grain_size_type }}</td><td>{{ r.yield_strength }}</td><td>{{ r.test_type }}</td>
+    <td>{{ r.test_temperature }}</td><td>{{ r.state }}{% if r.reason %} ({{ r.reason }}){% endif %}</td>
+    <td>{{ r.grain_size_provenance }}; {{ r.yield_strength_provenance }}</td></tr>{% endfor %}
+</table>
+{% else %}<p>No record recovered in the sources searched.</p>{% endif %}
+<h2>Papers</h2>
+<table>
+  <tr><th>Paper</th><th>Compilation records</th><th>With yield strength</th><th>With grain size</th>
+      <th>Open copy listed</th><th>Obtained</th><th>Parsed</th><th>Read</th><th>Observations</th><th>Recovered</th></tr>
+  {% for p in inv.papers %}<tr><td>{{ p.doi }}</td><td>{{ p.compilation_records }}</td><td>{{ p.with_yield_strength }}</td>
+    <td>{{ p.with_grain_size }}</td><td>{{ 'yes' if p.open_access_flag else 'no' }}</td><td>{{ 'yes' if p.obtained else 'no' }}</td>
+    <td>{{ 'yes' if p.parsed else 'no' }}</td><td>{{ 'yes' if p.read else 'no' }}</td><td>{{ p.observations }}</td>
+    <td>{{ p.recovered }}</td></tr>{% endfor %}
+</table>
+{% endblock %}
