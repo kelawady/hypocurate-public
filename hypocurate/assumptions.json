@@ -12161,6 +12161,12 @@
         {
           "ref": "python:hypocurate.sources.adapters.extracted_pilot:ADAPTER_VERSION",
           "equals": "1"
+        },
+        {
+          "ref": "python:hypocurate.access.vocabulary:PILOT_SOURCE_KEYS",
+          "equals": [
+            "extracted_pilot"
+          ]
         }
       ],
       "note": null
@@ -12171,7 +12177,8 @@
       "tests/test_pilot_source.py::test_temperatures_are_converted_only_when_one_is_stated",
       "tests/test_pilot_source.py::test_the_augmented_pool_counts_a_re_report_once_with_the_mpea_record_surviving",
       "tests/test_pilot_source.py::test_numbers_are_written_in_plain_notation",
-      "tests/test_pilot_source.py::test_the_augmented_pool_agrees_with_the_independent_test_side_calculation"
+      "tests/test_pilot_source.py::test_the_augmented_pool_agrees_with_the_independent_test_side_calculation",
+      "tests/test_pilot_plan_lock.py::test_the_locks_pilot_list_is_a_code_list_matching_the_profile"
     ],
     "history": [],
     "notes": [

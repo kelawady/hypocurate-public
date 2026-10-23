@@ -304,7 +304,7 @@ All of these changes were approved as safeguard changes on 2026-10-22 and 2026-1
 | `pipeline/agents/spend.py` | `DOCUMENT_CAP_USD` = $2 per document invocation; stage `document` in its audit rows | section 11 |
 | `pipeline/agents/lm.py` | `FAILURES` + `spending_cap_document` (a defect found by A4's tests) | `test_pilot_spending.py::test_every_refusal_code_of_the_spending_module_is_a_known_failure_that_stops` |
 | `pipeline/agents/settings.py` | `MODELS` + extractor, reconciler (Sonnet 5.5); `extractor_variant`, `reconciler_variant` read versioned prompt files | `test_extractor.py::test_the_extractor_settings_come_from_the_versioned_prompt_files`; `test_assumptions.py` settings checks |
-| `pipeline/checkpoints.py` | the lock refuses a plan naming a pilot source the run did not choose (A2) | section 10 |
+| `pipeline/checkpoints.py` | the lock refuses a plan naming a pilot source the run did not choose (A2), reading the code list `vocabulary.PILOT_SOURCE_KEYS` (decision code never imports the profile: `test_eligibility.py::test_decision_code_does_not_import_the_domain_profile`) | section 10 |
 | `pipeline/confirmation.py` | `reference_plan(row, chosen)`; `_chosen` reads only chosen sources | section 3; `test_pilot_source.py::test_a_sprint1_run_on_a_database_holding_the_pilot_source_locks_a_plan_without_it` |
 
 **Start-up:**
@@ -356,6 +356,7 @@ Every request is reserved before it is sent (`lm.complete` → `spend.reserve`),
 2. **The fixed plan's chosen sources included registered but unchosen sources** (A5 rehearsal). After the bundle, every Sprint 1 fixed run would have been refused by the A2 lock rule.
 3. **The bundle sealed the pilot source without re-checking the freeze invariant** (C1). It now re-checks on the loaded events.
    - With the check removed, `tests/test_bundle.py::test_a_bundle_whose_freeze_names_a_non_accepted_record_is_refused_even_with_consistent_hashes` fails (`DID NOT RAISE BundleRefused`); restored, it passes. The removed check is exactly the pre-fix code.
+4. **The A2 lock rule first imported the domain profile into `checkpoints.py`**, which Sprint 1 forbids for decision code. Found by the whole suite (`test_eligibility.py::test_decision_code_does_not_import_the_domain_profile[checkpoints]`). The lock now reads `access.vocabulary.PILOT_SOURCE_KEYS`; `test_pilot_plan_lock.py::test_the_locks_pilot_list_is_a_code_list_matching_the_profile` keeps the two lists equal.
 
 ## 14. Questions for the reviewer (first round)
 
@@ -367,7 +368,7 @@ Every request is reserved before it is sent (`lm.complete` → `spend.reserve`),
 
 ## Appendix A. The safeguard files' diffs against main, with their test changes (merge review round 2, A1)
 
-Generated with `git diff main...HEAD -- <files>` at the packet's commit. New files (`pipeline/evidence.py`, `sources/pilot.py`, `documents/bundle.py`, migration 0010) are not diffs against main; sections 1, 4 and 12 describe them, and their tests are named there.
+Generated with `git diff main -- <files>` at the packet's commit (regenerated after the final fix: the lock reads `vocabulary.PILOT_SOURCE_KEYS`, not the profile). New files (`pipeline/evidence.py`, `sources/pilot.py`, `documents/bundle.py`, migration 0010) are not diffs against main; sections 1, 4 and 12 describe them, and their tests are named there.
 
 ### Access layer
 
@@ -696,16 +697,18 @@ index ab2b4b3..75d3508 100644
      if ctx.role not in ALL_ROLES:
          return "unknown_role"
 diff --git a/hypocurate/access/vocabulary.py b/hypocurate/access/vocabulary.py
-index b342286..e3bcb5e 100644
+index b342286..7ec1514 100644
 --- a/hypocurate/access/vocabulary.py
 +++ b/hypocurate/access/vocabulary.py
-@@ -101,7 +101,8 @@ CRITIC_REASON_MAX = 300  # characters; shown to people only (A7)
+@@ -101,7 +101,10 @@ CRITIC_REASON_MAX = 300  # characters; shown to people only (A7)
  
  # Codes in the locked plan's rules (step 6): the registered sources, grouping units, value
  # statuses, domain profiles, and whether single phase is required.
 -SOURCE_KEYS = frozenset({"mpea", "tamu_fcc", "controlled_duplicates"})
 +SOURCE_KEYS = frozenset({"mpea", "tamu_fcc", "controlled_duplicates",
 +                         "extracted_pilot"})  # Sprint 2 pilot (R9; register 'pilot_extracted_source')
++# The pilot's sources among them (merge review A2): the rules lock reads this code list, never the profile.
++PILOT_SOURCE_KEYS = frozenset({"extracted_pilot"})
  GROUPING_UNITS = frozenset({"paper", "dataset", "batch"})
  VALUE_STATUSES = frozenset({"converted", "assigned_from_source", "assigned_by_decision"})
  PROFILE_NAMES = frozenset({"grain_size_strengthening"})
@@ -930,14 +933,14 @@ index b2aac38..1082503 100644
 
 ```diff
 diff --git a/hypocurate/pipeline/checkpoints.py b/hypocurate/pipeline/checkpoints.py
-index b9ae161..a71ef02 100644
+index b9ae161..6f61256 100644
 --- a/hypocurate/pipeline/checkpoints.py
 +++ b/hypocurate/pipeline/checkpoints.py
 @@ -33,6 +33,7 @@ from hypocurate.access.dispatch import bind_code
  from hypocurate.access.inputs import role_input
  from hypocurate.pipeline import eligibility as el
  from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
-+from hypocurate.pipeline.profile import PILOT_SOURCES
++from hypocurate.access.vocabulary import PILOT_SOURCE_KEYS
  from hypocurate.pipeline.writes import (CONSTRUCTED_MARK, TEST_RUN_LABEL, Refused, code_stage, constructed_unmarked,
                                          decide_sets, marked,
                                          flag_index,
@@ -947,9 +950,9 @@ index b9ae161..a71ef02 100644
                                f"{name} leaves out chosen sources: {', '.join(sorted(chosen - covered))}")
 +        # Sprint 2 pilot (merge review A2, 2026-10-23): a plan may name a pilot source only when the run chose it.
 +        named = set(rules["survivor_source_order"]) | {g["source"] for g in rules["grouping"]}
-+        if (named & set(PILOT_SOURCES)) - chosen:
++        if (named & PILOT_SOURCE_KEYS) - chosen:
 +            raise Refused("lock_rules", "invalid_plan", "the plan names a pilot source the run did not choose: "
-+                          + ", ".join(sorted((named & set(PILOT_SOURCES)) - chosen)))
++                          + ", ".join(sorted((named & PILOT_SOURCE_KEYS) - chosen)))
          ids = []
          for kind, value in tags.items():
              tid = conn.execute(text("SELECT id FROM tag_value WHERE kind = :k AND value = :v AND status = 'approved'"),

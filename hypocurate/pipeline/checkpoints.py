@@ -33,7 +33,7 @@ from hypocurate.access.dispatch import bind_code
 from hypocurate.access.inputs import role_input
 from hypocurate.pipeline import eligibility as el
 from hypocurate.pipeline.plan import PlanError, canonical, fingerprint, tags_for, validate
-from hypocurate.pipeline.profile import PILOT_SOURCES
+from hypocurate.access.vocabulary import PILOT_SOURCE_KEYS
 from hypocurate.pipeline.writes import (CONSTRUCTED_MARK, TEST_RUN_LABEL, Refused, code_stage, constructed_unmarked,
                                         decide_sets, marked,
                                         flag_index,
@@ -72,9 +72,9 @@ def lock_rules(engine: Engine, run_id: int, content: Mapping[str, Any]) -> str:
                               f"{name} leaves out chosen sources: {', '.join(sorted(chosen - covered))}")
         # Sprint 2 pilot (merge review A2, 2026-10-23): a plan may name a pilot source only when the run chose it.
         named = set(rules["survivor_source_order"]) | {g["source"] for g in rules["grouping"]}
-        if (named & set(PILOT_SOURCES)) - chosen:
+        if (named & PILOT_SOURCE_KEYS) - chosen:
             raise Refused("lock_rules", "invalid_plan", "the plan names a pilot source the run did not choose: "
-                          + ", ".join(sorted((named & set(PILOT_SOURCES)) - chosen)))
+                          + ", ".join(sorted((named & PILOT_SOURCE_KEYS) - chosen)))
         ids = []
         for kind, value in tags.items():
             tid = conn.execute(text("SELECT id FROM tag_value WHERE kind = :k AND value = :v AND status = 'approved'"),

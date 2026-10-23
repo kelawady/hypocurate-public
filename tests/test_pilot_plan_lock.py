@@ -60,3 +60,11 @@ def test_a_pilot_plan_built_first_does_not_change_a_later_sprint1_plan():
     pilot = plans.with_pilot_sources(plans.reference_plan(7), ("mpea", "extracted_pilot"))
     assert _names_pilot(pilot) and plans.reference_plan(7) == before and not _names_pilot(plans.reference_plan(7))
     assert plans.with_pilot_sources(plans.reference_plan(7), ("mpea",)) == before
+
+
+def test_the_locks_pilot_list_is_a_code_list_matching_the_profile():
+    """The lock reads the pilot keys from the plan vocabulary, not the profile (Sprint 1's rule:
+    test_eligibility.py::test_decision_code_does_not_import_the_domain_profile); the two lists agree."""
+    from hypocurate.access.vocabulary import PILOT_SOURCE_KEYS, SOURCE_KEYS
+    from hypocurate.pipeline import profile
+    assert PILOT_SOURCE_KEYS == frozenset(profile.PILOT_SOURCES) and PILOT_SOURCE_KEYS <= SOURCE_KEYS
