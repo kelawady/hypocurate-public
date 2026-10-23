@@ -182,6 +182,8 @@ def test_the_cli_reconciles_the_newest_s0_of_the_prompt_version_and_round_trips_
     from hypocurate.sources import versions
     versions.register(db, "mpea")  # the documents commands read the selection first
     monkeypatch.setattr(rs, "PROMPT_VERSION", PV)
+    from hypocurate.pipeline import evidence
+    monkeypatch.setattr(evidence, "PROMPT_VERSION", PV)  # the reconcile command reads the standing S0 from there
     import hypocurate.pipeline.reconcile as rc
     called = []
     monkeypatch.setattr(rc, "reconcile", lambda engine, output: called.append(output) or rc.ReconcileRun(output))

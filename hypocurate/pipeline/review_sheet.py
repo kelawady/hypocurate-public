@@ -31,9 +31,9 @@ from sqlalchemy.engine import Connection, Engine
 
 from hypocurate.db.models import CONSEQUENCES, FINDING_KINDS, TIME_ACTIVITIES
 from hypocurate.db.retry import run_transaction
+from hypocurate.pipeline.evidence import PROMPT_VERSION, standing_outputs  # the prompt version: one named place
 from hypocurate.pipeline.workbook import _append
 
-PROMPT_VERSION = "v4"  # the owner's decision of 2026-10-23: the Reconciler, R6 and the H1 runs use v4 S0s only
 DECISIONS = ("accept", "reject", "correct")
 PROPOSAL_COLUMNS = ("item", "paper_doi", "location", "observation", "item_type", "as_written", "proposed",
                     "quote_or_provenance", "code_check", "decision", "corrected_value", "reason")
@@ -45,12 +45,8 @@ _ITEM = re.compile(r"^(mapping|link|observation):(\d+)$")
 
 
 def outputs(conn: Connection, prompt_version: str | None = None) -> list:
-    """The newest S0 output of every paper under the prompt version (v4 for the owner's sheet)."""
-    return conn.execute(text(
-        "SELECT DISTINCT ON (d.doi_key) d.doi_key, x.id FROM extraction_output x "
-        "JOIN document_parse p ON p.id = x.document_parse_id JOIN document d ON d.id = p.document_id "
-        "JOIN evidence_snapshot s ON s.extraction_output_id = x.id AND s.name = 'S0' "
-        "WHERE x.method->>'prompt_version' = :v ORDER BY d.doi_key, x.id DESC"), dict(v=prompt_version or PROMPT_VERSION)).all()
+    """The S0 that stands for every paper under the prompt version (v4 for the owner's sheet; `evidence.standing_outputs`)."""
+    return standing_outputs(conn, prompt_version or PROMPT_VERSION)
 
 
 def _newest_state(conn: Connection, kind: str, object_id: int) -> str:

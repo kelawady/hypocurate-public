@@ -21,6 +21,7 @@ def add_parser(sub) -> None:
                        ("extract", "run the Extractor (extract, verify, freeze S0) on one parsed paper (costs money)"),
                        ("rowsplit", "apply 'docling + row split v1' to the newest parse of every article in the selection"),
                        ("reconcile", "run the Reconciler on a paper's newest S0 (costs money)"),
+                       ("evidence", "apply the R6 rules to the standing v4 S0s and print observations by state and reason"),
                        ("review-export", "write the owner's review sheet (.xlsx) over the newest v4 S0s"),
                        ("review-load", "load a returned review sheet: decisions, corrections, findings, minutes"),
                        ("reach", "print the reach table and its milestones")):
@@ -30,6 +31,8 @@ def add_parser(sub) -> None:
             p.add_argument("--csv", help="also write the table as CSV to this file")
         if name == "reconcile":
             p.add_argument("--doi", required=True)
+        if name == "evidence":
+            p.add_argument("--status-only", action="store_true", help="print the states without applying the rules")
         if name == "review-export":
             p.add_argument("--out", required=True, help="the .xlsx file to write")
         if name == "review-load":
@@ -133,14 +136,10 @@ def command(args, engine: Engine) -> int:
     if args.documents_command == "reconcile":
         from sqlalchemy import text
         from hypocurate.pipeline.reconcile import reconcile
-        from hypocurate.pipeline.review_sheet import PROMPT_VERSION
+        from hypocurate.pipeline.evidence import PROMPT_VERSION, standing_outputs
         from hypocurate.sources.normalize import doi_group_key
         with engine.connect() as conn:
-            output = conn.execute(text(
-                "SELECT x.id FROM extraction_output x JOIN document_parse p ON p.id = x.document_parse_id JOIN document d "
-                "ON d.id = p.document_id JOIN evidence_snapshot s ON s.extraction_output_id = x.id AND s.name = 'S0' "
-                "WHERE d.doi_key = :k AND x.method->>'prompt_version' = :v ORDER BY x.id DESC LIMIT 1"),
-                dict(k=doi_group_key(args.doi), v=PROMPT_VERSION)).scalar()
+            output = dict(standing_outputs(conn)).get(doi_group_key(args.doi))
         if output is None:
             print(f"error: no {PROMPT_VERSION} S0 for {args.doi}", file=sys.stderr)
             return 1
@@ -149,6 +148,26 @@ def command(args, engine: Engine) -> int:
                           "unresolved": run.unresolved, "by_kind": run.by_kind, "failure": run.failure,
                           "cost_usd": str(run.cost)}))
         return 1 if run.failure else 0
+    if args.documents_command == "evidence":
+        from hypocurate.pipeline import evidence
+        from hypocurate.sources import adapters
+        from hypocurate.sources.versions import latest_sealed_version_id, load_sealed_version
+        with engine.connect() as conn:
+            outputs = evidence.standing_outputs(conn)
+            version = load_sealed_version(conn, latest_sealed_version_id(conn, "mpea"))
+        compilation = {r.source_item_key: r for r in adapters.read(version).records}
+        applied = None if args.status_only else evidence.apply_rules(engine, outputs)
+        with engine.connect() as conn:
+            statuses = evidence.status(conn, outputs, compilation)
+        per_paper: dict = {}
+        for st in statuses:
+            per_paper.setdefault(st.doi_key, []).append(st)
+        print(json.dumps({"rules": applied, "outputs": dict(outputs), "all": evidence.counts(statuses),
+                          "primary_extracted": len(evidence.primary_extracted(statuses)),
+                          "re_reports": sum(1 for st in statuses if st.rereport_of),
+                          "re_reports_values_disagree": sum(1 for st in statuses if st.rereport_of and st.values_agree is False),
+                          "per_paper": {k: evidence.counts(v) for k, v in sorted(per_paper.items())}}, indent=1))
+        return 0
     if args.documents_command == "review-export":
         from pathlib import Path
         from hypocurate.pipeline import review_sheet

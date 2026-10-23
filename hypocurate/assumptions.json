@@ -10111,7 +10111,8 @@
     ],
     "history": [],
     "notes": [
-      "S1 and S2 are taken from Friday (R5) and Saturday (R6, R10)."
+      "S1 and S2 are taken from Friday (R5) and Saturday (R6, R10).",
+      "Awaiting the owner (proposed by the builder on 2026-10-23, R6): S1 as the events of the rules that read no person's event (extraction, reconciler, reconciler-check, r-ambiguous; hypocurate.pipeline.evidence.MACHINE_RULES), because the owner's review was loaded before the R6 rules ran and no single time T separates them. No freeze (S1, S2) is taken before the owner decides."
     ]
   },
   {
@@ -11649,6 +11650,258 @@
     ],
     "history": [],
     "notes": []
+  },
+  {
+    "key": "pilot_standing_s0",
+    "name": "Which S0 stands for a paper",
+    "state": "in_force",
+    "statement": "For each paper the S0 that stands (for the review sheet, the Reconciler command, R6 and R9) is the newest S0 under the prompt version v4 on the document named for that paper by its PDF's SHA-256, when one is named; otherwise the newest v4 S0 on any document of the paper. Named: actamat.2014.08.026, the ORNL author manuscript fetched by program (reviewed); the published version fetched as repair 1 (identical evidence, unreviewed, µm read as 'lm') is kept as the repair attempt.",
+    "value": {
+      "text": "newest v4 S0, on the named document where one is named",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R5, R6, R9 and the review sheet.",
+    "reason": "A paper can have two documents after a repair fetch; 'newest' would silently replace a reviewed S0.",
+    "evidence": [
+      "The owner's answers of 2026-10-23 before stepping away (three R6 questions; docs/sprint2/daily/2026-10-23.md section 11)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:STANDING_DOCUMENTS",
+          "equals": {
+            "doi:10.1016/j.actamat.2014.08.026": "d4b1a23fd7d66a0d8f116aa7556fb2197264aafe19df3cd5bf2647d0a2d8d324"
+          }
+        },
+        {
+          "ref": "python:hypocurate.pipeline.evidence:PROMPT_VERSION",
+          "equals": "v4"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_the_standing_s0_of_a_paper_with_two_documents_is_the_named_one"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_findings_by_consequence",
+    "name": "How an Auditor finding combines with a decision",
+    "state": "in_force",
+    "statement": "A finding disputes its object (rule 'r6-finding') when its consequence is re_extract or expert_review, or correction until a correction of a value of that observation is loaded; it then stands against the object even when a person accepted it. qualified_unresolved and search_target never change a state: they qualify it and are carried with the record (workbook, note). When a correction finding is answered by a loaded correction, the rule returns the object to its state before the dispute. No kind-specific rule (the owner: observation 124 cannot be accepted anyway; figure-only values stay 'proposed').",
+    "value": {
+      "text": "disputing: re_extract, expert_review, correction (until corrected); qualifying: qualified_unresolved, search_target",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R6, the primary set, the workbook and the note.",
+    "reason": "The owner accepted 15 same-observation rows on identity grounds and carried the value discrepancies as findings; PRD Table 3's 'an Auditor finding stands against it' needs a rule for which findings stand.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6.",
+      "The owner's answers of 2026-10-23 before stepping away (three R6 questions; docs/sprint2/daily/2026-10-23.md section 11)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:DISPUTING",
+          "equals": [
+            "re_extract",
+            "expert_review",
+            "correction"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.evidence:QUALIFYING",
+          "equals": [
+            "qualified_unresolved",
+            "search_target"
+          ]
+        },
+        {
+          "ref": "python:hypocurate.pipeline.evidence:R_FINDING",
+          "equals": "r6-finding"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_findings_dispute_by_consequence_and_a_loaded_correction_lifts_a_correction_finding",
+      "tests/test_evidence.py::test_a_lifted_dispute_returns_the_owners_acceptance"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_observation_acceptance",
+    "name": "When an extracted observation is accepted",
+    "state": "in_force",
+    "statement": "An extracted observation is accepted by rule 'r6-derived' when: it has a stated grain size and a stated yield strength (a number with a known unit, after any loaded correction; not figure-only, not a range), each with a provenance and not flagged ambiguous (an Extractor note or a verifier answer other than 'yes'); at least one accepted link between the two; every link and every mapping of it accepted, with at least one mapping; and no disputing finding on it, its links or its mappings. Otherwise it keeps its state, and the first failing condition is its reason. Figure-only and range observations stay 'proposed'. The workbook and the H2 inventory count observations by state (accepted / proposed / unresolved / disputed) with the reason, not only accepted ones; 'figure-only yield strength' is a result, not a loss.",
+    "value": {
+      "text": "derived by rule from the values, links, mappings and findings",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R6, R9, R11, R12 and the note.",
+    "reason": "Table 3 requires the observation to be accepted, and the owner's sheet decided mappings and links, not observations.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6.",
+      "The owner's answers of 2026-10-23 before stepping away (three R6 questions; docs/sprint2/daily/2026-10-23.md section 11)."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:R_DERIVED",
+          "equals": "r6-derived"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.evidence:CATEGORIES",
+          "equals": [
+            "accepted",
+            "proposed",
+            "unresolved",
+            "disputed"
+          ]
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_r_link_1_and_the_derived_rule_accept_re_reports_and_rereport_counts_them_once",
+      "tests/test_evidence.py::test_a_new_observation_enters_only_when_the_owner_accepts_its_link",
+      "tests/test_evidence.py::test_r_link_1_takes_only_table_row_links_and_every_link_must_be_accepted",
+      "tests/test_evidence.py::test_a_value_flagged_ambiguous_keeps_its_observation_proposed_with_that_reason",
+      "tests/test_evidence.py::test_the_evidence_command_applies_the_rules_and_prints_counts"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_rereport_rules",
+    "name": "R-ambiguous, R-link-1, R-rereport and the survivor rule",
+    "state": "in_force",
+    "statement": "R-ambiguous: a link the Extractor marked ambiguous, still 'proposed' by the extraction, becomes 'unresolved' (rule 'r-ambiguous'), never silently resolved. R-link-1: a same-table-row link, not ambiguous and still 'proposed', whose observation has a same-observation mapping accepted by a person to a compilation record of the same paper, is accepted (rule 'r-link-1') and marked as a re-report of that record; any other link is accepted only by a person. R-rereport and the survivor rule: an accepted observation with an accepted same-observation mapping is a re-report of that record, counted once with the compilation record as survivor; whether its grain size and yield strength agree within 2 % (converted to µm and MPa) is reported with it. Builder's reading, for the owner to confirm: the person's acceptance of the same-observation mapping resolves the identity, so a re-report whose values disagree is still counted once with the compilation record surviving and the disagreement carried as a qualifier (PRD: 'disputed until the owner resolves it'). An accepted observation with no such mapping is new; the primary set's extracted records are the new ones.",
+    "value": {
+      "text": "re-reports counted once; the compilation record survives",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R6, R9 (the R-rereport flags) and the pooled H1 run.",
+    "reason": "A re-extracted copy of a compilation record must not be counted twice in the pooled set (PRD R6 acceptance condition).",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:R_LINK_1",
+          "equals": "r-link-1"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.evidence:R_AMBIGUOUS",
+          "equals": "r-ambiguous"
+        },
+        {
+          "ref": "python:hypocurate.scoring.score:TOLERANCE"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_r_link_1_and_the_derived_rule_accept_re_reports_and_rereport_counts_them_once",
+      "tests/test_evidence.py::test_r_link_1_needs_a_same_observation_mapping_accepted_by_a_person",
+      "tests/test_evidence.py::test_one_disputed_link_removes_exactly_that_record_from_the_primary_set_and_keeps_it_in_the_gap_count"
+    ],
+    "history": [],
+    "notes": []
+  },
+  {
+    "key": "pilot_freeze_invariant",
+    "name": "The freeze invariant (safeguard)",
+    "state": "in_force",
+    "statement": "The freeze takes S2 (every state event of the standing outputs, ascending ids and their SHA-256) and, in the same transaction, re-checks directly from those events, independently of the status computation, that every record it accepts (the primary set's new records and the re-reports it flags) has 'accepted' as the newest state of its observation, each of its links and each of its mappings. If any does not, the freeze is refused and no snapshot is stored.",
+    "value": {
+      "text": "no accepted record with a non-accepted observation, link or mapping",
+      "unit": null
+    },
+    "category": "data_handling",
+    "affects": "R6, R9 (the sealed version is built from the freeze) and the H1 runs.",
+    "reason": "PRD R6: a freeze invariant that no primary-set record has a non-accepted state, with a test that catches a mutation dropping it.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), Section 4 and R6."
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.pipeline.evidence:check_invariant"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_evidence.py::test_the_freeze_takes_s1_and_s2_and_refuses_when_the_invariant_fails"
+    ],
+    "history": [],
+    "notes": [
+      "The PRD says the matrix is 'enforced at inclusion'. In the pilot it is enforced where extracted records enter: the freeze, from which R9 builds the sealed 'extracted (pilot)' version; Sprint 1's inclusion module is not changed."
+    ]
   },
   {
     "key": "pilot_annotation_notes",
