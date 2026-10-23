@@ -114,3 +114,17 @@ def test_proposals_are_applied_by_code_stored_with_their_states_and_s0_is_untouc
     body = stub.bodies()[0]
     assert "MPEA_dataset.csv:row:810" in json.dumps(body)  # the Reconciler does see the compilation (S1, never S0)
     assert run.cost > 0
+
+
+def test_the_same_observation_check_converts_units_before_comparing():
+    """Review finding (2026-10-23): coatings rows in nm showed a 999-fold difference that is 0 % once converted."""
+    obs = {0: {"values": [{"field": "grain_size", "text": "27.6", "unit": "nm"},
+                          {"field": "yield_strength", "text": "∼1.1", "unit": "GPa"}]},
+           1: {"values": [{"field": "grain_size", "text": "0.2–20", "unit": "µm"},
+                          {"field": "yield_strength", "text": "figure only", "unit": None}]}}
+    comp = {"k": {"grain_size_um": 0.0276, "yield_strength_mpa": 1100.0}}
+    out = rc.apply({"kind": "same_observation", "observation": 0, "compilation_key": "k"}, obs, comp)
+    assert out["grain_size_relative_difference"] == "0.0000" and out["grain_size_within_tolerance"] is True
+    assert out["yield_strength_relative_difference"] == "0.0000" and out["yield_strength_within_tolerance"] is True
+    out = rc.apply({"kind": "same_observation", "observation": 1, "compilation_key": "k"}, obs, comp)
+    assert out["grain_size_within_tolerance"] is None and out["yield_strength_within_tolerance"] is None  # not compared

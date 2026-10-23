@@ -28,13 +28,14 @@ from hypocurate.pipeline.agents import libraries
 from hypocurate.pipeline.agents.interface import call_agent
 from hypocurate.pipeline.agents.settings import ensure_setting, reconciler_variant, recorded
 from hypocurate.pipeline.extraction.model_extractor import parse_json, render_document
+from hypocurate.scoring.score import quantity
 from hypocurate.sources.normalize import formula_to_atomic_percent, same_alloy_key
 
 FIELDS = ("parsed_document", "s0_records", "compilation_records")
 RULE, CHECK_RULE = "reconciler", "reconciler-check"
 CATEGORIES = {"test_type": TEST_TYPES, "test_temperature_band": TEMPERATURE_BANDS, "phase": PHASE_CLASSES}
 TOLERANCE = Decimal(str(profile.DUPLICATE_TOLERANCE))
-MAPPING_VERSION = "reconcile-v1"  # the prompt version and this module's checks
+MAPPING_VERSION = "reconcile-v2"  # v2 (2026-10-23): units converted in the same-observation check; v1 compared the first number as written  # the prompt version and this module's checks
 NO_KEY = "(none given)"  # a same-observation proposal without a key: stored, and unresolved by code's check
 
 
@@ -95,13 +96,14 @@ def apply(m: Mapping[str, Any], observations: Mapping[int, Mapping], compilation
     if obs is None:
         return {"ok": False, "reason": "a same-observation link names an observation"}
     rec = compilation[key]
-    values = {v["field"]: v["text"] for v in obs["values"]}
+    values = {v["field"]: v for v in obs["values"]}
     out = {"ok": True}
     for f, ck in (("grain_size", "grain_size_um"), ("yield_strength", "yield_strength_mpa")):
-        try:
-            d = _rel(Decimal(values.get(f, "").split()[0]), rec.get(ck))
-        except Exception:  # noqa: BLE001 (a value as written that is not a plain number: reported, not guessed)
-            d = None
+        # Converted to the compilation's units with the scorer's conversions (µm, MPa) before comparing (review finding,
+        # 2026-10-23: nm was compared as µm). A range, figure-only or unknown unit is reported as not compared.
+        v = values.get(f) or {}
+        q = quantity(f, v.get("text"), v.get("unit"))
+        d = _rel(q.low, rec.get(ck)) if q.kind == "number" and q.unit_known else None
         out[f"{f}_relative_difference"] = None if d is None else f"{d:.4f}"
         out[f"{f}_within_tolerance"] = None if d is None else d <= TOLERANCE
     return out

@@ -173,10 +173,15 @@ def _object(conn: Connection, kind: str, oid: int) -> int | None:
     return conn.execute(text(sql), dict(o=oid)).scalar()
 
 
-def load(engine: Engine, filename: str, content: bytes, by: str, prompt_version: str | None = None) -> Loaded:
+def load(engine: Engine, filename: str, content: bytes, by: str, prompt_version: str | None = None,
+         minutes_are_owner_time: bool = True) -> Loaded:
+    """`minutes_are_owner_time=False` (owner, 2026-10-23): the Minutes tab is not the owner's time (an AI-assisted
+    review) and is not logged; the file is still stored whole with its hash."""
     wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     proposals, findings = _rows(wb, "Proposals", PROPOSAL_COLUMNS), _rows(wb, "Findings", FINDING_COLUMNS)
     minutes, corrections = _rows(wb, "Minutes", MINUTE_COLUMNS), _rows(wb, "Corrections", CORRECTION_COLUMNS)
+    if not minutes_are_owner_time:
+        minutes = []
     problems = []
     with engine.connect() as conn:
         plan_events, plan_corrections, plan_findings, plan_minutes = [], [], [], []

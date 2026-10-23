@@ -200,3 +200,17 @@ def test_the_cli_reconciles_the_newest_s0_of_the_prompt_version_and_round_trips_
     wb["Proposals"].cell(2, 10).value = "accept"
     path.write_bytes(_save(wb))
     assert cli.command(args, db) == 0 and '"decisions": 1' in capsys.readouterr().out
+
+
+def test_minutes_that_are_not_owner_time_are_not_logged_and_the_file_is_kept_whole(db, sheet):
+    """Owner, 2026-10-23: an AI-assisted review's Minutes tab (fractional AI minutes) is not owner time."""
+    wb, out, obs, _ = _filled(db, sheet)
+    wb["Minutes"]["C2"] = 1.4  # refused as owner time
+    content = _save(wb)
+    with pytest.raises(rs.SheetRefused, match="whole number"):
+        rs.load(db, "review_KE_v1.xlsx", content, "K. El-Awady", prompt_version=PV)
+    loaded = rs.load(db, "review_KE_v1.xlsx", content, "K. El-Awady", prompt_version=PV, minutes_are_owner_time=False)
+    assert (loaded.decisions, loaded.minutes_rows) == (3, 0)
+    with db.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM owner_time_log")).scalar() == 0
+        assert conn.execute(text("SELECT sha256 FROM review_file")).scalar() == hashlib.sha256(content).hexdigest()

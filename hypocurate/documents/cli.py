@@ -35,6 +35,8 @@ def add_parser(sub) -> None:
         if name == "review-load":
             p.add_argument("--file", required=True, help="the returned .xlsx file")
             p.add_argument("--by", required=True, help="the person who made the decisions")
+            p.add_argument("--no-minutes", action="store_true",
+                           help="the Minutes tab is not the owner's time (e.g. an AI-assisted review): not logged")
         if name == "extract":
             p.add_argument("--doi", required=True, help="the paper's DOI (one of the selection's papers)")
             p.add_argument("--spec", default="H1_v1", help="the evidence specification (default H1_v1)")
@@ -158,7 +160,8 @@ def command(args, engine: Engine) -> int:
         from hypocurate.pipeline import review_sheet
         path = Path(args.file)
         try:
-            loaded = review_sheet.load(engine, path.name, path.read_bytes(), args.by)
+            loaded = review_sheet.load(engine, path.name, path.read_bytes(), args.by,
+                                       minutes_are_owner_time=not args.no_minutes)
         except review_sheet.SheetRefused as e:
             print("the review sheet is refused; nothing was written:", file=sys.stderr)
             for problem in e.problems:

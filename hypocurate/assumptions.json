@@ -11467,7 +11467,7 @@
     "key": "pilot_reconciler_placement",
     "name": "Where the Reconciler runs (a deviation from the PRD's wording)",
     "state": "in_force",
-    "statement": "The Reconciler runs once per document, on the newest v4 S0 of that document, before any run, as a document invocation (role 'reconciler', scope 'document'); its proposals are mappings (MAPPING_KINDS) stored with code's check in state 'proposed' (rule 'reconciler') or 'unresolved' (rule 'reconciler-check', with code's reason; a same-observation proposal without a compilation key is stored with the key '(none given)' and unresolved). PRD v1.2 R5 says 'in the run'; this placement matches Design v1.6 §3.9 and is recorded as a deviation. Code applies each proposal with Sprint 1's normalizers and vocabularies, unchanged; the original as written is kept. Nothing it does writes to S0; its events are S1's. The H1 runs read the sealed 'extracted (pilot)' version built from the accepted records (R9), never the Reconciler's output directly.",
+    "statement": "The Reconciler runs once per document, on the newest v4 S0 of that document, before any run, as a document invocation (role 'reconciler', scope 'document'); its proposals are mappings (MAPPING_KINDS) stored with code's check in state 'proposed' (rule 'reconciler') or 'unresolved' (rule 'reconciler-check', with code's reason; a same-observation proposal without a compilation key is stored with the key '(none given)' and unresolved). PRD v1.2 R5 says 'in the run'; this placement matches Design v1.6 §3.9 and is recorded as a deviation. Code applies each proposal with Sprint 1's normalizers and vocabularies, unchanged; the original as written is kept. Nothing it does writes to S0; its events are S1's. The H1 runs read the sealed 'extracted (pilot)' version built from the accepted records (R9), never the Reconciler's output directly. The same-observation check converts the paper's grain size and yield strength to µm and MPa with the scorer's conversions before the 2 % comparison; a range, a figure-only value or an unknown unit is reported as not compared (reconcile-v2). Mappings stored under reconcile-v1 keep the check they were stored with.",
     "value": {
       "text": "per document, before the runs",
       "unit": null
@@ -11514,6 +11514,10 @@
         },
         {
           "ref": "sql:hc_reconciler_mapping_insert"
+        },
+        {
+          "ref": "python:hypocurate.pipeline.reconcile:MAPPING_VERSION",
+          "equals": "reconcile-v2"
         }
       ],
       "note": null
@@ -11521,9 +11525,17 @@
     "tests": [
       "tests/test_reconcile.py::test_proposals_are_applied_by_code_stored_with_their_states_and_s0_is_untouched",
       "tests/test_migrations_step0010.py::test_a_reconciler_mapping_comes_after_s0_from_a_reconciler_on_the_same_document_and_carries_states",
-      "tests/test_migrations_step0010.py::test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one"
+      "tests/test_migrations_step0010.py::test_the_extractor_is_refused_in_a_run_and_the_reconciler_outside_one",
+      "tests/test_reconcile.py::test_the_same_observation_check_converts_units_before_comparing"
     ],
-    "history": [],
+    "history": [
+      {
+        "from": "2026-10-23",
+        "to": "2026-10-23",
+        "value": "per document, before the runs (reconcile-v1: the same-observation check compared the first number as written, unit ignored)",
+        "note": "Review finding of 2026-10-23 (coatings rows in nm showed a 999-fold difference that is 0 %)."
+      }
+    ],
     "notes": []
   },
   {
