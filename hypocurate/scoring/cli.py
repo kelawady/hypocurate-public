@@ -17,14 +17,19 @@ def add_parser(sub) -> None:
     sc.add_argument("--doi", required=True)
     sc.add_argument("--out", help="write the full tables (pairs and unmatched lists included) as JSON to this file")
     sc.add_argument("--workbook", help="write the extraction workbook (S0 candidates with provenance) to this .xlsx")
-    sc.add_argument("--all", action="store_true", help="score every S0 of the paper (one line each), not only the newest")
+    sc.add_argument("--all", action="store_true", help="score every S0 of the paper (one line each), not only the standing one")
+    tb = scoring_sub.add_parser("tables", help="the note's P6 tables: S0 and S2, same rows and columns, per paper and "
+                                               "pooled, on each paper's standing S0")
+    tb.add_argument("--csv", help="write the tables as CSV to this file")
+    tb.add_argument("--markdown", help="write the tables as Markdown to this file")
     load = scoring_sub.add_parser("load-annotation", help="load an annotation file (refused whole on any problem)")
     load.add_argument("file")
     load.add_argument("--by", required=True, help="the name of the person loading it")
 
 
 def _score(engine: Engine, args) -> int:
-    """S0 of the newest verified output of the paper, against its annotation (if any) and its MPEA records."""
+    """S0 of the paper's standing output (`evidence.standing_outputs`; else its newest), against its annotation (if any)
+    and its MPEA records."""
     from sqlalchemy import text
     from hypocurate.scoring import score as sc
     from hypocurate.sources import adapters
@@ -42,7 +47,10 @@ def _score(engine: Engine, args) -> int:
         return 1
     if args.all:
         return _score_all(engine, key, list(reversed(outputs)), version)
-    output = outputs[0]
+    from hypocurate.pipeline import evidence
+    with engine.connect() as conn:
+        standing = dict(evidence.standing_outputs(conn)).get(key)
+    output = standing or outputs[0]  # the paper's standing S0 (owner, 2026-10-23); else its newest
     preds, described = sc.predictions_s0(engine, output)
     annotation = sc.annotation_obs(engine, key) or None
     comp, note = sc.compilation_obs(adapters.read(version).records, key, annotation)
@@ -120,6 +128,17 @@ def command(args, engine: Engine | None) -> int:
         return 0
     if args.scoring_command == "score":
         return _score(engine, args)
+    if args.scoring_command == "tables":
+        from hypocurate.scoring import tables
+        rows = tables.build(engine)
+        if args.csv:
+            with open(args.csv, "w", encoding="utf-8") as f:
+                f.write(tables.to_csv(rows))
+        if args.markdown:
+            with open(args.markdown, "w", encoding="utf-8") as f:
+                f.write(tables.to_markdown(rows))
+        print(tables.to_markdown(rows))
+        return 0
     from hypocurate.scoring.annotation import AnnotationRefused, load
     with open(args.file, "rb") as f:
         content = f.read()

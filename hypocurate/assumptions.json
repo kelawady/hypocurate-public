@@ -11500,6 +11500,54 @@
     "notes": []
   },
   {
+    "key": "pilot_s2_scoring",
+    "name": "S2 scoring (corrected performance) beside S0",
+    "state": "in_force",
+    "statement": "The note's P6 tables are built by one command (hypocurate scoring tables) from the database and the annotation file alone, on each paper's standing S0, for two snapshots with the same rows (per paper and table, then pooled) and the same columns: S0, the Extractor's verified, reference-blind output; and S2, corrected performance after the owner's acceptances and corrections. S2 predictions are S0's observations less those disputed at the S2 snapshot (by a person, a standing finding, or through a link or mapping, as R6's status computes), with the grain size and yield strength read through any correction loaded before that snapshot; other observations (accepted, proposed, unresolved) remain predictions, since 'figure only' is still a claim the Extractor made. Corrections of other fields are not read by the scorer. The score command scores a paper's standing S0 (else its newest). Builder's definition (the PRD says only 'after the owner's acceptance decisions and corrections'); the owner asked for the tables on 2026-10-23.",
+    "value": {
+      "text": "S2 = S0 less disputed observations, with grain size and yield strength corrections applied",
+      "unit": null
+    },
+    "category": "statistical",
+    "affects": "P6, R7, acceptance criterion 1 and the results note.",
+    "reason": "P6: computed first on S0 and reported as the extractor's performance; then on S2, reported separately as corrected performance.",
+    "evidence": [
+      "PRD v1.2 (docs/sprint2/HypoCurate_Sprint2_PRD_2026-10-22_v1.2.pdf), P6, R7 and Section 6 criterion 1.",
+      "The owner's request of 2026-10-23: 'Build the S2 table now, and make the score command use the standing S0. Label the two tables by snapshot, same rows and columns.'"
+    ],
+    "decided": {
+      "by": "owner (Khalid El-Awady)",
+      "date": "2026-10-23"
+    },
+    "expert_review": {
+      "status": "not_reviewed",
+      "name": null,
+      "date": null
+    },
+    "sensitivity": null,
+    "applied": {
+      "status": "yes",
+      "settings": [
+        {
+          "ref": "python:hypocurate.scoring.tables:COLUMNS"
+        },
+        {
+          "ref": "python:hypocurate.scoring.score:predictions_s2"
+        }
+      ],
+      "note": null
+    },
+    "tests": [
+      "tests/test_scoring_s2.py::test_s2_drops_disputed_observations_and_reads_corrections_loaded_before_the_freeze",
+      "tests/test_scoring_s2.py::test_the_s0_and_s2_tables_have_the_same_rows_and_columns",
+      "tests/test_scoring_s2.py::test_the_score_command_uses_the_standing_s0"
+    ],
+    "history": [],
+    "notes": [
+      "The definition of which S2 observations remain predictions is the builder's; the owner may change it."
+    ]
+  },
+  {
     "key": "pilot_bundle_load",
     "name": "How pilot data reaches the live site",
     "state": "in_force",

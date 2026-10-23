@@ -487,3 +487,42 @@ def report(paper_scores: list[tuple[str, PaperScore]], described: dict) -> dict:
             "unmatched": {t + ":" + s.paper: {"duplicates": s.duplicates, "values_from_different_specimens":
                                               s.wrong_specimen, "pending_adjudication": s.pending,
                                               "cited_rows_marked": s.cited_marked} for t, s in paper_scores}}
+
+
+def predictions_s2(engine: Engine, output_id: int, s2_snapshot_id: int | None = None) -> tuple[list[Obs], dict]:
+    """The S2 predictions of one standing output (corrected performance; owner, 2026-10-23, register
+    'pilot_s2_scoring'): S0's observations, less those disputed at the S2 snapshot (by a person, a standing finding,
+    or through a link or mapping: R6's status), with the grain size and yield strength read through any correction
+    loaded before that snapshot. Corrections of other fields are not read here (the scorer compares those two
+    values). `s2_snapshot_id`: default the newest S2 that holds this output's events."""
+    from hypocurate.pipeline import evidence as ev
+    preds, described = predictions_s0(engine, output_id)
+    with engine.connect() as conn:
+        key = conn.execute(text("SELECT d.doi_key FROM extraction_output x JOIN document_parse p ON p.id = "
+                                "x.document_parse_id JOIN document d ON d.id = p.document_id WHERE x.id = :x"),
+                           dict(x=output_id)).scalar_one()
+        snap = conn.execute(text(
+            "SELECT id, taken_at, events_sha256, event_ids FROM evidence_snapshot WHERE name = 'S2' AND (CAST(:s AS bigint) IS NULL OR "
+            "id = :s) AND EXISTS (SELECT 1 FROM evidence_state_event e WHERE e.id = ANY(event_ids) AND "
+            "e.extraction_output_id = :x) ORDER BY id DESC LIMIT 1"), dict(s=s2_snapshot_id, x=output_id)).one()
+        statuses = {s.observation_id: s for s in ev.status(conn, [(key, output_id)], event_ids=list(snap.event_ids))}
+        corrected = {(r.observation_id, r.field): r for r in conn.execute(text(
+            "SELECT DISTINCT ON (v.id) v.observation_id, v.field, c.corrected_text, c.unit FROM value_correction c "
+            "JOIN candidate_value v ON v.id = c.value_id JOIN candidate_observation o ON o.id = v.observation_id "
+            "WHERE o.extraction_output_id = :x AND c.at <= :t AND v.field IN ('grain_size', 'yield_strength') "
+            "ORDER BY v.id, c.id DESC"), dict(x=output_id, t=snap.taken_at)).all()}
+    kept, dropped, applied = [], 0, 0
+    for p in preds:
+        oid = int(p.ref.removeprefix("obs:"))
+        if statuses.get(oid) is not None and statuses[oid].category == "disputed":
+            dropped += 1
+            continue
+        for f, attr in (("grain_size", "gs"), ("yield_strength", "ys")):
+            c = corrected.get((oid, f))
+            if c is not None:
+                setattr(p, attr, quantity(f, c.corrected_text, c.unit))
+                applied += 1
+        kept.append(p)
+    return kept, described | {"snapshot": "S2", "snapshot_id": snap.id, "taken_at": str(snap.taken_at),
+                              "events_sha256": snap.events_sha256, "dropped_disputed": dropped,
+                              "corrections_applied": applied}
