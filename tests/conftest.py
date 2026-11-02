@@ -28,7 +28,7 @@ os.environ["ANTHROPIC_BASE_URL"] = NO_PROVIDER
 HOW_TO = (
     "This test needs PostgreSQL. Run the suite with `docker compose run --rm test`, "
     "or start the database with `docker compose up -d db` and set DATABASE_URL "
-    "(see README)."
+    "(see docs/DEVELOPING.md)."
 )
 
 

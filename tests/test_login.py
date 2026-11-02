@@ -177,7 +177,7 @@ def test_password_is_not_in_pages():
 # --- sessions: rotation, expiry, copied cookie (review finding 4) ----------------------
 
 def test_rotating_the_secret_and_password_ends_existing_sessions():
-    """How to revoke access (README, "Sessions"): change SESSION_SECRET with the password."""
+    """How to revoke access (docs/DEVELOPING.md, "Sessions"): change SESSION_SECRET with the password."""
     old = client()
     sign_in(old)
     cookie = old.cookies[SESSION_COOKIE]

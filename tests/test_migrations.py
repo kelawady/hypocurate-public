@@ -139,7 +139,7 @@ def test_exactly_one_head_and_every_revision_has_a_downgrade():
 
 
 def test_migrations_stay_inside_the_one_transaction():
-    """No statement may escape the upgrade transaction (README, 'Database migrations')."""
+    """No statement may escape the upgrade transaction (docs/DEVELOPING.md, 'Database migrations')."""
     env = (migrate.MIGRATIONS / "env.py").read_text()
     assert "transaction_per_migration=False" in env
     assert env.index("pg_advisory_xact_lock") < env.index("context.run_migrations()")
