@@ -37,8 +37,8 @@ the MPEA database plus the records the agent extracted.
 3. Press **Dispatch again (a new run)**. You are taken to the new run's page, which updates by itself. This query uses
    the fixed reference plan, so the run needs no confirmation and goes from queued to running to completed. Run 11 took
    about 2 minutes, plus any time waiting in the queue.
-4. If the button is refused because another run of Q-0010 is still open (someone else may have just pressed it), wait
-   a few minutes and try again.
+4. While another run of Q-0010 is still open (someone else may have just pressed the button), the button is not shown,
+   or is refused if you press it at the same moment. Wait a few minutes and reload the page.
 
 **What you should see** in the Results statement of the new run, as in run 11 (open **Runs** and choose run 11 to
 compare):
