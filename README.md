@@ -19,7 +19,7 @@ This guide is for trying the system on the hosted site. Nothing needs to be inst
 - Sign in with **Your name** (any name, recorded with what you do on the site) and the shared **Password**:
   `<PASSWORD — supplied separately>` (see the Assets section of the midway report). The password is not in this
   repository.
-- Each run calls language models and costs a few cents (re-running the main result costs about $0.05). The site
+- Each run calls language models and costs a few cents (re-running the main result costs about $0.08). The site
   enforces spending caps of **$2 per run** and **$50 per month**. They are shown in the Spending panel on most pages.
   When the monthly cap is reached, new runs are refused until the next month.
 - Everything you do is stored in the live database and is visible to the next visitor.
