@@ -12659,14 +12659,14 @@
     "key": "plan_panel_rows",
     "name": "The run page's Plan panel shows the locked plan as the parts of Table 1",
     "state": "in_force",
-    "statement": "A run with a locked plan shows a Plan panel below the Results statement (or below the question as tested while the run is not completed); a run before the rules lock shows none. Its rows are the parts of Table 1 of the midway report: the hypothesis (the stored claim, with the question as tested under it), population, test conditions, exclusions, same alloy, same record, model, test, minimum evidence and checks. Every setting is read from the run's locked plan, never from a default; the rules code applies to every plan (the physically impossible values, records within one source kept separate, standard errors grouped with t on informative groups minus 1 degrees of freedom) are written in code and say so. The panel shows the stored plan exactly: two records are the same when grain size and yield strength agree within the plan's tolerance and the test conditions are equal (or unknown on one side), and the minimums include the residual degrees of freedom. Grouping and the survivor order list only the sources the run chose; a sensitivity set about a source the run did not choose is marked 'not applicable to this run's sources'. Display only: nothing reads the panel.",
+    "statement": "A run with a locked plan shows a Plan panel below the Results statement (or below the question as tested while the run is not completed); a run before the rules lock shows none. Its rows are the parts of Table 1 of the midway report: the hypothesis (the stored claim, with the question as tested under it), population, test conditions, exclusions, same alloy, same record, model, test, minimum evidence and checks. Every setting is read from the run's locked plan, never from a default; the rules code applies to every plan (the physically impossible values, records within one source kept separate, standard errors grouped with t on informative groups minus 1 degrees of freedom) are written in code and say so. The panel shows the stored plan exactly: two records are the same when grain size and yield strength agree within the plan's tolerance and the test conditions are equal (or unknown on one side), and the minimums include the residual degrees of freedom. Grouping and the survivor order list only the sources the run chose; a sensitivity set about a source the run did not choose is still computed and says so: 'no Texas A&M records in this run, so identical to the main result' (owner's review of 2026-11-02; the first wording, 'not applicable to this run's sources', contradicted the sensitivity table, which shows the set as run). Display only: nothing reads the panel.",
     "value": {
       "text": "the locked plan as the parts of Table 1, display only",
       "unit": null
     },
     "category": "operational",
     "affects": "The run viewer's Plan panel.",
-    "reason": "Owner's midway brief (a Plan panel matching Table 1 of the report) and answers of 2026-11-02: the stored plan exactly, grouping only for the run's sources with the Texas A&M set marked not applicable, the stored claim with the question as tested under it, below the Results statement.",
+    "reason": "Owner's midway brief (a Plan panel matching Table 1 of the report) and answers of 2026-11-02: the stored plan exactly, grouping only for the run's sources with the Texas A&M set saying it equals the main result, the stored claim with the question as tested under it, below the Results statement.",
     "evidence": [
       "Midway plan approved by the owner on 2026-11-02 (docs/reviews/midway_screens.md)."
     ],
@@ -12690,7 +12690,7 @@
           "ref": "python:hypocurate.pipeline.run_view:SET_SOURCE"
         },
         {
-          "ref": "python:hypocurate.pipeline.run_view:NOT_APPLICABLE"
+          "ref": "python:hypocurate.pipeline.run_view:NO_RECORDS_OF_SOURCE"
         }
       ],
       "note": null
@@ -12699,10 +12699,11 @@
       "tests/test_midway_screens.py::test_the_reference_plan_is_shown_as_the_parts_of_table_1",
       "tests/test_midway_screens.py::test_every_setting_is_read_from_the_plan_not_from_a_default",
       "tests/test_midway_screens.py::test_a_rule_the_plan_does_not_hold_is_not_shown",
-      "tests/test_midway_screens.py::test_the_pilot_plan_lists_only_the_runs_own_sources_and_marks_the_texas_am_set_not_applicable",
+      "tests/test_midway_screens.py::test_the_pilot_plan_lists_only_the_runs_own_sources_and_says_the_texas_am_set_equals_the_main_result",
       "tests/test_midway_screens.py::test_a_set_marked_by_source_changes_only_that_sources_grouping",
       "tests/test_midway_screens.py::test_the_completed_run_shows_the_plan_panel_below_the_results_statement",
-      "tests/test_midway_screens.py::test_a_run_before_the_rules_lock_has_no_plan_panel"
+      "tests/test_midway_screens.py::test_a_run_before_the_rules_lock_has_no_plan_panel",
+      "tests/test_midway_screens.py::test_the_panel_lists_only_the_sources_the_run_chose"
     ],
     "history": [],
     "notes": [

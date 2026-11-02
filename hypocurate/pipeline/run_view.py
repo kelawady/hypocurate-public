@@ -117,10 +117,11 @@ def _set_description(key: str | None, plan: Mapping | None = None) -> str:
 # Table 1 of the midway report, each read from the plan's own fields; a rule fixed in code for every plan says so.
 PLAN_PARTS = ("Population", "Test conditions", "Exclusions", "Same alloy", "Same record", "Model", "Test",
               "Minimum evidence", "Checks")
-# A sensitivity set whose one change concerns a single source (`eligibility.settings`): not applicable to a run that
-# did not choose that source.
-SET_SOURCE = {"six_batches_as_groups": "tamu_fcc"}
-NOT_APPLICABLE = "not applicable to this run's sources"
+# A sensitivity set whose one change concerns a single source (`eligibility.settings`), with the source's short name:
+# in a run that did not choose that source the set is still computed, and is identical to the main result (owner's
+# review, 2026-11-02).
+SET_SOURCE = {"six_batches_as_groups": ("tamu_fcc", "Texas A&M")}
+NO_RECORDS_OF_SOURCE = "no {source} records in this run, so identical to the main result"
 IMPOSSIBLE_VALUES = ("records with physically impossible values (tensile strength below yield strength, or a grain size "
                      "of zero or less), checked by code for every plan")
 MODEL_WORDS = {"hall_petch_alloy_intercepts": "a baseline for each alloy + k × (grain size in µm)^-1/2, with one k "
@@ -172,8 +173,9 @@ def plan_rows(plan: Mapping, names: Mapping[str, str]) -> list[dict]:
         minimum = ("use what is available: the minimums are waived, never the validity checks, and the result is "
                    "labelled exploratory")
     keys = plan.get("sensitivity_analyses") or []
-    sets = [_set_display_name(k).replace(AT_PCT_LONG, AT_PCT_SHORT) + (f" ({NOT_APPLICABLE})" if k in SET_SOURCE and SET_SOURCE[k] not in names else "")
-            for k in keys]
+    sets = [_set_display_name(k).replace(AT_PCT_LONG, AT_PCT_SHORT)
+            + (f" ({NO_RECORDS_OF_SOURCE.format(source=SET_SOURCE[k][1])})"
+               if k in SET_SOURCE and SET_SOURCE[k][0] not in names else "") for k in keys]
     settings = [
         population,
         "; ".join(["test type " + ", ".join(s["test_type"])] + bands),
@@ -492,7 +494,8 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     test_run = bool((head.experiment_flags or {}).get("constructed_test_data"))
     cost = shown["tokens_and_cost"] or {}
     tables = _tables(stats or {}, kinds, locked.content if locked else None)
-    panel = plan_rows(locked.content, {x.key: x.name for x in sources}) if locked else None
+    chosen = {x.key: x.name for x in sources if x.search_status != "not_selected"}  # the sources the run chose
+    panel = plan_rows(locked.content, chosen) if locked else None
     return {
         "run": run_id, "query": shown["query"], "version": head.version_number, "claim": shown["claim"],
         "status": head.status, "status_words": STATUS_WORDS[head.status],

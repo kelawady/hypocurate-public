@@ -103,11 +103,6 @@
 {% endif %}
 
 <section>
-  <h2>Commentary {{ info("commentary") }}</h2>
-  <p class="muted">No commentary: the Commentator is not built in sprint 1 (PRD 15, step 12).</p>
-</section>
-
-<section>
   <h2>Cautions</h2>
   {% for line in r.statement.cautions %}<p class="{{ 'indent' if line.startswith('  ') else '' }}">{{ line|units }}</p>{% endfor %}
 </section>

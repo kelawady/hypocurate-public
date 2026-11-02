@@ -1,12 +1,13 @@
 """Midway submission (owner's brief and approval of 2026-11-02): leftover labels taken off the screens, and the Plan
 panel on the run page.
 
-C: the home page no longer names a build step, and the run page's header no longer shows the agent mode. The agent mode
+C: the home page no longer names a build step, the run page's header no longer shows the agent mode, and the run page
+has no commentary section (the Commentator is not built; owner's review of 2026-11-02). The agent mode
 stays a stored column and a row of the workbook's run summary (owner's answer: a factual record, not a screen label).
 
 B: the Plan panel shows the locked plan as the parts of Table 1 of the midway report, display only. Owner's answers:
 the stored plan exactly (conditions equal, the residual degrees of freedom included), grouping only for the run's own
-sources, a set about a source the run did not choose marked not applicable; the Hypothesis row is the stored claim with
+sources, a set about a source the run did not choose says it is identical to the main result; the Hypothesis row is the stored claim with
 the question as tested under it; the panel sits below the Results statement, and there is none before the rules lock.
 """
 from __future__ import annotations
@@ -19,20 +20,30 @@ from conftest import _create, _drop, url_for
 from hypocurate.db.engine import make_engine
 from hypocurate.pipeline import eligibility, run_view, workbook
 from hypocurate.pipeline.plan import reference_plan, with_pilot_sources
+import test_orchestrator as to
+from hypocurate.pipeline import queries
 from test_web_runs import completed, plain, signed_in, waiting
 from test_workbook import items, sheets
 
 
 @pytest.fixture(scope="module")
 def world(admin, database_url, template_database):
-    """One completed fixed-plan run (the 14.1a reference), only read."""
+    """Runs that are only read: the 14.1a fixed-plan run, a waiting Planner run, and a fixed-plan run on MPEA only (a
+    run that did not choose every registered source)."""
     name = _create(admin, "hypocurate_t", template=template_database)
     url = url_for(database_url, name)
     engine = make_engine(url)
     stub = sp.StubProvider()
     try:
         pw.registered(engine, ("mpea", "tamu_fcc"))
-        yield engine, url, {"sufficient": completed(engine, stub), "waiting": waiting(engine, stub)}
+        stub.respond(to.responder())
+        q = queries.create(engine, to.FCC_CLAIM, ("mpea",))
+        queries.submit(engine, q.version_id)
+        queries.confirm_domain(engine, q.version_id, by="Ada Reviewer")
+        mpea_only = queries.dispatch(engine, q.version_id, fixed_plan=True)
+        assert to.run(engine, mpea_only, stub).status == "completed"
+        yield engine, url, {"sufficient": completed(engine, stub), "waiting": waiting(engine, stub),
+                            "mpea_only": mpea_only}
     finally:
         stub.close()
         engine.dispose()
@@ -54,6 +65,15 @@ def test_the_run_page_header_shows_no_agent_mode(world):
     page = plain(signed_in(engine, url).get(f"/runs/{runs['sufficient']}").text)
     assert "agent mode" not in page.lower()
     assert "four roles" not in page.lower()
+
+
+def test_the_run_page_has_no_commentary_section(world):
+    """Owner's review, 2026-11-02: the run page said "No commentary: the Commentator is not built in sprint 1 (PRD 15,
+    step 12)." The Commentator is not built, so the page has no commentary section at all."""
+    engine, url, runs = world
+    page = plain(signed_in(engine, url).get(f"/runs/{runs['sufficient']}").text)
+    assert "Commentary" not in page and "Commentator" not in page
+    assert "PRD 15" not in page
 
 
 def test_the_workbook_still_records_the_agent_mode(world):
@@ -88,7 +108,7 @@ def test_the_reference_plan_is_shown_as_the_parts_of_table_1():
     assert r["Minimum evidence"] == ("30 records, 5 alloys with at least 2 grain sizes, 10 informative groups (papers "
                                      "or datasets that help estimate k), 10 residual degrees of freedom")
     assert r["Checks"].startswith("9 sensitivity sets")
-    assert run_view.NOT_APPLICABLE not in r["Checks"]
+    assert "identical to the main result" not in r["Checks"]
     assert "with alloys matched at 1 at.%;" in r["Checks"] and "atomic percent" not in r["Checks"]
 
 
@@ -137,20 +157,21 @@ def test_a_band_other_than_room_temperature_shows_the_plans_own_range():
     assert rows(plan)["Test conditions"] == "test type tension; elevated, 1000 °C"
 
 
-def test_the_pilot_plan_lists_only_the_runs_own_sources_and_marks_the_texas_am_set_not_applicable():
+def test_the_pilot_plan_lists_only_the_runs_own_sources_and_says_the_texas_am_set_equals_the_main_result():
     """Run 11's shape: MPEA and the extracted records; the plan still names Texas A&M (the reference plan's)."""
     r = rows(with_pilot_sources(reference_plan(1), PILOT), PILOT)
     assert "Texas A&M" not in r["Test"] and "MPEA: by paper; Extracted records: by paper" in r["Test"]
     assert "in the order MPEA then Extracted records" in r["Same record"]
-    assert "with Texas A&M grouped by its six batches (not applicable to this run's sources)" in r["Checks"]
-    assert r["Checks"].count(run_view.NOT_APPLICABLE) == 1
+    assert ("with Texas A&M grouped by its six batches (no Texas A&M records in this run, so identical to the main "
+            "result)") in r["Checks"]
+    assert r["Checks"].count("identical to the main result") == 1
 
 
 def test_a_set_marked_by_source_changes_only_that_sources_grouping():
     """`SET_SOURCE` agrees with the change `eligibility.settings` makes."""
     plan = reference_plan(1)
     base = eligibility.settings(plan)
-    for key, source in run_view.SET_SOURCE.items():
+    for key, (source, _) in run_view.SET_SOURCE.items():
         changed = eligibility.settings(plan, key)
         assert {k for k in base.grouping if base.grouping[k] != changed.grouping[k]} == {source}
         assert changed == base.__class__(**{**base.__dict__, "grouping": changed.grouping})
@@ -171,6 +192,18 @@ def test_the_completed_run_shows_the_plan_panel_below_the_results_statement(worl
         assert f"{row['part']} {row['setting']}" in panel
     assert shown["checkpoints"]["rules_lock"]["fingerprint"] in panel
     assert "(grain size in µm)<sup>-1/2</sup>" in page
+
+
+def test_the_panel_lists_only_the_sources_the_run_chose(world):
+    """Owner's review, 2026-11-02 (run 11's shape): a source the run did not choose (search status 'not_selected')
+    is neither in the grouping nor in the survivor order, and its sensitivity set says it equals the main result."""
+    engine, url, runs = world
+    page = plain(signed_in(engine, url).get(f"/runs/{runs['mpea_only']}").text)
+    panel = page[page.index("Plan (fixed at the rules lock)"):page.index("Explanation by the Analyst")]
+    shown = {r["part"]: r["setting"] for r in run_view.run_page(engine, runs["mpea_only"])["plan_rows"]}
+    assert "Texas A&M FCC" not in shown["Test"] and "Texas A&M FCC" not in shown["Same record"]
+    assert "(no Texas A&M records in this run, so identical to the main result)" in shown["Checks"]
+    assert shown["Checks"] in panel
 
 
 def test_a_run_before_the_rules_lock_has_no_plan_panel(world):
