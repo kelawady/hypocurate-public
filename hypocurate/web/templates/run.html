@@ -40,6 +40,20 @@
 </section>
 {% endif %}
 
+{% if r.plan_rows %}
+<section class="plan">
+  <h2>Plan (fixed at the rules lock) {{ info("plan") }}</h2>
+  <table class="data">
+    <thead><tr><th>Part of the plan</th><th>Setting</th></tr></thead>
+    <tbody>
+      <tr><td data-label="Part of the plan">Hypothesis</td><td data-label="Setting">{{ r.claim }}{% if r.question_as_tested %}<div class="muted">Question as tested: {{ r.question_as_tested.text }} ({{ r.question_as_tested.label }})</div>{% endif %}</td></tr>
+      {% for x in r.plan_rows %}<tr><td data-label="Part of the plan">{{ x.part }}</td><td data-label="Setting">{{ x.setting|units }}</td></tr>
+      {% endfor %}</tbody>
+  </table>
+  <p class="muted">Plan fingerprint <span class="mono">{{ r.checkpoints.rules_lock.fingerprint }}</span></p>
+</section>
+{% endif %}
+
 {% if r.status == "completed" %}
 <section class="analyst">
   <h2>Explanation by the Analyst</h2>

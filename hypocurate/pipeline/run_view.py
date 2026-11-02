@@ -113,6 +113,86 @@ def _set_description(key: str | None, plan: Mapping | None = None) -> str:
     return SET_DESCRIPTIONS.get(key or "", "").format(**values)
 
 
+# The Plan panel (midway submission, owner, 2026-11-02; register 'plan_panel_rows'): the locked plan as the parts of
+# Table 1 of the midway report, each read from the plan's own fields; a rule fixed in code for every plan says so.
+PLAN_PARTS = ("Population", "Test conditions", "Exclusions", "Same alloy", "Same record", "Model", "Test",
+              "Minimum evidence", "Checks")
+# A sensitivity set whose one change concerns a single source (`eligibility.settings`): not applicable to a run that
+# did not choose that source.
+SET_SOURCE = {"six_batches_as_groups": "tamu_fcc"}
+NOT_APPLICABLE = "not applicable to this run's sources"
+IMPOSSIBLE_VALUES = ("records with physically impossible values (tensile strength below yield strength, or a grain size "
+                     "of zero or less), checked by code for every plan")
+MODEL_WORDS = {"hall_petch_alloy_intercepts": "a baseline for each alloy + k × (grain size in µm)^-1/2, with one k "
+                                              "shared by all alloys"}
+DUPLICATE_RULE = ("Records from different sources are counted once when they have the same alloy, grain sizes within "
+                  "{tol}, the same paper and the same test conditions (or one of these unknown on one side), and yield "
+                  "strengths within {tol}; the record kept is taken in the order {order}. When the paper and every "
+                  "condition are known and the yield strengths differ by more than {tol}, the records conflict{conflict}. "
+                  "Records within one source are always separate measurements (fixed in code).")
+GROUP_UNIT_WORDS = {"paper": "paper", "dataset": "the whole dataset", "batch": "batch"}
+# 'atomic percent (at.%)' is written out once on the run page, in the sensitivity table's set name (register
+# 'sensitivity_set_display_names'); the panel uses the short form.
+AT_PCT_LONG, AT_PCT_SHORT = "atomic percent (at.%)", "at.%"
+
+
+def plan_rows(plan: Mapping, names: Mapping[str, str]) -> list[dict]:
+    """The Plan panel's rows from a locked plan; `names` maps each source the run chose to its name, in order. Every
+    value comes from `plan`; only the rules code applies to every plan are written here, and they say so."""
+    from hypocurate.pipeline import plan as plans
+    from hypocurate.pipeline import reading
+    s, rules, model, suff = plan["scope"], plan["rules"], plan["model"], plan["sufficiency"]
+    bands = []
+    for band in s["temperature_band"]:
+        if band == plans.ROOM_TEMPERATURE:
+            lo, hi = rules["room_temperature_min"], rules["room_temperature_max"]
+        else:
+            r = rules[plans.RANGE_RULE]
+            lo, hi = r["min"], r["max"]
+        span = display.temperature(lo) if float(lo) == float(hi) else \
+            f"{display.at_most_one_decimal(float(lo))} to {display.temperature(hi)}"
+        bands.append(f"{band}, {span}")
+    population = (", ".join(reading.plural(a) for a in s["alloy_class"]) + "; phase class " + ", ".join(s["phase_class"])
+                  + ("; single phase only" if rules.get("single_phase") == "required" else ""))
+    excluded = [reading.exclusion_words(r) for r in plan.get("exclusion_rules") or []]
+    if any(e["rule"] == "invalid_value" for e in plan.get("eligibility_rules") or []):
+        excluded.append("excluding " + IMPOSSIBLE_VALUES)
+    tol = display.at_most_one_decimal(float(rules["duplicate_tolerance"]) * 100) + "%"
+    conflict = (" and are left out" if {"flag_kind": "values_disagree", "rule": "conflict_unresolved"}
+                in (plan.get("eligibility_rules") or []) else "")
+    order = " then ".join(names[k] for k in rules["survivor_source_order"] if k in names) or "of the sources"
+    grouping = "; ".join(f"{names[g['source']]}: by {GROUP_UNIT_WORDS.get(g['unit'], g['unit'])}"
+                         for g in rules["grouping"] if g["source"] in names)
+    alpha = display.as_given(model["alpha"])
+    if suff["option"] == "fixed_minimum":
+        minimum = (f"{suff['min_records']} records, {suff['min_alloys']} alloys with at least {rules['min_grain_sizes']} "
+                   f"grain sizes, {suff['min_groups']} informative groups (papers or datasets that help estimate k), "
+                   f"{suff['min_resid_df']} residual degrees of freedom")
+    else:
+        minimum = ("use what is available: the minimums are waived, never the validity checks, and the result is "
+                   "labelled exploratory")
+    keys = plan.get("sensitivity_analyses") or []
+    sets = [_set_display_name(k).replace(AT_PCT_LONG, AT_PCT_SHORT) + (f" ({NOT_APPLICABLE})" if k in SET_SOURCE and SET_SOURCE[k] not in names else "")
+            for k in keys]
+    settings = [
+        population,
+        "; ".join(["test type " + ", ".join(s["test_type"])] + bands),
+        "; ".join(excluded) if excluded else "none",
+        f"compositions identical after rounding to {10 ** -rules['same_alloy_decimals']:g} at.%",
+        DUPLICATE_RULE.format(tol=tol, order=order, conflict=conflict),
+        f"{plan['variables']['outcome']['field'].replace('_', ' ')} = "
+        + MODEL_WORDS.get(model["name"], model["name"].replace("_", " "))
+        + f"; only alloys with at least {rules['min_grain_sizes']} distinct grain sizes",
+        f"one-sided, {model['alternative']} against {model['null']} at the {alpha} level, with t on (informative groups "
+        f"− 1) degrees of freedom; standard errors grouped as follows (fixed in code: cluster-robust with the "
+        f"small-sample correction): {grouping}",
+        minimum,
+        f"{len(keys)} sensitivity sets, each one named change from the main set; shown beside the verdict, never "
+        f"changing it: " + "; ".join(sets),
+    ]
+    return [{"part": part, "setting": setting} for part, setting in zip(PLAN_PARTS, settings)]
+
+
 def _set_display_name(key: str | None) -> str:
     from hypocurate.pipeline.eligibility import INFLUENCE_DISPLAY_NAME, INFLUENCE_KEY
     if key == INFLUENCE_KEY:
@@ -412,6 +492,7 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
     test_run = bool((head.experiment_flags or {}).get("constructed_test_data"))
     cost = shown["tokens_and_cost"] or {}
     tables = _tables(stats or {}, kinds, locked.content if locked else None)
+    panel = plan_rows(locked.content, {x.key: x.name for x in sources}) if locked else None
     return {
         "run": run_id, "query": shown["query"], "version": head.version_number, "claim": shown["claim"],
         "status": head.status, "status_words": STATUS_WORDS[head.status],
@@ -424,7 +505,7 @@ def run_page_in(conn: Connection, run_id: int) -> dict | None:
         "tags": [f"{k.replace('_', ' ')}: {v}" for k, v in tags], "plan_kind": shown["plan"],
         "agent_mode": head.agent_mode.replace("_", " "), "ceiling": money(head.spending_ceiling) if head.spending_ceiling is not None else "not recorded",
         "test_run": test_run, "test_run_badge": TEST_RUN_BADGE if test_run else None,
-        "question_as_tested": shown["question_as_tested"],
+        "question_as_tested": shown["question_as_tested"], "plan_rows": panel,
         "evidence": evidence(shown["evidence_level"], shown["verdict"], shown["evidence_level_wording"], test_run,
                              failed=head.status == "failed"),
         "outcome": shown["outcome"], "verdict": shown["verdict"], "exploratory": shown["exploratory"],
