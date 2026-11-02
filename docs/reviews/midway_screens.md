@@ -18,6 +18,8 @@ checkpoint or validity code changed.
   factual record).
 - `run.html`: the Commentary section ("No commentary: the Commentator is not built in sprint 1 (PRD 15, step 12).")
   is removed (owner's review). The run page never loads commentary. The workbook's commentary line stays.
+- `glossary.json`: the entry `commentary` is removed with that section. It was its only button, and every entry must
+  have a button (`tests/test_help.py`, found by the whole suite). 43 entries remain.
 - Not changed: "step 10a" mentions inside register notes and history on /assumptions (history is not rewritten), and
   code comments.
 
